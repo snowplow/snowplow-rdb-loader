@@ -42,6 +42,8 @@ begin
     loader::S3Tasks.archive_events(config)
   end
 
+  puts "Completed successfully"
+
 # Catch any SnowPlow error
 rescue loader::Error => e
   $stderr.puts(e.message)
