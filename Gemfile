@@ -13,14 +13,7 @@
 # Copyright:: Copyright (c) 2012-2013 SnowPlow Analytics Ltd
 # License::   Apache License Version 2.0
 
-require 'snowplow-storage-loader/errors'
-require 'snowplow-storage-loader/config'
-require 'snowplow-storage-loader/s3_tasks'
-require 'snowplow-storage-loader/loader'
+source 'https://rubygems.org'
 
-module SnowPlow
-  module StorageLoader
-  	NAME          = "snowplow-storage-loader"
-    VERSION       = "0.0.4"
-  end
-end
+# Specify your gem's dependencies in storage-loader.gemspec
+gemspec
