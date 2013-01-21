@@ -12,23 +12,27 @@
 # See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
 
 # Update these for your environment
+RVM_PATH=/path/to/.rvm # Check the bottom of your .bashrc or .zshrc
+BUNDLE_PATH=/path/to/your/bundle-binary # `which bundle` to find this
 RUNNER_PATH=/path/to/snowplow/3-etl/snowplow-emr-etl-runner
 LOADER_PATH=/path/to/snowplow/4-storage/snowplow-storage-loader
-
 RUNNER_CONFIG=/path/to/your-runner-config.yml
 LOADER_CONFIG=/path/to/your-loader-config.yml
 
+# Load the RVM environment
+source ${RVM_PATH}/scripts/rvm
+
 # Run the ETL job on EMR
-BUNDLE_GEMFILE=${RUNNER_PATH}
-bundle exec bin/snowplow-emr-etl-runner --config ${RUNNER_CONFIG}
+export BUNDLE_GEMFILE=${RUNNER_PATH}
+${BUNDLE_PATH}/bundle exec ${RUNNER_PATH}/bin/snowplow-emr-etl-runner --config ${RUNNER_CONFIG}
 
 # Check the damage
 ret_val=$?
 if [ $ret_val -ne 0 ]; then
     echo "Error running EmrEtlRunner, exiting with return code ${ret_val}. StorageLoader not run"
-    exit ret_val
+    exit $ret_val
 fi
 
 # If all okay, run the storage load too
-BUNDLE_GEMFILE=${LOADER_PATH}
-bundle exec bin/snowplow-storage-loader --config ${LOADER_CONFIG}
+export BUNDLE_GEMFILE=${LOADER_PATH}
+${BUNDLE_PATH}/bundle exec ${LOADER_PATH}/bin/snowplow-storage-loader --config ${LOADER_CONFIG}
