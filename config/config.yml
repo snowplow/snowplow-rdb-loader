@@ -9,6 +9,7 @@
 :download:
   :folder: ADD HERE # Infobright-only config option. Where to store the downloaded files. Note: only relevant for Infobright loads (not Redshift)
 # Currently assumes we are loading only one target
+<<<<<<< HEAD
 :targets:
   :Redshift: # Options for loading data into Redshift
     :enabled: true # enter false if not loading data into Redshift
@@ -25,3 +26,11 @@
     :table: events_007 # Latest version of table
     :username: ADD HERE # Or leave blank to default to the user running the script
     :password: ADD HERE # Or leave blank if no password
+=======
+:storage:
+  :type: infobright # No other storage types supported yet
+  :database: ADD HERE # Name of database
+  :table:    events_007 # Latest version of table
+  :username: ADD HERE # Or leave blank to default to the user running the script
+  :password: ADD HERE # Or leave blank if no password
+>>>>>>> 836cb44f... Bumped table version
