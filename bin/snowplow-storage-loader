@@ -22,37 +22,32 @@ loader = SnowPlow::StorageLoader
 # This Ruby script runs the SnowPlow StorageLoader.
 #
 # This is a three-step process:
-# If Redshift is a target, bulk load from In Bucket to Redshift
-# If Infobright is a target
-  # Download the SnowPlow event files from In Bucket to the local file system
-  # Load the SnowPlow event files into the target storage
-# Then archive the processed SnowPlow event files from In Bucket to Archive Bucket
-
+#
+# 1. Download SnowPlow event files from S3 (Infobright only)
+# 2. Load SnowPlow event files (either local or remote) into storage target
+# 3. Archive event files in S3
 begin
   config = loader::Config.get_config()
 
-  # If Redshift is a target, bulk load data from In Bucket to Redshift
-  if config[:targets][:Redshift][:enabled] == true
-    loader::RedshiftLoader.load_events(config)
-  end
-
-  # If Infobright is a target
-    # Download the SnowPlow event files from In Bucket to the local file system
-    # Load the SnowPlow event files into the target storage
-  if config[:targets][:Infobright][:enabled] == true
-    unless config[:skip].include?('download')
-     loader::S3Tasks.download_events(config)
-    end   
-
-    unless config[:skip].include?('load')
-      loader::Loader.load_events(config)
+  # Download files - only for Infobright
+  unless config[:skip].include?('download')
+    if config[:storage][:type] == 'infobright'
+      loader::S3Tasks.download_events(config)
     end
   end
 
-  unless config[:skip].include?('download')
-   loader::S3Tasks.download_events(config)
+  # If we are not skipping the load, use the appropriate
+  # loader for Redshift or Infobright
+  unless config[:skip].include?('load')
+    case config[:storage][:type]
+      when 'redshift'
+        loader::RedshiftLoader.load_events(config)
+      when 'infobright'
+        loader::InfobrightLoader.load_events(config)
+    end
   end
 
+  # Archive
   unless config[:skip].include?('archive')
     loader::S3Tasks.archive_events(config)
   end
