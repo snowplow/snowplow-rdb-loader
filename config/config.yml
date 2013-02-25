@@ -37,10 +37,10 @@
 >>>>>>> 836cb44f... Bumped table version
 =======
 :target:
-  :type: redshift # Or Infobright
+  :type: redshift # Or 'infobright'
   :endpoint: ADD HERE # Redshift only - get from Redshift console. Leave blank for Infobright
   :database: ADD HERE # Name of database 
-  :port: 5039 # Typically 5039 for Redshift, 5029 for Infobright
+  :port: 5039 # Typically '5039' for Redshift, '5029' for Infobright
   :table: events_007 # Latest version of table
   :username: ADD HERE 
   :password: ADD HERE 
