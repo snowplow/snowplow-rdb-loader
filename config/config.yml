@@ -11,6 +11,7 @@
 # Currently assumes we are loading only one target
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 :targets:
   :Redshift: # Options for loading data into Redshift
     :enabled: true # enter false if not loading data into Redshift
@@ -37,6 +38,9 @@
 >>>>>>> 836cb44f... Bumped table version
 =======
 :target:
+=======
+:storage:
+>>>>>>> 39302168... Simplified RedshiftLoader code
   :type: redshift # Or 'infobright'
   :endpoint: ADD HERE # Redshift only - get from Redshift console. Leave blank for Infobright
   :database: ADD HERE # Name of database 
