@@ -27,7 +27,7 @@ module SnowPlow
       # TODO: would be nice to move this to using Kwalify
       # TODO: would be nice to support JSON as well as YAML
 
-      @@storage_targets = Set.new(%w(redshift infobright))
+      @@storage_targets = Set.new(%w(redshift postgres))
 
       # Return the configuration loaded from the supplied YAML file, plus
       # the additional constants above.
@@ -46,13 +46,15 @@ module SnowPlow
           config[:download][:folder] = Sluice::Storage::trail_slash(config[:download][:folder])
         end
 
-        # Check we recognise the storage target 
-        unless @@storage_targets.include?(config[:storage][:type]) 
-          raise ConfigError, "Storage type '#{config[:storage][:type]}' not supported"
-        end
+        config[:targets].each { |t|
+          # Check we recognise the storage target 
+          unless @@storage_targets.include?(t[:type]) 
+            raise ConfigError, "Storage type '#{t[:type]}' not supported"
+          end
+        }
             
         # Determine whether we need to download events
-        config[:download_required] = config[:targets].count { |t| t.type == "postgres" } > 0
+        config[:download_required] = config[:targets].count { |t| t[:type] == "postgres" } > 0
 
         # If Infobright is the target, check that the download folder exists and is empty
         if config[:download_required]

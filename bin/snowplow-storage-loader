@@ -47,9 +47,9 @@ begin
         when 'redshift'
           loader::RedshiftLoader.load_events(config, t)
         when 'postgres'
-          loader::PostgresLoader.load_events(config, t)
+          loader::PostgresLoader.load_events(config[:download][:folder], t)
       end
-    end
+    }
   end
 
   # Archive
@@ -60,7 +60,7 @@ begin
   # Delete local files if required
   unless config[:skip].include?('delete')
     if config[:download_required]
-      loader::FileTasks.delete_events(config)
+      loader::FileTasks.delete_events(config[:download][:folder])
     end
   end
 
