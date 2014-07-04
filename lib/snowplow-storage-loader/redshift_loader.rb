@@ -31,46 +31,67 @@ module SnowPlow
       def load_events(config, target)
         puts "Loading Snowplow events into #{target[:name]} (Redshift cluster)..."
 
-        # Assemble the relevant parameters for the bulk load query
-        credentials = "aws_access_key_id=#{config[:aws][:access_key_id]};aws_secret_access_key=#{config[:aws][:secret_access_key]}"
-        comprows = if config[:include].include?('compudate')
-                     "COMPUPDATE COMPROWS #{config[:comprows]}"
-                   else
-                     ""
-                   end
+        # First let's get our statements for shredding (if any)
+        shredded_statements = get_shredded_statements(config, target)
 
-        # Build the Array of queries we will run
-        queries = [
-          "COPY #{target[:table]} FROM '#{config[:s3][:buckets][:in]}' CREDENTIALS '#{credentials}' DELIMITER '#{EVENT_FIELD_SEPARATOR}' MAXERROR #{target[:maxerror]} EMPTYASNULL FILLRECORD TRUNCATECOLUMNS #{comprows} TIMEFORMAT 'auto' ACCEPTINVCHARS;",
+        # Build our main transaction, consisting of COPY and COPY FROM JSON
+        # statements, and potentially also a set of table ANALYZE statements.
+        copy_analyze_statements = [
+          build_copy_from_tsv_statement(config, config[:s3][:buckets][:enriched][:good], target[:table], target[:maxerror])
         ]
+        copy_analyze_statements.push(*shredded_statements[0])
+
         unless config[:skip].include?('analyze')
-          queries << "ANALYZE #{target[:table]};"
-        end
-        if config[:include].include?('vacuum')
-          queries << "VACUUM SORT ONLY #{target[:table]};"
-        end
-        unless config[:skip].include?('shred')
-          queries << load_shredded_types(config, types)
+          queries << build_analyze_statement(target[:table])
+          copy_analyze_statements.push(*shredded_statements[1])
         end
 
-        status = PostgresLoader.execute_transaction(target, queries)
+        status = PostgresLoader.execute_transaction(target, copy_analyze_statements)
         unless status == []
           raise DatabaseLoadError, "#{status[1]} error executing #{status[0]}: #{status[2]}"
         end
+
+        # If vacuum is requested, build a set of VACUUM statements
+        # and execute them in series. VACUUMs cannot be performed
+        # inside of a transaction
+        if config[:include].include?('vacuum')
+          vacuum_statements = [
+            build_vacuum_statement(target[:table])
+          ]
+          vacuum_statements.push(*shredded_statements[2])
+
+          status = PostgresLoader.execute_queries(target, vacuum_statements)
+          unless status == []
+            raise DatabaseLoadError, "#{status[1]} error executing #{status[0]}: #{status[2]}"
+          end      
+        end
+
       end
       module_function :load_events
 
     private
 
-      # Generates a COPY FROM JSON for each shredded JSON
+      # Generates a tuple3 of all shredded statements:
+      #
+      # [ COPY FROM JSON, ANALYZE, VACUUM ]
+      #
+      # Each entry in the tuple3 is itself a list of
+      # statements.
       #
       # Parameters:
       # +config+:: the configuration options
       # +target+:: the configuration for this specific target
-      def load_shredded_types(config, target)
-        []
+      def get_shredded_statements(config, target)
+        # table = "%s%s" % [ get_schema(target[:table]), partial_key_as_table(partial_key) ]
+        # objectpath = get_s3_objectpath(config[:s3][:buckets][:shredded][:good], run_id, partial_key)
+
+        if config[:skip].include?('shred') # No shredded types to load
+          [ [], [], [] ] # COPY FROM JSON, ANALYZE, VACUUM all empty
+        else
+          [ [], [], [] ] # COPY FROM JSON, ANALYZE, VACUUM all empty
+        end
       end
-      module_function :load_shredded_types
+      module_function :get_shredded_statements
 
       # Derives the table name in Redshift from the Iglu
       # schema key.
@@ -111,6 +132,111 @@ module SnowPlow
         "#{vendor}_#{name}_#{model}"
       end
       module_function :partial_key_as_table
+
+      # Constructs the credentials expression for a
+      # Redshift COPY statement.
+      #
+      # Parameters:
+      # +config+:: the configuration options
+      def get_credentials(config)
+        "aws_access_key_id=#{config[:aws][:access_key_id]};aws_secret_access_key=#{config[:aws][:secret_access_key]}"
+      end
+      module_function :get_credentials
+
+      # Creates an S3 objectpath for the COPY FROM JSON.
+      # Note that Redshift COPY treats the S3 objectpath
+      # as a prefixed path - i.e. you get "file globbing"
+      # for free by specifying a partial folder path.
+      #
+      # Parameters:
+      # +shredded_path+:: the S3 path to the shredded types
+      # +run_id+:: the folder for this run, e.g.
+      #            run=2014-06-24-08-19-52
+      # +partial_key+:: the Iglu schema key to determine the
+      #                 table name for. Partial because the
+      #                 verison contains only the MODEL (not
+      #                 the whole SchemaVer).
+      def get_s3_objectpath(shredded_path, run_id, partial_key)
+        # Trailing hyphen ensures we don't accidentally load
+        # 11-x-x versions into a 1-x-x table
+        "#{shredded_path}#{run_id}/#{partial_key}-"
+      end
+      module_function :get_s3_objectpath
+
+      # Looks at the events table to determine if there's
+      # a schema we should use for the shredded type tables.
+      #
+      # Parameters:
+      # +events_table+:: the events table to load into
+      def extract_schema(events_table)
+        "TODO"
+      end
+      module_function :extract_schema
+
+      # Constructs the COPY statement to load the enriched
+      # event TSV files into Redshift.
+      #
+      # Parameters:
+      # +config+:: the configuration options
+      # +s3_object_path+:: the S3 path to the files containing
+      #                    this shredded type
+      # +table+:: the name of the table to load, including
+      #           optional schema
+      # +maxerror+:: how many errors to allow for this COPY
+      def build_copy_from_tsv_statement(config, s3_objectpath, table, maxerror)
+
+        # Assemble the relevant parameters for the bulk load query
+        credentials = get_credentials(config)
+        comprows =
+          if config[:include].include?('compudate')
+            "COMPUPDATE COMPROWS #{config[:comprows]}"
+          else
+            ""
+          end
+
+        "COPY #{table} FROM '#{s3_objectpath}' CREDENTIALS '#{credentials}' DELIMITER '#{EVENT_FIELD_SEPARATOR}' MAXERROR #{maxerror} EMPTYASNULL FILLRECORD TRUNCATECOLUMNS #{comprows} TIMEFORMAT 'auto' ACCEPTINVCHARS;",
+      end
+      module_function :build_copy_from_tsv_statement
+
+      # Constructs the COPY FROM JSON statement required for
+      # loading a shredded JSON into a dedicated table; also
+      # returns the table name.
+      #
+      # Parameters:
+      # +config+:: the configuration options
+      # +s3_object_path+:: the S3 path to the files containing
+      #                    this shredded type
+      # +jsonpaths_file+:: the file on S3 containing the JSON Path
+      #                    statements to load the JSON
+      # +table+:: the name of the table to load, including
+      #           optional schema
+      # +maxerror+:: how many errors to allow for this COPY
+      def build_copy_from_json_statement(config, s3_objectpath, jsonpaths_file, table, maxerror)
+        credentials = get_credentials(config)
+        # TODO: what about COMPUPDATE/ROWS?
+        "COPY #{table} FROM '#{objectpath}' CREDENTIALS '#{credentials}' JSON AS '#{jsonpaths_file}' MAXERROR #{maxerror} EMPTYASNULL FILLRECORD TRUNCATECOLUMNS TIMEFORMAT 'auto' ACCEPTINVCHARS;"
+      end
+      module_function :build_copy_from_json_statement
+
+      # Builds an ANALYZE statement for the
+      # given table.
+      #
+      # Parameters:
+      # +table+:: the name of the table to analyze
+      def build_analyze_statement(table)
+        "ANALYZE #{table};"
+      end
+      module_function :build_analyze_statement
+
+      # Builds a VACUUM statement for the
+      # given table.
+      #
+      # Parameters:
+      # +table+:: the name of the table to analyze
+      def build_vacuum_statement(table)
+        "VACUUM SORT ONLY #{table};"
+      end
+      module_function :build_vacuum_statement
 
     end
   end
