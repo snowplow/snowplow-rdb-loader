@@ -34,9 +34,14 @@ module SnowPlow
       # +s3+:: the Fog object for accessing S3
       # +s3_path+:: the S3 path to the shredded type files
       # +schema+:: the schema that tables should live in
-      Contract FogStorage, String, Maybe[String] => ArrayOf[ShreddedType]
-      def self.discover_shredded_types(s3, s3_path, schema)
-        []
+      Contract FogStorage, SluiceLocation, Maybe[String] => ArrayOf[ShreddedType]
+      def self.discover_shredded_types(s3, s3_location, schema)
+
+        Sluice::Storage::S3::list_files(s3, s3_location).map { |file|
+          "s3://" + in_location.bucket + "/" + /^(?<s3_path>.*-)[^-]+-[^-]+\/[^\/]+$/.match(file.key)[:s3_path]
+        }.uniq.map { |s3_objectpath|
+          ShreddedType.new(s3_objectpath, schema)
+        }
       end
 
       # Constructor
@@ -44,34 +49,17 @@ module SnowPlow
       # Parameters:
       # +s3_path+:: the S3 path to the shredded type files
       # +schema+:: the schema that tables should live in
-      # +run_id+:: the folder for this run, e.g.
-      #            run=2014-06-24-08-19-52
-      # +name+:: the shredded type's Iglu key's name
-      # +vendor+:: the shredded type's Iglu key's vendor
-      # +format+:: the shredded type's Iglu key's format
-      # +version_model+:: the MODEL portion of the shredded type's Iglu key's SchemaVer version
-      Contract String, Maybe[String], String, String, String, String => ShreddedType
-      def initialize(s3_path, schema, run_id, name, vendor, format, version_model)
-        @s3_path = s3_path
+      Contract String, Maybe[String] => ShreddedType
+      def initialize(s3_objectpath, schema)
+        @s3_objectpath = s3_objectpath
         @schema = schema
-        @run_id = run_id
-        @name = name
-        @vendor = vendor
-        @format = format
-        @version_model = version_model
+
+        parts = /^.*\/(?<vendor>[^\/]+)\/(?<name>[^\/]+)\/[^\/]+\/(?<version_model>[^\/]+)-$/.match(s3_objectpath)
+        @vendor = parts[:vendor]
+        @name = parts[:name]
+        @version_model = parts[:version_model]
 
         self
-      end
-
-      # Creates an S3 objectpath for the COPY FROM JSON.
-      # Note that Redshift COPY treats the S3 objectpath
-      # as a prefixed path - i.e. you get "file globbing"
-      # for free by specifying a partial folder path.
-      Contract None => String
-      def s3_objectpath
-        # Trailing hyphen ensures we don't accidentally load
-        # 11-x-x versions into a 1-x-x table
-        "#{@s3_path}#{@run_id}/#{partial_key}-"
       end
 
       # Derives the table name in Redshift from the Iglu
@@ -119,12 +107,6 @@ module SnowPlow
       Contract String => String
       def make_sql_safe(value)
         Hash.new.send(:underscore, value).tr('.', '_')
-      end
-
-      # Returns the partial key
-      Contract None => String
-      def partial_key
-        "#{name}/#{vendor}/#{format}/#{version_model}"
       end
 
     end
