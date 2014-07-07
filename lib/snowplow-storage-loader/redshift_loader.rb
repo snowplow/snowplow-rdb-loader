@@ -36,7 +36,7 @@ module Snowplow
       # +target+:: the configuration for this specific target
       Contract Hash, Hash => nil
       def load_events_and_shredded_types(config, target)
-        puts "Loading Snowplow events into #{target[:name]} (Redshift cluster)..."
+        puts "Loading Snowplow events and shredded types into #{target[:name]} (Redshift cluster)..."
 
         # First let's get our statements for shredding (if any)
         shredded_statements = get_shredded_statements(config, target)
@@ -49,7 +49,7 @@ module Snowplow
         copy_analyze_statements.push(*shredded_statements.map(&:copy))
 
         unless config[:skip].include?('analyze')
-          queries << build_analyze_statement(target[:table])
+          copy_analyze_statements << build_analyze_statement(target[:table])
           copy_analyze_statements.push(*shredded_statements.map(&:analyze))
         end
 
@@ -95,8 +95,8 @@ module Snowplow
             config[:s3][:region],
             config[:aws][:access_key_id],
             config[:aws][:secret_access_key])
-          schema = extract_schema(target[:table])
           location = Sluice::Storage::S3::Location.new(config[:s3][:buckets][:shredded][:good])
+          schema = extract_schema(target[:table])
 
           ShreddedType.discover_shredded_types(s3, location, schema).map { |st|
 
@@ -105,7 +105,7 @@ module Snowplow
               raise DatabaseLoadError, "Cannot find JSON Paths file to load #{st.s3_objectpath} into #{st.table}"
             end
 
-            SqlStatements(
+            SqlStatements.new(
               build_copy_from_json_statement(config, st.s3_objectpath, jsonpaths_file, st.table, target[:maxerror]),
               build_analyze_statement(st.table),
               build_vacuum_statement(st.table)
@@ -170,7 +170,7 @@ module Snowplow
       def build_copy_from_json_statement(config, s3_objectpath, jsonpaths_file, table, maxerror)
         credentials = get_credentials(config)
         # TODO: what about COMPUPDATE/ROWS?
-        "COPY #{table} FROM '#{objectpath}' CREDENTIALS '#{credentials}' JSON AS '#{jsonpaths_file}' MAXERROR #{maxerror} EMPTYASNULL FILLRECORD TRUNCATECOLUMNS TIMEFORMAT 'auto' ACCEPTINVCHARS;"
+        "COPY #{table} FROM '#{s3_objectpath}' CREDENTIALS '#{credentials}' JSON AS '#{jsonpaths_file}' MAXERROR #{maxerror} EMPTYASNULL TRUNCATECOLUMNS TIMEFORMAT 'auto' ACCEPTINVCHARS;"
       end
       module_function :build_copy_from_json_statement
 
