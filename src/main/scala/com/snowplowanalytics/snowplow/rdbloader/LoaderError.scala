@@ -100,6 +100,14 @@ object LoaderError {
   }
 
   /**
+   * No data, while it must be present
+   */
+  case class NoDataFailure(path: S3.Folder) extends DiscoveryFailure {
+    def getMessage: String =
+      s"No data discovered in [$path]. Either no such folder or it contains no files with data"
+  }
+
+  /**
    * Cannot discovery shredded type in folder
    */
   case class ShreddedTypeDiscoveryFailure(path: S3.Folder, invalidKeyCount: Int, example: S3.Key) extends DiscoveryFailure {

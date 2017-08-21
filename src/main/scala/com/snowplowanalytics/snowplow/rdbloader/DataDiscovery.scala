@@ -12,11 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.data.{EitherT, Validated, ValidatedNel}
+import cats.data.{EitherT, Validated, ValidatedNel, NonEmptyList}
 import cats.implicits._
 import cats.free.Free
+
 import ShreddedType._
-import LoaderError.{AtomicDiscoveryFailure, DiscoveryError, DiscoveryFailure}
+import LoaderError.{AtomicDiscoveryFailure, DiscoveryError, DiscoveryFailure, NoDataFailure}
 import config.Semver
 
 /**
@@ -62,6 +63,14 @@ sealed trait DataDiscovery extends Product with Serializable {
 object DataDiscovery {
 
   /**
+   * ADT indicating whether shredded.good or arbitrary folder
+   * Empty dir will be a discovery failure in later case
+   */
+  sealed trait DiscoveryTarget
+  case class InShreddedGood(folder: S3.Folder) extends DiscoveryTarget
+  case class InSpecificFolder(folder: S3.Folder) extends DiscoveryTarget
+
+  /**
    * Discovery result that contains only atomic data (list of S3 keys in `atomic-events`)
    */
   case class AtomicDiscovery(base: S3.Folder, atomicCardinality: Long) extends DataDiscovery
@@ -80,16 +89,25 @@ object DataDiscovery {
    * + no atomic-events folder found in *any* shred run folder
    * + files with unknown path were found in *any* shred run folder
    *
-   * @param shreddedGood shredded good S3 folder
+   * @param target either shredded good or specific run folder
    * @param shredJob shred job version to check path pattern
    * @param region AWS region for S3 buckets
    * @param assets optional JSONPath assets S3 bucket
    * @return list (probably empty, but usually with single element) of discover results
    *         (atomic events and shredded types)
    */
-  def discoverFull(shreddedGood: S3.Folder, shredJob: Semver, region: String, assets: Option[S3.Folder]): Discovery[List[DataDiscovery]] = {
-    val validatedDataKeys: Discovery[ValidatedDataKeys] =
-      Discovery.map(listGoodBucket(shreddedGood))(transformKeys(shredJob, region, assets))
+  def discoverFull(target: DiscoveryTarget, shredJob: Semver, region: String, assets: Option[S3.Folder]): Discovery[List[DataDiscovery]] = {
+    val validatedDataKeys: Discovery[ValidatedDataKeys] = target match {
+      case InShreddedGood(folder) =>
+        Discovery.map(listGoodBucket(folder))(transformKeys(shredJob, region, assets))
+      case InSpecificFolder(folder) =>
+        Discovery.map(listGoodBucket(folder)) { keys =>
+          if (keys.isEmpty) {
+            val failure = Validated.Invalid(NonEmptyList(NoDataFailure(folder), Nil))
+            Free.pure(failure)
+          } else transformKeys(shredJob, region, assets)(keys)
+        }
+    }
 
     val result = for {
       keys <- EitherT(validatedDataKeys)
@@ -101,17 +119,29 @@ object DataDiscovery {
   /**
    * Discovery list of `atomic-events` folders
    *
-   * @param shreddedGood shredded good S3 folder
+   * @param target either shredded good or specific run folder
    * @return list of run folders with `atomic-events`
    */
-  def discoverAtomic(shreddedGood: S3.Folder): Discovery[List[DataDiscovery]] =
-    Discovery.map(listGoodBucket(shreddedGood))(groupKeysAtomic).map(_.flatten)
+  def discoverAtomic(target: DiscoveryTarget): Discovery[List[DataDiscovery]] =
+    target match {
+      case InShreddedGood(folder) =>
+        Discovery.map(listGoodBucket(folder))(groupKeysAtomic).map(_.flatten)
+      case InSpecificFolder(folder) =>
+        val result = Discovery.map(listGoodBucket(folder)) { keys =>
+          if (keys.isEmpty) {
+            val error = DiscoveryError(List(NoDataFailure(folder)))
+            error.asLeft[List[AtomicDiscovery]]
+          } else groupKeysAtomic(keys)
+        }
+
+        result.map(_.flatten)
+    }
 
   /**
    * List whole directory excluding special files
    */
-  def listGoodBucket(shreddedGood: S3.Folder): Discovery[List[S3.Key]] =
-    Discovery.map(LoaderA.listS3(shreddedGood))(_.filterNot(isSpecial))
+  def listGoodBucket(folder: S3.Folder): Discovery[List[S3.Key]] =
+    Discovery.map(LoaderA.listS3(folder))(_.filterNot(isSpecial))
 
   // Full discovery
 

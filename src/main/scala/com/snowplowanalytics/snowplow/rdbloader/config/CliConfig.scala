@@ -30,12 +30,15 @@ import utils.{ Common, Compat }
  * @param configYaml decoded Snowplow config.yml
  * @param target decoded target to load
  * @param steps collected steps
+ * @param logKey file on S3 to dump logs
+ * @param folder specific run-folder to load (skipping discovery)
  */
 case class CliConfig(
   configYaml: SnowplowConfig,
   target: StorageTarget,
   steps: Set[Step],
-  logKey: S3.Key)
+  logKey: S3.Key,
+  folder: Option[S3.Folder])
 
 object CliConfig {
 
@@ -58,11 +61,16 @@ object CliConfig {
       action((x, c) => c.copy(logkey = x)).
       text("base64-encoded string with Iglu resolver configuration JSON")
 
-    opt[Seq[Step.IncludeStep]]('i', "include").action((x, c) ⇒
-      c.copy(include = x)).text("include optional work steps")
+    opt[Seq[Step.IncludeStep]]('i', "include").
+      action((x, c) => c.copy(include = x)).
+      text("include optional work steps")
 
-    opt[Seq[Step.SkipStep]]('s', "skip").action((x, c) =>
-      c.copy(skip = x)).text("skip default steps")
+    opt[Seq[Step.SkipStep]]('s', "skip").
+      action((x, c) => c.copy(skip = x)).
+      text("skip default steps")
+
+    opt[String]("folder").valueName("<s3-folder>").
+      action((x, c) => c.copy(folder = Some(x)))
 
     help("help").text("prints this usage text")
 
@@ -102,10 +110,11 @@ object CliConfig {
     resolver: String,
     include: Seq[Step.IncludeStep],
     skip: Seq[Step.SkipStep],
-    logkey: String)
+    logkey: String,
+    folder: Option[String])
 
   // Always invalid initial parsing configuration
-  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, "")
+  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, "", None)
 
   /**
    * Validated and transform initial raw cli arguments into
@@ -120,8 +129,11 @@ object CliConfig {
     val logkey = S3.Key.parse(cliConfig.logkey).leftMap(DecodingError).toValidatedNel
     val target = loadTarget(cliConfig.resolver, cliConfig.target)
     val steps = Step.constructSteps(cliConfig.skip.toSet, cliConfig.include.toSet)
+    val folder = cliConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
 
-    (target |@| config |@| logkey).map { case (t, c, l) => CliConfig(c, t, steps, l) }
+    (target |@| config |@| logkey |@| folder).map {
+      case (t, c, l, f) => CliConfig(c, t, steps, l, f)
+    }
   }
 
   /**
