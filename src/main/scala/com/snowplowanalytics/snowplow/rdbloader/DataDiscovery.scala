@@ -160,7 +160,7 @@ object DataDiscovery {
       keys.andThen(group) match {
         case Validated.Valid(discovery) => Right(discovery)
         case Validated.Invalid(failures) =>
-          val aggregated = LoaderError.aggregateDiscoveryFailures(failures.toList)
+          val aggregated = LoaderError.aggregateDiscoveryFailures(failures.toList).distinct
           Left(DiscoveryError(aggregated))
       }
     }

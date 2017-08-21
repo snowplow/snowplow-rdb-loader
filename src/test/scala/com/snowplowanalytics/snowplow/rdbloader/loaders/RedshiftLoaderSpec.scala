@@ -85,6 +85,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
   def e2 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -98,6 +101,12 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
             ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
 
           case LoaderA.KeyExists(k) =>
             if (k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json") {
@@ -183,6 +192,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
   def e4 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -196,6 +208,12 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
             ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
 
           case LoaderA.KeyExists(k) =>
             if (k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json") {

@@ -44,8 +44,17 @@ class DryRunInterpreter private[interpreters](
   private val logQueries = ListBuffer.empty[SqlString]
   private val logCopyFiles = ListBuffer.empty[Path]
   private val logMessages = ListBuffer.empty[String]
+  private var sleepTime = 0L
+
+  /**
+    * Successfully fetched JSONPaths
+    * Key: "vendor/filename_1.json";
+    * Value: "s3://my-jsonpaths/redshift/vendor/filename_1.json"
+    */
+  private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
 
   def getDryRunLogs: String = {
+    val sleep = s"Consistency check sleep time: $sleepTime\n"
     val queries =
       if (logQueries.nonEmpty) "Performed SQL Queries:\n" + logQueries.mkString("\n")
       else "No SQL queries performed"
@@ -56,7 +65,7 @@ class DryRunInterpreter private[interpreters](
       if (logCopyFiles.nonEmpty) "Files loaded via stdin:\n" + logCopyFiles.mkString("\n")
       else ""
 
-    List(queries, messages, files).mkString("\n")
+    List(sleep, queries, messages, files).mkString("\n")
   }
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
@@ -94,6 +103,7 @@ class DryRunInterpreter private[interpreters](
 
 
         case Sleep(timeout) =>
+          sleepTime = sleepTime + timeout
           Thread.sleep(timeout)
         case Track(result) =>
           result match {
@@ -110,6 +120,12 @@ class DryRunInterpreter private[interpreters](
         case Exit(loadResult, dumpResult) =>
           println("Dry-run action: \n" + getDryRunLogs)
           TrackerInterpreter.exit(loadResult, dumpResult)
+
+        case Get(key: String) =>
+          cache.get(key)
+        case Put(key: String, value: Option[S3.Key]) =>
+          val _ = cache.put(key, value)
+          ()
       }
     }
   }

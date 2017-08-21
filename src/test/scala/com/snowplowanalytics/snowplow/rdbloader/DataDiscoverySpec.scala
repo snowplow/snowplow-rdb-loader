@@ -35,6 +35,9 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
   def e1 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -50,6 +53,12 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00000"),
               S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00001")
             ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
 
           case LoaderA.KeyExists(key) =>
             if (key == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" ||
@@ -124,6 +133,8 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       val second = "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/geolocation/jsonschema/1-0-0/part-00001" :: initial
       val end = "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/custom_context/jsonschema/1-0-0/part-00000" :: second
 
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
       def apply[A](effect: LoaderA[A]): TestState[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -138,6 +149,12 @@ class DataDiscoverySpec extends Specification { def is = s2"""
                 throw new RuntimeException("Invalid test state " + realWorld.toString)
               }
             }
+
+          case LoaderA.Get(key: String) =>
+            State.pure(cache.get(key))
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            State.pure(())
 
           case LoaderA.KeyExists(key) =>
             if (key == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" ||
@@ -250,6 +267,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
   def e5 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -260,6 +278,12 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
             ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
 
           case LoaderA.KeyExists(key) =>
             if (key == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" ||
