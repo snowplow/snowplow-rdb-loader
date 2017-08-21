@@ -1,0 +1,13 @@
+language: scala
+scala:
+  - 2.11.11
+jdk:
+  - oraclejdk8
+
+before_deploy: pip install --user release-manager==0.3.0
+deploy:
+  - provider: script
+    script: release-manager --config .travis/release.yml --make-artifact --upload-artifact --check-version
+    skip_cleanup: true
+    on:
+      tags: true
