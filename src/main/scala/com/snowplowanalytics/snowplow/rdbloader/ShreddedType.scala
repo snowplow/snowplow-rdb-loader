@@ -129,10 +129,10 @@ object ShreddedType {
                 cache.put(key, s3Key)
                 Free.pure(s3Key.asRight)
               case false =>
-                getSnowplowJsonPath(region, shreddedType.vendor, filename)
+                getSnowplowJsonPath(region, key)
             }
           case None =>
-            getSnowplowJsonPath(region, shreddedType.vendor, filename)
+            getSnowplowJsonPath(region, key)
         }
     }
   }
@@ -150,17 +150,19 @@ object ShreddedType {
    * Check that JSONPaths file exists in Snowplow hosted assets bucket
    *
    * @param s3Region hosted assets region
-   * @param vendor self-describing's type vendor
-   * @param filename JSONPaths filename (without prefixes)
+   * @param key vendor dir and filename, e.g. `com.acme/event_1`
    * @return full S3 key if file exists, discovery error otherwise
    */
-  def getSnowplowJsonPath(s3Region: String, vendor: String, filename: String): DiscoveryAction[S3.Key] = {
+  def getSnowplowJsonPath(s3Region: String, key: String): DiscoveryAction[S3.Key] = {
     val hostedAssetsBucket = getHostedAssetsBucket(s3Region)
-    val folder = S3.Folder.append(hostedAssetsBucket, s"$JsonpathsPath$vendor")
-    val key = S3.Key.coerce(folder + filename)
-    LoaderA.keyExists(key).map {
-      case true => key.asRight
-      case false => JsonpathDiscoveryFailure(vendor + "/" + filename).asLeft
+    val fullDir = S3.Folder.append(hostedAssetsBucket, JsonpathsPath)
+    val s3Key = S3.Key.coerce(fullDir + key)
+    LoaderA.keyExists(s3Key).map {
+      case true =>
+        cache.put(key, s3Key)
+        s3Key.asRight
+      case false =>
+        JsonpathDiscoveryFailure(key).asLeft
     }
   }
 
