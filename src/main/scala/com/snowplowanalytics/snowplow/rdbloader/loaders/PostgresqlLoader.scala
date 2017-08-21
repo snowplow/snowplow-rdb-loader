@@ -32,9 +32,14 @@ object PostgresqlLoader {
    * @param target Redshift storage target configuration
    * @param steps SQL steps
    */
-  def run(config: SnowplowConfig, target: PostgresqlConfig, steps: Set[Step]) = {
+  def run(config: SnowplowConfig, target: PostgresqlConfig, steps: Set[Step], folder: Option[S3.Folder]) = {
     val shreddedGood = config.aws.s3.buckets.shredded.good
-    val discovery = DataDiscovery.discoverAtomic(shreddedGood)
+    val discoveryTarget = folder match {
+      case Some(f) => DataDiscovery.InShreddedGood(f)
+      case None => DataDiscovery.InShreddedGood(shreddedGood)
+    }
+
+    val discovery = DataDiscovery.discoverAtomic(discoveryTarget)
     val statements = PostgresqlLoadStatements.build(target.eventsTable, steps)
 
     for {

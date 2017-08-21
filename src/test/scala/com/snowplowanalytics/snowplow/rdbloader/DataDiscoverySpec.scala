@@ -19,14 +19,18 @@ import org.specs2.Specification
 
 import DataDiscovery._
 import ShreddedType._
+import LoaderError._
 import S3.Key.{coerce => s3key}
 import S3.Folder.{coerce => dir}
 import config.Semver
 
 
 class DataDiscoverySpec extends Specification { def is = s2"""
-  Disover two run folders at once $e1
-  Do eventual consistency check $e2
+  Successfully discover two run folders at once $e1
+  Successfully do eventual consistency check $e2
+  Fail to proceed with empty target folder $e3
+  Do not fail to proceed with empty shredded good folder $e4
+  Successfully discover data in run folder $e5
   """
 
   def e1 = {
@@ -88,7 +92,8 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       )
     )
 
-    val result = DataDiscovery.discoverFull(shreddedGood, Semver(0,11,0), "us-east-1", None)
+    val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
+    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)
@@ -186,12 +191,110 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       )
     )
 
-    val request = DataDiscovery.discoverFull(shreddedGood, Semver(0,11,0), "us-east-1", None)
+    val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
+    val request = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
     val result = DataDiscovery.checkConsistency(request)
     val (endState, endResult) = result.foldMap(interpreter).run(RealWorld(0, Nil)).value
 
     val state = endState must beEqualTo(RealWorld(4, List(20000L, 20000L, 20000L)))
     val response = endResult must beRight(expected)
     state.and(response)
+  }
+
+  def e3 = {
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ListS3(_) => Right(Nil)
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-08-21-19-18-20")
+
+    val expected = DiscoveryError(List(NoDataFailure(shreddedGood)))
+
+    val discoveryTarget = DataDiscovery.InSpecificFolder(shreddedGood)
+    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
+    val endResult = result.foldMap(interpreter)
+
+    endResult must beLeft(expected)
+  }
+
+  def e4 = {
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ListS3(_) => Right(Nil)
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good")
+
+    val expected = List.empty[DataDiscovery]
+
+    // The only difference with e3
+    val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
+    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
+    val endResult = result.foldMap(interpreter)
+
+    endResult must beRight(expected)
+  }
+
+  def e5 = {
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ListS3(bucket) =>
+            Right(List(
+              S3.Key.coerce(bucket + "atomic-events/part-0000"),
+              S3.Key.coerce(bucket + "atomic-events/part-0001"),
+              S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
+              S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
+              S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
+            ))
+
+          case LoaderA.KeyExists(key) =>
+            if (key == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" ||
+              key == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")
+              true
+            else
+              false
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/")
+
+    val expected = List(
+      FullDiscovery(
+        dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
+        2L,
+        List(
+          ShreddedType(
+            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
+            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
+          ShreddedType(
+            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
+            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
+        )
+      )
+    )
+
+    val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
+    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
+    val endResult = result.foldMap(interpreter)
+
+    endResult must beRight(expected)
   }
 }

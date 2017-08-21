@@ -56,7 +56,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val separator = "\t"
-    val action = RedshiftLoader.discover(validConfig, validTarget, Set.empty)
+    val action = RedshiftLoader.discover(validConfig, validTarget, Set.empty, None)
     val result = action.foldMap(interpreter)
 
     val atomic =
@@ -114,7 +114,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val separator = "\t"
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val action = RedshiftLoader.discover(validConfig, validTarget, steps)
+    val action = RedshiftLoader.discover(validConfig, validTarget, steps, None)
     val result: Either[LoaderError, List[RedshiftLoadStatements]] = action.foldMap(interpreter)
 
     val atomic = s"""
@@ -172,7 +172,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val separator = "\t"
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val action = RedshiftLoader.run(validConfig, validTarget, steps)
+    val action = RedshiftLoader.run(validConfig, validTarget, steps, None)
     val (resultSteps, result) = action.value.run(Nil).foldMap(interpreter)
 
     val expected = List(Step.Discover)

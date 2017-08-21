@@ -19,6 +19,7 @@ import cats.data.Validated
 import org.specs2.Specification
 
 import S3.Key.{coerce => s3}
+import S3.Folder.{coerce => dir}
 import LoaderError.{ConfigError, DecodingError, ValidationError}
 
 class CliConfigSpec extends Specification { def is = s2"""
@@ -26,6 +27,7 @@ class CliConfigSpec extends Specification { def is = s2"""
   Collect custom steps $e2
   Aggregate errors $e3
   Return None on invalid CLI options $e4
+  Parse minimal valid configuration with specific folder $e5
   """
 
   import SpecHelpers._
@@ -39,7 +41,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Shred)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"))
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None)
 
     val result = CliConfig.parse(cli)
 
@@ -57,7 +59,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"))
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None)
 
     val result = CliConfig.parse(cli)
 
@@ -95,5 +97,22 @@ class CliConfigSpec extends Specification { def is = s2"""
     val result = CliConfig.parse(cli)
 
     result must beNone
+  }
+
+  def e5 = {
+    val cli = Array(
+      "--config", configYml,
+      "--resolver", resolver,
+      "--target", target,
+      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
+      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
+
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Shred)
+
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")))
+
+    val result = CliConfig.parse(cli)
+
+    result must beSome(Validated.Valid(expected))
   }
 }

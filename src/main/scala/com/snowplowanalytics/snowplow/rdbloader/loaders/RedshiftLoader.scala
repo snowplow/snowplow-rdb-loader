@@ -43,10 +43,11 @@ object RedshiftLoader {
    * @param config main Snowplow configuration
    * @param target Redshift storage target configuration
    * @param steps SQL steps
+   * @param folder specific run-folder to load from instead shredded.good
    */
-  def run(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step]) = {
+  def run(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], folder: Option[S3.Folder]) = {
     for {
-      statements <- discover(config, target, steps).addStep(Step.Discover)
+      statements <- discover(config, target, steps, folder).addStep(Step.Discover)
       result <- load(statements)
     } yield result
   }
@@ -60,16 +61,20 @@ object RedshiftLoader {
    * @param steps SQL steps
    * @return action to perform all necessary S3 interactions
    */
-  def discover(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step]): Discovery[LoadQueue] = {
-    val shreddedGood = config.aws.s3.buckets.shredded.good
+  def discover(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], folder: Option[S3.Folder]): Discovery[LoadQueue] = {
+    val discoveryTarget = folder match {
+      case Some(f) => DataDiscovery.InSpecificFolder(f)
+      case None => DataDiscovery.InShreddedGood(config.aws.s3.buckets.shredded.good)
+    }
+
     val shredJob = config.storage.versions.rdbShredder
     val region = config.aws.s3.region
     val assets = config.aws.s3.buckets.jsonpathAssets
 
     val discovery = if (steps.contains(Step.Shred)) {
-      DataDiscovery.discoverFull(shreddedGood, shredJob, region, assets)
+      DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
     } else {
-      DataDiscovery.discoverAtomic(shreddedGood)
+      DataDiscovery.discoverAtomic(discoveryTarget)
     }
 
     val consistent = DataDiscovery.checkConsistency(discovery)
