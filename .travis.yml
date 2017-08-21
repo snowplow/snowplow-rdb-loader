@@ -1,13 +1,16 @@
 language: scala
 scala:
-  - 2.11.11
+- 2.11.11
 jdk:
-  - oraclejdk8
-
+- oraclejdk8
 before_deploy: pip install --user release-manager==0.3.0
 deploy:
-  - provider: script
-    script: release-manager --config .travis/release.yml --make-artifact --upload-artifact --check-version
-    skip_cleanup: true
-    on:
-      tags: true
+- provider: script
+  script: release-manager --config .travis/release.yml --make-artifact --upload-artifact --check-version
+  skip_cleanup: true
+  on:
+    tags: true
+env:
+  global:
+  - secure: my2pgROi/Xut3sVM47URmR+A/e29Z+pW3dtcHfqJHn3c6CP1NaSSKM+6e3PdM7BYNl9HgT0zUYfnw4lstIi9nCP0vumcA4zbx+zOd9brV10/jhpO/RtMsSQB1ycpGffJP5z+sc6AzK11ECkOoXlGHZNx48Lf9SaDTL79tMn5MQOiJphy+4OKYBiyZEdiPX6C45uvItG9zMN6RhlVpryHzRwdeiqykdFUCd/SeKAiXnAnNFPUyEYAlKz9P3setkZKVzp/yKBNVK41W1myePOWB0Is0MSisOapf1MD/k+tXovH9Ilo+K+HZId5hMpGQMo5tCvb2N2xr7j+VsNwcW3kjgROH/0QfJD9l5pB7P67iKv0JPrOjGpI2DgO7o4/YspAYUferWEeg3JboF+eytSJgXkDF6y4Ll5xQEhEXF5VDZfKamg2MOQBnRa13egn9oom5KcQ/7UrxyirRUFQI04fp3M8hGuYjxIy98t3/7Zw448ayj+oJd0miz449/3iz/YZfuaqlTFHxc22DL9BG9hX7ygOitDDoacGEeK0Z5iL7samU8GI+V5aJP23SaV+t1gvutCEU4NwRGa+ZTPmEt4RInEko0kF69gtGEHq026vjvBGW8uKFcyZcrq1ZJTcRHo3oj2L3Ub1KKuyTxs78Jd3dAI59DSG5ZSkACcuVt5gQdI=
+  - secure: Q/H5Mcb1PxmpyJ8wgCWgnof098r3OA9iVqQiySb+TQSnEjv1FKfvzMU1X3HK2TePwG5SPI4QoXygsXnDuo2lV4cPtofwULDvtNoqd8ii2ojFHbp6nvSrD7fxSVq0Vr20FfavrWzqN9/dB8m7/vyuLl2DGTsSFNMrB40Gt1OfoYFvnah3RvyhFYw0WNluPp3n4+l1zd4I64WJKU60zP2mvzRaNzXPfvXf9igGbC9vtIxaaVb9jRr7DtQrk3wqxdjY3t5Zr6ZDYtqFeUkOCskIb0ghL4Idegm7D8MMKemz8N+ZMZPQgJkGMZQj4gxBwFH0YtROnx1y4O8c21CwKA8LVg1H2n7nrwEHyjaZIwCbZbT8eoYHyyvTeXhhMFTsk/GCksMWvV4K9SuvSsDz33yDPsopdEdwfGJ6F4wqhb5MezjSlktaGeAEGsp04H0AXjprTumCboodYAgLz3CZuv0OtMyxHyH+V2q2hLnhJiWC5ue0WsWLx1WzfzIhHIxUvVqtY4fHyZW3OBycvbvDm/Auxj8xkWAXzBP315vJSyFLHkde3VThPnQC17zdN4JBcyeGXVNd7ZbIvoEQfjKOUmaW1plFIZtQPyqfx6vXWak/6ICI6hX+lAgSBjMHkvv/4lGrbgQOrM+VzkfRBkVb3Ybi+IDBkE5wodAntB5KQG9GsSA=
