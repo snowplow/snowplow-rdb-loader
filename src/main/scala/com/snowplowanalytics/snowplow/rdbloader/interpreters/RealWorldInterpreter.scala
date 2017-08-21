@@ -46,6 +46,13 @@ class RealWorldInterpreter private[interpreters](
   amazonS3: AmazonS3,
   tracker: Option[Tracker]) extends Interpreter {
 
+  /**
+    * Successfully fetched JSONPaths
+    * Key: "vendor/filename_1.json";
+    * Value: "s3://my-jsonpaths/redshift/vendor/filename_1.json"
+    */
+  private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
     def apply[A](effect: LoaderA[A]): Id[A] = {
@@ -107,6 +114,13 @@ class RealWorldInterpreter private[interpreters](
         case Exit(loadResult, dumpResult) =>
           dbConnection.foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)
+
+
+        case Get(key: String) =>
+          cache.get(key)
+        case Put(key: String, value: Option[S3.Key]) =>
+          val _ = cache.put(key, value)
+          ()
       }
     }
   }
