@@ -28,6 +28,7 @@ class CliConfigSpec extends Specification { def is = s2"""
   Aggregate errors $e3
   Return None on invalid CLI options $e4
   Parse minimal valid configuration with specific folder $e5
+  Parse dry-run configuration $e6
   """
 
   import SpecHelpers._
@@ -41,7 +42,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Shred)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None)
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None, false)
 
     val result = CliConfig.parse(cli)
 
@@ -59,7 +60,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None)
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), None, false)
 
     val result = CliConfig.parse(cli)
 
@@ -85,7 +86,6 @@ class CliConfigSpec extends Specification { def is = s2"""
     }
   }
 
-
   def e4 = {
     val cli = Array(
       "--config", configYml,
@@ -109,7 +109,25 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Shred)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")))
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false)
+
+    val result = CliConfig.parse(cli)
+
+    result must beSome(Validated.Valid(expected))
+  }
+
+  def e6 = {
+    val cli = Array(
+      "--config", configYml,
+      "--resolver", resolver,
+      "--target", target,
+      "--dry-run",
+      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
+      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
+
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Shred)
+
+    val expected = CliConfig(validConfig, validTarget, expectedSteps, s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef"), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), true)
 
     val result = CliConfig.parse(cli)
 
