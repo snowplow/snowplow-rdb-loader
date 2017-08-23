@@ -39,6 +39,7 @@ object PostgresqlLoader {
       case None => DataDiscovery.InShreddedGood(shreddedGood)
     }
 
+    // Should be safe to skip consistency check as whole folder gets downloaded
     val discovery = DataDiscovery.discoverAtomic(discoveryTarget)
     val statements = PostgresqlLoadStatements.build(target.eventsTable, steps)
 

@@ -35,6 +35,7 @@ object Step {
   sealed trait SkipStep extends Step with StringEnum
   case object Analyze extends SkipStep { def asString = "analyze" }
   case object Shred extends SkipStep { def asString = "shred" }
+  case object ConsistencyCheck extends SkipStep { def asString = "consistency_check" }
 
   /**
    * Step that cannot be skipped nor included
