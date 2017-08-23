@@ -51,7 +51,7 @@ object Common {
    * Subpath to check `atomic-events` directory presence
    */
   val atomicSubpathPattern = "(.*)/(run=[0-9]{4}-[0-1][0-9]-[0-3][0-9]-[0-2][0-9]-[0-6][0-9]-[0-6][0-9]/atomic-events)/(.*)".r
-  //                                   year     month      day        hour       minute     second
+  //                                    year     month      day        hour       minute     second
 
   /**
    * Process any valid storage target

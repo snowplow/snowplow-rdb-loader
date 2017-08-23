@@ -72,10 +72,12 @@ object CliConfig {
       text("skip default steps")
 
     opt[String]("folder").valueName("<s3-folder>").
-      action((x, c) => c.copy(folder = Some(x)))
+      action((x, c) => c.copy(folder = Some(x))).
+      text("exact run folder to load")
 
     opt[Unit]("dry-run").
-      action((_, c) => c.copy(dryRun = true))
+      action((_, c) => c.copy(dryRun = true)).
+      text("do not perform loading, but print SQL statements")
 
     help("help").text("prints this usage text")
 
@@ -109,6 +111,7 @@ object CliConfig {
    * @param skip sequence of of decoded steps to skip
    * @param logkey filename, where RDB log dump will be saved
    * @param dryRun if RDB Loader should just discover data and print SQL
+   * @param skipConsistencyCheck do not perform consistency check during discovery
    */
   private[config] case class RawConfig(
     config: String,

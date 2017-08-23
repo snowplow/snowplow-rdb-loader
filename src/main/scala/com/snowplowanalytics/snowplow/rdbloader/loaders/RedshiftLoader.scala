@@ -77,7 +77,7 @@ object RedshiftLoader {
       DataDiscovery.discoverAtomic(discoveryTarget)
     }
 
-    val consistent = DataDiscovery.checkConsistency(discovery)
+    val consistent = if (steps.contains(Step.ConsistencyCheck)) DataDiscovery.checkConsistency(discovery) else discovery
 
     Discovery.map(consistent)(buildQueue(config, target, steps))
   }
