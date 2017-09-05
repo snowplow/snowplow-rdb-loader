@@ -2,9 +2,23 @@
 
 ## Introduction
 
-This is a Scala application that runs as AWS EMR step, discovering [shredded data][shred] and loading it into one of possible [storage targets][targets].
+This project contains applications required to load Snowplow data into relational databases.
 
-Previously known as StorageLoader.
+### RDB Shredder
+
+RDB Shredder is a [Spark][spark] job which:
+
+1. Reads Snowplow enriched events from S3
+2. Extracts any unstructured event JSONs and context JSONs found
+3. Validates that these JSONs conform to schema
+4. Adds metadata to these JSONs to track their origins
+5. Writes these JSONs out to nested folders dependent on their schema
+
+It is designed to be run by the [EmrEtlRunner][emr-etl-runner] immediately after the [Spark Enrich][spark-enrich] job.
+
+### RDB Loader
+
+RDB Loader (previously known as StorageLoader) is a Scala application that runs as AWS EMR step, discovering [data][shred], produced by RDB Shredder and loading it into one of possible [storage targets][targets].
 
 
 ## Find out more
@@ -33,6 +47,10 @@ limitations under the License.
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
 [setup]: https://github.com/snowplow/snowplow/wiki/setting-up-EmrEtlRunner
 [techdocs]: https://github.com/snowplow/snowplow/wiki/RDB_Loader
+
+[spark]: http://spark.apache.org/
+[emr-etl-runner]: https://github.com/snowplow/snowplow/tree/master/3-enrich/emr-etl-runner
+[spark-enrich]: https://github.com/snowplow/snowplow/tree/master/3-enrich/spark-enrich
 
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
 [shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred

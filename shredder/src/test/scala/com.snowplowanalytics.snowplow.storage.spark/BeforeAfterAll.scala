@@ -15,8 +15,7 @@
 package com.snowplowanalytics.snowplow.storage.spark
 
 import org.specs2.mutable.SpecificationLike
-import org.specs2.specification.Fragments
-import org.specs2.specification.Step
+import org.specs2.specification.core.Fragments
 
 /**
  * The content of `beforeAll` is executed before a spec and the content of `afterAll` is executed
@@ -24,8 +23,8 @@ import org.specs2.specification.Step
  * TODO: To remove once specs2 has been updated.
  */
 trait BeforeAfterAll extends SpecificationLike {
-  override def map(fragments: =>Fragments) =
-    Step(beforeAll) ^ fragments ^ Step(afterAll)
+  override def map(fragments: => Fragments) =
+    step(beforeAll()) ^ fragments ^ step(afterAll())
 
   def beforeAll(): Unit
   def afterAll(): Unit

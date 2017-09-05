@@ -19,13 +19,9 @@ package storage.spark
 // Jackson
 import com.fasterxml.jackson.databind.JsonNode
 
-// Scalaz
-import scalaz._
-import Scalaz._
-
 // Snowplow
 import iglu.client.Resolver
-import enrich.common.{FatalEtlError, ValidatedMessage, ValidatedNelMessage}
+import enrich.common.{FatalEtlError, ValidatedNelMessage}
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {

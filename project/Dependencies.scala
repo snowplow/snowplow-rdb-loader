@@ -8,14 +8,13 @@
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the Apache License Version 2.0 is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
- */
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.  */
 import sbt._
 
 object Dependencies {
 
   object V {
-    // Scala
+    // Scala (Loader)
     val scopt            = "3.6.0"
     val scalaz7          = "7.0.9"
     val json4s           = "3.2.11" // evicted by iglu-core with 3.3.0
@@ -26,17 +25,32 @@ object Dependencies {
     val circe            = "0.8.0"
     val cats             = "0.9.0"
 
-    // Java
+    // Scala (Shredder)
+    val spark           = "2.1.0"
+    val commonEnrich    = "0.25.0"
+
+    // Java (Loader)
     val postgres         = "42.0.0"
     val redshift         = "1.2.1.1001"
     val aws              = "1.10.77"
+
+    // Java (Shredder)
+    val dynamodb        = "1.11.98"
 
     // Scala (test only)
     val specs2           = "3.6-scalaz-7.0.7"
     val scalaCheck       = "1.12.6"
   }
 
-  // Scala
+
+  val resolutionRepos = Seq(
+    // For specs2
+    "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases",
+    // Redshift native driver
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
+  )
+
+  // Scala (Loader)
   val scopt             = "com.github.scopt"      %% "scopt"                  % V.scopt
   val scalaz7           = "org.scalaz"            %% "scalaz-core"            % V.scalaz7
   val json4s            = "org.json4s"            %% "json4s-jackson"         % V.json4s
@@ -50,10 +64,18 @@ object Dependencies {
   val circeGeneric      = "io.circe"              %% "circe-generic"          % V.circe
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"   % V.circe
 
-  // Java
-  val postgres          = "org.postgresql"        % "postgresql"               % V.postgres
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42"          % V.redshift
-  val s3                = "com.amazonaws"         % "aws-java-sdk-s3"          % V.aws
+  // Scala (Shredder)
+  val commonEnrich      = "com.snowplowanalytics" %% "snowplow-common-enrich" % V.commonEnrich
+  val sparkCore         = "org.apache.spark"      %% "spark-core"             % V.spark           % "provided"
+  val sparkSQL          = "org.apache.spark"      %% "spark-sql"              % V.spark           % "provided"
+
+  // Java (Loader)
+  val postgres          = "org.postgresql"        % "postgresql"              % V.postgres
+  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42"         % V.redshift
+  val s3                = "com.amazonaws"         % "aws-java-sdk-s3"         % V.aws
+
+  // Java (Shredder)
+  val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"   % V.dynamodb
 
   // Scala (test only)
   val specs2            = "org.specs2"            %% "specs2-core"             % V.specs2         % "test"
