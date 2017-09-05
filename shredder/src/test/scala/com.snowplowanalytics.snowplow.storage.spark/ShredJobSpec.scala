@@ -18,7 +18,6 @@ package snowplow.storage.spark
 import java.io.{BufferedWriter, File, FileWriter, IOException}
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ListBuffer
 import scala.io.Source
 import scala.util.Random
 
@@ -39,8 +38,6 @@ import org.specs2.matcher.Matchers._
 import scalaz._
 import Scalaz._
 
-// Snowplow
-import iglu.client.Resolver
 
 object ShredJobSpec {
   /** Case class representing the input lines written in a file. */
