@@ -11,26 +11,18 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val root = project.in(file("."))
+lazy val loader = project.in(file("."))
   .settings(
     name := "snowplow-rdb-loader",
-    version := "0.12.0",
-    organization := "com.snowplowanalytics",
-    scalaVersion := "2.11.11",
+    version := "0.13.0",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     mainClass in Compile := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
-
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.scalifySettings)
   .settings(BuildSettings.assemblySettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
-    resolvers ++= Seq(
-      Resolver.sonatypeRepo("snapshots"),
-      Resolver.sonatypeRepo("releases"),
-      "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases", // For specs2
-      "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
-    ),
     libraryDependencies ++= Seq(
       Dependencies.scopt,
       Dependencies.scalaz7,
@@ -50,5 +42,32 @@ lazy val root = project.in(file("."))
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
+    )
+  )
+
+lazy val shredder = project.in(file("shredder"))
+  .settings(
+    name        := "snowplow-rdb-shredder",
+    version     := "0.12.0",
+    description := "Spark job to shred event and context JSONs from Snowplow enriched events",
+    BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(BuildSettings.shredderAssemblySettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      // Java
+      Dependencies.dynamodb,
+      // Scala
+      Dependencies.sparkCore,
+      Dependencies.sparkSQL,
+      Dependencies.json4s,
+      Dependencies.scalaz7,
+      Dependencies.scopt,
+      Dependencies.commonEnrich,
+      Dependencies.igluClient,
+      // Scala (test only)
+      Dependencies.specs2
     )
   )

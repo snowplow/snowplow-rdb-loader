@@ -34,9 +34,7 @@ object PgInterpreter {
 
   def executeTransaction(conn: Connection, queries: List[SqlString]): Either[StorageTargetError, Unit] =
     if (queries.nonEmpty) {
-      val begin = SqlString.unsafeCoerce("BEGIN;")
-      val commit = SqlString.unsafeCoerce("COMMIT;")
-      val transaction = (begin :: queries) :+ commit
+      val transaction = makeTransaction(queries)
       executeQueries(conn, transaction).void
     } else Right(())
 
@@ -95,6 +93,13 @@ object PgInterpreter {
     } catch {
       case NonFatal(e) => Left(StorageTargetError(e.toString))
     }
+
+  /** Wrap queries into transaction */
+  def makeTransaction(queries: List[SqlString]): List[SqlString] = {
+    val begin = SqlString.unsafeCoerce("BEGIN;")
+    val commit = SqlString.unsafeCoerce("COMMIT;")
+    (begin :: queries) :+ commit
+  }
 
   /**
    * Get Redshift or Postgres connection

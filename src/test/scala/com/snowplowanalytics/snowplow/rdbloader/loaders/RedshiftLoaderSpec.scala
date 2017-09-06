@@ -23,9 +23,10 @@ import Common.SqlString.{unsafeCoerce => sql}
 import config.Step
 
 class RedshiftLoaderSpec extends Specification { def is = s2"""
-  Disover atomic events data and create load statements $e1
-  Disover full data and create load statements $e2
+  Discover atomic events data and create load statements $e1
+  Discover full data and create load statements $e2
   Do not fail on empty discovery $e3
+  Do not sleep with disabled consistency check $e4
   """
 
   import SpecHelpers._
@@ -56,7 +57,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val separator = "\t"
-    val action = RedshiftLoader.discover(validConfig, validTarget, Set.empty)
+    val action = RedshiftLoader.discover(validConfig, validTarget, Set.empty, None)
     val result = action.foldMap(interpreter)
 
     val atomic =
@@ -84,6 +85,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
   def e2 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
@@ -97,6 +101,12 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
             ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
 
           case LoaderA.KeyExists(k) =>
             if (k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json") {
@@ -114,7 +124,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val separator = "\t"
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val action = RedshiftLoader.discover(validConfig, validTarget, steps)
+    val action = RedshiftLoader.discover(validConfig, validTarget, steps, None)
     val result: Either[LoaderError, List[RedshiftLoadStatements]] = action.foldMap(interpreter)
 
     val atomic = s"""
@@ -157,9 +167,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
-          case LoaderA.ListS3(bucket) => Right(Nil)
+          case LoaderA.ListS3(_) => Right(Nil)
 
-          case LoaderA.KeyExists(k) => false
+          case LoaderA.KeyExists(_) => false
 
           case LoaderA.Sleep(_) => ()
 
@@ -169,10 +179,8 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       }
     }
 
-    val separator = "\t"
-
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val action = RedshiftLoader.run(validConfig, validTarget, steps)
+    val action = RedshiftLoader.run(validConfig, validTarget, steps, None)
     val (resultSteps, result) = action.value.run(Nil).foldMap(interpreter)
 
     val expected = List(Step.Discover)
@@ -181,5 +189,87 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val resultExpectation = result must beRight
     stepsExpectation.and(resultExpectation)
   }
+
+  def e4 = {
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+
+      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ListS3(bucket) =>
+            Right(List(
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00001-dbb35260-7b12-494b-be87-e7a4b1f59906.txt"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00002-cba3a610-0b90-494b-be87-e7a4b1f59906.txt"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00003-fba35670-9b83-494b-be87-e7a4b1f59906.txt"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
+              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
+            ))
+
+          case LoaderA.Get(key: String) =>
+            cache.get(key)
+          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
+            val _ = cache.put(key, value)
+            ()
+
+          case LoaderA.KeyExists(k) =>
+            if (k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json") {
+              true
+            } else false
+
+          case LoaderA.Sleep(time) =>
+            throw new RuntimeException(s"Data-discovery should not sleep with skipped consistency check. Sleep called for [$time]")
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val separator = "\t"
+
+    val steps: Set[Step] = (Step.defaultSteps - Step.ConsistencyCheck) ++ Set(Step.Vacuum)
+    val action = RedshiftLoader.discover(validConfig, validTarget, steps, None)
+    val result: Either[LoaderError, List[RedshiftLoadStatements]] = action.foldMap(interpreter)
+
+    val atomic = s"""
+      |COPY atomic.events FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/atomic-events/'
+      | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1'
+      | DELIMITER '$separator' MAXERROR 1
+      | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
+      | TIMEFORMAT 'auto' ACCEPTINVCHARS ;""".stripMargin
+
+    val vacuum = List(
+      sql("VACUUM SORT ONLY atomic.events;"),
+      sql("VACUUM SORT ONLY atomic.com_snowplowanalytics_snowplow_submit_form_1;"))
+
+    val analyze = List(
+      sql("ANALYZE atomic.events;"),
+      sql("ANALYZE atomic.com_snowplowanalytics_snowplow_submit_form_1;"))
+
+    val shredded = List(sql("""
+      |COPY atomic.com_snowplowanalytics_snowplow_submit_form_1 FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-'
+      | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json'
+      | REGION AS 'us-east-1'
+      | MAXERROR 1 TRUNCATECOLUMNS TIMEFORMAT 'auto'
+      | ACCEPTINVCHARS ;""".stripMargin))
+
+    val manifest = """
+      |INSERT INTO atomic.manifest
+      | SELECT etl_tstamp, sysdate AS commit_tstamp, count(*) AS event_count, 1 AS shredded_cardinality
+      | FROM atomic.events
+      | WHERE etl_tstamp IS NOT null
+      | GROUP BY 1
+      | ORDER BY etl_tstamp DESC
+      | LIMIT 1;""".stripMargin
+
+    val expected = List(RedshiftLoadStatements(sql(atomic), shredded, Some(vacuum), Some(analyze), sql(manifest)))
+
+    result.map(_.head) must beRight(expected.head)
+  }
+
 }
 

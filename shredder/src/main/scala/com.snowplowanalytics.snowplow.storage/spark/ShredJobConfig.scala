@@ -16,23 +16,13 @@ package com.snowplowanalytics
 package snowplow
 package storage.spark
 
-import java.io.File
-
-// Jackson
-import com.fasterxml.jackson.databind.JsonNode
-
 // Scalaz
 import scalaz._
 import Scalaz._
 
-// Scopt
-import scopt._
-
 // Snowplow
-import iglu.client.Resolver
 import iglu.client.validation.ProcessingMessageMethods._
-import enrich.common.{ValidatedMessage, ValidatedNelMessage}
-import enrich.common.utils.{ConversionUtils, JsonUtils}
+import enrich.common.ValidatedNelMessage
 
 /**
  * Case class representing the configuration for the shred job.

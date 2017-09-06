@@ -139,14 +139,4 @@ object S3Interpreter {
       case Right(success) => Right(success.toList)
     }).flatten
   }
-
-  /**
-   * Transform specified string into java `Path` or create tmp dir
-   */
-  private def getStorageDir(destination: Option[String]) = {
-    destination match {
-      case Some(dest) => Paths.get(dest)
-      case None => Files.createTempDirectory("rdb-loader")
-    }
-  }
 }

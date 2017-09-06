@@ -30,12 +30,17 @@ import utils.{ Common, Compat }
  * @param configYaml decoded Snowplow config.yml
  * @param target decoded target to load
  * @param steps collected steps
+ * @param logKey file on S3 to dump logs
+ * @param folder specific run-folder to load (skipping discovery)
+ * @param dryRun if RDB Loader should just discover data and print SQL
  */
 case class CliConfig(
   configYaml: SnowplowConfig,
   target: StorageTarget,
   steps: Set[Step],
-  logKey: S3.Key)
+  logKey: S3.Key,
+  folder: Option[S3.Folder],
+  dryRun: Boolean)
 
 object CliConfig {
 
@@ -58,11 +63,21 @@ object CliConfig {
       action((x, c) => c.copy(logkey = x)).
       text("base64-encoded string with Iglu resolver configuration JSON")
 
-    opt[Seq[Step.IncludeStep]]('i', "include").action((x, c) ⇒
-      c.copy(include = x)).text("include optional work steps")
+    opt[Seq[Step.IncludeStep]]('i', "include").
+      action((x, c) => c.copy(include = x)).
+      text("include optional work steps")
 
-    opt[Seq[Step.SkipStep]]('s', "skip").action((x, c) =>
-      c.copy(skip = x)).text("skip default steps")
+    opt[Seq[Step.SkipStep]]('s', "skip").
+      action((x, c) => c.copy(skip = x)).
+      text("skip default steps")
+
+    opt[String]("folder").valueName("<s3-folder>").
+      action((x, c) => c.copy(folder = Some(x))).
+      text("exact run folder to load")
+
+    opt[Unit]("dry-run").
+      action((_, c) => c.copy(dryRun = true)).
+      text("do not perform loading, but print SQL statements")
 
     help("help").text("prints this usage text")
 
@@ -95,6 +110,8 @@ object CliConfig {
    * @param include sequence of of decoded steps to include
    * @param skip sequence of of decoded steps to skip
    * @param logkey filename, where RDB log dump will be saved
+   * @param dryRun if RDB Loader should just discover data and print SQL
+   * @param skipConsistencyCheck do not perform consistency check during discovery
    */
   private[config] case class RawConfig(
     config: String,
@@ -102,26 +119,31 @@ object CliConfig {
     resolver: String,
     include: Seq[Step.IncludeStep],
     skip: Seq[Step.SkipStep],
-    logkey: String)
+    logkey: String,
+    folder: Option[String],
+    dryRun: Boolean)
 
   // Always invalid initial parsing configuration
-  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, "")
+  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, "", None, false)
 
   /**
    * Validated and transform initial raw cli arguments into
    * ready-to-use `CliConfig`, aggregating errors if any
    *
-   * @param cliConfig initial raw arguments
+   * @param rawConfig initial raw arguments
    * @return application config in case of success or
    *         non empty list of config errors in case of failure
    */
-  private[config] def transform(cliConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
-    val config = base64decode(cliConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
-    val logkey = S3.Key.parse(cliConfig.logkey).leftMap(DecodingError).toValidatedNel
-    val target = loadTarget(cliConfig.resolver, cliConfig.target)
-    val steps = Step.constructSteps(cliConfig.skip.toSet, cliConfig.include.toSet)
+  private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
+    val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
+    val logkey = S3.Key.parse(rawConfig.logkey).leftMap(DecodingError).toValidatedNel
+    val target = loadTarget(rawConfig.resolver, rawConfig.target)
+    val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
+    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
 
-    (target |@| config |@| logkey).map { case (t, c, l) => CliConfig(c, t, steps, l) }
+    (target |@| config |@| logkey |@| folder).map {
+      case (t, c, l, f) => CliConfig(c, t, steps, l, f, rawConfig.dryRun)
+    }
   }
 
   /**

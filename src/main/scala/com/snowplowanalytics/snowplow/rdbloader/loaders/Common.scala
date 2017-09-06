@@ -13,15 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
-import cats.implicits._
-
 import shapeless.tag
 import shapeless.tag._
 
 // This project
 import config.CliConfig
 import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
-import LoaderError.{DiscoveryError, DiscoveryFailure}
 
 
 object Common {
@@ -54,7 +51,7 @@ object Common {
    * Subpath to check `atomic-events` directory presence
    */
   val atomicSubpathPattern = "(.*)/(run=[0-9]{4}-[0-1][0-9]-[0-3][0-9]-[0-2][0-9]-[0-6][0-9]-[0-6][0-9]/atomic-events)/(.*)".r
-  //                                   year     month      day        hour       minute     second
+  //                                    year     month      day        hour       minute     second
 
   /**
    * Process any valid storage target
@@ -64,26 +61,11 @@ object Common {
   def load(cliConfig: CliConfig): TargetLoading[LoaderError, Unit] = {
     cliConfig.target match {
       case postgresqlTarget: PostgresqlConfig =>
-        PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps)
+        PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps, cliConfig.folder)
       case redshiftTarget: RedshiftConfig =>
-        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps)
+        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, cliConfig.folder)
     }
   }
-
-  /**
-   * Lift single discovery step (with possible `DiscoveryFailure`)
-   * to
-   *
-   * @param discoveryStep
-   * @tparam A
-   * @return
-   */
-  def liftToError[A](discoveryStep: Either[DiscoveryFailure, A]): Either[DiscoveryError, A] =
-    discoveryStep match {
-      case Left(error) => DiscoveryError(List(error)).asLeft
-      case Right(success) => success.asRight
-    }
-
 
   /**
    * String representing valid SQL query/statement,

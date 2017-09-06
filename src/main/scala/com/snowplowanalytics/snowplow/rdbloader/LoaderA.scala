@@ -49,6 +49,10 @@ object LoaderA {
   case class Dump(exitLog: Log) extends LoaderA[Either[String, S3.Key]]
   case class Exit(exitLog: Log, dumpResult: Either[String, S3.Key]) extends LoaderA[Int]
 
+  // Cache ops
+  case class Put(key: String, value: Option[S3.Key]) extends LoaderA[Unit]
+  case class Get(key: String) extends LoaderA[Option[Option[S3.Key]]]
+
 
   def listS3(bucket: S3.Folder): Action[Either[DiscoveryError, List[S3.Key]]] =
     Free.liftF[LoaderA, Either[DiscoveryError, List[S3.Key]]](ListS3(bucket))
@@ -91,5 +95,12 @@ object LoaderA {
 
   def exit(result: Log, dumpResult: Either[String, S3.Key]): Action[Int] =
     Free.liftF[LoaderA, Int](Exit(result, dumpResult))
+
+
+  def putCache(key: String, value: Option[S3.Key]): Action[Unit] =
+    Free.liftF[LoaderA, Unit](Put(key, value))
+
+  def getCache(key: String): Action[Option[Option[S3.Key]]] =
+    Free.liftF[LoaderA, Option[Option[S3.Key]]](Get(key))
 }
 

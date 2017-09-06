@@ -1,0 +1,281 @@
+Version 0.13.0 (2017-09-06)
+---------------------------
+Common: migrate CHANGELOG from snowplow/snowplow (#24)
+Common: add AWS staging credentials to .travis.yml (#37)
+Common: add AWS Credentials to .travis.yml (#28)
+RDB Shredder: turn into SBT submodule (#27)
+RDB Loader: bump to 0.13.0 (#38)
+RDB Loader: fix JSONPath cache resolution bug (#3)
+RDB Loader: add step to skip consistency check (#34)
+RDB Loader: add --dry-run option (#31)
+RDB Loader: add CLI argument to load specific folder (#9)
+RDB Loader: add CI/CD (#30)
+
+Snowplow Release 90 Lascaux (2017-07-26)
+----------------------------------------
+RDB Loader: fix eventual consistency problem (snowplow/snowplow#3113)
+RDB Loader: load all runs from shredded, not just the first run found (snowplow/snowplow#2962)
+RDB Loader: remove compupdate step (snowplow/snowplow#3178)
+RDB Loader: add logging around database load, analyze and vacuum (snowplow/snowplow#2935)
+RDB Loader: use Redshift-specific driver to connect to Redshift (snowplow/snowplow#1830)
+RDB Loader: remove StorageLoader (snowplow/snowplow#3026)
+RDB Loader: accept storage target JSONs on command-line (snowplow/snowplow#3022)
+RDB Loader: rewrite StorageLoader in Scala, removing file archiving step (snowplow/snowplow#3023)
+
+Snowplow Release 89 Plain of Jars (2017-06-12)
+----------------------------------------------
+RDB Shredder: bump to 0.12.0 (snowplow/snowplow#3042)
+RDB Shredder: rename from Scala Hadoop Shred (snowplow/snowplow#3031)
+RDB Shredder: move from 3-enrich to 4-storage (snowplow/snowplow#3032)
+RDB Shredder: change the package to storage from enrich (snowplow/snowplow#3036)
+RDB Shredder: port from Scalding to Spark (snowplow/snowplow#3034)
+RDB Shredder: bump scala-common-enrich to 0.25 (snowplow/snowplow#3091)
+RDB Shredder: bump iglu-scala-client to 0.5.0 (snowplow/snowplow#3090)
+RDB Shredder: bump specs2-core to 2.3.13 (snowplow/snowplow#3093)
+RDB Shredder: bump Scala version to 2.11 (snowplow/snowplow#3071)
+RDB Shredder: upgrade to Java 8 (snowplow/snowplow#3213)
+RDB Shredder: run the unit tests systematically in Travis (snowplow/snowplow#3229)
+StorageLoader: bump to 0.11.0 (snowplow/snowplow#3214)
+StorageLoader: add support for Spark-based Shredder's directory structure (snowplow/snowplow#3044)
+EmrEtlRunner: replace hadoop_shred in config.yml.sample with rdb_shredder (snowplow/snowplow#3035)
+
+Snowplow Release 88 Angkor Wat (2017-04-27)
+-------------------------------------------
+Scala Hadoop Shred: bump to 0.11.0 (snowplow/snowplow#3041)
+Scala Hadoop Shred: bump sbt-assembly to 0.14.4 (snowplow/snowplow#3140)
+Scala Hadoop Shred: bump SBT to 0.13.13 (snowplow/snowplow#2972)
+Scala Hadoop Shred: remove explicit jackson-databind dependency (snowplow/snowplow#3138)
+Scala Hadoop Shred: add cross-batch natural deduplication (snowplow/snowplow#2999)
+StorageLoader: bump to 0.10.0 (snowplow/snowplow#3109)
+StorageLoader: remove Northern Virginia endpoint for Postgres load (snowplow/snowplow#3143)
+StorageLoader: handle return code of 4 for EmrEtlRunner in snowplow-runner-and-loader.sh (snowplow/snowplow#3139)
+StorageLoader: use storage target JSONs instead of targets section in config.yml (snowplow/snowplow#2992)
+StorageLoader: replace table configuration property with schema (snowplow/snowplow#2458)
+Common: update READMEs markdown in according with CommonMark (snowplow/snowplow#3157)
+Common: add CI/CD for EmrEtlRunner and StorageLoader (snowplow/snowplow#3102)
+
+Snowplow Release 87 Chichen Itza (2017-02-21)
+---------------------------------------------
+StorageLoader: bump to 0.9.0 (snowplow/snowplow#2961)
+StorageLoader: bump JRuby version to 9.1.6.0 (snowplow/snowplow#3051)
+StorageLoader: fix typo in S3Tasks.download_events (snowplow/snowplow#2888)
+StorageLoader: update manifest table as part of Redshift load transaction (snowplow/snowplow#2280)
+
+Snowplow Release 86 Petra (2016-12-20)
+--------------------------------------
+Scala Hadoop Shred: bump to 0.10.0 (snowplow/snowplow#2979)
+Scala Hadoop Shred: add general top-level exception handling (snowplow/snowplow#2071)
+Scala Hadoop Shred: get the CustomPartitionSourceTest working with Hadoop 2.4 (snowplow/snowplow#1960)
+Scala Hadoop Shred: fix omitted string interpolation (snowplow/snowplow#2562)
+Scala Hadoop Shred: deduplicate event_ids with different event_fingerprints (synthetic duplicates) (snowplow/snowplow#24)
+Scala Hadoop Shred: stop catching fatal errors (snowplow/snowplow#1456)
+
+Snowplow Release 83 Bald Eagle (2016-09-06)
+-------------------------------------------
+StorageLoader: bump to 0.8.0 (snowplow/snowplow#2785)
+StorageLoader: bump Ruby version to 2.2.3 (snowplow/snowplow#2870)
+StorageLoader: bump Sluice to 0.4.0 (snowplow/snowplow#2786)
+StorageLoader: bump Contracts to 0.9 (snowplow/snowplow#2790)
+StorageLoader: add explicit mime-types dependency (snowplow/snowplow#2805)
+StorageLoader: rebuild Gemfile.lock (snowplow/snowplow#2871)
+StorageLoader: use Northern Virginia endpoint not global endpoint for us-east-1 (snowplow/snowplow#2748)
+StorageLoader: replace module_function everywhere with self (snowplow/snowplow#2801)
+StorageLoader: fix broken contracts (snowplow/snowplow#2461)
+
+Snowplow Release 79 Black Swan (2016-05-12)
+-------------------------------------------
+Scala Hadoop Shred: bumped to 0.9.0 (snowplow/snowplow#2480)
+Scala Hadoop Shred: bumped Scala Common Enrich to 0.23.0 (snowplow/snowplow#2481)
+Scala Hadoop Shred: bumped Iglu Scala Client to 0.4.0 (snowplow/snowplow#2449)
+
+Snowplow Release 77 Great Auk (2016-02-28)
+------------------------------------------
+Scala Hadoop Shred: bumped to 0.8.0
+Scala Hadoop Shred: bumped Iglu Scala Client to 0.3.2 (snowplow/snowplow#2319)
+StorageLoader: bumped to 0.7.0
+StorageLoader: added support for supplying config file as Base64-encoded string (snowplow/snowplow#2227)
+StorageLoader: added ability to retrieve AWS credentials from EC2 role (snowplow/snowplow#2226)
+StorageLoader: excluded previously-built executables from the build (snowplow/snowplow#2164)
+StorageLoader: started printing stack trace for failures not caused by bad configuration (snowplow/snowplow#2160)
+StorageLoader: bumped Ruby Tracker to 0.5.2 (snowplow/snowplow#2144)
+StorageLoader: moved ANALYZE statements after VACUUM statements (snowplow/snowplow#1361)
+StorageLoader: added resolver config option to snowplow-runner-and-loader.sh (snowplow/snowplow#2170)
+StorageLoader: updated snowplow-runner-and-loader.sh to use JRuby binaries (snowplow/snowplow#2233)
+StorageLoader: removed snowplow-storage-loader.sh (snowplow/snowplow#2444)
+
+Snowplow Release 76 Changeable Hawk-Eagle (2016-01-26)
+------------------------------------------------------
+Scala Hadoop Shred: bumped to 0.7.0
+Scala Hadoop Shred: fixed good tests' checks for empty paths (snowplow/snowplow#2278)
+Scala Hadoop Shred: now deduplicating event_id and event_fingerprint pairs (snowplow/snowplow#2246)
+Scala Hadoop Shred: fixed incorrect event in SchemaValidationFailed1Spec (snowplow/snowplow#2355)
+Scala Hadoop Shred: updated tests to check atomic-events output (snowplow/snowplow#2264)
+Scala Hadoop Shred: now only writes atomic-events if JSONs shred successfully (snowplow/snowplow#2245)
+Scala Hadoop Shred: removed empty SchemaValidationFailed2Spec (snowplow/snowplow#2271)
+Scala Hadoop Shred: fixed test suite issue with multiple input lines (snowplow/snowplow#2270)
+
+Snowplow Release 73 Cuban Macaw (2015-12-04)
+--------------------------------------------
+Scala Hadoop Shred: bumped to 0.6.0
+Scala Hadoop Shred: added .forceToDisk to common to speed up run (snowplow/snowplow#2039)
+Scala Hadoop Shred: bumped Iglu Scala Client to 0.3.1 (snowplow/snowplow#2081)
+Scala Hadoop Shred: bumped Scala Common Enrich to 0.18.0 (snowplow/snowplow#2016)
+Scala Hadoop Shred: applied truncation logic to atomic-events TSV (snowplow/snowplow#2042)
+Scala Hadoop Shred: processed enriched events for atomic.events removing JSON fields (snowplow/snowplow#1731)
+Scala Hadoop Shred: started using Scala Common Enrich's version of ScalazArgs (snowplow/snowplow#2014)
+StorageLoader: bumped to 0.6.0
+StorageLoader: added tcpKeepAlive=true to JDBC for long-running COPYs via NAT (snowplow/snowplow#2145)
+StorageLoader: fixed setup guide link in README, thanks @diamondo25! (snowplow/snowplow#2025)
+StorageLoader: loaded atomic.events from shredded folder (snowplow/snowplow#1795)
+
+Snowplow Release 71 Stork-Billed Kingfisher (2015-10-02)
+--------------------------------------------------------
+Scala Hadoop Shred: bumped to 0.5.0
+Scala Hadoop Shred: updated tests to expect bad row JSONs with timestamps and processing messages (snowplow/snowplow#1953)
+Scala Hadoop Shred: added clojars.org as a resolver (snowplow/snowplow#1952)
+Scala Hadoop Shred: bumped Scala Common Enrich to 0.16.0 (snowplow/snowplow#1935)
+Scala Hadoop Shred: started using BadRow case class from Scala Common Enrich (snowplow/snowplow#1914)
+Scala Hadoop Shred: upgraded to Hadoop 2.4 (snowplow/snowplow#1720)
+Scala Hadoop Shred: bumped Iglu Scala Client to 0.3.0 (snowplow/snowplow#1221)
+StorageLoader: bumped to 0.5.0
+StorageLoader: exposed sslmode connection option for loading Postgres and Redshift, thanks @dennisatspaceape! (snowplow/snowplow#1980)
+StorageLoader: updated wd_access_log_1.json with 4 new fields (snowplow/snowplow#1941)
+
+Snowplow Release 70 Bornean Green Magpie (2015-08-19)
+-----------------------------------------------------
+StorageLoader: bumped to 0.4.0
+StorageLoader: allowed config to passed in via stdin (snowplow/snowplow#1773)
+StorageLoader: added ability to bundle as a JRuby fat jar (snowplow/snowplow#675)
+StorageLoader: started loading Postgres via stdin, thanks @mrwalker! (snowplow/snowplow#624)
+StorageLoader: added Snowplow event tracking (snowplow/snowplow#679)
+StorageLoader: updated to use EmrEtlRunner's expanded config.yml (snowplow/snowplow#1191)
+StorageLoader: pinned Contracts to 0.7 (snowplow/snowplow#1497)
+StorageLoader: moved "include Contracts" (snowplow/snowplow#1499)
+StorageLoader: renamed archive step to archive_enrich (snowplow/snowplow#1544)
+StorageLoader: bumped Sluice to 0.2.2 (snowplow/snowplow#1567)
+StorageLoader: removed use of symbols for properties in YAML configuration (snowplow/snowplow#1573)
+StorageLoader: added Rake task to build app (snowplow/snowplow#1787)
+StorageLoader: scrubbed credentials from stderr (snowplow/snowplow#1918)
+StorageLoader: added test suite (snowplow/snowplow#1919)
+StorageLoader: ensured that _SUCCESS file is written last for enriched events archived to S3 (snowplow/snowplow#1814)
+StorageLoader: started automatically converting "s3n" to "s3" in copy statements (snowplow/snowplow#1937)
+EmrEtlRunner & StorageLoader: unified the config file format (snowplow/snowplow#878)
+EmrEtlRunner & StorageLoader: added support for compressing enriched events, thanks @danisola! (snowplow/snowplow#1265)
+EmrEtlRunner & StorageLoader: now supports environment variables in YML config files, thanks @epantera! (snowplow/snowplow#1215)
+
+Snowplow Release 63 Red-Cheeked Cordon-Bleu (2015-04-02)
+--------------------------------------------------------
+Scala Hadoop Shred: bumped to 0.4.0
+Scala Hadoop Shred: bumped Scala Common Enrich to 0.13.0 (snowplow/snowplow#1343)
+Scala Hadoop Shred: bumped json4sJackson to 3.2.11 (snowplow/snowplow#1344)
+Scala Hadoop Shred: extracted JSONs from derived_contexts field (snowplow/snowplow#786)
+Scala Hadoop Shred: updated to reflect new enriched event format (snowplow/snowplow#1332)
+
+Snowplow Version 0.9.14 (2014-12-31)
+------------------------------------
+Scala Hadoop Shred: bumped to 0.3.0
+Scala Hadoop Shred: bumped Scala Common Enrich to 0.10.0 (snowplow/snowplow#1236)
+Scala Hadoop Shred: bumped Iglu Scala Client to 0.2.0 (snowplow/snowplow#1230)
+Scala Hadoop Shred: loosened match criteria for unstructured events and contexts (snowplow/snowplow#1231)
+
+Snowplow Version 0.9.9 (2014-10-27)
+-----------------------------------
+StorageLoader: bumped to 0.3.3
+StorageLoader: selecting Snowplow's hosted-assets bucket based on region (snowplow/snowplow#1012)
+
+Snowplow Version 0.9.7 (2014-09-02)
+-----------------------------------
+Scala Hadoop Shred: bumped to version 0.2.1
+Scala Hadoop Shred: fixed multiple JSONs not being shredded for a single row (snowplow/snowplow#968)
+Scala Hadoop Shred: strengthened test suite (snowplow/snowplow#967)
+StorageLoader: bumped to 0.3.2
+StorageLoader: removed EMPTYASNULL for loading JSONs (snowplow/snowplow#942)
+StorageLoader: made providing jsonpath_assets optional (snowplow/snowplow#958)
+StorageLoader: added support for cross-region Redshift COPY (snowplow/snowplow#971)
+
+Snowplow Version 0.9.6 (2014-07-26)
+-----------------------------------
+Scala Hadoop Shred: bumped to 0.2.0
+Scala Hadoop Shred: bumped to Scala Common Enrich 0.5.0 (snowplow/snowplow#918)
+Scala Hadoop Shred: trailing empty fields no longer cause shredding for that row to fail (snowplow/snowplow#921)
+Scala Hadoop Shred: updated column offsets for enriched events TSV (snowplow/snowplow#915)
+StorageLoader: bumped to 0.3.1
+StorageLoader: now looking in eu-west-1 region for s3://snowplow-hosted-assets (snowplow/snowplow#895)
+StorageLoader: updated combined Bash script to support enrichments path (snowplow/snowplow#917)
+
+Snowplow Version 0.9.5 (2014-07-09)
+-----------------------------------
+Scala Hadoop Shred: added. Version 0.1.0
+StorageLoader: bumped to 0.3.0
+StorageLoader: bumped Sluice to 0.2.1 (snowplow/snowplow#881)
+StorageLoader: added initial Ruby.contracts support (snowplow/snowplow#391)
+StorageLoader: updated config.yml to support shredding (snowplow/snowplow#897)
+StorageLoader: added ACCEPTINVCHARS to StorageLoader (snowplow/snowplow#411)
+StorageLoader: added :jsonpath_assets: setting for StorageLoader (snowplow/snowplow#606)
+StorageLoader: added ability to load custom tables using JSON Paths (snowplow/snowplow#607)
+StorageLoader: added --skip shred option (snowplow/snowplow#660)
+StorageLoader: added :in: hint on StorageLoader configuration, thanks @joaolcorreia! (snowplow/snowplow#755)
+StorageLoader: made sure _SUCCESS flag file is written last for enriched events archived to S3 (snowplow/snowplow#1814) [Fred Blundun]
+StorageLoader: pinned Contracts to 0.7 (snowplow/snowplow#1497) [Fred Blundun]
+EmrEtlRunner & StorageLoader: validated output_compression configuration using contract (snowplow/snowplow#1820) [Fred Blundun]
+EmrEtlRunner & StorageLoader: supported environment variables in YAML config files (snowplow/snowplow#1215) [Fred Blundun]
+
+Snowplow Version 0.9.1 (2014-04-11)
+-----------------------------------
+StorageLoader: bumped to 0.2.0
+StorageLoader: added TIMEFORMAT 'auto' to StorageLoader to handle outlier dvce_timestamps (snowplow/snowplow#427)
+
+Snowplow Version 0.8.11 (2013-10-22)
+-----------------------------------
+StorageLoader: bumped to 0.1.1
+StorageLoader: bumped Sluice to 0.1.5 (snowplow/snowplow#96)
+StorageLoader: fixed "\" in fields acts as an escape character for Postgres, thanks @kingo55 (snowplow/snowplow#329)
+StorageLoader: added ability to --skip analyze (snowplow/snowplow#335)
+StorageLoader: moved VACUUM SORT ONLY to a --include step (snowplow/snowplow#321)
+StorageLoader: added COMPROWS to config and --include compupdate option (snowplow/snowplow#344)
+StorageLoader: changed Postgres VACUUM FULL to VACUUM (snowplow/snowplow#357)
+StorageLoader: added TRUNCATECOLUMNS for Redshift load (snowplow/snowplow#360)
+StorageLoader: added FILLRECORD to our Redshift COPY command (snowplow/snowplow#380)
+
+Snowplow Version 0.8.8 (2013-08-04)
+-----------------------------------
+StorageLoader: bumped to 0.1.0
+StorageLoader: bumped Sluice 0.0.7 (snowplow/snowplow#300)
+StorageLoader: removed code to delete Hive ETL's empty event files (snowplow/snowplow#306)
+StorageLoader: fixed bug where download path has to be set (even when using Redshift) (snowplow/snowplow#280)
+StorageLoader: optimized ANALYZE and VACUUM commands (snowplow/snowplow#283)
+StorageLoader: added MAXERROR as StorageLoader configuration value for Redshift (snowplow/snowplow#273)
+StorageLoader: added support for loading Postgres (snowplow/snowplow#161)
+StorageLoader: removed Infobright loading capability (snowplow/snowplow#307)
+StorageLoader: added support for loading into multiple storage targets (snowplow/snowplow#311)
+
+Snowplow Version 0.7.6 (2013-03-03)
+-----------------------------------
+StorageLoader: bumped to 0.0.5
+StorageLoader: added Redshift-specific fields to config.yml (part of #159)
+StorageLoader: added Redshift load support into StorageLoader (part of #159)
+StorageLoader: added missing /Gemfile to BUNDLE_GEMFILE in Bash scripts
+
+Snowplow Version 0.7.1 (2013-01-22)
+-----------------------------------
+StorageLoader: bumped to 0.0.4
+StorageLoader: updated copyright notices
+StorageLoader: added .rvmrc file (part of #121, #84)
+StorageLoader: removed .gemspec file
+StorageLoader: added dependencies to Gemfile and re-generated Gemfile.lock
+
+Snowplow Version 0.7.0 (2013-01-04)
+-----------------------------------
+StorageLoader: bumped to 0.0.3
+StorageLoader: bumped to using Sluice 0.0.6
+StorageLoader: added "Complete" message at end of run (part of #97)
+StorageLoader: --skip argument now supports a list (snowplow/snowplow#81)
+
+Snowplow Version 0.6.1 (2012-11-28)
+-----------------------------------
+StorageLoader: bumped to 0.0.2
+StorageLoader: changed the data file encloser to NULL (snowplow/snowplow#88)
+
+Snowplow Version 0.6.0 (2012-11-12)
+-----------------------------------
+StorageLoader: initial release
