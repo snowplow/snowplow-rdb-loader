@@ -1,3 +1,16 @@
+Version 0.13.0 (2017-09-06)
+---------------------------
+Common: migrate CHANGELOG from snowplow/snowplow (#24)
+Common: add AWS staging credentials to .travis.yml (#37)
+Common: add AWS Credentials to .travis.yml (#28)
+RDB Shredder: turn into SBT submodule (#27)
+RDB Loader: fix JSONPath cache resolution bug (#3)
+RDB Loader: add step to skip consistency check (#34)
+RDB Loader: add --dry-run option (#31)
+RDB Loader: add CLI argument to load specific folder (#9)
+RDB Loader: add CI/CD (#30)
+RDB Loader: bump to 0.13.0 (#38)
+
 Snowplow Release 90 Lascaux (2017-07-26)
 ----------------------------------------
 RDB Loader: fix eventual consistency problem (snowplow/snowplow#3113)
