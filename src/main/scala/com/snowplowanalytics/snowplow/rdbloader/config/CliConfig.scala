@@ -38,7 +38,7 @@ case class CliConfig(
   configYaml: SnowplowConfig,
   target: StorageTarget,
   steps: Set[Step],
-  logKey: S3.Key,
+  logKey: Option[S3.Key],
   folder: Option[S3.Folder],
   dryRun: Boolean)
 
@@ -59,9 +59,9 @@ object CliConfig {
       action((x, c) => c.copy(resolver = x)).
       text("base64-encoded string with Iglu resolver configuration JSON")
 
-    opt[String]('l', "logkey").required().valueName("<name>").
-      action((x, c) => c.copy(logkey = x)).
-      text("base64-encoded string with Iglu resolver configuration JSON")
+    opt[String]('l', "logkey").valueName("<name>").
+      action((x, c) => c.copy(logkey = Some(x))).
+      text("S3 key to dump logs")
 
     opt[Seq[Step.IncludeStep]]('i', "include").
       action((x, c) => c.copy(include = x)).
@@ -111,7 +111,6 @@ object CliConfig {
    * @param skip sequence of of decoded steps to skip
    * @param logkey filename, where RDB log dump will be saved
    * @param dryRun if RDB Loader should just discover data and print SQL
-   * @param skipConsistencyCheck do not perform consistency check during discovery
    */
   private[config] case class RawConfig(
     config: String,
@@ -119,12 +118,12 @@ object CliConfig {
     resolver: String,
     include: Seq[Step.IncludeStep],
     skip: Seq[Step.SkipStep],
-    logkey: String,
+    logkey: Option[String],
     folder: Option[String],
     dryRun: Boolean)
 
   // Always invalid initial parsing configuration
-  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, "", None, false)
+  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, None, None, false)
 
   /**
    * Validated and transform initial raw cli arguments into
@@ -136,7 +135,7 @@ object CliConfig {
    */
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
     val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
-    val logkey = S3.Key.parse(rawConfig.logkey).leftMap(DecodingError).toValidatedNel
+    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(DecodingError).toValidatedNel).sequence
     val target = loadTarget(rawConfig.resolver, rawConfig.target)
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
     val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence

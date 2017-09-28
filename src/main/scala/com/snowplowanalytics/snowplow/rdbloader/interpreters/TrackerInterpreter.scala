@@ -113,18 +113,24 @@ object TrackerInterpreter {
    * exit message (same as dumped to S3) to stdout
    *
    * @param result loading result
-   * @param dumpResult S3 dumping result
+   * @param dumpResult S3 dumping result, none if loader didn't try to dump
    */
-  def exit(result: Log, dumpResult: Either[String, S3.Key]): Int = {
+  def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Int = {
     println(result)
     (result, dumpResult) match {
-      case (Log.LoadingSucceeded(_), Right(key)) =>
+      case (Log.LoadingSucceeded(_), None) =>
+        println(s"INFO: Logs were not dumped to S3")
+        0
+      case (Log.LoadingFailed(_, _), None) =>
+        println(s"INFO: Logs were not dumped to S3")
+        1
+      case (Log.LoadingSucceeded(_), Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         0
-      case (Log.LoadingFailed(_, _), Right(key)) =>
+      case (Log.LoadingFailed(_, _), Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         1
-      case (_, Left(error)) =>
+      case (_, Some(Left(error))) =>
         println(s"ERROR: Log-dumping failed: [$error]")
         1
     }

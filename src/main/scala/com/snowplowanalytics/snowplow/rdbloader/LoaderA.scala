@@ -46,8 +46,8 @@ object LoaderA {
   // Auxiliary ops
   case class Sleep(timeout: Long) extends LoaderA[Unit]
   case class Track(exitLog: Log) extends LoaderA[Unit]
-  case class Dump(exitLog: Log) extends LoaderA[Either[String, S3.Key]]
-  case class Exit(exitLog: Log, dumpResult: Either[String, S3.Key]) extends LoaderA[Int]
+  case class Dump(key: S3.Key, exitLog: Log) extends LoaderA[Either[String, S3.Key]]
+  case class Exit(exitLog: Log, dumpResult: Option[Either[String, S3.Key]]) extends LoaderA[Int]
 
   // Cache ops
   case class Put(key: String, value: Option[S3.Key]) extends LoaderA[Unit]
@@ -90,10 +90,10 @@ object LoaderA {
   def track(result: Log): Action[Unit] =
     Free.liftF[LoaderA, Unit](Track(result))
 
-  def dump(result: Log): Action[Either[String, S3.Key]] =
-    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(result))
+  def dump(key: S3.Key, result: Log): Action[Either[String, S3.Key]] =
+    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(key, result))
 
-  def exit(result: Log, dumpResult: Either[String, S3.Key]): Action[Int] =
+  def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Action[Int] =
     Free.liftF[LoaderA, Int](Exit(result, dumpResult))
 
 

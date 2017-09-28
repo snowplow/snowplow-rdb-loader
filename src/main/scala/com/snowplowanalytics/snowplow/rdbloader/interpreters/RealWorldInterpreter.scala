@@ -109,8 +109,8 @@ class RealWorldInterpreter private[interpreters](
               val sanitizedMessage = Common.sanitize(message, List(cliConfig.target.password, cliConfig.target.username))
               TrackerInterpreter.trackError(tracker, sanitizedMessage)
           }
-        case Dump(result) =>
-          TrackerInterpreter.dumpStdout(amazonS3, cliConfig.logKey, result.toString)
+        case Dump(key, result) =>
+          TrackerInterpreter.dumpStdout(amazonS3, key, result.toString)
         case Exit(loadResult, dumpResult) =>
           dbConnection.foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)

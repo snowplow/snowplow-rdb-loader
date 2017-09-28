@@ -113,10 +113,10 @@ class DryRunInterpreter private[interpreters](
               val sanitizedMessage = Common.sanitize(message, List(cliConfig.target.password, cliConfig.target.username))
               TrackerInterpreter.trackError(tracker, sanitizedMessage)
           }
-        case Dump(result) =>
+        case Dump(key, result) =>
           val actionResult = result.toString + "\n"
           val dryRunResult = "Dry-run action: \n" + getDryRunLogs
-          TrackerInterpreter.dumpStdout(amazonS3, cliConfig.logKey, actionResult + dryRunResult)
+          TrackerInterpreter.dumpStdout(amazonS3, key, actionResult + dryRunResult)
         case Exit(loadResult, dumpResult) =>
           println("Dry-run action: \n" + getDryRunLogs)
           TrackerInterpreter.exit(loadResult, dumpResult)
