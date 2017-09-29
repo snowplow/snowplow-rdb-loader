@@ -37,6 +37,7 @@ lazy val loader = project.in(file("."))
 
       Dependencies.postgres,
       Dependencies.redshift,
+      Dependencies.redshiftSdk,
       Dependencies.s3,
 
       Dependencies.specs2,
