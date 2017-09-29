@@ -38,12 +38,8 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
         effect match {
           case LoaderA.ListS3(bucket) =>
             Right(List(
-              S3.Key.coerce(bucket + "random-file"),
+              // This should succeed for "atomicDiscovery"
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57_$folder$"),
-              S3.Key.coerce(bucket + "run=2017-0-22-12-20-57/atomic-events"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/random-file"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-events/part-01"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/_SUCCESS"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/$folder$"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-02")

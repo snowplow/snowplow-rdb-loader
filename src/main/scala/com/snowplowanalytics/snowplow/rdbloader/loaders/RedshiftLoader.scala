@@ -71,11 +71,7 @@ object RedshiftLoader {
     val region = config.aws.s3.region
     val assets = config.aws.s3.buckets.jsonpathAssets
 
-    val discovery = if (steps.contains(Step.Shred)) {
-      DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
-    } else {
-      DataDiscovery.discoverAtomic(discoveryTarget)
-    }
+    val discovery = DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
 
     val consistent = if (steps.contains(Step.ConsistencyCheck)) DataDiscovery.checkConsistency(discovery) else discovery
 
