@@ -69,16 +69,6 @@ class RealWorldInterpreter private[interpreters](
             conn <- dbConnection
             res <- PgInterpreter.executeQuery(conn)(query)
           } yield res
-        case ExecuteTransaction(queries) =>
-          for {
-            conn <- dbConnection
-            res <- PgInterpreter.executeTransaction(conn, queries)
-          } yield res
-        case ExecuteQueries(queries) =>
-          for {
-            conn <- dbConnection
-            res <- PgInterpreter.executeQueries(conn, queries)
-          } yield res
         case CopyViaStdin(files, query) =>
           for {
             conn <- dbConnection

@@ -26,7 +26,7 @@ object LoaderError {
       case c: ConfigError => "Configuration error" + c.message
       case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.map(_.getMessage).mkString("\n")
       case l: StorageTargetError => "Data loading error " + l.message
-      case l: LoaderLocalError => "Internal Exeption " + l.message
+      case l: LoaderLocalError => "Internal Exception " + l.message
     }
   }
 

@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 import java.nio.file.Path
 
 import cats.free.Free
+import cats.implicits._
 
 // This library
 import LoaderError.DiscoveryError
@@ -34,9 +35,7 @@ object LoaderA {
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
 
   // Loading ops
-  case class ExecuteQuery(query: SqlString) extends LoaderA[Either[LoaderError, Int]]
-  case class ExecuteQueries(queries: List[SqlString]) extends LoaderA[Either[LoaderError, Long]]
-  case class ExecuteTransaction(queries: List[SqlString]) extends LoaderA[Either[LoaderError, Unit]]
+  case class ExecuteQuery(query: SqlString) extends LoaderA[Either[LoaderError, Long]]
   case class CopyViaStdin(files: List[Path], query: SqlString) extends LoaderA[Either[LoaderError, Long]]
 
   // FS ops
@@ -64,14 +63,19 @@ object LoaderA {
     Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest))
 
 
-  def executeQuery(query: SqlString): Action[Either[LoaderError, Int]] =
-    Free.liftF[LoaderA, Either[LoaderError, Int]](ExecuteQuery(query))
+  def executeQuery(query: SqlString): Action[Either[LoaderError, Long]] =
+    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
 
-  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Long]] =
-    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQueries(queries))
+  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] =
+    queries.traverse(executeQuery).map(eithers => eithers.sequence.map(_.combineAll))
 
-  def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] =
-    Free.liftF[LoaderA, Either[LoaderError, Unit]](ExecuteTransaction(queries))
+  def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+    val begin = SqlString.unsafeCoerce("BEGIN")
+    val commit = SqlString.unsafeCoerce("COMMIT")
+    val transaction = (begin :: queries) :+ commit
+    executeQueries(transaction)
+  }
+
 
   def copyViaStdin(files: List[Path], query: SqlString): Action[Either[LoaderError, Long]] =
     Free.liftF[LoaderA, Either[LoaderError, Long]](CopyViaStdin(files, query))

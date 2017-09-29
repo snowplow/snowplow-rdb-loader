@@ -27,6 +27,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   Discover full data and create load statements $e2
   Do not fail on empty discovery $e3
   Do not sleep with disabled consistency check $e4
+  Perform manifest-insertion and load within same transaction $e5
   """
 
   import SpecHelpers._
@@ -269,6 +270,56 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val expected = List(RedshiftLoadStatements(sql(atomic), shredded, Some(vacuum), Some(analyze), sql(manifest)))
 
     result.map(_.head) must beRight(expected.head)
+  }
+
+  def e5 = {
+
+    val expected = List(
+      "BEGIN",
+      "LOAD INTO atomic MOCK",
+      "LOAD INTO SHRED 1 MOCK",
+      "LOAD INTO SHRED 2 MOCK",
+      "LOAD INTO SHRED 3 MOCK",
+      "MANIFEST INSERT MOCK",
+      "COMMIT",
+      "END",
+      "VACUUM MOCK",
+      "BEGIN",
+      "ANALYZE MOCK",
+      "COMMIT"
+    )
+
+    val queries = collection.mutable.ListBuffer.empty[String]
+
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ExecuteQuery(query) =>
+            queries.append(query)
+            Right(1L)
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val input = RedshiftLoadStatements(
+      sql("LOAD INTO atomic MOCK"),
+      List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
+      Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1
+      Some(List(sql("ANALYZE MOCK"))),
+      sql("MANIFEST INSERT MOCK")
+    )
+
+    val state = RedshiftLoader.loadFolder(input)
+    val action = state.value.run(List.empty[Step])
+    val (steps, result) = action.foldMap(interpreter)
+
+    val transactionsExpectation = queries.toList must beEqualTo(expected)
+    val resultExpectation = result must beRight
+    val stepsExpectation = steps must beEqualTo(List(Step.Load, Step.Vacuum, Step.Analyze).reverse)
+    transactionsExpectation.and(resultExpectation).and(stepsExpectation)
   }
 
 }

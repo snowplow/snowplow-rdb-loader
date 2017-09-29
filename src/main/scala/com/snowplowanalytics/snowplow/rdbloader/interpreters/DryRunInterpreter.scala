@@ -82,12 +82,6 @@ class DryRunInterpreter private[interpreters](
 
         case ExecuteQuery(query) =>
           logQueries.append(query)
-          0.asRight[LoaderError]
-        case ExecuteTransaction(transactionalQueries) =>
-          val transaction = PgInterpreter.makeTransaction(transactionalQueries)
-          logQueries.appendAll(transaction).asRight
-        case ExecuteQueries(queries) =>
-          logQueries.appendAll(queries).asRight
           0L.asRight[LoaderError]
         case CopyViaStdin(files, _) =>
           // Will never work while `DownloadData` is noop

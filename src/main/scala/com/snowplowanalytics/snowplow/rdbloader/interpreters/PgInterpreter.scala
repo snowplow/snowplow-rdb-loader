@@ -32,21 +32,6 @@ import loaders.Common.SqlString
 
 object PgInterpreter {
 
-  def executeTransaction(conn: Connection, queries: List[SqlString]): Either[StorageTargetError, Unit] =
-    if (queries.nonEmpty) {
-      val transaction = makeTransaction(queries)
-      executeQueries(conn, transaction).void
-    } else Right(())
-
-  /**
-   * Execute set of SQL update-statements, combine amount of updated rows
-   *
-   * @param queries set of valid SQL statements in string representation
-   * @return number of updated rows in case of success, first failure otherwise
-   */
-  def executeQueries(conn: Connection, queries: List[SqlString]): Either[StorageTargetError, Long] =
-    queries.map(executeQuery(conn)).sequence.map(_.combineAll)
-
   /**
    * Execute a single update-statement in provided Postgres connection
    *
@@ -93,13 +78,6 @@ object PgInterpreter {
     } catch {
       case NonFatal(e) => Left(StorageTargetError(e.toString))
     }
-
-  /** Wrap queries into transaction */
-  def makeTransaction(queries: List[SqlString]): List[SqlString] = {
-    val begin = SqlString.unsafeCoerce("BEGIN;")
-    val commit = SqlString.unsafeCoerce("COMMIT;")
-    (begin :: queries) :+ commit
-  }
 
   /**
    * Get Redshift or Postgres connection
