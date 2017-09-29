@@ -27,8 +27,6 @@ import com.snowplowanalytics.snowplow.scalatracker.Tracker
 import config.CliConfig
 import LoaderA._
 import loaders.Common.SqlString
-import utils.Common
-import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 
 /**
   * Interpreter performs all actual side-effecting work,
@@ -99,14 +97,8 @@ class DryRunInterpreter private[interpreters](
         case Sleep(timeout) =>
           sleepTime = sleepTime + timeout
           Thread.sleep(timeout)
-        case Track(result) =>
-          result match {
-            case ExitLog.LoadingSucceeded(_) =>
-              TrackerInterpreter.trackSuccess(tracker)
-            case ExitLog.LoadingFailed(message, _) =>
-              val sanitizedMessage = Common.sanitize(message, List(cliConfig.target.password, cliConfig.target.username))
-              TrackerInterpreter.trackError(tracker, sanitizedMessage)
-          }
+        case Track(_) =>
+          ()
         case Dump(key, result) =>
           val actionResult = result.toString + "\n"
           val dryRunResult = "Dry-run action: \n" + getDryRunLogs
