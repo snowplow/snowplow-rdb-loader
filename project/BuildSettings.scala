@@ -64,6 +64,14 @@ object BuildSettings {
 
   lazy val assemblySettings = Seq(
     jarName,
+
+    assemblyShadeRules in assembly := Seq(
+      ShadeRule.rename(
+        "com.amazonaws.**" -> "shadeaws.@1",
+        "org.apache.http.**" -> "shadehttp.@1"
+      ).inAll
+    ),
+
     assemblyMergeStrategy in assembly := {
       case PathList("META-INF", _ @ _*) => MergeStrategy.discard
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
@@ -73,8 +81,6 @@ object BuildSettings {
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
-    // Slightly cleaner jar name
-    // For AMI 4.5.0, could be removed in future versions
     assemblyShadeRules in assembly := Seq(
       ShadeRule.rename(
         "com.amazonaws.**" -> "shadeaws.@1",

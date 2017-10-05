@@ -22,8 +22,7 @@ import cats.Functor
 import cats.implicits._
 
 import com.amazonaws.AmazonServiceException
-import com.amazonaws.auth.DefaultAWSCredentialsProviderChain
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3Client}
+import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model._
 
 // This project
@@ -45,15 +44,8 @@ object S3Interpreter {
    * @param awsConfig Snowplow AWS Configuration
    * @return Snowplow-specific S3 client
    */
-  def getClient(awsConfig: SnowplowAws): AmazonS3 = {
-    val awsCredentials = new DefaultAWSCredentialsProviderChain().getCredentials
-    val regionString = if (awsConfig.s3.region == "us-east-1") "US" else awsConfig.s3.region
-    val region = Region.fromValue(regionString).toAWSRegion
-
-    val client = new AmazonS3Client(awsCredentials)
-    client.setRegion(region)
-    client
-  }
+  def getClient(awsConfig: SnowplowAws): AmazonS3 =
+    AmazonS3ClientBuilder.standard().withRegion(awsConfig.s3.region).build()
 
   /**
    * List all non-empty keys in S3 folder.
