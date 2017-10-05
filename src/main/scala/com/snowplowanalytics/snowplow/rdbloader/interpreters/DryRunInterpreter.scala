@@ -15,11 +15,12 @@ package interpreters
 
 import java.nio.file._
 
+import scala.collection.mutable.ListBuffer
+
 import cats._
 import cats.implicits._
-import com.amazonaws.services.s3.AmazonS3
 
-import scala.collection.mutable.ListBuffer
+import com.amazonaws.services.s3.AmazonS3
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
@@ -27,6 +28,7 @@ import com.snowplowanalytics.snowplow.scalatracker.Tracker
 import config.CliConfig
 import LoaderA._
 import loaders.Common.SqlString
+import implementations.{S3Interpreter, TrackerInterpreter}
 
 /**
   * Interpreter performs all actual side-effecting work,
@@ -112,6 +114,16 @@ class DryRunInterpreter private[interpreters](
         case Put(key: String, value: Option[S3.Key]) =>
           val _ = cache.put(key, value)
           ()
+
+        case EstablishTunnel(tunnel) =>
+          Right(logMessages.append(s"Established imaginary SSH tunnel to [${tunnel.config.bastion.host}:${tunnel.config.bastion.port}]"))
+        case CloseTunnel() =>
+          Right(logMessages.append(s"Closed imaginary SSH tunnel"))
+
+        case GetEc2Property(name) =>
+          logMessages.append(s"Fetched imaginary EC2 [$name] property")
+          Right(name + " key")
+
       }
     }
   }

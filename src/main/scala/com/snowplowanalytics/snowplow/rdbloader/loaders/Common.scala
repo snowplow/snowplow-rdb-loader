@@ -54,17 +54,20 @@ object Common {
   //                                    year     month      day        hour       minute     second
 
   /**
-   * Process any valid storage target
+   * Process any valid storage target,
+   * including discovering step and establishing SSH-tunnel
    *
    * @param cliConfig RDB Loader app configuration
    */
   def load(cliConfig: CliConfig): TargetLoading[LoaderError, Unit] = {
-    cliConfig.target match {
+    val loadDb = cliConfig.target match {
       case postgresqlTarget: PostgresqlConfig =>
         PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps, cliConfig.folder)
       case redshiftTarget: RedshiftConfig =>
         RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, cliConfig.folder)
     }
+
+    Security.bracket(cliConfig.target.sshTunnel, loadDb)
   }
 
   /**

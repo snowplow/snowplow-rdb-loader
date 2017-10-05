@@ -11,22 +11,24 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-package interpreters
+package interpreters.implementations
 
-import scala.util.control.NonFatal
 import java.io.FileReader
 import java.nio.file.Path
 import java.sql.{Connection, SQLException}
 import java.util.Properties
 
-import org.postgresql.{Driver => PgDriver}
-import org.postgresql.copy.CopyManager
-import org.postgresql.jdbc.PgConnection
+import scala.util.control.NonFatal
+
+import cats.implicits._
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 
-import cats.implicits._
-import LoaderError._
+import org.postgresql.copy.CopyManager
+import org.postgresql.jdbc.PgConnection
+import org.postgresql.{Driver => PgDriver}
+
+import LoaderError.StorageTargetError
 import config.StorageTarget
 import loaders.Common.SqlString
 
@@ -99,7 +101,7 @@ object PgInterpreter {
           }
           Right(new RedshiftDriver().connect(url, props))
 
-        case p: StorageTarget.PostgresqlConfig =>
+        case _: StorageTarget.PostgresqlConfig =>
           val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
           props.setProperty("sslmode", target.sslMode.asProperty)
           Right(new PgDriver().connect(url, props))

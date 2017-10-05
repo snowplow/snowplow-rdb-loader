@@ -61,7 +61,7 @@ object Step {
   /**
    * Steps included into app by default
    */
-  val defaultSteps = sealedDescendants[SkipStep]
+  val defaultSteps = sealedDescendants[SkipStep] ++ Set.empty[Step]
 
   /**
    * Remove explicitly disabled steps and add optional steps

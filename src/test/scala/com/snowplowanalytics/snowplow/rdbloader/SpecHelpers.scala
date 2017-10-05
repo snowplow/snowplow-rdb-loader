@@ -72,7 +72,8 @@ object SpecHelpers {
     "admin",
     "Supersecret1",
     1,
-    20000)
+    20000,
+    None)
 
 
 }

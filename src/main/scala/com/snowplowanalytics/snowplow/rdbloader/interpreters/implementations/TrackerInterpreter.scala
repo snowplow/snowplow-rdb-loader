@@ -11,21 +11,23 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-package interpreters
+package interpreters.implementations
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 
+import scala.util.control.NonFatal
+
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.ObjectMetadata
+
 import org.json4s.JObject
+
 import com.snowplowanalytics.snowplow.scalatracker._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.{AsyncBatchEmitter, AsyncEmitter}
 
-import scala.util.control.NonFatal
-
 // This project
-import config.SnowplowConfig.{Monitoring, GetMethod, PostMethod}
+import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
 
 object TrackerInterpreter {
 

@@ -115,6 +115,7 @@ object LoaderError {
       s"Cannot extract contexts or self-describing events from directory [$path].\nInvalid key example: $example. Total $invalidKeyCount invalid keys.\nCorrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
+  /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError
 
   /**

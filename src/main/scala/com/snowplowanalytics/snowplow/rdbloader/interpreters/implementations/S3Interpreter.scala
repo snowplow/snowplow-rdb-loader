@@ -10,25 +10,26 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package interpreters
+package com.snowplowanalytics.snowplow.rdbloader.interpreters.implementations
 
 import java.nio.file.{Files, Path, Paths}
-
-import scala.collection.convert.wrapAsScala._
-import scala.util.control.NonFatal
 
 import cats.Functor
 import cats.implicits._
 
 import com.amazonaws.AmazonServiceException
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model._
+import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
+
+import com.snowplowanalytics.snowplow.rdbloader.S3.{Folder, splitS3Key, splitS3Path}
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.SnowplowAws
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, S3}
+
+import scala.collection.convert.wrapAsScala._
+import scala.util.control.NonFatal
 
 // This project
-import S3._
-import config.SnowplowConfig._
-import LoaderError.{DiscoveryError, DownloadFailure, S3Failure}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError.{DiscoveryError, DownloadFailure, S3Failure}
 
 
 /**
