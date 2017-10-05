@@ -16,14 +16,13 @@ package interpreters
 import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
-import java.sql.Connection
+
+import scala.util.control.NonFatal
 
 import cats._
 import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
-
-import scala.util.control.NonFatal
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
@@ -32,6 +31,7 @@ import config.CliConfig
 import LoaderA._
 import LoaderError.LoaderLocalError
 import utils.Common
+import implementations.{PgInterpreter, S3Interpreter, SshInterpreter, TrackerInterpreter}
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 
 /**
@@ -42,7 +42,6 @@ import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
  */
 class RealWorldInterpreter private[interpreters](
   cliConfig: CliConfig,
-  dbConnection: Either[LoaderError, Connection],
   amazonS3: AmazonS3,
   tracker: Option[Tracker]) extends Interpreter {
 
@@ -52,6 +51,10 @@ class RealWorldInterpreter private[interpreters](
     * Value: "s3://my-jsonpaths/redshift/vendor/filename_1.json"
     */
   private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
+  // dbConnection is Either because not required for log dump
+  // lazy to wait before tunnel established
+  private lazy val dbConnection = PgInterpreter.getConnection(cliConfig.target)
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
@@ -88,7 +91,6 @@ class RealWorldInterpreter private[interpreters](
             case NonFatal(e) => LoaderLocalError(s"Cannot delete directory [${path.toString}].\n" + e.toString).asLeft
           }
 
-
         case Sleep(timeout) =>
           Thread.sleep(timeout)
         case Track(result) =>
@@ -111,6 +113,15 @@ class RealWorldInterpreter private[interpreters](
         case Put(key: String, value: Option[S3.Key]) =>
           val _ = cache.put(key, value)
           ()
+
+        case EstablishTunnel(config) =>
+          SshInterpreter.establishTunnel(config)
+        case CloseTunnel() =>
+          SshInterpreter.closeTunnel()
+
+        case GetEc2Property(name) =>
+          SshInterpreter.getKey(name)
+
       }
     }
   }

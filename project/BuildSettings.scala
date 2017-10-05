@@ -68,7 +68,9 @@ object BuildSettings {
     assemblyShadeRules in assembly := Seq(
       ShadeRule.rename(
         "com.amazonaws.**" -> "shadeaws.@1",
-        "org.apache.http.**" -> "shadehttp.@1"
+        "org.apache.http.**" -> "shadehttp.@1",
+        // EMR has 0.1.42 installed
+        "com.jcraft.jsch.**" -> "shadejsch.@1"
       ).inAll
     ),
 

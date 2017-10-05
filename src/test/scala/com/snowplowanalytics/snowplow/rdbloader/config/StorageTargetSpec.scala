@@ -24,6 +24,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 class StorageTargetSpec extends Specification { def is = s2"""
   Parse Postgres storage target configuration $e1
   Parse Redshift storage target configuration $e2
+  Parse Postgres storage target with tunnel $e3
   """
 
   private val resolverConfig = parseJson(
@@ -53,7 +54,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
 
   def e1 = {
     val config = """
-      |
       |{
       |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-0-1",
       |    "data": {
@@ -79,7 +79,8 @@ class StorageTargetSpec extends Specification { def is = s2"""
       StorageTarget.Disable,
       "atomic",
       "ADD HERE",
-      "ADD HERE")
+      "ADD HERE",
+      None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
   }
@@ -118,8 +119,71 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "ADD HERE",
       "ADD HERE",
       1,
-      20000)
+      20000,
+      None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
   }
+
+  def e3 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "host": "ADD HERE",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "sslMode": "DISABLE",
+                   |        "username": "ADD HERE",
+                   |        "password": "ADD HERE",
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "purpose": "ENRICHED_EVENTS",
+                   |        "sshTunnel": {
+                   |            "bastion": {
+                   |                "host": "bastion.acme.com",
+                   |                "port": 22,
+                   |                "user": "snowplow-loader",
+                   |                "key": {
+                   |                     "ec2ParameterStore": {
+                   |                         "parameterName": "snowplow.rdbloader.redshift.key"
+                   |                     }
+                   |                }
+                   |            },
+                   |            "destination": {
+                   |                "host": "10.0.0.11",
+                   |                "port": 5439
+                   |            },
+                   |            "localPort": 15151
+                   |        }
+                   |    }
+                   |}
+                 """.stripMargin
+
+    val key = StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.key"))
+    val bastion = StorageTarget.BastionConfig("bastion.acme.com", 22, "snowplow-loader", None, Some(key))
+    val destination = StorageTarget.DestinationConfig("10.0.0.11", 5439)
+    val tunnel = StorageTarget.TunnelConfig(bastion, 15151, destination)
+    val expected = StorageTarget.RedshiftConfig(
+      None,
+      "AWS Redshift enriched events storage",
+      "ADD HERE",
+      "ADD HERE",
+      5439,
+      StorageTarget.Disable,
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+      "atomic",
+      "ADD HERE",
+      "ADD HERE",
+      1,
+      20000,
+      Some(tunnel))
+
+    parseWithDefaultResolver(config).toEither must beRight(expected)
+
+  }
+
 }

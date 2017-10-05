@@ -15,6 +15,8 @@ package interpreters
 
 import cats._
 
+import implementations.{S3Interpreter, TrackerInterpreter}
+
 // This project
 import config.CliConfig
 
@@ -38,9 +40,7 @@ object Interpreter {
     if (cliConfig.dryRun) {
       new DryRunInterpreter(cliConfig, amazonS3, tracker)
     } else {
-      // dbConnection is Either because not required for log dump
-      val dbConnection = PgInterpreter.getConnection(cliConfig.target)
-      new RealWorldInterpreter(cliConfig, dbConnection, amazonS3, tracker)
+      new RealWorldInterpreter(cliConfig, amazonS3, tracker)
     }
   }
 }

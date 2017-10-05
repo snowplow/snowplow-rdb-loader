@@ -39,6 +39,8 @@ lazy val loader = project.in(file("."))
       Dependencies.redshift,
       Dependencies.redshiftSdk,
       Dependencies.s3,
+      Dependencies.ssm,
+      Dependencies.jSch,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,

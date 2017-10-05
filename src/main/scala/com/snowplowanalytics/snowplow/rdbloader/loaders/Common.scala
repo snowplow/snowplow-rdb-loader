@@ -59,12 +59,14 @@ object Common {
    * @param cliConfig RDB Loader app configuration
    */
   def load(cliConfig: CliConfig): TargetLoading[LoaderError, Unit] = {
-    cliConfig.target match {
+    val loadDb = cliConfig.target match {
       case postgresqlTarget: PostgresqlConfig =>
         PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps, cliConfig.folder)
       case redshiftTarget: RedshiftConfig =>
         RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, cliConfig.folder)
     }
+
+    Security.bracket(cliConfig.target.sshTunnel, loadDb)
   }
 
   /**

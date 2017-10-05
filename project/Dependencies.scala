@@ -33,6 +33,7 @@ object Dependencies {
     val postgres         = "42.0.0"
     val redshift         = "1.2.8.1005"
     val aws              = "1.11.208"
+    val jSch             = "0.1.54"
 
     // Java (Shredder)
     val dynamodb        = "1.11.98"
