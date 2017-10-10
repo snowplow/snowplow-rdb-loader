@@ -86,9 +86,15 @@ object PgInterpreter {
    */
   def getConnection(target: StorageTarget): Either[LoaderError, Connection] = {
     try {
+      val password = target.password match {
+        case StorageTarget.PlainText(text) => text
+        case StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+          SshInterpreter.getKey(key.parameterName).getOrElse(throw new RuntimeException("Cannot retrieve JDBC password from EC2 Parameter Store"))
+      }
+
       val props = new Properties()
       props.setProperty("user", target.username)
-      props.setProperty("password", target.password)
+      props.setProperty("password", password)
       props.setProperty("tcpKeepAlive", "true")
 
       target match {

@@ -16,8 +16,8 @@ package config
 import cats.data._
 import cats.implicits._
 
+import io.circe.{Decoder, DecodingFailure, HCursor, Json}
 import io.circe.Decoder._
-import io.circe.Json
 import io.circe.generic.auto._
 
 import org.json4s.JValue
@@ -25,7 +25,6 @@ import org.json4s.JValue
 import com.github.fge.jsonschema.core.report.ProcessingMessage
 
 import com.snowplowanalytics.iglu.core.SchemaKey
-
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.validation.ValidatableJValue._
 
@@ -47,7 +46,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def port: Int
   def sslMode: StorageTarget.SslMode
   def username: String
-  def password: String
+  def password: StorageTarget.PasswordConfig
 
   def eventsTable =
     loaders.Common.getEventsTable(schema)
@@ -81,7 +80,7 @@ object StorageTarget {
 
   /**
    * Redshift config
-   * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-0-2`
+   * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-1-0`
    */
   case class PostgresqlConfig(
       id: Option[String],
@@ -92,7 +91,7 @@ object StorageTarget {
       sslMode: SslMode,
       schema: String,
       username: String,
-      password: String,
+      password: PasswordConfig,
       sshTunnel: Option[TunnelConfig])
     extends StorageTarget {
     val purpose = EnrichedEvents
@@ -100,7 +99,7 @@ object StorageTarget {
 
   /**
    * Redshift config
-   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-0-1`
+   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0`
    */
   case class RedshiftConfig(
       id: Option[String],
@@ -112,7 +111,7 @@ object StorageTarget {
       roleArn: String,
       schema: String,
       username: String,
-      password: String,
+      password: PasswordConfig,
       maxError: Int,
       compRows: Long,
       sshTunnel: Option[TunnelConfig])
@@ -132,6 +131,16 @@ object StorageTarget {
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
   case class DestinationConfig(host: String, port: Int)
 
+  /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
+  sealed trait PasswordConfig {
+    def getUnencrypted: String = this match {
+      case PlainText(plain) => plain
+      case EncryptedKey(EncryptedConfig(key)) => key.parameterName
+    }
+  }
+  case class PlainText(value: String) extends PasswordConfig
+  case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
+
   /**
     * SSH configuration, enabling target to be loaded though tunnel
     *
@@ -141,6 +150,18 @@ object StorageTarget {
     * @param destination end-socket of SSH tunnel (host/port pair to access DB)
     */
   case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
+
+  implicit object PasswordDecoder extends Decoder[PasswordConfig] {
+    def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
+      hCursor.value.asString match {
+        case Some(s) => Right(PlainText(s))
+        case None => hCursor.value.asObject match {
+          case Some(_) => hCursor.value.as[EncryptedConfig].map(EncryptedKey)
+          case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
+        }
+      }
+    }
+  }
 
   /**
     * Decode Json as one of known storage targets

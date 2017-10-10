@@ -50,7 +50,7 @@ class CommonSpec extends Specification { def is = s2"""
       "arn:aws:iam::719197435995:role/RedshiftLoadRole",
       "update",
       "snowplow-loader",
-      "Supersecret1",
+      StorageTarget.PlainText("Supersecret1"),
       100,
       1000L,
       Some(TunnelInput))
