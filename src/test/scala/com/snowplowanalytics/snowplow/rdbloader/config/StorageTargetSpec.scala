@@ -24,7 +24,9 @@ import com.snowplowanalytics.iglu.client.Resolver
 class StorageTargetSpec extends Specification { def is = s2"""
   Parse Postgres storage target configuration $e1
   Parse Redshift storage target configuration $e2
-  Parse Postgres storage target with tunnel $e3
+  Parse Postgres storage target (2-1-0) with tunnel $e3
+  Parse Redshift storage target (2-1-0) with encrypted password $e4
+  Fail to parse old Redshift storage target (2-0-1) with encrypted password $e5
   """
 
   private val resolverConfig = parseJson(
@@ -79,7 +81,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       StorageTarget.Disable,
       "atomic",
       "ADD HERE",
-      "ADD HERE",
+      StorageTarget.PlainText("ADD HERE"),
       None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
@@ -117,7 +119,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
         "e",
       "atomic",
       "ADD HERE",
-      "ADD HERE",
+      StorageTarget.PlainText("ADD HERE"),
       1,
       20000,
       None)
@@ -177,13 +179,82 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
-      "ADD HERE",
+      StorageTarget.PlainText("ADD HERE"),
       1,
       20000,
       Some(tunnel))
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
-
   }
 
+  def e4 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "host": "ADD HERE",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "sslMode": "DISABLE",
+                   |        "username": "ADD HERE",
+                   |        "password": {
+                   |            "ec2ParameterStore": {
+                   |                "parameterName": "snowplow.rdbloader.redshift.password"
+                   |            }
+                   |        },
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "purpose": "ENRICHED_EVENTS"
+                   |    }
+                   |}
+                 """.stripMargin
+
+    val expected = StorageTarget.RedshiftConfig(
+      None,
+      "AWS Redshift enriched events storage",
+      "ADD HERE",
+      "ADD HERE",
+      5439,
+      StorageTarget.Disable,
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+      "atomic",
+      "ADD HERE",
+      StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
+      1,
+      20000,
+      None)
+
+    parseWithDefaultResolver(config).toEither must beRight(expected)
+  }
+
+  def e5 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-0-1",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "host": "ADD HERE",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "sslMode": "DISABLE",
+                   |        "username": "ADD HERE",
+                   |        "password": {
+                   |            "ec2ParameterStore": {
+                   |                "parameterName": "snowplow.rdbloader.redshift.password"
+                   |            }
+                   |        },
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "purpose": "ENRICHED_EVENTS"
+                   |    }
+                   |}
+                 """.stripMargin
+
+    parseWithDefaultResolver(config).toEither must beLeft
+  }
 }

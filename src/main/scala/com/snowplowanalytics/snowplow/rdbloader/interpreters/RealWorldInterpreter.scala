@@ -98,7 +98,8 @@ class RealWorldInterpreter private[interpreters](
             case ExitLog.LoadingSucceeded(_) =>
               TrackerInterpreter.trackSuccess(tracker)
             case ExitLog.LoadingFailed(message, _) =>
-              val sanitizedMessage = Common.sanitize(message, List(cliConfig.target.password, cliConfig.target.username))
+              val secrets = List(cliConfig.target.password.getUnencrypted, cliConfig.target.username)
+              val sanitizedMessage = Common.sanitize(message, secrets)
               TrackerInterpreter.trackError(tracker, sanitizedMessage)
           }
         case Dump(key, result) =>
