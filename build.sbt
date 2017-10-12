@@ -51,7 +51,7 @@ lazy val loader = project.in(file("."))
 lazy val shredder = project.in(file("shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
-    version     := "0.13.0",
+    version     := "0.13.0-rc1",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )
