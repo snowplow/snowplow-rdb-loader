@@ -26,7 +26,7 @@ object Dependencies {
     val cats             = "0.9.0"
 
     // Scala (Shredder)
-    val spark           = "2.1.0"
+    val spark           = "2.2.0"
     val commonEnrich    = "0.27.0"
 
     // Java (Loader)

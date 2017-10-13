@@ -65,7 +65,8 @@ object ShredJob extends SparkJob {
     classOf[com.fasterxml.jackson.databind.node.ArrayNode],
     classOf[com.fasterxml.jackson.databind.node.NullNode],
     classOf[com.fasterxml.jackson.databind.node.JsonNodeFactory],
-    classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage]
+    classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
+    classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
   )
   override def sparkConfig(): SparkConf = new SparkConf()
     .setAppName(getClass().getSimpleName())

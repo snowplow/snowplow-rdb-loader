@@ -83,12 +83,6 @@ object BuildSettings {
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
-    assemblyShadeRules in assembly := Seq(
-      ShadeRule.rename(
-        "com.amazonaws.**" -> "shadeaws.@1",
-        "org.apache.http.**" -> "shadehttp.@1"
-      ).inAll
-    ),
     // Drop these jars
     assemblyExcludedJars in assembly := {
       val cp = (fullClasspath in assembly).value
