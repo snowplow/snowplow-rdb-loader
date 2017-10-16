@@ -27,7 +27,7 @@ object Dependencies {
 
     // Scala (Shredder)
     val spark           = "2.2.0"
-    val commonEnrich    = "0.27.0"
+    val commonEnrich    = "0.27.0-M2"
 
     // Java (Loader)
     val postgres         = "42.0.0"
