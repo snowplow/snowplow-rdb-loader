@@ -48,7 +48,11 @@ object Dependencies {
     // For specs2
     "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases",
     // Redshift native driver
-    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",
+    // For Snowplow libs (SCE transient)
+    "Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/",
+    // For uaParser utils (SCE transient)
+    "user-agent-parser repo" at "https://clojars.org/repo/"
   )
 
   // Scala (Loader)
