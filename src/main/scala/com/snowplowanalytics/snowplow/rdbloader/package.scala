@@ -32,12 +32,22 @@ package object rdbloader {
   /**
    * Loading effect, producing value of type `A`,
    * that also mutates state, until short-circuited
-   * on failure `F`
+   * on failure `F`. In the end gives both - error and
+   * last state
    *
    * @tparam F failure, short-circuiting whole computation
    * @tparam A value of computation
    */
   type TargetLoading[F, A] = EitherT[StateT[Action, List[Step], ?], F, A]
+
+  /** Lift value into  */
+  object TargetLoading {
+    def lift[A](value: A): TargetLoading[LoaderError, A] = {
+      val action: Action[A] = Free.pure(value)
+      val state = StateT.lift[Action, List[Step], A](action)
+      EitherT.liftT(state)
+    }
+  }
 
   /**
    * IO-free result validation
@@ -83,6 +93,11 @@ package object rdbloader {
 
     def withoutStep: TargetLoading[B, A] =
       EitherT(StateT((last: List[Step]) => loading.map(e => (last, e))))
+  }
+
+  implicit class StateToEither[A, B](val loading: Either[B, A]) extends AnyVal {
+    def withoutStep: TargetLoading[B, A] =
+      EitherT(StateT((last: List[Step]) => Free.pure(loading).map(e => (last, e))))
   }
 
   implicit class AggregateErrors[A, B](eithers: List[Either[A, B]]) {

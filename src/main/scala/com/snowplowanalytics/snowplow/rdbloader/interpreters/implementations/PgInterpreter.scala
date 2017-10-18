@@ -11,41 +11,28 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-package interpreters
+package interpreters.implementations
 
-import scala.util.control.NonFatal
 import java.io.FileReader
 import java.nio.file.Path
 import java.sql.{Connection, SQLException}
 import java.util.Properties
 
-import org.postgresql.{Driver => PgDriver}
-import org.postgresql.copy.CopyManager
-import org.postgresql.jdbc.PgConnection
+import scala.util.control.NonFatal
+
+import cats.implicits._
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 
-import cats.implicits._
-import LoaderError._
+import org.postgresql.copy.CopyManager
+import org.postgresql.jdbc.PgConnection
+import org.postgresql.{Driver => PgDriver}
+
+import LoaderError.StorageTargetError
 import config.StorageTarget
 import loaders.Common.SqlString
 
 object PgInterpreter {
-
-  def executeTransaction(conn: Connection, queries: List[SqlString]): Either[StorageTargetError, Unit] =
-    if (queries.nonEmpty) {
-      val transaction = makeTransaction(queries)
-      executeQueries(conn, transaction).void
-    } else Right(())
-
-  /**
-   * Execute set of SQL update-statements, combine amount of updated rows
-   *
-   * @param queries set of valid SQL statements in string representation
-   * @return number of updated rows in case of success, first failure otherwise
-   */
-  def executeQueries(conn: Connection, queries: List[SqlString]): Either[StorageTargetError, Long] =
-    queries.map(executeQuery(conn)).sequence.map(_.combineAll)
 
   /**
    * Execute a single update-statement in provided Postgres connection
@@ -94,21 +81,20 @@ object PgInterpreter {
       case NonFatal(e) => Left(StorageTargetError(e.toString))
     }
 
-  /** Wrap queries into transaction */
-  def makeTransaction(queries: List[SqlString]): List[SqlString] = {
-    val begin = SqlString.unsafeCoerce("BEGIN;")
-    val commit = SqlString.unsafeCoerce("COMMIT;")
-    (begin :: queries) :+ commit
-  }
-
   /**
    * Get Redshift or Postgres connection
    */
   def getConnection(target: StorageTarget): Either[LoaderError, Connection] = {
     try {
+      val password = target.password match {
+        case StorageTarget.PlainText(text) => text
+        case StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+          SshInterpreter.getKey(key.parameterName).getOrElse(throw new RuntimeException("Cannot retrieve JDBC password from EC2 Parameter Store"))
+      }
+
       val props = new Properties()
       props.setProperty("user", target.username)
-      props.setProperty("password", target.password)
+      props.setProperty("password", password)
       props.setProperty("tcpKeepAlive", "true")
 
       target match {
@@ -121,7 +107,7 @@ object PgInterpreter {
           }
           Right(new RedshiftDriver().connect(url, props))
 
-        case p: StorageTarget.PostgresqlConfig =>
+        case _: StorageTarget.PostgresqlConfig =>
           val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
           props.setProperty("sslmode", target.sslMode.asProperty)
           Right(new PgDriver().connect(url, props))

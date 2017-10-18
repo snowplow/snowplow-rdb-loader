@@ -27,7 +27,8 @@ import com.fasterxml.jackson.databind.JsonNode
 // Spark
 import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.serializer.KryoSerializer
-import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.{Row, SaveMode, SparkSession}
+import org.apache.spark.sql.types.{StringType, StructField, StructType}
 
 // Scalaz
 import scalaz._
@@ -64,7 +65,8 @@ object ShredJob extends SparkJob {
     classOf[com.fasterxml.jackson.databind.node.ArrayNode],
     classOf[com.fasterxml.jackson.databind.node.NullNode],
     classOf[com.fasterxml.jackson.databind.node.JsonNodeFactory],
-    classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage]
+    classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
+    classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
   )
   override def sparkConfig(): SparkConf = new SparkConf()
     .setAppName(getClass().getSimpleName())
@@ -345,7 +347,7 @@ class ShredJob(@transient val spark: SparkSession, args: Array[String]) extends 
     // Handling of malformed rows
     val bad = common
       .flatMap { case (line, shredded) => projectBads(line, shredded) }
-      .map { case (line, errors) => new BadRow(line, errors).toCompactJson }
+      .map { case (line, errors) => Row(BadRow(line, errors).toCompactJson) }
 
     // Handling of properly-formed rows, only one event from an event id and event fingerprint
     // combination is kept
@@ -393,10 +395,13 @@ class ShredJob(@transient val spark: SparkSession, args: Array[String]) extends 
     // Write errors unioned with errors occurred during cross-batch deduplication
     val badDupes = bad ++ dupeFailed
       .flatMap { case (s, dupe) => dupe match {
-        case Failure(m) => Some(new BadRow(s.originalLine, m).toCompactJson)
+        case Failure(m) => Some(Row(BadRow(s.originalLine, m).toCompactJson))
         case _ => None
-      }}
-    badDupes.saveAsTextFile(shredConfig.badFolder)
+      } }
+    spark.createDataFrame(badDupes, StructType(StructField("_", StringType, true) :: Nil))
+      .write
+      .mode(SaveMode.Overwrite)
+      .text(shredConfig.badFolder)
 
     // Create duplicate JSON contexts for well-formed events having duplicates
     // This creates not canonical contexts (with schema and data), but shredded hierarchies
@@ -407,8 +412,11 @@ class ShredJob(@transient val spark: SparkSession, args: Array[String]) extends 
 
     // Ready the events for database load
     val events = goodWithSyntheticDupes
-      .map(e => alterEnrichedEvent(e.shredded.originalLine, e.newEventId))
-    events.saveAsTextFile(getAlteredEnrichedOutputPath(shredConfig.outFolder))
+      .map(e => Row(alterEnrichedEvent(e.shredded.originalLine, e.newEventId)))
+    spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
+      .write
+      .mode(SaveMode.Overwrite)
+      .text(getAlteredEnrichedOutputPath(shredConfig.outFolder))
 
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
     val jsons = (goodWithSyntheticDupes

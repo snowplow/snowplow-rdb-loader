@@ -1,3 +1,23 @@
+Release 28 (2017-10-19)
+-----------------------
+Common: add CI/CD (#55)
+Common: remove AWS Java SDK shading (#54)
+RDB Shredder: add Snowplow and Clojars resolvers (#56)
+RDB Shredder: bump Spark to 2.2.0 (#52)
+RDB Shredder: bump to 0.13.0 (#49)
+RDB Shredder: bump scala-common-enrich to 0.27.0 (#39)
+RDB Shredder: overwrite output datasets (#41)
+RDB Loader: bump sbt-assembly to 0.14.5 (#51)
+RDB Loader: bump SBT to 0.13.16 (#50)
+RDB Loader: allow JDBC credentials to be stored in EC2 parameter store (#19)
+RDB Loader: add support for SSH tunnels (#22)
+RDB Loader: bump AWS SDK to 1.11.208 (#48)
+RDB Loader: bump redshift-jdbc to 1.2.8.1005 (#40)
+RDB Loader: make loading shredded data always required (#29)
+RDB Loader: remove tracking from dry run (#42)
+RDB Loader: execute manifest insert in same transaction as load (#36)
+RDB Loader: make logkey optional (#35)
+
 Version 0.13.0 (2017-09-06)
 ---------------------------
 Common: migrate CHANGELOG from snowplow/snowplow (#24)

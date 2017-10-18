@@ -34,7 +34,6 @@ object Step {
    */
   sealed trait SkipStep extends Step with StringEnum
   case object Analyze extends SkipStep { def asString = "analyze" }
-  case object Shred extends SkipStep { def asString = "shred" }
   case object ConsistencyCheck extends SkipStep { def asString = "consistency_check" }
 
   /**
@@ -62,7 +61,7 @@ object Step {
   /**
    * Steps included into app by default
    */
-  val defaultSteps = sealedDescendants[SkipStep]
+  val defaultSteps = sealedDescendants[SkipStep] ++ Set.empty[Step]
 
   /**
    * Remove explicitly disabled steps and add optional steps

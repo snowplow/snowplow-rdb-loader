@@ -70,9 +70,10 @@ object SpecHelpers {
     "arn:aws:iam::123456789876:role/RedshiftLoadRole",
     "atomic",
     "admin",
-    "Supersecret1",
+    StorageTarget.PlainText("Supersecret1"),
     1,
-    20000)
+    20000,
+    None)
 
 
 }

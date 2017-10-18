@@ -15,11 +15,12 @@ package interpreters
 
 import java.nio.file._
 
+import scala.collection.mutable.ListBuffer
+
 import cats._
 import cats.implicits._
-import com.amazonaws.services.s3.AmazonS3
 
-import scala.collection.mutable.ListBuffer
+import com.amazonaws.services.s3.AmazonS3
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
@@ -27,8 +28,7 @@ import com.snowplowanalytics.snowplow.scalatracker.Tracker
 import config.CliConfig
 import LoaderA._
 import loaders.Common.SqlString
-import utils.Common
-import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
+import implementations.{S3Interpreter, TrackerInterpreter}
 
 /**
   * Interpreter performs all actual side-effecting work,
@@ -82,12 +82,6 @@ class DryRunInterpreter private[interpreters](
 
         case ExecuteQuery(query) =>
           logQueries.append(query)
-          0.asRight[LoaderError]
-        case ExecuteTransaction(transactionalQueries) =>
-          val transaction = PgInterpreter.makeTransaction(transactionalQueries)
-          logQueries.appendAll(transaction).asRight
-        case ExecuteQueries(queries) =>
-          logQueries.appendAll(queries).asRight
           0L.asRight[LoaderError]
         case CopyViaStdin(files, _) =>
           // Will never work while `DownloadData` is noop
@@ -105,18 +99,12 @@ class DryRunInterpreter private[interpreters](
         case Sleep(timeout) =>
           sleepTime = sleepTime + timeout
           Thread.sleep(timeout)
-        case Track(result) =>
-          result match {
-            case ExitLog.LoadingSucceeded(_) =>
-              TrackerInterpreter.trackSuccess(tracker)
-            case ExitLog.LoadingFailed(message, _) =>
-              val sanitizedMessage = Common.sanitize(message, List(cliConfig.target.password, cliConfig.target.username))
-              TrackerInterpreter.trackError(tracker, sanitizedMessage)
-          }
-        case Dump(result) =>
+        case Track(_) =>
+          ()
+        case Dump(key, result) =>
           val actionResult = result.toString + "\n"
           val dryRunResult = "Dry-run action: \n" + getDryRunLogs
-          TrackerInterpreter.dumpStdout(amazonS3, cliConfig.logKey, actionResult + dryRunResult)
+          TrackerInterpreter.dumpStdout(amazonS3, key, actionResult + dryRunResult)
         case Exit(loadResult, dumpResult) =>
           println("Dry-run action: \n" + getDryRunLogs)
           TrackerInterpreter.exit(loadResult, dumpResult)
@@ -126,6 +114,16 @@ class DryRunInterpreter private[interpreters](
         case Put(key: String, value: Option[S3.Key]) =>
           val _ = cache.put(key, value)
           ()
+
+        case EstablishTunnel(tunnel) =>
+          Right(logMessages.append(s"Established imaginary SSH tunnel to [${tunnel.config.bastion.host}:${tunnel.config.bastion.port}]"))
+        case CloseTunnel() =>
+          Right(logMessages.append(s"Closed imaginary SSH tunnel"))
+
+        case GetEc2Property(name) =>
+          logMessages.append(s"Fetched imaginary EC2 [$name] property")
+          Right(name + " key")
+
       }
     }
   }

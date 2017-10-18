@@ -71,11 +71,7 @@ object RedshiftLoader {
     val region = config.aws.s3.region
     val assets = config.aws.s3.buckets.jsonpathAssets
 
-    val discovery = if (steps.contains(Step.Shred)) {
-      DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
-    } else {
-      DataDiscovery.discoverAtomic(discoveryTarget)
-    }
+    val discovery = DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
 
     val consistent = if (steps.contains(Step.ConsistencyCheck)) DataDiscovery.checkConsistency(discovery) else discovery
 
@@ -85,7 +81,7 @@ object RedshiftLoader {
   /**
    * Load all discovered data one by one
    *
-   * @param queue propertly sorted list of load statements
+   * @param queue properly sorted list of load statements
    * @return application state with performed steps and success/failure result
    */
   def load(queue: LoadQueue) =
@@ -100,11 +96,10 @@ object RedshiftLoader {
   def loadFolder(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Unit] = {
     import LoaderA._
 
-    val loadStatements = statements.events :: statements.shredded
+    val loadStatements = statements.events :: statements.shredded ++ List(statements.manifest)
 
     for {
       _ <- executeTransaction(loadStatements).addStep(Step.Load)
-      _ <- executeTransaction(List(statements.manifest)).withoutStep
       _ <- vacuum(statements)
       _ <- analyze(statements)
     } yield ()
@@ -127,13 +122,13 @@ object RedshiftLoader {
    * Return action executing ANALYZE statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def vacuum(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Long] = {
+  def vacuum(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Unit] = {
     statements.vacuum match {
       case Some(vacuum) =>
-        val block = SqlString.unsafeCoerce("END;") :: vacuum
+        val block = SqlString.unsafeCoerce("END") :: vacuum
         executeQueries(block).addStep(Step.Vacuum)
       case None =>
-        val noop: Action[Either[LoaderError, Long]] = Free.pure(0L.asRight)
+        val noop: Action[Either[LoaderError, Unit]] = Free.pure(().asRight)
         noop.withoutStep
     }
   }
