@@ -44,7 +44,7 @@ object Main {
   }
 
   /**
-   * Initalize interpreter from parsed configuration and
+   * Initialize interpreter from parsed configuration and
    * run all IO actions through it. Should never throw exceptions
    *
    * @param config parsed configuration
@@ -57,10 +57,20 @@ object Main {
       result     <- load(config).value.run(Nil)
       message     = utils.Common.interpret(result)
       _          <- LoaderA.track(message)
-      dumpResult <- LoaderA.dump(message)
-      status     <- LoaderA.exit(message, dumpResult) // exit(1) if dump wasn't successful
+      status     <- close(config.logKey, message)
     } yield status
 
     actions.foldMap(interpreter.run)
+  }
+
+  /** Get exit status based on all previous steps */
+  private def close(logKey: Option[S3.Key], message: Log) = {
+    logKey match {
+      case Some(key) => for {
+        dumpResult <- LoaderA.dump(key, message)
+        status     <- LoaderA.exit(message, Some(dumpResult))
+      } yield status
+      case None => LoaderA.exit(message, None)
+    }
   }
 }

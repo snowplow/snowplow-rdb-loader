@@ -26,7 +26,7 @@ object LoaderError {
       case c: ConfigError => "Configuration error" + c.message
       case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.map(_.getMessage).mkString("\n")
       case l: StorageTargetError => "Data loading error " + l.message
-      case l: LoaderLocalError => "Internal Exeption " + l.message
+      case l: LoaderLocalError => "Internal Exception " + l.message
     }
   }
 
@@ -115,6 +115,7 @@ object LoaderError {
       s"Cannot extract contexts or self-describing events from directory [$path].\nInvalid key example: $example. Total $invalidKeyCount invalid keys.\nCorrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
+  /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError
 
   /**

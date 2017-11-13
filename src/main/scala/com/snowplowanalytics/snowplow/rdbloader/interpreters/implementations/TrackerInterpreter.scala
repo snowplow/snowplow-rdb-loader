@@ -11,21 +11,23 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-package interpreters
+package interpreters.implementations
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 
+import scala.util.control.NonFatal
+
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.ObjectMetadata
+
 import org.json4s.JObject
+
 import com.snowplowanalytics.snowplow.scalatracker._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.{AsyncBatchEmitter, AsyncEmitter}
 
-import scala.util.control.NonFatal
-
 // This project
-import config.SnowplowConfig.{Monitoring, GetMethod, PostMethod}
+import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
 
 object TrackerInterpreter {
 
@@ -113,18 +115,24 @@ object TrackerInterpreter {
    * exit message (same as dumped to S3) to stdout
    *
    * @param result loading result
-   * @param dumpResult S3 dumping result
+   * @param dumpResult S3 dumping result, none if loader didn't try to dump
    */
-  def exit(result: Log, dumpResult: Either[String, S3.Key]): Int = {
+  def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Int = {
     println(result)
     (result, dumpResult) match {
-      case (Log.LoadingSucceeded(_), Right(key)) =>
+      case (Log.LoadingSucceeded(_), None) =>
+        println(s"INFO: Logs were not dumped to S3")
+        0
+      case (Log.LoadingFailed(_, _), None) =>
+        println(s"INFO: Logs were not dumped to S3")
+        1
+      case (Log.LoadingSucceeded(_), Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         0
-      case (Log.LoadingFailed(_, _), Right(key)) =>
+      case (Log.LoadingFailed(_, _), Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         1
-      case (_, Left(error)) =>
+      case (_, Some(Left(error))) =>
         println(s"ERROR: Log-dumping failed: [$error]")
         1
     }

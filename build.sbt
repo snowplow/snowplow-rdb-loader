@@ -14,7 +14,7 @@
 lazy val loader = project.in(file("."))
   .settings(
     name := "snowplow-rdb-loader",
-    version := "0.13.0",
+    version := "0.14.0",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     mainClass in Compile := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
@@ -37,7 +37,10 @@ lazy val loader = project.in(file("."))
 
       Dependencies.postgres,
       Dependencies.redshift,
+      Dependencies.redshiftSdk,
       Dependencies.s3,
+      Dependencies.ssm,
+      Dependencies.jSch,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
@@ -48,7 +51,7 @@ lazy val loader = project.in(file("."))
 lazy val shredder = project.in(file("shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
-    version     := "0.12.0",
+    version     := "0.13.0",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )

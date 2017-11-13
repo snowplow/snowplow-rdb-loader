@@ -26,13 +26,14 @@ object Dependencies {
     val cats             = "0.9.0"
 
     // Scala (Shredder)
-    val spark           = "2.1.0"
-    val commonEnrich    = "0.25.0"
+    val spark           = "2.2.0"
+    val commonEnrich    = "0.27.0"
 
     // Java (Loader)
     val postgres         = "42.0.0"
-    val redshift         = "1.2.1.1001"
-    val aws              = "1.10.77"
+    val redshift         = "1.2.8.1005"
+    val aws              = "1.11.208"
+    val jSch             = "0.1.54"
 
     // Java (Shredder)
     val dynamodb        = "1.11.98"
@@ -47,7 +48,11 @@ object Dependencies {
     // For specs2
     "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases",
     // Redshift native driver
-    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",
+    // For Snowplow libs (SCE transient)
+    "Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/",
+    // For uaParser utils (SCE transient)
+    "user-agent-parser repo" at "https://clojars.org/repo/"
   )
 
   // Scala (Loader)
@@ -70,9 +75,12 @@ object Dependencies {
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"              % V.spark           % "provided"
 
   // Java (Loader)
-  val postgres          = "org.postgresql"        % "postgresql"              % V.postgres
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42"         % V.redshift
-  val s3                = "com.amazonaws"         % "aws-java-sdk-s3"         % V.aws
+  val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
+  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
+  val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
+  val s3                = "com.amazonaws"         % "aws-java-sdk-s3"           % V.aws
+  val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
+  val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"   % V.dynamodb
