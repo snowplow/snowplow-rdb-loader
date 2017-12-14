@@ -14,7 +14,7 @@
 lazy val loader = project.in(file("."))
   .settings(
     name := "snowplow-rdb-loader",
-    version := "0.14.0",
+    version := "0.15.0-rc1",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     mainClass in Compile := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
@@ -36,7 +36,6 @@ lazy val loader = project.in(file("."))
       Dependencies.circeGenericExtra,
 
       Dependencies.postgres,
-      Dependencies.redshift,
       Dependencies.redshiftSdk,
       Dependencies.s3,
       Dependencies.ssm,

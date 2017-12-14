@@ -22,8 +22,6 @@ import scala.util.control.NonFatal
 
 import cats.implicits._
 
-import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
-
 import org.postgresql.copy.CopyManager
 import org.postgresql.jdbc.PgConnection
 import org.postgresql.{Driver => PgDriver}
@@ -45,14 +43,20 @@ object PgInterpreter {
     Either.catchNonFatal {
       conn.createStatement().executeUpdate(sql)
     } leftMap {
-      case NonFatal(e) => StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
+      case NonFatal(e) =>
+        System.err.println("RDB Loader executeQuery error")
+        e.printStackTrace()
+        StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
     }
 
   def setAutocommit(conn: Connection, autoCommit: Boolean): Either[LoaderError, Unit] =
     try {
       Right(conn.setAutoCommit(autoCommit))
     } catch {
-      case e: SQLException => Left(StorageTargetError(e.toString))
+      case e: SQLException =>
+        System.err.println("RDB Loader setAutocommit error")
+        e.printStackTrace()
+        Left(StorageTargetError(e.toString))
     }
 
 
@@ -99,13 +103,13 @@ object PgInterpreter {
 
       target match {
         case r: StorageTarget.RedshiftConfig =>
-          val url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
+          val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
           if (r.sslMode == StorageTarget.Disable) {   // "disable" and "require" are not supported
             props.setProperty("ssl", "false")         // by native Redshift JDBC Driver
           } else {                                    // http://docs.aws.amazon.com/redshift/latest/mgmt/configure-jdbc-options.html
             props.setProperty("ssl", "true")
           }
-          Right(new RedshiftDriver().connect(url, props))
+          Right(new PgDriver().connect(url, props))
 
         case _: StorageTarget.PostgresqlConfig =>
           val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
@@ -113,7 +117,10 @@ object PgInterpreter {
           Right(new PgDriver().connect(url, props))
       }
     } catch {
-      case NonFatal(e) => Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
+      case NonFatal(e) =>
+        System.err.println("RDB Loader getConnection error")
+        e.printStackTrace()
+        Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
     }
   }
 }

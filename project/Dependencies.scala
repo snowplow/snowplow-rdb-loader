@@ -76,7 +76,6 @@ object Dependencies {
 
   // Java (Loader)
   val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val s3                = "com.amazonaws"         % "aws-java-sdk-s3"           % V.aws
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
