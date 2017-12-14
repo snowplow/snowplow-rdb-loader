@@ -24,6 +24,8 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import org.joda.time.DateTime
+
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
 // This project
@@ -61,6 +63,7 @@ class RealWorldInterpreter private[interpreters](
     def apply[A](effect: LoaderA[A]): Id[A] = {
       effect match {
         case ListS3(folder) =>
+          println(s"RDB Loader: ${DateTime.now()} listing $folder")
           S3Interpreter.list(amazonS3, folder).map(summaries => summaries.map(S3.getKey))
         case KeyExists(key) =>
           S3Interpreter.keyExists(amazonS3, key)
@@ -68,10 +71,16 @@ class RealWorldInterpreter private[interpreters](
           S3Interpreter.downloadData(amazonS3, source, dest)
 
         case ExecuteQuery(query) =>
-          for {
+          val result = for {
             conn <- dbConnection
+            _ = println(s"RDB Loader: ${DateTime.now()} executing query $query")
             res <- PgInterpreter.executeQuery(conn)(query)
           } yield res
+          result match {
+            case Left(error) => println("JDBC failure" + error.toString)
+            case Right(_) => ()
+          }
+          result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
             conn <- dbConnection
@@ -92,6 +101,7 @@ class RealWorldInterpreter private[interpreters](
           }
 
         case Sleep(timeout) =>
+          println(s"RDB Loader: ${DateTime.now()} sleeping $timeout")
           Thread.sleep(timeout)
         case Track(result) =>
           result match {
@@ -103,6 +113,7 @@ class RealWorldInterpreter private[interpreters](
               TrackerInterpreter.trackError(tracker, sanitizedMessage)
           }
         case Dump(key, result) =>
+          println(s"RDB Loader: ${DateTime.now()} dumping $key")
           TrackerInterpreter.dumpStdout(amazonS3, key, result.toString)
         case Exit(loadResult, dumpResult) =>
           dbConnection.foreach(c => c.close())
