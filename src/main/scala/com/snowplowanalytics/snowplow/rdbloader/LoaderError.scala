@@ -44,6 +44,9 @@ object LoaderError {
    * Contains multiple step failures
    */
   case class DiscoveryError(failures: List[DiscoveryFailure]) extends LoaderError
+  object DiscoveryError {
+    def apply(single: DiscoveryFailure): LoaderError = DiscoveryError(List(single))
+  }
 
   /**
    * Error representing failure on database loading (or executing any statements)

@@ -17,7 +17,7 @@ import cats._
 import org.specs2.Specification
 
 // This project
-import S3.Key
+import S3.Folder
 import config.{ Step, StorageTarget }
 
 class CommonSpec extends Specification { def is = s2"""
@@ -28,7 +28,6 @@ class CommonSpec extends Specification { def is = s2"""
     val expected = List(
       "EC2 PROPERTY snowplow.redshift.key key", // Retrieve key
       "SSH TUNNEL ESTABLISH",                   // Open
-      "LIST s3://snowplow-acme-storage/shredded/good/", "SLEEP 15000", "LIST s3://snowplow-acme-storage/shredded/good/",
       "BEGIN", "COPY", "INSERT", "COMMIT", "BEGIN", "ANALYZE", "COMMIT",
       "SSH TUNNEL CLOSE")                       // Close
 
@@ -71,16 +70,11 @@ class CommonSpec extends Specification { def is = s2"""
             actions.append("SSH TUNNEL ESTABLISH")
             Right(())
 
-          case LoaderA.ListS3(bucket) =>
-            actions.append(s"LIST $bucket")
-            Right(List(Key.coerce(bucket ++ "run=2017-10-10-10-30-30/atomic-events/part-0001")))
-
-          case LoaderA.Sleep(time) =>
-            actions.append(s"SLEEP $time")
-
           case LoaderA.CloseTunnel() =>
             actions.append(s"SSH TUNNEL CLOSE")
             Right(())
+
+          case LoaderA.Print(_) => ()
 
           case action =>
             throw new RuntimeException(s"Unexpected Action [$action]")
@@ -89,14 +83,15 @@ class CommonSpec extends Specification { def is = s2"""
     }
 
     val cliConfig = config.CliConfig(SpecHelpers.validConfig, target, Step.defaultSteps, None, None, false)
-    val state = Common.load(cliConfig)
-    val action = state.value.run(List.empty[Step])
-    val (steps, result) = action.foldMap(interpreter)
+    val discovery = DataDiscovery.FullDiscovery(
+      Folder.coerce(cliConfig.configYaml.aws.s3.buckets.shredded.good ++ "run=2017-10-10-10-30-30/"), 1L, Nil)
+    val state = Common.load(cliConfig, List(discovery))
+    val action = state.value
+    val result = action.foldMap(interpreter)
 
     val transactionsExpectation = actions.toList must beEqualTo(expected)
     val resultExpectation = result must beRight
-    val stepsExpectation = steps must beEqualTo(List(Step.Discover, Step.Load, Step.Analyze).reverse)
-    transactionsExpectation.and(resultExpectation).and(stepsExpectation)
+    transactionsExpectation.and(resultExpectation)
   }
 
 }

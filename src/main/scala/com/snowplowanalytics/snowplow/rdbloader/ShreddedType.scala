@@ -15,6 +15,8 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.implicits._
 import cats.free.Free
 
+import com.snowplowanalytics.iglu.client.SchemaCriterion
+
 import com.snowplowanalytics.iglu.core.SchemaKey
 
 // This project
@@ -31,9 +33,7 @@ import utils.Common.toSnakeCase
  * @param jsonPaths existing JSONPaths file
  */
 case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
-  /**
-   * Get S3 prefix which Redshift should LOAD FROM
-   */
+  /** Get S3 prefix which Redshift should LOAD FROM */
   def getLoadPath: String = {
    if (info.shredJob <= ShreddedType.ShredJobBeforeSparkVersion) {
      s"${info.base}${info.vendor}/${info.name}/jsonschema/${info.model}-"
@@ -41,6 +41,9 @@ case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
      s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
    }
   }
+
+  /** Human-readable form */
+  def show: String = s"${info.toCriterion.toString} ($jsonPaths)"
 }
 
 /**
@@ -58,7 +61,9 @@ object ShreddedType {
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
    */
-  case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver)
+  case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
+    def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
+  }
 
   /**
    * Basis for Snowplow hosted assets bucket.

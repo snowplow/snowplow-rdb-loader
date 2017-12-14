@@ -17,7 +17,7 @@ import shapeless.tag
 import shapeless.tag._
 
 // This project
-import config.CliConfig
+import config.{ CliConfig, Step }
 import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
 
 
@@ -59,15 +59,45 @@ object Common {
    *
    * @param cliConfig RDB Loader app configuration
    */
-  def load(cliConfig: CliConfig): TargetLoading[LoaderError, Unit] = {
+  def load(cliConfig: CliConfig, discovery: List[DataDiscovery]): LoaderAction[Unit] = {
     val loadDb = cliConfig.target match {
       case postgresqlTarget: PostgresqlConfig =>
-        PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps, cliConfig.folder)
+        PostgresqlLoader.run(postgresqlTarget, cliConfig.steps, discovery)
       case redshiftTarget: RedshiftConfig =>
-        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, cliConfig.folder)
+        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, discovery)
     }
 
     Security.bracket(cliConfig.target.sshTunnel, loadDb)
+  }
+
+  /**
+    * Choose a discovery strategy and perform it
+    *
+    * @param cliConfig RDB Loader app configuration
+    */
+  def discover(cliConfig: CliConfig): LoaderAction[List[DataDiscovery]] = {
+    // Shortcuts
+    val shredJob = cliConfig.configYaml.storage.versions.rdbShredder
+    val region = cliConfig.configYaml.aws.s3.region
+    val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
+
+    val folder = cliConfig.folder match {
+      case Some(f) =>
+        DataDiscovery.InSpecificFolder(f)
+      case None =>
+        DataDiscovery.InShreddedGood(cliConfig.configYaml.aws.s3.buckets.shredded.good)
+    }
+
+    cliConfig.target match {
+      case _: RedshiftConfig =>
+        val original = DataDiscovery.discoverFull(folder, shredJob, region, assets)
+        if (cliConfig.steps.contains(Step.ConsistencyCheck))
+          DataDiscovery.checkConsistency(original)
+        else original
+      case _: PostgresqlConfig =>
+        // Safe to skip consistency check as whole folder will be downloaded
+        DataDiscovery.discoverAtomic(folder)
+    }
   }
 
   /**

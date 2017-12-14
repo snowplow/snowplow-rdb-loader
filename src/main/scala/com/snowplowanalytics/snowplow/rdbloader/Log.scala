@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-// This project
-import config.Step
-
 /**
  * End-of-the-world result type.
  * Controls how RDB Loader exits
@@ -26,22 +23,14 @@ object Log {
   /**
    * Loading succeeded. No messages, 0 exit code
    */
-  case class LoadingSucceeded(steps: List[Step]) extends Log {
-    override def toString: String = {
-      s"RDB Loader successfully completed following steps: [${steps.mkString(", ")}]"
-    }
+  case object LoadingSucceeded extends Log {
+    override def toString: String = s"RDB Loader successfully completed"
   }
 
   /**
    * Loading failed. Write error message. 1 exit code.
    */
-  case class LoadingFailed(error: String, steps: List[Step]) extends Log {
-    override def toString: String = {
-      s"ERROR: $error\n" + (if (steps.nonEmpty) {
-        s"Following steps completed: [${steps.mkString(",")}]" }
-      else {
-        "No steps completed"
-      })
-    }
+  case class LoadingFailed(error: String) extends Log {
+    override def toString: String =  s"ERROR: $error\n"
   }
 }

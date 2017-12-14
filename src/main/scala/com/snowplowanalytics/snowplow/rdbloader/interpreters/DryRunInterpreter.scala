@@ -96,6 +96,8 @@ class DryRunInterpreter private[interpreters](
           logMessages.append(s"Deleted temporary directory [${path.toString}]").asRight
 
 
+        case Print(message) =>
+          println(message)
         case Sleep(timeout) =>
           sleepTime = sleepTime + timeout
           Thread.sleep(timeout)

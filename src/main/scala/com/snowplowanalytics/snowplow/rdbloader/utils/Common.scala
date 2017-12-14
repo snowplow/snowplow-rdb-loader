@@ -27,7 +27,6 @@ import io.circe._
 
 // This project
 import LoaderError._
-import config.Step
 
 /**
  * Various common utility functions
@@ -53,10 +52,10 @@ object Common {
    * @param result loading process state
    * @return log entry, which can be interpreted accordingly
    */
-  def interpret(result: (List[Step], Either[LoaderError, Unit])): Log = {
+  def interpret(result: Either[LoaderError, Unit]): Log = {
     result match {
-      case (steps, Right(_)) => Log.LoadingSucceeded(steps.reverse)
-      case (steps, Left(error)) => Log.LoadingFailed(error.show, steps.reverse)
+      case Right(_) => Log.LoadingSucceeded
+      case Left(error) => Log.LoadingFailed(error.show)
     }
   }
 

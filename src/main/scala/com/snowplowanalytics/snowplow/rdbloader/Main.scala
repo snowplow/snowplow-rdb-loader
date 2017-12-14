@@ -17,7 +17,7 @@ import cats.data.Validated._
 // This project
 import interpreters.Interpreter
 import config.CliConfig
-import loaders.Common.load
+import loaders.Common.{ load, discover }
 
 /**
  * Application entry point
@@ -53,8 +53,12 @@ object Main {
   def run(config: CliConfig): Int = {
     val interpreter = Interpreter.initialize(config)
 
-    val actions = for {
-      result     <- load(config).value.run(Nil)
+    val actions: Action[Int] = for {
+      data       <- discover(config).value
+      result     <- data match {
+        case Right(discovery) => load(config, discovery).value
+        case Left(error) => ActionE.liftError(error)
+      }
       message     = utils.Common.interpret(result)
       _          <- LoaderA.track(message)
       status     <- close(config.logKey, message)

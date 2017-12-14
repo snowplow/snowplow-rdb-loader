@@ -20,9 +20,9 @@ import java.util.Properties
 
 import scala.util.control.NonFatal
 
-import cats.implicits._
-
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
+
+import cats.implicits._
 
 import org.postgresql.copy.CopyManager
 import org.postgresql.jdbc.PgConnection
@@ -45,14 +45,23 @@ object PgInterpreter {
     Either.catchNonFatal {
       conn.createStatement().executeUpdate(sql)
     } leftMap {
-      case NonFatal(e) => StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
+      case NonFatal(e: java.sql.SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
+        println(e.getMessage)
+        StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
+      case NonFatal(e) =>
+        System.err.println("RDB Loader unknown error in executeQuery")
+        e.printStackTrace()
+        StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
     }
 
   def setAutocommit(conn: Connection, autoCommit: Boolean): Either[LoaderError, Unit] =
     try {
       Right(conn.setAutoCommit(autoCommit))
     } catch {
-      case e: SQLException => Left(StorageTargetError(e.toString))
+      case e: SQLException =>
+        System.err.println("setAutocommit error")
+        e.printStackTrace()
+        Left(StorageTargetError(e.toString))
     }
 
 
@@ -65,10 +74,7 @@ object PgInterpreter {
       manager <- copyManager
       _ <- setAutocommit(conn, false)
       result = files.traverse(copyIn(manager, copyStatement)(_)).map(_.combineAll)
-      _ = result match {
-        case Left(_) => conn.rollback()
-        case Right(_) => conn.commit()
-      }
+      _ = result.fold(_ => conn.rollback(), _ => conn.commit())
       _ <- setAutocommit(conn, true)
       endResult <- result
     } yield endResult
@@ -113,7 +119,10 @@ object PgInterpreter {
           Right(new PgDriver().connect(url, props))
       }
     } catch {
-      case NonFatal(e) => Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
+      case NonFatal(e) =>
+        System.err.println("RDB Loader getConnection error")
+        e.printStackTrace()
+        Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
     }
   }
 }
