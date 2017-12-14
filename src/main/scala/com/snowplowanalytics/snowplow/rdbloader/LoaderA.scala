@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 import java.nio.file.Path
 
 import cats.free.Free
+import cats.data.EitherT
 import cats.implicits._
 
 // This library
@@ -79,8 +80,10 @@ object LoaderA {
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
 
   /** Execute multiple (against target in interpreter) */
-  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] =
-    queries.traverse(executeQuery).map(eithers => eithers.sequence.map(_.combineAll))
+  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+    val shortCircuiting = queries.traverse(query => EitherT(executeQuery(query)))
+    shortCircuiting.void.value
+  }
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
