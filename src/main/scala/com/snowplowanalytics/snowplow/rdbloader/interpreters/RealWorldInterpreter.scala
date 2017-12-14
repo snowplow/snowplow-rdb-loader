@@ -24,6 +24,8 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import org.joda.time.DateTime
+
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
 // This project
@@ -56,11 +58,19 @@ class RealWorldInterpreter private[interpreters](
   // lazy to wait before tunnel established
   private lazy val dbConnection = PgInterpreter.getConnection(cliConfig.target)
 
+  private val messages = collection.mutable.ListBuffer.empty[String]
+
+  def log(message: String) = {
+    System.out.println(s"RDB Loader [${DateTime.now()}]: $message")
+    messages.append(message)
+  }
+
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
     def apply[A](effect: LoaderA[A]): Id[A] = {
       effect match {
         case ListS3(folder) =>
+          log(s"Listing $folder")
           S3Interpreter.list(amazonS3, folder).map(summaries => summaries.map(S3.getKey))
         case KeyExists(key) =>
           S3Interpreter.keyExists(amazonS3, key)
@@ -68,13 +78,15 @@ class RealWorldInterpreter private[interpreters](
           S3Interpreter.downloadData(amazonS3, source, dest)
 
         case ExecuteQuery(query) =>
-          for {
+          val result = for {
             conn <- dbConnection
             res <- PgInterpreter.executeQuery(conn)(query)
           } yield res
+          result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
             conn <- dbConnection
+            _ = log(s"Copying ${files.length} files via stdin")
             res <- PgInterpreter.copyViaStdin(conn, files, query)
           } yield res
 
@@ -82,7 +94,8 @@ class RealWorldInterpreter private[interpreters](
           try {
             Files.createTempDirectory("rdb-loader").asRight
           } catch {
-            case NonFatal(e) => LoaderLocalError("Cannot create temporary directory.\n" + e.toString).asLeft
+            case NonFatal(e) =>
+              LoaderLocalError("Cannot create temporary directory.\n" + e.toString).asLeft
           }
         case DeleteDir(path) =>
           try {
@@ -91,20 +104,27 @@ class RealWorldInterpreter private[interpreters](
             case NonFatal(e) => LoaderLocalError(s"Cannot delete directory [${path.toString}].\n" + e.toString).asLeft
           }
 
+        case Print(message) =>
+          log(message)
         case Sleep(timeout) =>
+          log(s"Sleeping $timeout milliseconds")
           Thread.sleep(timeout)
         case Track(result) =>
           result match {
-            case ExitLog.LoadingSucceeded(_) =>
+            case ExitLog.LoadingSucceeded =>
+              log("Tracking success")
               TrackerInterpreter.trackSuccess(tracker)
-            case ExitLog.LoadingFailed(message, _) =>
+            case ExitLog.LoadingFailed(message) =>
+              log("Tracking failure")
               val secrets = List(cliConfig.target.password.getUnencrypted, cliConfig.target.username)
               val sanitizedMessage = Common.sanitize(message, secrets)
               TrackerInterpreter.trackError(tracker, sanitizedMessage)
           }
         case Dump(key, result) =>
+          log(s"Dumping $key")
           TrackerInterpreter.dumpStdout(amazonS3, key, result.toString)
         case Exit(loadResult, dumpResult) =>
+          log("Quit")
           dbConnection.foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)
 
@@ -116,8 +136,10 @@ class RealWorldInterpreter private[interpreters](
           ()
 
         case EstablishTunnel(config) =>
+          log("Establishing SSH tunnel")
           SshInterpreter.establishTunnel(config)
         case CloseTunnel() =>
+          log("Closing SSH tunnel")
           SshInterpreter.closeTunnel()
 
         case GetEc2Property(name) =>

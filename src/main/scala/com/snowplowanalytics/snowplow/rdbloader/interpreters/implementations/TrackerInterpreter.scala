@@ -120,16 +120,16 @@ object TrackerInterpreter {
   def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Int = {
     println(result)
     (result, dumpResult) match {
-      case (Log.LoadingSucceeded(_), None) =>
+      case (Log.LoadingSucceeded, None) =>
         println(s"INFO: Logs were not dumped to S3")
         0
-      case (Log.LoadingFailed(_, _), None) =>
+      case (Log.LoadingFailed(_), None) =>
         println(s"INFO: Logs were not dumped to S3")
         1
-      case (Log.LoadingSucceeded(_), Some(Right(key))) =>
+      case (Log.LoadingSucceeded, Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         0
-      case (Log.LoadingFailed(_, _), Some(Right(key))) =>
+      case (Log.LoadingFailed(_), Some(Right(key))) =>
         println(s"INFO: Logs successfully dumped to S3 [$key]")
         1
       case (_, Some(Left(error))) =>

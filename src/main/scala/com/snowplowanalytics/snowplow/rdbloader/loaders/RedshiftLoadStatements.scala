@@ -36,7 +36,8 @@ case class RedshiftLoadStatements(
     shredded: List[SqlString],
     vacuum: Option[List[SqlString]],
     analyze: Option[List[SqlString]],
-    manifest: SqlString)
+    manifest: SqlString,
+    base: S3.Folder)
 
 object RedshiftLoadStatements {
 
@@ -77,10 +78,10 @@ object RedshiftLoadStatements {
       case discovery: FullDiscovery =>
         val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
         val atomic = RedshiftLoadStatements.buildCopyFromTsvStatement(config, target, discovery.atomicEvents)
-        buildLoadStatements(target, steps, atomic, shreddedStatements)
+        buildLoadStatements(target, steps, atomic, shreddedStatements, discovery.base)
       case _: AtomicDiscovery =>
         val atomic = RedshiftLoadStatements.buildCopyFromTsvStatement(config, target, discovery.atomicEvents)
-        buildLoadStatements(target, steps, atomic, Nil)
+        buildLoadStatements(target, steps, atomic, Nil, discovery.base)
     }
   }
 
@@ -94,13 +95,15 @@ object RedshiftLoadStatements {
    * @param atomicCopyStatements COPY statements for `events` table
    * @param shreddedStatements statements for shredded tables (include COPY,
    *                           ANALYZE and VACUUM)
+   * @param base path to base folder
    * @return statements ready to be executed on Redshift
    */
   def buildLoadStatements(
       target: RedshiftConfig,
       steps: Set[Step],
       atomicCopyStatements: SqlString,
-      shreddedStatements: List[ShreddedStatements]
+      shreddedStatements: List[ShreddedStatements],
+      base: S3.Folder
    ): RedshiftLoadStatements = {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
@@ -118,7 +121,7 @@ object RedshiftLoadStatements {
       Some(statements)
     } else None
 
-    RedshiftLoadStatements(atomicCopyStatements, shreddedCopyStatements, vacuum, analyze, manifestStatement)
+    RedshiftLoadStatements(atomicCopyStatements, shreddedCopyStatements, vacuum, analyze, manifestStatement, base)
   }
 
 

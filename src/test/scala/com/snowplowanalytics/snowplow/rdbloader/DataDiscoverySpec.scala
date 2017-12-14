@@ -103,7 +103,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
     val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
-    val endResult = result.foldMap(interpreter)
+    val endResult = result.value.foldMap(interpreter)
 
     endResult must beRight(expected)
   }
@@ -169,6 +169,9 @@ class DataDiscoverySpec extends Specification { def is = s2"""
           case LoaderA.Sleep(timeout) =>
             State.modify((realWorld: RealWorld) => realWorld.copy(waited = timeout :: realWorld.waited))
 
+          case LoaderA.Print(_) =>
+            State.pure(())
+
           case action =>
             throw new RuntimeException(s"Unexpected Action [$action]")
         }
@@ -211,7 +214,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
     val request = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
     val result = DataDiscovery.checkConsistency(request)
-    val (endState, endResult) = result.foldMap(interpreter).run(RealWorld(0, Nil)).value
+    val (endState, endResult) = result.value.foldMap(interpreter).run(RealWorld(0, Nil)).value
 
     val state = endState must beEqualTo(RealWorld(4, List(20000L, 20000L, 20000L)))
     val response = endResult must beRight(expected)
@@ -236,7 +239,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(shreddedGood)
     val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
-    val endResult = result.foldMap(interpreter)
+    val endResult = result.value.foldMap(interpreter)
 
     endResult must beLeft(expected)
   }
@@ -260,7 +263,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     // The only difference with e3
     val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
     val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
-    val endResult = result.foldMap(interpreter)
+    val endResult = result.value.foldMap(interpreter)
 
     endResult must beRight(expected)
   }
@@ -316,7 +319,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.InShreddedGood(shreddedGood)
-    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None)
+    val result = DataDiscovery.discoverFull(discoveryTarget, Semver(0,11,0), "us-east-1", None).value
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)

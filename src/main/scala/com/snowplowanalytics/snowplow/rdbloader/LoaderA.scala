@@ -15,10 +15,10 @@ package com.snowplowanalytics.snowplow.rdbloader
 import java.nio.file.Path
 
 import cats.free.Free
+import cats.data.EitherT
 import cats.implicits._
 
 // This library
-import LoaderError.DiscoveryError
 import Security.Tunnel
 import loaders.Common.SqlString
 
@@ -31,7 +31,7 @@ sealed trait LoaderA[A]
 object LoaderA {
 
   // Discovery ops
-  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[DiscoveryError, List[S3.Key]]]
+  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.Key]]]
   case class KeyExists(key: S3.Key) extends LoaderA[Boolean]
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
 
@@ -48,6 +48,7 @@ object LoaderA {
   case class Track(exitLog: Log) extends LoaderA[Unit]
   case class Dump(key: S3.Key, exitLog: Log) extends LoaderA[Either[String, S3.Key]]
   case class Exit(exitLog: Log, dumpResult: Option[Either[String, S3.Key]]) extends LoaderA[Int]
+  case class Print(message: String) extends LoaderA[Unit]
 
   // Cache ops
   case class Put(key: String, value: Option[S3.Key]) extends LoaderA[Unit]
@@ -61,9 +62,8 @@ object LoaderA {
   case class GetEc2Property(name: String) extends LoaderA[Either[LoaderError, String]]
 
 
-  /** Get *all* S3 keys prefixed with some folder */
-  def listS3(bucket: S3.Folder): Action[Either[DiscoveryError, List[S3.Key]]] =
-    Free.liftF[LoaderA, Either[DiscoveryError, List[S3.Key]]](ListS3(bucket))
+  def listS3(bucket: S3.Folder): Action[Either[LoaderError, List[S3.Key]]] =
+    Free.liftF[LoaderA, Either[LoaderError, List[S3.Key]]](ListS3(bucket))
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): Action[Boolean] =
@@ -79,8 +79,10 @@ object LoaderA {
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
 
   /** Execute multiple (against target in interpreter) */
-  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] =
-    queries.traverse(executeQuery).map(eithers => eithers.sequence.map(_.combineAll))
+  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+    val shortCircuiting = queries.traverse(query => EitherT(executeQuery(query)))
+    shortCircuiting.void.value
+  }
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
@@ -120,6 +122,10 @@ object LoaderA {
   /** Close RDB Loader app with appropriate state */
   def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Action[Int] =
     Free.liftF[LoaderA, Int](Exit(result, dumpResult))
+
+  /** Print message to stdout */
+  def print(message: String): Action[Unit] =
+    Free.liftF[LoaderA, Unit](Print(message))
 
 
   /** Put value into cache (stored in interpreter) */

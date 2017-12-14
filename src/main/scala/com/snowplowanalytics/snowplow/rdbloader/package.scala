@@ -17,8 +17,7 @@ import cats.data._
 import cats.free.Free
 import cats.implicits._
 
-import rdbloader.config.Step
-import rdbloader.LoaderError.{DiscoveryError, DiscoveryFailure}
+import rdbloader.LoaderError.DiscoveryFailure
 
 package object rdbloader {
   /**
@@ -30,45 +29,43 @@ package object rdbloader {
   type Action[A] = Free[LoaderA, A]
 
   /**
-   * Loading effect, producing value of type `A`,
-   * that also mutates state, until short-circuited
-   * on failure `F`. In the end gives both - error and
-   * last state
-   *
-   * @tparam F failure, short-circuiting whole computation
-   * @tparam A value of computation
-   */
-  type TargetLoading[F, A] = EitherT[StateT[Action, List[Step], ?], F, A]
+    * Loading effect, producing value of type `A` with possible `LoaderError`
+    *
+    * @tparam A value of computation
+    */
+  type LoaderAction[A] = EitherT[Action, LoaderError, A]
 
   /** Lift value into  */
-  object TargetLoading {
-    def lift[A](value: A): TargetLoading[LoaderError, A] = {
-      val action: Action[A] = Free.pure(value)
-      val state = StateT.lift[Action, List[Step], A](action)
-      EitherT.liftT(state)
-    }
+  object LoaderAction {
+    def unit: LoaderAction[Unit] =
+      EitherT.liftT(Free.pure(()))
+
+    def lift[A](value: A): LoaderAction[A] =
+      EitherT.liftT(Free.pure(value))
+
+    def liftE[A](either: Either[LoaderError, A]): LoaderAction[A] =
+      EitherT(Free.pure(either))
+
+    def liftA[A](action: Action[A]): LoaderAction[A] =
+      EitherT(action.map(_.asRight[LoaderError]))
   }
+
+  /** Non-short-circuiting version of `TargetLoading` */
+  type ActionE[A] = Free[LoaderA, Either[LoaderError, A]]
+
+  object ActionE {
+    def liftError(error: LoaderError): ActionE[Nothing] =
+      Free.pure(error.asLeft)
+  }
+
 
   /**
    * IO-free result validation
    */
   type DiscoveryStep[A] = Either[DiscoveryFailure, A]
 
-  /**
-   * IO Action that can aggregate failures
-   */
-  type ActionValidated[A] = Action[ValidatedNel[DiscoveryFailure, A]]
 
-  /**
-   * FullDiscovery discovery process,
-   */
-  type Discovery[A] = Action[Either[DiscoveryError, A]]
-
-  val Discovery = Functor[Action].compose[Either[DiscoveryError, ?]]
-
-  /**
-   * Single discovery step
-   */
+  /** Single discovery step */
   type DiscoveryAction[A] = Action[DiscoveryStep[A]]
 
   /**
@@ -77,28 +74,6 @@ package object rdbloader {
   private[rdbloader] val DiscoveryAction =
     Functor[Action].compose[DiscoveryStep]
 
-  /**
-   * Lift stateless `Action[Either[A, B]]` computation into
-   * computation that has state with last successful
-   * state in `current`, but also can short-circuit
-   * with error message
-   */
-  implicit class StatefulLoading[A, B](val loading: Action[Either[B, A]]) extends AnyVal {
-    def addStep(current: Step): TargetLoading[B, A] = {
-      EitherT(StateT((last: List[Step]) => loading.map {
-        case Right(e) => (current :: last, Right(e))
-        case Left(e) => (last, Left(e))
-      }))
-    }
-
-    def withoutStep: TargetLoading[B, A] =
-      EitherT(StateT((last: List[Step]) => loading.map(e => (last, e))))
-  }
-
-  implicit class StateToEither[A, B](val loading: Either[B, A]) extends AnyVal {
-    def withoutStep: TargetLoading[B, A] =
-      EitherT(StateT((last: List[Step]) => Free.pure(loading).map(e => (last, e))))
-  }
 
   implicit class AggregateErrors[A, B](eithers: List[Either[A, B]]) {
     def aggregatedErrors: ValidatedNel[A, List[B]] =
