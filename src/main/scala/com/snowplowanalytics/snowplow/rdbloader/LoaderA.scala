@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -18,6 +18,8 @@ import cats.free.Free
 import cats.data.EitherT
 import cats.implicits._
 
+import com.snowplowanalytics.manifest.core.{ Item, Application }
+
 // This library
 import Security.Tunnel
 import loaders.Common.SqlString
@@ -34,6 +36,10 @@ object LoaderA {
   case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.Key]]]
   case class KeyExists(key: S3.Key) extends LoaderA[Boolean]
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
+
+  // Processing Manifest ops
+  case class ManifestDiscover(application: Application, predicate: Item => Boolean) extends LoaderA[Either[LoaderError, List[Item]]]
+  case class ManifestProcess(item: Item, load: LoaderAction[Unit]) extends LoaderA[Either[LoaderError, Unit]]
 
   // Loading ops
   case class ExecuteQuery(query: SqlString) extends LoaderA[Either[LoaderError, Long]]
@@ -73,10 +79,23 @@ object LoaderA {
   def downloadData(source: S3.Folder, dest: Path): Action[Either[LoaderError, List[Path]]] =
     Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest))
 
+  /** Discover data from manifest */
+  def manifestDiscover(application: Application, predicate: Item => Boolean): Action[Either[LoaderError, List[Item]]] =
+    Free.liftF[LoaderA, Either[LoaderError, List[Item]]](ManifestDiscover(application, predicate))
 
+<<<<<<< HEAD
   /** Execute single query (against target in interpreter) */
   def executeQuery(query: SqlString): Action[Either[LoaderError, Long]] =
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
+=======
+  /** Add Processing manifest records due loading */
+  def manifestProcess(item: Item, load: LoaderAction[Unit]): LoaderAction[Unit] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
+
+  /** Execute single SQL statement (against target in interpreter) */
+  def executeUpdate(sql: SqlString): Action[Either[LoaderError, Long]] =
+    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql))
+>>>>>>> e09688a... to processing
 
   /** Execute multiple (against target in interpreter) */
   def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {

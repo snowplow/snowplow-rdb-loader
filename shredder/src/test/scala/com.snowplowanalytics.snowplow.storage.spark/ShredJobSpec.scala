@@ -267,7 +267,11 @@ trait ShredJobSpec extends SparkSpec {
       Array.empty[String]
     }
 
-    val job = ShredJob(spark, config ++ dedupeConfig)
+    val shredJobConfig = ShredJobConfig
+      .loadConfigFrom(config ++ dedupeConfig)
+      .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
+
+    val job = new ShredJob(spark, shredJobConfig)
     job.run()
     deleteRecursively(input)
   }

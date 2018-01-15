@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader
 package interpreters
 
 import java.nio.file._
+import java.time.Instant
+import java.util.UUID
 
 import scala.collection.mutable.ListBuffer
 
@@ -22,13 +24,19 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
+
+import com.snowplowanalytics.manifest.core.{ManifestError, ProcessingManifest}
 
 // This project
 import config.CliConfig
 import LoaderA._
+import LoaderError.LoaderLocalError
 import loaders.Common.SqlString
-import implementations.{S3Interpreter, TrackerInterpreter}
+import discovery.ManifestDiscovery
+import implementations.{S3Interpreter, TrackerInterpreter, ManifestInterpreter}
+
 
 /**
   * Interpreter performs all actual side-effecting work,
@@ -39,12 +47,15 @@ import implementations.{S3Interpreter, TrackerInterpreter}
 class DryRunInterpreter private[interpreters](
     cliConfig: CliConfig,
     amazonS3: AmazonS3,
-    tracker: Option[Tracker]) extends Interpreter {
+    tracker: Option[Tracker],
+    resolver: Resolver) extends Interpreter {
 
   private val logQueries = ListBuffer.empty[SqlString]
   private val logCopyFiles = ListBuffer.empty[Path]
   private val logMessages = ListBuffer.empty[String]
   private var sleepTime = 0L
+
+  private val interpreter = this
 
   /**
     * Successfully fetched JSONPaths
@@ -52,6 +63,9 @@ class DryRunInterpreter private[interpreters](
     * Value: "s3://my-jsonpaths/redshift/vendor/filename_1.json"
     */
   private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
+  lazy val manifest =
+    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, resolver)
 
   def getDryRunLogs: String = {
     val sleep = s"Consistency check sleep time: $sleepTime\n"
@@ -79,6 +93,29 @@ class DryRunInterpreter private[interpreters](
         case DownloadData(source, dest) =>
           logMessages.append(s"Downloading data from [$source] to [$dest]")
           List.empty[Path].asRight[LoaderError]
+
+        case ManifestDiscover(application, predicate) =>
+          for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some(manifestClient) => manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            result <- ManifestInterpreter.getUnprocessed(manifestClient, application, predicate)
+          } yield result
+        case ManifestProcess(item, load) =>
+          for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some (manifestClient) => manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            process = ManifestInterpreter.process(interpreter, load)
+            app = ManifestDiscovery.getLoaderApp(cliConfig.target.id)
+            dummyHandler = DryRunInterpreter.dummyLockHandler(manifestClient.LockHandler)
+            processItem = ProcessingManifest.processItemWithHandler(dummyHandler) _
+            _ <- processItem(app, None, process)(item).leftMap(LoaderError.fromManifestError)
+          } yield ()
 
         case ExecuteQuery(query) =>
           logQueries.append(query)
@@ -131,3 +168,14 @@ class DryRunInterpreter private[interpreters](
   }
 }
 
+object DryRunInterpreter {
+
+  type LockHandlerF = ProcessingManifest.LockHandler[ManifestInterpreter.ManifestE]
+
+  /** Update LockHandler to not perform any real actions and never fail */
+  def dummyLockHandler(lockHandler: LockHandlerF): LockHandlerF = {
+    lockHandler
+      .copy(release = (_, _, _, _) => { println("release"); (UUID.randomUUID(), Instant.now()).asRight[ManifestError] })
+      .copy(acquire = (_, _, _) => { println("acquired"); (UUID.randomUUID(), Instant.now()).asRight[ManifestError] })
+  }
+}
