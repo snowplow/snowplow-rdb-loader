@@ -28,6 +28,8 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.validation.ValidatableJValue._
 
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.ProcessingManifestConfig
+
 // This project
 import LoaderError._
 import utils.Compat._
@@ -39,6 +41,7 @@ import utils.Common._
  * Any of those can be safely coerced
  */
 sealed trait StorageTarget extends Product with Serializable {
+  def id: String
   def name: String
   def host: String
   def database: String
@@ -48,10 +51,12 @@ sealed trait StorageTarget extends Product with Serializable {
   def username: String
   def password: StorageTarget.PasswordConfig
 
-  def eventsTable =
+  def processingManifest: Option[ProcessingManifestConfig]
+
+  def eventsTable: String =
     loaders.Common.getEventsTable(schema)
 
-  def shreddedTable(tableName: String) =
+  def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
   def purpose: StorageTarget.Purpose
@@ -72,52 +77,78 @@ object StorageTarget {
   case object FailedEvents extends Purpose { def asString = "FAILED_EVENTS" }
   case object EnrichedEvents extends Purpose { def asString = "ENRICHED_EVENTS" }
 
-  implicit val sslModeDecoder =
+  implicit val sslModeDecoder: Decoder[SslMode] =
     decodeStringEnum[SslMode]
 
-  implicit val purposeDecoder =
+  implicit val purposeDecoder: Decoder[Purpose] =
     decodeStringEnum[Purpose]
 
   /**
-   * Redshift config
+    * Configuration to access Snowplow Processing Manifest
+    * @param amazonDynamoDb Amazon DynamoDB table, the single available implementation
+    */
+  case class ProcessingManifestConfig(amazonDynamoDb: ProcessingManifestConfig.AmazonDynamoDbConfig)
+
+  object ProcessingManifestConfig {
+    case class AmazonDynamoDbConfig(tableName: String)
+  }
+
+  /**
+   * PostgreSQL config
    * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-1-0`
    */
-  case class PostgresqlConfig(
-      id: Option[String],
-      name: String,
-      host: String,
-      database: String,
-      port: Int,
-      sslMode: SslMode,
-      schema: String,
-      username: String,
-      password: PasswordConfig,
-      sshTunnel: Option[TunnelConfig])
+  case class PostgresqlConfig(id: String,
+                              name: String,
+                              host: String,
+                              database: String,
+                              port: Int,
+                              sslMode: SslMode,
+                              schema: String,
+                              username: String,
+                              password: PasswordConfig,
+                              sshTunnel: Option[TunnelConfig],
+                              processingManifest: Option[ProcessingManifestConfig])
     extends StorageTarget {
     val purpose = EnrichedEvents
   }
 
   /**
    * Redshift config
-   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0`
+   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0`
    */
-  case class RedshiftConfig(
-      id: Option[String],
-      name: String,
-      host: String,
-      database: String,
-      port: Int,
-      sslMode: SslMode,
-      roleArn: String,
-      schema: String,
-      username: String,
-      password: PasswordConfig,
-      maxError: Int,
-      compRows: Long,
-      sshTunnel: Option[TunnelConfig])
+  case class RedshiftConfig(id: String,
+                            name: String,
+                            host: String,
+                            database: String,
+                            port: Int,
+                            sslMode: SslMode,
+                            roleArn: String,
+                            schema: String,
+                            username: String,
+                            password: PasswordConfig,
+                            maxError: Int,
+                            compRows: Long,
+                            sshTunnel: Option[TunnelConfig],
+                            processingManifest: Option[ProcessingManifestConfig])
     extends StorageTarget {
     val purpose = EnrichedEvents
   }
+
+  /**
+    * All possible JDBC according to Redshift documentation, except deprecated
+    * and authentication-related
+    */
+  private case class RedshiftJdbc(blockingRows: Option[Int],
+                                  disableIsValidQuery: Option[Boolean],
+                                  dsiLogLevel: Option[Int],
+                                  filterLevel: Option[String],
+                                  loginTimeout: Option[Int],
+                                  loglevel: Option[Int],
+                                  socketTimeout: Option[Int],
+                                  ssl: Option[Boolean],
+                                  sslRootCert: Option[String],
+                                  tcpKeepAlive: Option[Boolean],
+                                  tcpKeepAliveMinutes: Option[Int])
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
   case class ParameterStoreConfig(parameterName: String)

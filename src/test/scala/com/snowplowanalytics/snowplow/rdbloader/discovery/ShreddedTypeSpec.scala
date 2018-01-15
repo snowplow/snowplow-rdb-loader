@@ -11,17 +11,16 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-
-import org.scalacheck.Gen
+package discovery
 
 import cats.implicits._
 
-import org.specs2.Specification
-import org.specs2.ScalaCheck
+import org.scalacheck.Gen
+import org.specs2.{ScalaCheck, Specification}
 
 // This project
-import ShreddedType._
-import config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 
 object ShreddedTypeSpec {
 

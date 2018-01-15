@@ -56,7 +56,7 @@ object BuildSettings {
       "-target", "1.8"
     ),
 
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.4" cross CrossVersion.binary)
+    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.6" cross CrossVersion.binary)
   )
 
   // sbt-assembly settings
@@ -102,8 +102,8 @@ object BuildSettings {
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
       case x if x.endsWith("package-info.class") => MergeStrategy.first
-      case PathList("com", "google", "common", tail@_*) => MergeStrategy.first
-      case PathList("org", "apache", "spark", "unused", tail@_*) => MergeStrategy.first
+      case PathList("com", "google", "common", _) => MergeStrategy.first
+      case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
       case x =>
         val oldStrategy = (assemblyMergeStrategy in assembly).value
         oldStrategy(x)
@@ -113,17 +113,21 @@ object BuildSettings {
   /**
    * Makes package (build) metadata available withing source code
    */
-  lazy val scalifySettings = Seq(
+  def scalifySettings(shredderName: SettingKey[String], shredderVersion: SettingKey[String]) = Seq(
     sourceGenerators in Compile += Def.task {
       val file = (sourceManaged in Compile).value / "settings.scala"
       IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
                        |object ProjectMetadata {
                        |  val version = "%s"
-                       |  val name = "%s"
+                       |  val name = "%s"             // DO NOT EDIT! Processing Manifest depends on it
                        |  val organization = "%s"
                        |  val scalaVersion = "%s"
+                       |
+                       |  val shredderName = "%s"     // DO NOT EDIT! Processing Manifest depends on it
+                       |  val shredderVersion = "%s"
                        |}
-                       |""".stripMargin.format(version.value, name.value, organization.value, scalaVersion.value))
+                       |""".stripMargin.format(
+        version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))
       Seq(file)
     }.taskValue
   )

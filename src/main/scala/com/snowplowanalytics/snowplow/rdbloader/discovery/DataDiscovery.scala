@@ -11,22 +11,32 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
+package discovery
 
 import cats.data._
-import cats.implicits._
 import cats.free.Free
+import cats.implicits._
 
-import ShreddedType._
-import LoaderError._
-import config.Semver
+import com.snowplowanalytics.manifest.core.Item
+
+import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 
 /**
- * Result of data discovery in shredded.good folder
- */
-sealed trait DataDiscovery extends Product with Serializable {
-  /** Shred run folder full path */
-  def base: S3.Folder
-
+  * Result of data discovery in shredded.good folder
+  * @param base ahred run folder full path
+  * @param atomicCardinality amount of keys in atomic-events directory
+  * @param shreddedTypes list of shredded types in this directory
+  * @param specificFolder if specific target loader was provided by `--folder`
+  *                       (remains default `false` until `setSpecificFolder`)
+  * @param item Processing Manifest records if it was discovered through manifest
+  */
+case class DataDiscovery(
+    base: S3.Folder,
+    atomicCardinality: Option[Long],
+    shreddedTypes: List[ShreddedType],
+    specificFolder: Boolean,
+    item: Option[Item]) {
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -67,6 +77,7 @@ sealed trait DataDiscovery extends Product with Serializable {
  */
 object DataDiscovery {
 
+  /** Amount of times consistency check will be performed */
   val ConsistencyChecks = 5
 
   /**
@@ -75,8 +86,9 @@ object DataDiscovery {
    * `InShreddedGood` results in noop on empty folder
    */
   sealed trait DiscoveryTarget extends Product with Serializable
-  case class InShreddedGood(folder: S3.Folder) extends DiscoveryTarget
+  case class Global(folder: S3.Folder) extends DiscoveryTarget
   case class InSpecificFolder(folder: S3.Folder) extends DiscoveryTarget
+  case class ViaManifest(folder: Option[S3.Folder]) extends DiscoveryTarget
 
   /**
    * Discovery result that contains only atomic data (list of S3 keys in `atomic-events`)
@@ -98,30 +110,43 @@ object DataDiscovery {
    * + files with unknown path were found in *any* shred run folder
    *
    * @param target either shredded good or specific run folder
+   * @param id storage target id to avoid "re-discovering" target when using manifest
    * @param shredJob shred job version to check path pattern
    * @param region AWS region for S3 buckets
    * @param assets optional JSONPath assets S3 bucket
    * @return list (probably empty, but usually with single element) of discover results
    *         (atomic events and shredded types)
    */
-  def discoverFull(target: DiscoveryTarget, shredJob: Semver, region: String, assets: Option[S3.Folder]): LoaderAction[List[DataDiscovery]] = {
-    val validatedDataKeys: LoaderAction[ValidatedDataKeys] = target match {
-      case InShreddedGood(folder) =>
-        listGoodBucket(folder).map(transformKeys(shredJob, region, assets))
-      case InSpecificFolder(folder) =>
-        listGoodBucket(folder).map { keys =>
-          if (keys.isEmpty) {
-            val failure = Validated.Invalid(NonEmptyList(NoDataFailure(folder), Nil))
-            Free.pure(failure)
-          } else transformKeys(shredJob, region, assets)(keys)
-        }
-    }
+  def discoverFull(target: DiscoveryTarget,
+                   id: String,
+                   shredJob: Semver,
+                   region: String,
+                   assets: Option[S3.Folder]): LoaderAction[List[DataDiscovery]] = {
+    def group(validatedDataKeys: LoaderAction[ValidatedDataKeys]): LoaderAction[List[DataDiscovery]] =
+      for {
+        keys <- validatedDataKeys
+        discovery <- groupKeysFull(keys)
+      } yield discovery
 
-    val result = for {
-      keys <- validatedDataKeys
-      discovery <- groupKeysFull(keys)
-    } yield discovery
-    result
+    target match {
+      case Global(folder) =>
+        val keys: LoaderAction[ValidatedDataKeys] =
+          listGoodBucket(folder).map(transformKeys(shredJob, region, assets))
+        group(keys)
+      case InSpecificFolder(folder) =>
+        val keys: LoaderAction[ValidatedDataKeys] =
+          listGoodBucket(folder).map { keys =>
+            if (keys.isEmpty) {
+              val failure = Validated.Invalid(NonEmptyList(NoDataFailure(folder), Nil))
+              Free.pure(failure)
+            } else transformKeys(shredJob, region, assets)(keys)
+          }
+        group(keys)
+      case ViaManifest(None) =>
+        ManifestDiscovery.discover(id, region, assets)
+      case ViaManifest(Some(folder)) =>
+        ManifestDiscovery.discoverFolder(folder, id, region, assets).map(_.pure[List])
+    }
   }
 
   /**
@@ -130,9 +155,9 @@ object DataDiscovery {
    * @param target either shredded good or specific run folder
    * @return list of run folders with `atomic-events`
    */
-  def discoverAtomic(target: DiscoveryTarget): LoaderAction[List[DataDiscovery]] =
+  def discoverAtomic(target: DiscoveryTarget, id: String): LoaderAction[List[DataDiscovery]] =
     target match {
-      case InShreddedGood(folder) =>
+      case Global(folder) =>
         for {
           keys    <- listGoodBucket(folder)
           grouped <- LoaderAction.liftE(groupKeysAtomic(keys))
@@ -144,6 +169,9 @@ object DataDiscovery {
           discovery  = if (keys.isEmpty) DiscoveryError(NoDataFailure(folder)).asLeft else groupKeysAtomic(keys)
           result    <- LoaderAction.liftE[List[DataDiscovery]](discovery)
         } yield result
+
+      case ViaManifest(_) =>
+        ManifestDiscovery.discoverAtomic(id)
     }
 
   /**
@@ -194,20 +222,30 @@ object DataDiscovery {
 
     if (atomicKeys.nonEmpty) {
       val shreddedData = shreddedKeys.map(_.info).distinct
-      FullDiscovery(base, atomicKeys.length, shreddedData).validNel
+      DataDiscovery(base, Some(atomicKeys.length), shreddedData, false, None).validNel
     } else {
       AtomicDiscoveryFailure(base).invalidNel
     }
   }
 
+  /** Turn `FullDiscovery` into `AtomicDiscovery` */
+  def downCastFullDiscovery(original: DataDiscovery): AtomicDiscovery =
+    original match {
+      case e: AtomicDiscovery => e
+      case FullDiscovery(base, cardinality, _) => AtomicDiscovery(base, cardinality)
+    }
+
   /**
-   * Transform list of S3 keys into list of `DataKeyFinal` for `FullDisocvery`
+   * Transform list of S3 keys into list of `DataKeyFinal` for `FullDiscovery`
    */
   private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.Key]): ValidatedDataKeys = {
+    def id(x: ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]) = x
+
     val intermediateDataKeys = keys.map(parseDataKey(shredJob, _))
-    intermediateDataKeys.map(transformDataKey(_, region, assets)).sequence.map(_.sequence)
+    val finalDataKeys = intermediateDataKeys.traverse(transformDataKey(_, region, assets))
+    sequenceInF(finalDataKeys, id)
   }
-  
+
   /**
    * Transform intermediate `DataKey` into `ReadyDataKey` by finding JSONPath file
    * for each shredded type. Used to aggregate "invalid path" errors (produced by
@@ -270,7 +308,7 @@ object DataDiscovery {
    */
   def groupKeysAtomic(keys: List[S3.Key]): Either[LoaderError, List[AtomicDiscovery]] = {
     val atomicKeys: ValidatedNel[DiscoveryFailure, List[AtomicDataKey]] =
-      keys.filter(isAtomic).map(parseAtomicKey).map(_.toValidatedNel).sequence
+      keys.filter(isAtomic).traverse(parseAtomicKey(_).toValidatedNel)
 
     val validated = atomicKeys.andThen { keys => keys.groupBy(_.base).toList.traverse(validateFolderAtomic) }
 
@@ -441,7 +479,7 @@ object DataDiscovery {
    * S3 key, representing intermediate shredded type file
    * It is intermediate because shredded type doesn't contain its JSONPath yet
    */
-  private case class ShreddedDataKeyIntermediate(key: S3.Key, info: Info) extends DataKeyIntermediate
+  private case class ShreddedDataKeyIntermediate(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate
 
   /**
    * S3 key, representing intermediate shredded type file
