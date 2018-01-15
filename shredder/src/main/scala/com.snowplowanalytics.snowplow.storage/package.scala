@@ -24,6 +24,9 @@ import iglu.client.JsonSchemaPair
  * See: http://www.artima.com/scalazine/articles/package_objects.html
  */
 package object spark {
-  /** Convenient for passing around the parts of an event. */
+  /**
+    * Convenient for passing around the parts of an event
+    * `event_id`, `event_fingerprint`, list of JSONs, `etl_tstamp`
+    */
   type EventComponents = Tuple4[String, String, List[JsonSchemaPair], String]
 }

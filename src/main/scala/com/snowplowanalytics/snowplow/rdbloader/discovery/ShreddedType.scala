@@ -11,18 +11,21 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
+package discovery
 
-import cats.implicits._
+import cats.data._
 import cats.free.Free
+import cats.implicits._
 
 import com.snowplowanalytics.iglu.client.SchemaCriterion
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
+import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
+
 // This project
-import LoaderError._
-import config.Semver
-import utils.Common.toSnakeCase
 
 
 /**
@@ -170,6 +173,23 @@ object ShreddedType {
           _ <- LoaderA.putCache(key, None)
         } yield JsonpathDiscoveryFailure(key).asLeft
     }
+  }
+
+  /** Discover multiple JSONPaths for shredded types at once and turn into `LoaderAction` */
+  def discoverBatch(region: String,
+                    jsonpathAssets: Option[S3.Folder],
+                    raw: List[ShreddedType.Info]): LoaderAction[List[ShreddedType]] = {
+    // Discover data for single item
+    def discover(info: ShreddedType.Info): Action[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
+      val jsonpaths = ShreddedType.discoverJsonPath(region, jsonpathAssets, info)
+      val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType(info, s3key)))
+      shreddedType.map(_.toValidatedNel)
+    }
+
+    val action: Action[Either[LoaderError, List[ShreddedType]]] =
+      sequenceInF(raw.traverse(discover), LoaderError.flattenValidated[List[ShreddedType]])
+
+    LoaderAction(action)
   }
 
   /**

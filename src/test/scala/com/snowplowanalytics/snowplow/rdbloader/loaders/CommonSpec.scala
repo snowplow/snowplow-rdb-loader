@@ -18,6 +18,7 @@ import org.specs2.Specification
 
 // This project
 import S3.Folder
+import discovery.DataDiscovery
 import config.{ Step, StorageTarget }
 
 class CommonSpec extends Specification { def is = s2"""
@@ -40,7 +41,7 @@ class CommonSpec extends Specification { def is = s2"""
       15151,
       StorageTarget.DestinationConfig("10.0.0.17", 5433))
     val target = StorageTarget.RedshiftConfig(
-      None,
+      "test",
       "test-redsfhit-target",
       "localhost",
       "snowplowdb",
@@ -52,7 +53,8 @@ class CommonSpec extends Specification { def is = s2"""
       StorageTarget.PlainText("Supersecret1"),
       100,
       1000L,
-      Some(TunnelInput))
+      Some(TunnelInput),
+      None)
 
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
       def apply[A](effect: LoaderA[A]): Id[A] = {
@@ -82,9 +84,10 @@ class CommonSpec extends Specification { def is = s2"""
       }
     }
 
-    val cliConfig = config.CliConfig(SpecHelpers.validConfig, target, Step.defaultSteps, None, None, false)
-    val discovery = DataDiscovery.FullDiscovery(
-      Folder.coerce(cliConfig.configYaml.aws.s3.buckets.shredded.good ++ "run=2017-10-10-10-30-30/"), 1L, Nil)
+    val cliConfig = config.CliConfig(SpecHelpers.validConfig, target, Step.defaultSteps, None, None, false, SpecHelpers.resolverJson)
+    val discovery = DataDiscovery(
+      Folder.coerce(cliConfig.configYaml.aws.s3.buckets.shredded.good ++ "run=2017-10-10-10-30-30/"),
+      Some(1L), Nil, specificFolder = false, None)
     val state = Common.load(cliConfig, List(discovery))
     val action = state.value
     val result = action.foldMap(interpreter)

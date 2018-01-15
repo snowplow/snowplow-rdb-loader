@@ -25,6 +25,11 @@ import org.json4s.jackson.{parseJson => parseJson4s}
 
 import io.circe._
 
+import com.snowplowanalytics.manifest.core.Common.{ EmbeddedRegistry => ManifestRegistry }
+
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.repositories.{EmbeddedRepositoryRef, RepositoryRefConfig}
+
 // This project
 import LoaderError._
 
@@ -157,6 +162,13 @@ object Common {
   }
 
   private val m = ru.runtimeMirror(getClass.getClassLoader)
+
+  /** Registry embedded into RDB Loader jar */
+  private val loaderRefConf = RepositoryRefConfig("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
+  val LoaderRegistry = EmbeddedRepositoryRef(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
+
+  /** Iglu Resolver containing all schemas processing manifest uses */
+  val DefaultResolver = Resolver(10, ManifestRegistry, LoaderRegistry)
 
   /**
    * Reflection method to get runtime object by compiler's `Symbol`

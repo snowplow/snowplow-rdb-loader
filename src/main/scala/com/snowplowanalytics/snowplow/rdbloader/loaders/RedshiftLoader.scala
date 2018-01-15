@@ -19,7 +19,8 @@ import cats.implicits._
 // This project
 import LoaderA._
 import RedshiftLoadStatements._
-import Common.SqlString
+import Common.{ SqlString, EventsTable }
+import discovery.DataDiscovery
 import config.{ SnowplowConfig, Step }
 import config.StorageTarget.RedshiftConfig
 
@@ -46,7 +47,9 @@ object RedshiftLoader {
    */
   def run(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], discovery: List[DataDiscovery]) = {
     val queue = buildQueue(config, target, steps)(discovery)
-    queue.traverse(loadFolder).void
+    val checkManifest = steps.contains(Step.LoadManifestCheck)
+
+    queue.traverse(loadFolder(steps)).void
   }
 
   /**
@@ -55,14 +58,25 @@ object RedshiftLoader {
    * @param statements prepared load statements
    * @return application state
    */
-  def loadFolder(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
+  def loadFolder(steps: Set[Step])(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
     import LoaderA._
 
-    val loadStatements = statements.events :: statements.shredded ++ List(statements.manifest)
+    def loadTransaction = for {
+      _ <- getLoad(checkManifest, statements.dbSchema, statements.atomicCopy)
+      _ <- EitherT(executeUpdates(statements.shredded))
+      _ <- EitherT(executeUpdate(statements.manifest))
+    } yield ()
 
     for {
       _ <- LoaderAction.liftA(LoaderA.print(s"Processing ${statements.base}"))
-      _ <- EitherT(executeTransaction(loadStatements))
+
+      _ <- EitherT(executeUpdate(Common.BeginTransaction))
+      _ <- statements.discovery.item match {
+        case Some(item) => LoaderA.manifestProcess(item, loadTransaction)
+        case None => loadTransaction
+      }
+      _ <- EitherT(executeUpdate(Common.CommitTransaction))
+
       _ <- LoaderAction.liftA(LoaderA.print("Loaded"))
       _ <- vacuum(statements)
       _ <- analyze(statements)

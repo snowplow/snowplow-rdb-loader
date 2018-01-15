@@ -13,6 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
+import cats.implicits._
+import cats.data.ValidatedNel
+
+import com.snowplowanalytics.manifest.core.ManifestError
+import com.snowplowanalytics.manifest.core.ManifestError._
 
 /**
  * Root error type
@@ -99,15 +104,20 @@ object LoaderError {
    */
   case class ShreddedTypeKeyFailure(path: S3.Key) extends DiscoveryFailure {
     def getMessage: String =
-      s"Cannot extract contexts or self-describing events from file [$path]. Corrupted shredded/good state or unexpected Snowplow Shred job version"
+      s"Cannot extract contexts or self-describing events from file [$path]. " +
+        s"Corrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
   /**
-   * No data, while it must be present
+   * No data, while it **must** be present. Happens only with passed `--folder`, because on
+   * global discovery folder can be empty e.g. due eventual consistency
+   * @param path path, where data supposed to be found
    */
   case class NoDataFailure(path: S3.Folder) extends DiscoveryFailure {
+    // TODO: add warning that if there's manifest enabled - data can be there, but manifest blocks it
     def getMessage: String =
-      s"No data discovered in [$path]. Either no such folder or it contains no files with data"
+      s"No data discovered in [$path], while RDB Loader was explicitly pointed to it by '--folder' option. " +
+        s"Either no such folder or it contains no files with data"
   }
 
   /**
@@ -118,8 +128,22 @@ object LoaderError {
       s"Cannot extract contexts or self-describing events from directory [$path].\nInvalid key example: $example. Total $invalidKeyCount invalid keys.\nCorrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
+  case class ManifestFailure(manifestError: ManifestError) extends DiscoveryFailure {
+    def getMessage: String = manifestError.show
+  }
+
+  /** Turn non-empty list of discovery failures into top-level `LoaderError` */
+  def flattenValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
+    validated.leftMap(errors => DiscoveryError(errors.toList): LoaderError).toEither
+
+  def fromManifestError(manifestError: ManifestError): LoaderError =
+    DiscoveryError(ManifestFailure(manifestError))
+
   /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError
+
+  /** Exception to use as end- */
+  case class LoaderThrowable(origin: LoaderError) extends Throwable
 
   /**
    * Aggregate some failures into more compact error-list to not pollute end-error
