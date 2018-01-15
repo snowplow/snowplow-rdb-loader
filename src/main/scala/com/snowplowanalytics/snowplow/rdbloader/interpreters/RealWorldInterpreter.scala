@@ -24,16 +24,22 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import com.snowplowanalytics.iglu.client.Resolver
+
 import org.joda.time.DateTime
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
+import com.snowplowanalytics.manifest.core.ManifestError
+
 // This project
-import config.CliConfig
 import LoaderA._
 import LoaderError.LoaderLocalError
+import Interpreter.runIO
+import config.CliConfig
+import discovery.ManifestDiscovery
 import utils.Common
-import implementations.{PgInterpreter, S3Interpreter, SshInterpreter, TrackerInterpreter}
+import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 
 /**
@@ -45,7 +51,10 @@ import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 class RealWorldInterpreter private[interpreters](
   cliConfig: CliConfig,
   amazonS3: AmazonS3,
-  tracker: Option[Tracker]) extends Interpreter {
+  tracker: Option[Tracker],
+  resolver: Resolver) extends Interpreter {
+
+  private val interpreter = this
 
   /**
     * Successfully fetched JSONPaths
@@ -57,6 +66,13 @@ class RealWorldInterpreter private[interpreters](
   // dbConnection is Either because not required for log dump
   // lazy to wait before tunnel established
   private lazy val dbConnection = PgInterpreter.getConnection(cliConfig.target)
+
+  lazy val manifest =
+    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, utils.Common.DefaultResolver) match {
+      case Right(Some(m)) => m.asRight
+      case Right(None) => LoaderLocalError("Processing Manifest is not configured").asLeft
+      case Left(error) => error.asLeft
+    }
 
   private val messages = collection.mutable.ListBuffer.empty[String]
 
@@ -77,11 +93,42 @@ class RealWorldInterpreter private[interpreters](
         case DownloadData(source, dest) =>
           S3Interpreter.downloadData(amazonS3, source, dest)
 
+
+        case ManifestDiscover(loader, shredder, predicate) =>
+          for {
+            manifestClient <- manifest
+            result <- ManifestInterpreter.getUnprocessed(manifestClient, loader, shredder, predicate) match {
+              case Right(result) if result.isEmpty =>
+                log(s"No data discovered in processing manifest")
+                result.asRight
+              case Right(h :: Nil) =>
+                log(s"Single ${h.id} item discovered")
+                List(h).asRight
+              case Right(result) =>
+                log(s"Multiple (${result.length}) items discovered")
+                result.asRight
+              case other => other
+            }
+          } yield result
+        case ManifestProcess(item, load) =>
+          for {
+            manifestClient <- manifest
+            process = ManifestInterpreter.process(interpreter, load)
+            app = ManifestDiscovery.getLoaderApp(cliConfig.target.id)
+            _ <- runIO(manifestClient.processItem(app, None, process)(item).leftMap {
+              case ManifestError.ApplicationError(e, _, _) =>
+                val message = Option(e.getMessage).getOrElse(e.toString)
+                LoaderError.StorageTargetError(message)
+              case e => LoaderError.fromManifestError(e)
+            }.value)
+          } yield ()
+
         case ExecuteQuery(query) =>
           val result = for {
             conn <- dbConnection
             res <- PgInterpreter.executeQuery(conn)(query)
           } yield res
+          println(query)
           result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {

@@ -17,7 +17,7 @@ import cats.implicits._
 
 // This project
 import Common._
-import DataDiscovery.{AtomicDiscovery, FullDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import config.{SnowplowConfig, Step}
 import config.StorageTarget.RedshiftConfig
 
@@ -30,6 +30,7 @@ import config.StorageTarget.RedshiftConfig
  * @param vacuum VACUUM statements **including `events` table** if necessary
  * @param analyze ANALYZE statements **including `events` table** if necessary
  * @param manifest SQL statement to populate `manifest` table
+ * @param discovery original discovery object
  */
 case class RedshiftLoadStatements(
     events: SqlString,
@@ -37,7 +38,9 @@ case class RedshiftLoadStatements(
     vacuum: Option[List[SqlString]],
     analyze: Option[List[SqlString]],
     manifest: SqlString,
-    base: S3.Folder)
+    discovery: DataDiscovery) {
+  def base = discovery.base
+}
 
 object RedshiftLoadStatements {
 
@@ -60,29 +63,27 @@ object RedshiftLoadStatements {
     else {
       val init = discoveries.map(getStatements(config, target, steps)).reverse
       val vacuum: Option[List[SqlString]] =
-        init.map(_.vacuum).sequence.map { statements => statements.flatten.distinct }
+        init.map(_.vacuum).sequence.map(uniqStatements)
       val analyze: Option[List[SqlString]] =
-        init.map(_.analyze).sequence.map { statements => statements.flatten.distinct }
+        init.map(_.analyze).sequence.map(uniqStatements)
       val cleaned = init.map { statements => statements.copy(vacuum = None, analyze = None) }
       val result = cleaned.head.copy(vacuum = vacuum, analyze = analyze) :: cleaned.tail
       result.reverse
     }
   }
 
+  private def uniqStatements[A](lists: List[List[A]]): List[A] =
+    lists.flatten.distinct
+
   /**
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
-  private def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step])(discovery: DataDiscovery): RedshiftLoadStatements = {
-    discovery match {
-      case discovery: FullDiscovery =>
-        val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
-        val atomic = RedshiftLoadStatements.buildCopyFromTsvStatement(config, target, discovery.atomicEvents)
-        buildLoadStatements(target, steps, atomic, shreddedStatements, discovery.base)
-      case _: AtomicDiscovery =>
-        val atomic = RedshiftLoadStatements.buildCopyFromTsvStatement(config, target, discovery.atomicEvents)
-        buildLoadStatements(target, steps, atomic, Nil, discovery.base)
-    }
+  private[loaders] def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step])(discovery: DataDiscovery): RedshiftLoadStatements = {
+    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
+    val transitCopy = discovery.specificFolder && steps.contains(Step.TransitCopy)
+    val atomic = buildEventsCopy(config, target, discovery.atomicEvents, transitCopy)
+    buildLoadStatements(target, steps, atomic, shreddedStatements, discovery)
   }
 
   /**
@@ -95,7 +96,7 @@ object RedshiftLoadStatements {
    * @param atomicCopyStatements COPY statements for `events` table
    * @param shreddedStatements statements for shredded tables (include COPY,
    *                           ANALYZE and VACUUM)
-   * @param base path to base folder
+   * @param discovery original discovery object
    * @return statements ready to be executed on Redshift
    */
   def buildLoadStatements(
@@ -103,7 +104,7 @@ object RedshiftLoadStatements {
       steps: Set[Step],
       atomicCopyStatements: SqlString,
       shreddedStatements: List[ShreddedStatements],
-      base: S3.Folder
+      discovery: DataDiscovery
    ): RedshiftLoadStatements = {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
@@ -121,7 +122,7 @@ object RedshiftLoadStatements {
       Some(statements)
     } else None
 
-    RedshiftLoadStatements(atomicCopyStatements, shreddedCopyStatements, vacuum, analyze, manifestStatement, base)
+    RedshiftLoadStatements(target.schema, atomicCopy, shreddedCopyStatements, vacuum, analyze, manifestStatement, discovery)
   }
 
 

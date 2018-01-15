@@ -21,6 +21,7 @@ import cats.free.Free
 import LoaderA._
 import config.Step
 import config.StorageTarget.PostgresqlConfig
+import discovery.DataDiscovery
 
 object PostgresqlLoader {
 

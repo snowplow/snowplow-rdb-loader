@@ -17,6 +17,7 @@ import shapeless.tag
 import shapeless.tag._
 
 // This project
+import discovery.DataDiscovery
 import config.{ CliConfig, Step }
 import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
 
@@ -81,22 +82,24 @@ object Common {
     val region = cliConfig.configYaml.aws.s3.region
     val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
 
-    val folder = cliConfig.folder match {
-      case Some(f) =>
+    val target = (cliConfig.target.processingManifest, cliConfig.folder) match {
+      case (None, Some(f)) =>
         DataDiscovery.InSpecificFolder(f)
-      case None =>
-        DataDiscovery.InShreddedGood(cliConfig.configYaml.aws.s3.buckets.shredded.good)
+      case (Some(_), f) =>
+        DataDiscovery.ViaManifest(f)
+      case (None, None) =>
+        DataDiscovery.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
     }
 
     cliConfig.target match {
       case _: RedshiftConfig =>
-        val original = DataDiscovery.discoverFull(folder, shredJob, region, assets)
+        val original = DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
         if (cliConfig.steps.contains(Step.ConsistencyCheck))
           DataDiscovery.checkConsistency(original)
         else original
       case _: PostgresqlConfig =>
         // Safe to skip consistency check as whole folder will be downloaded
-        DataDiscovery.discoverAtomic(folder)
+        DataDiscovery.discoverAtomic(target, cliConfig.target.id)
     }
   }
 

@@ -13,7 +13,9 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package interpreters
 
-import cats._
+import cats.{ ~>, Id}
+import cats.effect.IO
+import cats.syntax.either._
 
 import implementations.{S3Interpreter, TrackerInterpreter}
 
@@ -33,14 +35,23 @@ object Interpreter {
     * @return prepared interpreter
     */
   def initialize(cliConfig: CliConfig): Interpreter = {
-
+    val resolver = utils.Compat.convertIgluResolver(cliConfig.resolverConfig)
+      .fold(x => throw new RuntimeException(s"Initialization error. Cannot initialize Iglu Resolver. ${x.toList.mkString(", ")}"), r => r)
     val amazonS3 = S3Interpreter.getClient(cliConfig.configYaml.aws)
     val tracker = TrackerInterpreter.initializeTracking(cliConfig.configYaml.monitoring)
 
     if (cliConfig.dryRun) {
-      new DryRunInterpreter(cliConfig, amazonS3, tracker)
+      new DryRunInterpreter(cliConfig, amazonS3, tracker, resolver)
     } else {
-      new RealWorldInterpreter(cliConfig, amazonS3, tracker)
+      new RealWorldInterpreter(cliConfig, amazonS3, tracker, resolver)
     }
+  }
+
+  private[interpreters] def runIO[A](action: IO[Either[LoaderError, A]]): Either[LoaderError, A] = {
+    val io = action.attempt.map {
+      case Left(throwable) => LoaderError.LoaderLocalError(throwable.getMessage).asLeft
+      case Right(either) => either
+    }
+    io.unsafeRunSync()
   }
 }
