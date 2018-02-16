@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
+import cats._
 import cats.data._
 import cats.implicits._
 
@@ -140,7 +141,7 @@ object CliConfig {
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
     val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
 
-    (target |@| config |@| logkey |@| folder).map {
+    (target, config, logkey, folder).mapN {
       case (t, c, l, f) => CliConfig(c, t, steps, l, f, rawConfig.dryRun)
     }
   }
@@ -167,14 +168,15 @@ object CliConfig {
    * @param resolverConfigB64 base64-encoded Iglu resolver config
    * @param targetConfigB64 base64-encoded storage target JSON
    * @return either aggregated list of errors (from both resolver and target)
-   *         or successfuly decoded storage target
+   *         or successfully decoded storage target
    */
   private def loadTarget(resolverConfigB64: String, targetConfigB64: String) = {
     val json = base64decode(resolverConfigB64).flatMap(Common.safeParse).toValidatedNel
     val resolver = json.andThen(Compat.convertIgluResolver)
     val decodedTarget = base64decode(targetConfigB64).toValidatedNel
-    (resolver |@| decodedTarget).tupled.andThen {
-      case (r, t) => StorageTarget.parseTarget(r, t)
-    }
+
+    Semigroupal[ValidatedNel[ConfigError, ?]]     // Very disappointed tupled syntax didn't work
+      .product(resolver, decodedTarget)
+      .andThen { case (r, t) => StorageTarget.parseTarget(r, t) }
   }
 }

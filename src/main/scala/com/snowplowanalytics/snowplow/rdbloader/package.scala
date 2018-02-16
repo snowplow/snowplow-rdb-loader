@@ -38,10 +38,10 @@ package object rdbloader {
   /** Lift value into  */
   object LoaderAction {
     def unit: LoaderAction[Unit] =
-      EitherT.liftT(Free.pure(()))
+      EitherT.liftF(Free.pure(()))
 
     def lift[A](value: A): LoaderAction[A] =
-      EitherT.liftT(Free.pure(value))
+      EitherT.liftF(Free.pure(value))
 
     def liftE[A](either: Either[LoaderError, A]): LoaderAction[A] =
       EitherT(Free.pure(either))

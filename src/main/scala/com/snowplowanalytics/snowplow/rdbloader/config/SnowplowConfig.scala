@@ -128,7 +128,7 @@ object SnowplowConfig {
      * Codecs should be declared in exact this order (reverse of their appearence in class)
      */
     private implicit val decoderConfiguration =
-      Configuration.default.withSnakeCaseKeys
+      Configuration.default.withSnakeCaseMemberNames
 
     implicit val decodeTrackerMethod: Decoder[TrackerMethod] =
       decodeStringEnum[TrackerMethod]
