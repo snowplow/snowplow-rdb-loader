@@ -40,7 +40,7 @@ object Dependencies {
     val dynamodb        = "1.11.98"
 
     // Scala (test only)
-    val specs2           = "3.6-scalaz-7.0.7"
+    val specs2           = "4.0.4"
     val scalaCheck       = "1.12.6"
   }
 
