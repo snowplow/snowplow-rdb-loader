@@ -19,11 +19,12 @@ object Dependencies {
     val scalaz7          = "7.0.9"
     val json4s           = "3.2.11" // evicted by iglu-core with 3.3.0
     val igluClient       = "0.5.0"
-    val igluCore         = "0.1.0"
-    val scalaTracker     = "0.3.0"
-    val circeYaml        = "0.6.1"
-    val circe            = "0.8.0"
-    val cats             = "0.9.0"
+    val igluCore         = "0.2.0"
+    val scalaTracker     = "0.5.0"
+    val circeYaml        = "0.8.0"
+    val circe            = "0.9.3"
+    val cats             = "1.1.0"
+    val manifest         = "0.1.0-M1"
 
     // Scala (Shredder)
     val spark           = "2.2.0"
