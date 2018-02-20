@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -33,11 +33,11 @@ object Dependencies {
     // Java (Loader)
     val postgres         = "42.0.0"
     val redshift         = "1.2.8.1005"
-    val aws              = "1.11.208"
+    val aws              = "1.11.319"
     val jSch             = "0.1.54"
 
     // Java (Shredder)
-    val dynamodb        = "1.11.98"
+    val dynamodb         = "1.11.98"
 
     // Scala (test only)
     val specs2           = "4.0.4"
