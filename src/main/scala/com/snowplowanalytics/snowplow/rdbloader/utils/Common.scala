@@ -43,7 +43,7 @@ object Common {
    */
   def sanitize(message: String, stopWords: List[String]): String =
     stopWords.foldLeft(message) { (result, secret) =>
-      result.replaceAll(secret, "x" * secret.length)
+      result.replace(secret, "x" * secret.length)
     }
 
   /**
