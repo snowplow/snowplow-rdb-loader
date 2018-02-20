@@ -162,7 +162,7 @@ object DuplicateStorage {
             .withRegion(awsRegion)
             .withCredentials(new AWSStaticCredentialsProvider(credentials))
             .build()
-          val table = DynamoDbStorage.getOrCreateTable(client, tableName)
+          val table = DynamoDbStorage.checkTable(client, tableName)
           new DynamoDbStorage(client, table).success
         } catch {
           case NonFatal(e) =>
@@ -222,16 +222,14 @@ object DuplicateStorage {
     val timeToLiveColumn = "ttl"
 
     /**
-      * Indempotent action to create duplicates table
-      * If table with name already exists - do nothing and just return name
-      * If table doesn't exist - create table with predefined structure and return name
-      * This is blocking operation as opposed to `DynamoDB#createTable`
+      * Check that table is available (block for some time if necessary)
       *
       * @param client AWS DynamoDB client with established connection
       * @param name DynamoDB table name
       * @return same table name or throw exception
       */
-    def getOrCreateTable(client: AmazonDynamoDB, name: String): String = {
+    @throws[IllegalStateException]
+    private[spark] def checkTable(client: AmazonDynamoDB, name: String): String = {
       val request = new DescribeTableRequest().withTableName(name)
       val result = try {
         Option(client.describeTable(request).getTable)
@@ -242,7 +240,8 @@ object DuplicateStorage {
         case Some(description) =>
           waitForActive(client, name, description)
           name
-        case None => createTable(client, name).getTableName
+        case None =>
+          throw new IllegalStateException("Amazon DynamoDB table for event manifest is unavailable")
       }
     }
 
@@ -261,7 +260,7 @@ object DuplicateStorage {
       val schema = List(
         new KeySchemaElement(eventIdColumn, KeyType.HASH),
         new KeySchemaElement(fingerprintColumn, KeyType.RANGE))
-      
+
       val request = new CreateTableRequest()
         .withTableName(name)
         .withAttributeDefinitions(pks.asJava)
