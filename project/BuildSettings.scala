@@ -132,18 +132,16 @@ object BuildSettings {
     }.taskValue
   )
 
-
   lazy val oneJvmPerTestSetting =
     testGrouping in Test := (definedTests in Test).value map { test =>
-      Tests.Group(name = test.name, tests = Seq(test), runPolicy = Tests.SubProcess(
-        ForkOptions(
-          javaHome.value,
-          outputStrategy.value,
-          Nil,
-          Some(baseDirectory.value),
-          javaOptions.value,
-          connectInput.value,
-          envVars.value
-        )))
+      val forkOptions = ForkOptions()
+        .withJavaHome(javaHome.value)
+        .withOutputStrategy(outputStrategy.value)
+        .withBootJars(Vector.empty)
+        .withWorkingDirectory(Option(baseDirectory.value))
+        .withConnectInput(connectInput.value)
+
+      val runPolicy = Tests.SubProcess(forkOptions)
+      Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 }
