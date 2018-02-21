@@ -46,7 +46,7 @@ object BuildSettings {
       "-Xfuture"
     ),
 
-    scalacOptions in (Compile, console) := Seq(
+    Compile / console / scalacOptions := Seq(
       "-deprecation",
       "-encoding", "UTF-8"
     ),
@@ -60,19 +60,19 @@ object BuildSettings {
   )
 
   // sbt-assembly settings
-  lazy val jarName = assemblyJarName in assembly := { name.value + "-" + version.value + ".jar" }
+  lazy val jarName = assembly / assemblyJarName := { name.value + "-" + version.value + ".jar" }
 
   lazy val assemblySettings = Seq(
     jarName,
 
-    assemblyShadeRules in assembly := Seq(
+    assembly / assemblyShadeRules := Seq(
       ShadeRule.rename(
         // EMR has 0.1.42 installed
         "com.jcraft.jsch.**" -> "shadejsch.@1"
       ).inAll
     ),
 
-    assemblyMergeStrategy in assembly := {
+    assembly / assemblyMergeStrategy := {
       case PathList("META-INF", _ @ _*) => MergeStrategy.discard
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
       case _ => MergeStrategy.first
@@ -82,8 +82,8 @@ object BuildSettings {
   lazy val shredderAssemblySettings = Seq(
     jarName,
     // Drop these jars
-    assemblyExcludedJars in assembly := {
-      val cp = (fullClasspath in assembly).value
+    assembly / assemblyExcludedJars := {
+      val cp = (assembly / fullClasspath).value
       val excludes = Set(
         "jsp-api-2.1-6.1.14.jar",
         "jsp-2.1-6.1.14.jar",
@@ -97,7 +97,8 @@ object BuildSettings {
       )
       cp.filter { jar => excludes(jar.data.getName) }
     },
-    assemblyMergeStrategy in assembly := {
+
+    assembly / assemblyMergeStrategy := {
       case "project.clj" => MergeStrategy.discard // Leiningen build files
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
@@ -105,7 +106,7 @@ object BuildSettings {
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
       case x =>
-        val oldStrategy = (assemblyMergeStrategy in assembly).value
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     }
   )
@@ -114,8 +115,8 @@ object BuildSettings {
    * Makes package (build) metadata available withing source code
    */
   def scalifySettings(shredderName: SettingKey[String], shredderVersion: SettingKey[String]) = Seq(
-    sourceGenerators in Compile += Def.task {
-      val file = (sourceManaged in Compile).value / "settings.scala"
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "settings.scala"
       IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
                        |object ProjectMetadata {
                        |  val version = "%s"
@@ -132,18 +133,16 @@ object BuildSettings {
     }.taskValue
   )
 
-
   lazy val oneJvmPerTestSetting =
-    testGrouping in Test := (definedTests in Test).value map { test =>
-      Tests.Group(name = test.name, tests = Seq(test), runPolicy = Tests.SubProcess(
-        ForkOptions(
-          javaHome.value,
-          outputStrategy.value,
-          Nil,
-          Some(baseDirectory.value),
-          javaOptions.value,
-          connectInput.value,
-          envVars.value
-        )))
+    Test / testGrouping := (Test / definedTests).value map { test =>
+      val forkOptions = ForkOptions()
+        .withJavaHome(javaHome.value)
+        .withOutputStrategy(outputStrategy.value)
+        .withBootJars(Vector.empty)
+        .withWorkingDirectory(Option(baseDirectory.value))
+        .withConnectInput(connectInput.value)
+
+      val runPolicy = Tests.SubProcess(forkOptions)
+      Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 }

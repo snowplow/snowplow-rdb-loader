@@ -16,10 +16,10 @@ lazy val loader = project.in(file("."))
     name := "snowplow-rdb-loader",
     version := "0.14.0",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
-    mainClass in Compile := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
+    Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.scalifySettings(name in shredder, version in shredder))
+  .settings(BuildSettings.scalifySettings(shredder / name, shredder / version))
   .settings(BuildSettings.assemblySettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
