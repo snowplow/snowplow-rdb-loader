@@ -25,6 +25,7 @@ import config.StorageTarget.RedshiftConfig
 /**
  * Result of discovery and SQL-statement generation steps
  *
+ * @param dbSchema common DB schema (e.g. atomic)
  * @param events COPY FROM statement to load `events` table
  * @param shredded COPY FROM statements to load shredded tables
  * @param vacuum VACUUM statements **including `events` table** if necessary
@@ -33,6 +34,7 @@ import config.StorageTarget.RedshiftConfig
  * @param discovery original discovery object
  */
 case class RedshiftLoadStatements(
+    dbSchema: String,
     events: SqlString,
     shredded: List[SqlString],
     vacuum: Option[List[SqlString]],
@@ -165,6 +167,13 @@ object RedshiftLoadStatements {
       | LIMIT 1;""".stripMargin)
   }
 
+  def getCheckManifestStatement(databaseSchema: String): SqlString = {
+    SqlString.unsafeCoerce(
+      s"""
+         |
+       """.stripMargin)
+  }
+
   /**
    * Build COPY FROM JSON SQL-statement for shredded types
    *
@@ -202,6 +211,24 @@ object RedshiftLoadStatements {
    */
   def buildVacuumStatement(tableName: String): SqlString =
     SqlString.unsafeCoerce(s"VACUUM SORT ONLY $tableName;")
+
+  def buildGetTimestampStatement(schema: String): SqlString = {
+    SqlString.unsafeCoerce(s"""
+      |SELECT etl_tstamp
+      | FROM ${Common.getEventsTable(schema)}
+      | WHERE etl_tstamp IS NOT null
+      | ORDER BY etl_tstamp DESC
+      | LIMIT 1""".stripMargin)
+  }
+
+  def buildGetManifestRecordStatement(schema: String, etlTstamp: String): SqlString = {
+    SqlString.unsafeCoerce(
+      s"""
+         |SELECT COUNT(*)
+         | FROM ${Common.getEventsTable(schema)}
+         | WHERE etl_tstamp IS '$etlTstamp'
+       """.stripMargin)
+  }
 
   /**
    * SQL statements for particular shredded type, grouped by their purpose

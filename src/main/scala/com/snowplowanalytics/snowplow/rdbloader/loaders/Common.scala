@@ -13,26 +13,31 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
+import java.time.Instant
+
+import cats.data._
+import cats.implicits._
+
 import shapeless.tag
 import shapeless.tag._
 
 // This project
-import discovery.DataDiscovery
 import config.{ CliConfig, Step }
 import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
+import db.Entities._
+import discovery.DataDiscovery
 
 
 object Common {
 
-  /**
-   * Main "atomic" table name
-   */
+  /** Main "atomic" table name */
   val EventsTable = "events"
 
-  /**
-   * Table for load manifests
-   */
+  /** Table for load manifests */
   val ManifestTable = "manifest"
+
+  val BeginTransaction = SqlString.unsafeCoerce("BEGIN")
+  val CommitTransaction = SqlString.unsafeCoerce("COMMIT")
 
   /**
    * Correctly merge database schema and table name
@@ -99,7 +104,7 @@ object Common {
         else original
       case _: PostgresqlConfig =>
         // Safe to skip consistency check as whole folder will be downloaded
-        DataDiscovery.discoverAtomic(target, cliConfig.target.id)
+        DataDiscovery.discoverFull(target, shredJob, region, assets)
     }
   }
 
@@ -114,4 +119,48 @@ object Common {
   }
 
   sealed trait SqlStringTag
+
+  /** Check if entry already exists in load manifest */
+  def checkLoadManifest(schema: String): LoaderAction[Unit] = {
+    for {
+      latestAtomic <- getEtlTstamp(schema)
+      _ <- latestAtomic match {
+        case Some(events) => for {
+          item <- getLatestManifestItem(schema, events.etlTstamp)
+          _ <- item match {
+            case Some(manifest) if manifest.etlTstamp == events.etlTstamp =>
+              val message = s"Load Manifest record for ${manifest.etlTstamp} already exists. Committed at ${manifest.commitTstamp}"
+              LoaderAction.liftE(LoaderError.LoadManifestError(message).asLeft)
+            case _ => LoaderAction.unit
+          }
+        } yield ()
+        case None => LoaderAction.unit
+      }
+    } yield ()
+  }
+
+  /** Get ETL timestamp of ongoing load */
+  private[loaders] def getEtlTstamp(schema: String): EitherT[Action, LoaderError, Option[Timestamp]] = {
+    val query =
+      s"""SELECT etl_tstamp
+         | FROM ${Common.getEventsTable(schema)}
+         | WHERE etl_tstamp IS NOT null
+         | ORDER BY etl_tstamp DESC
+         | LIMIT 1""".stripMargin
+
+    LoaderA.executeQuery[Option[Timestamp]](SqlString.unsafeCoerce(query))
+  }
+
+  /** Get latest load manifest item */
+  private[loaders] def getLatestManifestItem(schema: String, etlTstamp: Instant): EitherT[Action, LoaderError, Option[LoadManifestItem]] = {
+    val query =
+      s"""SELECT *
+         | FROM ${Common.getManifestTable(schema)}
+         | WHERE etl_tstamp = $etlTstamp
+         | ORDER BY etl_tstamp DESC
+         | LIMIT 1""".stripMargin
+
+    LoaderA.executeQuery[Option[LoadManifestItem]](SqlString.unsafeCoerce(query))
+  }
+
 }

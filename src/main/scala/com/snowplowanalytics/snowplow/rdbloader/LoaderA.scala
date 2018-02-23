@@ -23,6 +23,7 @@ import com.snowplowanalytics.manifest.core.{ Item, Application }
 // This library
 import Security.Tunnel
 import loaders.Common.SqlString
+import db.Decoder
 
 /**
  * RDB Loader algebra. Used to build Free data-structure,
@@ -33,7 +34,7 @@ sealed trait LoaderA[A]
 object LoaderA {
 
   // Discovery ops
-  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.Key]]]
+  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.BlobObject]]]
   case class KeyExists(key: S3.Key) extends LoaderA[Boolean]
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
 
@@ -42,8 +43,11 @@ object LoaderA {
   case class ManifestProcess(item: Item, load: LoaderAction[Unit]) extends LoaderA[Either[LoaderError, Unit]]
 
   // Loading ops
-  case class ExecuteQuery(query: SqlString) extends LoaderA[Either[LoaderError, Long]]
-  case class CopyViaStdin(files: List[Path], query: SqlString) extends LoaderA[Either[LoaderError, Long]]
+  case class ExecuteUpdate(sql: SqlString) extends LoaderA[Either[LoaderError, Long]]
+  case class CopyViaStdin(files: List[Path], sql: SqlString) extends LoaderA[Either[LoaderError, Long]]
+
+  // JDBC ops
+  case class ExecuteQuery[A](query: SqlString, ev: Decoder[A]) extends LoaderA[Either[LoaderError, A]]
 
   // FS ops
   case object CreateTmpDir extends LoaderA[Either[LoaderError, Path]]
@@ -68,8 +72,8 @@ object LoaderA {
   case class GetEc2Property(name: String) extends LoaderA[Either[LoaderError, String]]
 
 
-  def listS3(bucket: S3.Folder): Action[Either[LoaderError, List[S3.Key]]] =
-    Free.liftF[LoaderA, Either[LoaderError, List[S3.Key]]](ListS3(bucket))
+  def listS3(bucket: S3.Folder): Action[Either[LoaderError, List[S3.BlobObject]]] =
+    Free.liftF[LoaderA, Either[LoaderError, List[S3.BlobObject]]](ListS3(bucket))
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): Action[Boolean] =
@@ -83,11 +87,10 @@ object LoaderA {
   def manifestDiscover(loader: Application, shredder: Application, predicate: Option[Item => Boolean]): Action[Either[LoaderError, List[Item]]] =
     Free.liftF[LoaderA, Either[LoaderError, List[Item]]](ManifestDiscover(loader, shredder, predicate))
 
-<<<<<<< HEAD
   /** Execute single query (against target in interpreter) */
   def executeQuery(query: SqlString): Action[Either[LoaderError, Long]] =
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
-=======
+
   /** Add Processing manifest records due loading */
   def manifestProcess(item: Item, load: LoaderAction[Unit]): LoaderAction[Unit] =
     EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
@@ -95,13 +98,18 @@ object LoaderA {
   /** Execute single SQL statement (against target in interpreter) */
   def executeUpdate(sql: SqlString): Action[Either[LoaderError, Long]] =
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql))
->>>>>>> e09688a... to processing
 
   /** Execute multiple (against target in interpreter) */
   def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
-    val shortCircuiting = queries.traverse(query => EitherT(executeQuery(query)))
+    val shortCircuiting = queries.traverse(query => EitherT(executeUpdate(query)))
     shortCircuiting.void.value
   }
+
+
+  /** Execute query and parse results into `A` */
+  def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[A] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, A]](ExecuteQuery[A](query, ev)))
+
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
