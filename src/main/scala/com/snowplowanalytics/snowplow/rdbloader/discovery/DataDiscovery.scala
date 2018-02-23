@@ -40,9 +40,6 @@ case class DataDiscovery(
   /** ETL id */
   def runId: String = base.split("/").last
 
-  /** Amount of keys in atomic-events directory */
-  def atomicCardinality: Long
-
   /** `atomic-events` directory full path */
   def atomicEvents: S3.Folder =
     S3.Folder.append(base, "atomic-events")
@@ -51,19 +48,11 @@ case class DataDiscovery(
    * Time in ms for run folder to setup eventual consistency,
    * based on amount of atomic and shredded files
    */
-  def consistencyTimeout: Long = this match {
-    case DataDiscovery.AtomicDiscovery(_, _) =>
-      ((atomicCardinality * 0.1).toLong + 5L) * 1000
-    case DataDiscovery.FullDiscovery(_, _, shreddedData) =>
-      ((atomicCardinality * 0.1 * shreddedData.length).toLong + 5L) * 1000
-  }
+  def consistencyTimeout: Long =
+    ((atomicCardinality * 0.1 * shreddedTypes.length).toLong + 5L) * 1000
 
-  def show: String = this match {
-    case DataDiscovery.AtomicDiscovery(_, cardinality) =>
-      s"$runId with $cardinality atomic files"
-    case DataDiscovery.FullDiscovery(_, cardinality, types) =>
-      s"$runId with $cardinality atomic files and following shredded types:\n${types.map(t => "  + " + t.show).mkString("\n")}"
-  }
+  def show: String =
+    s"$runId with $atomicCardinality atomic files and following shredded types:\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
 }
 
 /**
@@ -89,17 +78,6 @@ object DataDiscovery {
   case class Global(folder: S3.Folder) extends DiscoveryTarget
   case class InSpecificFolder(folder: S3.Folder) extends DiscoveryTarget
   case class ViaManifest(folder: Option[S3.Folder]) extends DiscoveryTarget
-
-  /**
-   * Discovery result that contains only atomic data (list of S3 keys in `atomic-events`)
-   */
-  case class AtomicDiscovery(base: S3.Folder, atomicCardinality: Long) extends DataDiscovery
-
-  /**
-   * Full discovery result that contains both atomic data (list of S3 keys in `atomic-events`)
-   * and shredded data
-   */
-  case class FullDiscovery(base: S3.Folder, atomicCardinality: Long, shreddedTypes: List[ShreddedType]) extends DataDiscovery
 
   /**
    * Discover list of shred run folders, each containing
@@ -150,31 +128,6 @@ object DataDiscovery {
   }
 
   /**
-   * Discovery list of `atomic-events` folders
-   *
-   * @param target either shredded good or specific run folder
-   * @return list of run folders with `atomic-events`
-   */
-  def discoverAtomic(target: DiscoveryTarget, id: String): LoaderAction[List[DataDiscovery]] =
-    target match {
-      case Global(folder) =>
-        for {
-          keys    <- listGoodBucket(folder)
-          grouped <- LoaderAction.liftE(groupKeysAtomic(keys))
-        } yield grouped
-
-      case InSpecificFolder(folder) =>
-        for {
-          keys      <- listGoodBucket(folder)
-          discovery  = if (keys.isEmpty) DiscoveryError(NoDataFailure(folder)).asLeft else groupKeysAtomic(keys)
-          result    <- LoaderAction.liftE[List[DataDiscovery]](discovery)
-        } yield result
-
-      case ViaManifest(_) =>
-        ManifestDiscovery.discoverAtomic(id)
-    }
-
-  /**
    * List whole directory excluding special files
    */
   def listGoodBucket(folder: S3.Folder): LoaderAction[List[S3.Key]] =
@@ -183,7 +136,7 @@ object DataDiscovery {
   // Full discovery
 
   /**
-   * Group list of keys into list (usually single-element) of `FullDiscovery`
+   * Group list of keys into list (usually single-element) of `DataDiscovery`
    *
    * @param validatedDataKeys IO-action producing validated list of `FinalDataKey`
    * @return IO-action producing list of
@@ -228,15 +181,8 @@ object DataDiscovery {
     }
   }
 
-  /** Turn `FullDiscovery` into `AtomicDiscovery` */
-  def downCastFullDiscovery(original: DataDiscovery): AtomicDiscovery =
-    original match {
-      case e: AtomicDiscovery => e
-      case FullDiscovery(base, cardinality, _) => AtomicDiscovery(base, cardinality)
-    }
-
   /**
-   * Transform list of S3 keys into list of `DataKeyFinal` for `FullDiscovery`
+   * Transform list of S3 keys into list of `DataKeyFinal` for `DataDiscovery`
    */
   private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.Key]): ValidatedDataKeys = {
     def id(x: ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]) = x
@@ -287,7 +233,6 @@ object DataDiscovery {
    *
    * @param shredJob shred job version to check path pattern
    * @param key particular S3 key in shredded good folder
-   * @return
    */
   private def parseDataKey(shredJob: Semver, key: S3.Key): Either[DiscoveryFailure, DataKeyIntermediate] = {
     S3.getAtomicPath(key) match {
@@ -298,45 +243,6 @@ object DataDiscovery {
             ShreddedDataKeyIntermediate(key, info).asRight
           case Left(e) => e.asLeft
         }
-    }
-  }
-
-  // Atomic discovery
-
-  /**
-   * Group list of S3 keys by run folder
-   */
-  def groupKeysAtomic(keys: List[S3.Key]): Either[LoaderError, List[AtomicDiscovery]] = {
-    val atomicKeys: ValidatedNel[DiscoveryFailure, List[AtomicDataKey]] =
-      keys.filter(isAtomic).traverse(parseAtomicKey(_).toValidatedNel)
-
-    val validated = atomicKeys.andThen { keys => keys.groupBy(_.base).toList.traverse(validateFolderAtomic) }
-
-    validated match {
-      case Validated.Valid(x) => x.asRight
-      case Validated.Invalid(x) => DiscoveryError(x.toList).asLeft
-    }
-  }
-
-  /**
-   * Check that `atomic-events` folder is non-empty
-   */
-  def validateFolderAtomic(groupOfKeys: (S3.Folder, List[AtomicDataKey])): ValidatedNel[DiscoveryFailure, AtomicDiscovery] = {
-    val (base, keys) = groupOfKeys
-    if (keys.nonEmpty) {
-      AtomicDiscovery(base, keys.length).validNel
-    } else {
-      AtomicDiscoveryFailure(base).invalidNel
-    }
-  }
-
-  /**
-   * Check if S3 key is proper object from `atomic-events`
-   */
-  private def parseAtomicKey(key: S3.Key): Either[DiscoveryFailure, AtomicDataKey] = {
-    S3.getAtomicPath(key) match {
-      case Some(_) => AtomicDataKey(key).asRight
-      case None => AtomicDiscoveryFailure(key).asLeft
     }
   }
 
@@ -405,7 +311,6 @@ object DataDiscovery {
     EitherT[Action, LoaderError, List[DataDiscovery]](check(1, None))
   }
 
-
   def discoveryDiff(original: List[DataDiscovery], control: List[DataDiscovery]): List[String] = {
     original.flatMap { o =>
       control.find(_.base == o.base) match {
@@ -416,17 +321,10 @@ object DataDiscovery {
   }
 
   /** Get difference-message between two checks. Assuming they have same base */
-  private def discoveryDiff(original: DataDiscovery, control: DataDiscovery) = {
-    (if (original.atomicCardinality != control.atomicCardinality) List("Different cardinality of atomic files") else Nil) ++
-      ((original, control) match {
-        case (o: FullDiscovery, c: FullDiscovery) =>
-          o.shreddedTypes.diff(c.shreddedTypes).map { d => s"${d.show} exists in first check and misses in control" } ++
-          c.shreddedTypes.diff(o.shreddedTypes).map { d => s"${d.show} exists in control check and misses in first" }
-        case (_: AtomicDiscovery, _: AtomicDiscovery) =>
-          Nil
-        case _ =>
-          List("Inconsistent state")    // not possible
-      })
+  private def discoveryDiff(o: DataDiscovery, c: DataDiscovery) = {
+    (if (o.atomicCardinality != c.atomicCardinality) List("Different cardinality of atomic files") else Nil) ++
+      o.shreddedTypes.diff(c.shreddedTypes).map { d => s"${d.show} exists in first check and misses in control" } ++
+      c.shreddedTypes.diff(o.shreddedTypes).map { d => s"${d.show} exists in control check and misses in first" }
   }
 
   /**
