@@ -15,6 +15,7 @@ package loaders
 
 import java.util.UUID
 import java.time.Instant
+import java.sql.Timestamp
 
 import cats.{Id, ~>}
 import cats.implicits._
@@ -34,6 +35,14 @@ import discovery.{ DataDiscovery, ShreddedType, ManifestDiscovery }
 
 
 class RedshiftLoaderSpec extends Specification { def is = s2"""
+  Discover atomic events data and create load statements $e1
+  Discover full data and create load statements $e2
+  Do not fail on empty discovery $e3
+  Do not sleep with disabled consistency check $e4
+  Perform manifest-insertion and load within same transaction $e5
+  Load Manifest check does not allow items with same etlTstamp $e6
+  Transit copy creates and deletes a temporary table $e7
+  Perform load with discovery through processing manifest $e8
   Write an application_error failure for failed redshift load $e9
   """
 
@@ -77,7 +86,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val separator = "\t"
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val discovery = DataDiscovery.FullDiscovery(
+    val discovery = DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
       List(
         ShreddedType(
@@ -191,7 +200,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val action = Common.discover(CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value
     val result: Either[LoaderError, List[DataDiscovery]] = action.foldMap(interpreter)
 
-    val expected = List(DataDiscovery.FullDiscovery(
+    val expected = List(DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
       List(
         ShreddedType(
@@ -205,7 +214,6 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   }
 
   def e5 = {
-
     val expected = List(
       "BEGIN",
       "LOAD INTO atomic MOCK",
@@ -226,12 +234,15 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
-          case LoaderA.ExecuteQuery(query) =>
+          case LoaderA.ExecuteUpdate(query) =>
             queries.append(query)
             Right(1L)
 
           case LoaderA.Print(_) =>
             ()
+
+          case LoaderA.ExecuteQuery(_, _) =>
+            Right(None)
 
           case action =>
             throw new RuntimeException(s"Unexpected Action [$action]")
@@ -240,6 +251,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val input = RedshiftLoadStatements(
+      "atomic",
       sql("LOAD INTO atomic MOCK"),
       List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
       Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1
@@ -279,13 +291,13 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.events") =>
             queries.append("SELECT events")
-            val time = java.sql.Timestamp.from(Instant.ofEpochMilli(1519757441133L))
+            val time = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
             Right(Some(db.Entities.Timestamp(time)))
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
             queries.append("SELECT manifest")
-            val etlTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519777441133L))
+            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
+            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
             Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
 
           case action =>
@@ -312,7 +324,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
     val transactionsExpectation = queries.toList must beEqualTo(expected)
     val resultExpectation = result must beLeft
-    transactionsExpectation.and(resultExpectation)
+    transactionsExpectation and resultExpectation
   }
 
   def e7 = {
@@ -341,13 +353,13 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
             queries.append("SELECT manifest")
-            val etlTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519777441133L))
+            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
+            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
             Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("SELECT etl_tstamp") =>
             queries.append("SELECT etl_tstamp")
-            val time = java.sql.Timestamp.from(Instant.ofEpochMilli(1520164735L))
+            val time = Timestamp.from(Instant.ofEpochMilli(1520164735L))
             Right(Some(db.Entities.Timestamp(time)))
 
           case action =>
@@ -428,13 +440,13 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
             queries.append("SELECT manifest")
-            val etlTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = java.sql.Timestamp.from(Instant.ofEpochMilli(1519777441133L))
+            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
+            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
             Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
 
           case LoaderA.ExecuteQuery(query, _) if query.contains("SELECT etl_tstamp") =>
             queries.append("SELECT etl_tstamp")
-            val time = java.sql.Timestamp.from(Instant.ofEpochMilli(1520164735L))
+            val time = Timestamp.from(Instant.ofEpochMilli(1520164735L))
             Right(Some(db.Entities.Timestamp(time)))
 
           case LoaderA.Get(key) =>

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -35,6 +35,7 @@ object Step {
   sealed trait SkipStep extends Step with StringEnum
   case object Analyze extends SkipStep { def asString = "analyze" }
   case object ConsistencyCheck extends SkipStep { def asString = "consistency_check" }
+  case object LoadManifestCheck extends SkipStep { def asString = "load_manifest_check" }
 
   /**
    * Step that cannot be skipped nor included
