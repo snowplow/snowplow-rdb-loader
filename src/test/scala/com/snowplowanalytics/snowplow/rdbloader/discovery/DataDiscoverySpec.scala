@@ -21,7 +21,6 @@ import org.specs2.Specification
 import LoaderError.{DiscoveryError, NoDataFailure}
 import config.Semver
 import discovery.ShreddedType._
-import DataDiscovery._
 import S3.Folder.{coerce => dir}
 import S3.Key.{coerce => s3key}
 
@@ -78,7 +77,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/")
 
     val expected = List(
-      FullDiscovery(
+      DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         2L,
         List(
@@ -93,7 +92,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         None
       ),
 
-      FullDiscovery(
+      DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
         2L,
         List(
@@ -186,7 +185,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/")
 
     val expected = List(
-      FullDiscovery(
+      DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         2L,
         List(
@@ -201,7 +200,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         None
       ),
 
-      FullDiscovery(
+      DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
         2L,
         List(
@@ -313,7 +312,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/")
 
     val expected = List(
-      FullDiscovery(
+      DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         2L,
         List(
