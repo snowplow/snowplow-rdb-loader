@@ -128,10 +128,10 @@ class RealWorldInterpreter private[interpreters](
             }
           } yield ()
 
-        case ExecuteQuery(query) =>
+        case ExecuteUpdate(query) =>
           val result = for {
             conn <- dbConnection
-            res <- PgInterpreter.executeQuery(conn)(query)
+            res <- PgInterpreter.executeUpdate(conn)(query)
           } yield res
           println(query)
           result.asInstanceOf[Id[A]]
@@ -140,6 +140,12 @@ class RealWorldInterpreter private[interpreters](
             conn <- dbConnection
             _ = log(s"Copying ${files.length} files via stdin")
             res <- PgInterpreter.copyViaStdin(conn, files, query)
+          } yield res
+
+        case ExecuteQuery(query, d) =>
+          for {
+            conn <- dbConnection
+            res <- PgInterpreter.executeQuery(conn)(query)(d)
           } yield res
 
         case CreateTmpDir =>

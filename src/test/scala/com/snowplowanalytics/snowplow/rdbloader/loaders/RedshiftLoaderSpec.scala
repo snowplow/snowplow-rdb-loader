@@ -80,7 +80,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val separator = "\t"
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val discovery = DataDiscovery.FullDiscovery(
+    val discovery = DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
       List(
         ShreddedType(
@@ -194,7 +194,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val action = Common.discover(CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value
     val result: Either[LoaderError, List[DataDiscovery]] = action.foldMap(interpreter)
 
-    val expected = List(DataDiscovery.FullDiscovery(
+    val expected = List(DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
       List(
         ShreddedType(
@@ -208,7 +208,6 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   }
 
   def e5 = {
-
     val expected = List(
       "BEGIN",
       "LOAD INTO atomic MOCK",
@@ -229,12 +228,15 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
-          case LoaderA.ExecuteQuery(query) =>
+          case LoaderA.ExecuteUpdate(query) =>
             queries.append(query)
             Right(1L)
 
           case LoaderA.Print(_) =>
             ()
+
+          case LoaderA.ExecuteQuery(_, _) =>
+            Right(None)
 
           case action =>
             throw new RuntimeException(s"Unexpected Action [$action]")
@@ -243,6 +245,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val input = RedshiftLoadStatements(
+      "atomic",
       sql("LOAD INTO atomic MOCK"),
       List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
       Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1

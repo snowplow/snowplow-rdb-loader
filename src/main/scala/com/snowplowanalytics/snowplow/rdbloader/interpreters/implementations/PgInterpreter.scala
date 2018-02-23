@@ -29,6 +29,7 @@ import org.postgresql.jdbc.PgConnection
 import org.postgresql.{Driver => PgDriver}
 
 import LoaderError.StorageTargetError
+import db.Decoder
 import config.StorageTarget
 import loaders.Common.SqlString
 
@@ -41,7 +42,7 @@ object PgInterpreter {
    * @param sql string with valid SQL statement
    * @return number of updated rows in case of success, failure otherwise
    */
-  def executeQuery(conn: Connection)(sql: SqlString): Either[StorageTargetError, Int] =
+  def executeUpdate(conn: Connection)(sql: SqlString): Either[StorageTargetError, Int] =
     Either.catchNonFatal {
       conn.createStatement().executeUpdate(sql)
     } leftMap {
@@ -49,9 +50,23 @@ object PgInterpreter {
         println(e.getMessage)
         StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
       case NonFatal(e) =>
-        System.err.println("RDB Loader unknown error in executeQuery")
+        System.err.println("RDB Loader unknown error in executeUpdate")
         e.printStackTrace()
         StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
+    }
+
+  def executeQuery[A](conn: Connection)(sql: SqlString)(implicit ev: Decoder[A]): Either[StorageTargetError, A] =
+    try {
+      val resultSet = conn.createStatement().executeQuery(sql)
+      ev.decode(resultSet) match {
+        case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
+        case Right(a) => a.asRight[StorageTargetError]
+      }
+    } catch {
+      case NonFatal(e) =>
+        System.err.println("RDB Loader unknown error in executeQuery")
+        e.printStackTrace()
+        StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[A]
     }
 
   def setAutocommit(conn: Connection, autoCommit: Boolean): Either[LoaderError, Unit] =
@@ -63,7 +78,6 @@ object PgInterpreter {
         e.printStackTrace()
         Left(StorageTargetError(e.toString))
     }
-
 
   def copyViaStdin(conn: Connection, files: List[Path], copyStatement: SqlString): Either[LoaderError, Long] = {
     val copyManager = Either.catchNonFatal {
@@ -86,6 +100,10 @@ object PgInterpreter {
     } catch {
       case NonFatal(e) => Left(StorageTargetError(e.toString))
     }
+
+  def countRows(conn: Connection, queryStatement: String): Either[LoaderError, Int] = {
+    ???
+  }
 
   /**
    * Get Redshift or Postgres connection
