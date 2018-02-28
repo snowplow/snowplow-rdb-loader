@@ -28,8 +28,6 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.validation.ValidatableJValue._
 
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.ProcessingManifestConfig
-
 // This project
 import LoaderError._
 import utils.Compat._
@@ -51,7 +49,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def username: String
   def password: StorageTarget.PasswordConfig
 
-  def processingManifest: Option[ProcessingManifestConfig]
+  def processingManifest: Option[StorageTarget.ProcessingManifestConfig]
 
   def eventsTable: String =
     loaders.Common.getEventsTable(schema)

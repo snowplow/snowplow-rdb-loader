@@ -29,13 +29,16 @@ object Step {
   sealed trait IncludeStep extends Step with StringEnum
   case object Vacuum extends IncludeStep { def asString = "vacuum" }
 
-  /**
-   * Step that will be included if not skip it explicitly
-   */
+  /** Step that will be included if not skip it explicitly */
   sealed trait SkipStep extends Step with StringEnum
+  /** Redshift ANALYZE */
   case object Analyze extends SkipStep { def asString = "analyze" }
+  /** Perform additional sleep until S3 is consistent */
   case object ConsistencyCheck extends SkipStep { def asString = "consistency_check" }
+  /** Perform defensive check that `etl_tstamp` is not in load manifest yet */
   case object LoadManifestCheck extends SkipStep { def asString = "load_manifest_check" }
+  /** Do not COPY data through temporary table, even with `--folder` option (will be applied only with `--folder`) */
+  case object TransitCopy extends SkipStep { def asString = "transit_copy" }
 
   /**
    * Step that cannot be skipped nor included
@@ -59,10 +62,8 @@ object Step {
       case Left(e) => throw new RuntimeException(e)
     } } }
 
-  /**
-   * Steps included into app by default
-   */
-  val defaultSteps = sealedDescendants[SkipStep] ++ Set.empty[Step]
+  /** Steps included into app by default */
+  val defaultSteps: Set[Step] = sealedDescendants[SkipStep] ++ Set.empty[Step]
 
   /**
    * Remove explicitly disabled steps and add optional steps

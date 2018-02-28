@@ -87,7 +87,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
     val discovery = DataDiscovery(
-      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
+      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(3),
       List(
         ShreddedType(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0)),
@@ -97,36 +97,36 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     )
     val result = RedshiftLoadStatements.buildQueue(validConfig, validTarget, steps)(List(discovery))
 
-    val atomic = s"""
-         |COPY atomic.events FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/atomic-events/'
+    val atomic =
+      s"""COPY atomic.events FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/atomic-events/'
          | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1'
          | DELIMITER '$separator' MAXERROR 1
          | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
-         | TIMEFORMAT 'auto' ACCEPTINVCHARS ;""".stripMargin
+         | TIMEFORMAT 'auto' ACCEPTINVCHARS """.stripMargin
 
     val vacuum = List(
-      sql("VACUUM SORT ONLY atomic.events;"),
-      sql("VACUUM SORT ONLY atomic.com_snowplowanalytics_snowplow_submit_form_1;"))
+      sql("VACUUM SORT ONLY atomic.events"),
+      sql("VACUUM SORT ONLY atomic.com_snowplowanalytics_snowplow_submit_form_1"))
 
     val analyze = List(
-      sql("ANALYZE atomic.events;"),
-      sql("ANALYZE atomic.com_snowplowanalytics_snowplow_submit_form_1;"))
+      sql("ANALYZE atomic.events"),
+      sql("ANALYZE atomic.com_snowplowanalytics_snowplow_submit_form_1"))
 
-    val shredded = List(sql("""
-        |COPY atomic.com_snowplowanalytics_snowplow_submit_form_1 FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-'
+    val shredded = List(sql(
+      """COPY atomic.com_snowplowanalytics_snowplow_submit_form_1 FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-'
         | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json'
         | REGION AS 'us-east-1'
         | MAXERROR 1 TRUNCATECOLUMNS TIMEFORMAT 'auto'
-        | ACCEPTINVCHARS ;""".stripMargin))
+        | ACCEPTINVCHARS """.stripMargin))
 
-    val manifest = """
-        |INSERT INTO atomic.manifest
+    val manifest =
+      """INSERT INTO atomic.manifest
         | SELECT etl_tstamp, sysdate AS commit_tstamp, count(*) AS event_count, 1 AS shredded_cardinality
         | FROM atomic.events
         | WHERE etl_tstamp IS NOT null
         | GROUP BY 1
         | ORDER BY etl_tstamp DESC
-        | LIMIT 1;""".stripMargin
+        | LIMIT 1""".stripMargin
 
     val expectedItem = RedshiftLoadStatements("atomic", RedshiftLoadStatements.StraightCopy(sql(atomic)), shredded, Some(vacuum), Some(analyze), sql(manifest), discovery)
     val expected = List(expectedItem)
@@ -201,7 +201,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val result: Either[LoaderError, List[DataDiscovery]] = action.foldMap(interpreter)
 
     val expected = List(DataDiscovery(
-      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), 3,
+      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(3),
       List(
         ShreddedType(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0, Some(Semver.ReleaseCandidate(4)))),
@@ -252,7 +252,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
     val input = RedshiftLoadStatements(
       "atomic",
-      sql("LOAD INTO atomic MOCK"),
+      RedshiftLoadStatements.StraightCopy(sql("LOAD INTO atomic MOCK")),
       List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
       Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1
       Some(List(sql("ANALYZE MOCK"))),
@@ -423,11 +423,11 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
       def apply[A](effect: LoaderA[A]): Id[A] = {
         effect match {
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("\nCOPY") =>
+          case LoaderA.ExecuteUpdate(query) if query.startsWith("COPY") =>
             queries.append(query.split(" ").take(2).mkString(" ").trim)
             Right(1L)
 
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("\nINSERT INTO atomic.manifest") =>
+          case LoaderA.ExecuteUpdate(query) if query.startsWith("INSERT INTO atomic.manifest") =>
             queries.append("INSERT INTO atomic.manifest")
             Right(1L)
 

@@ -23,6 +23,10 @@ import com.amazonaws.services.s3.model.ObjectMetadata
 
 import org.json4s.JObject
 
+import org.joda.time.DateTime
+
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+
 import com.snowplowanalytics.snowplow.scalatracker._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.{AsyncBatchEmitter, AsyncEmitter}
 
@@ -31,9 +35,30 @@ import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
 
 object TrackerInterpreter {
 
-  val ApplicationContextSchema = "iglu:com.snowplowanalytics.monitoring.batch/application_context/jsonschema/1-0-0"
-  val LoadSucceededSchema = "iglu:com.snowplowanalytics.monitoring.batch/load_succeeded/jsonschema/1-0-0"
-  val LoadFailedSchema = "iglu:com.snowplowanalytics.monitoring.batch/load_failed/jsonschema/1-0-0"
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer(1,0,0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeded", "jsonschema", SchemaVer(1,0,0))
+  val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer(1,0,0))
+
+  /** Callback for failed  */
+  private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {
+    def toMsg(rsp: CollectorResponse, includeHeader: Boolean): String = rsp match {
+      case CollectorFailure(code) =>
+        val header = if (includeHeader) { s"Snowplow Tracker [${DateTime.now()}]: " } else ""
+        header ++ s"Cannot deliver event to ${params.getUri}. Collector responded with $code"
+      case TrackerFailure(error) =>
+        val header = if (includeHeader) { s"Snowplow Tracker [${DateTime.now()}]: " } else ""
+        header ++ s"Cannot deliver event to ${params.getUri}. Tracker failed due ${error.getMessage}"
+      case RetriesExceeded(r) => s"Tracker [${DateTime.now()}]: Gave up on trying to deliver event. Last error: ${toMsg(r, false)}"
+      case CollectorSuccess(_) => ""
+    }
+
+    val message = toMsg(response, true)
+
+    // The only place in interpreters where println used instead of logger as this is async function
+    if (message.isEmpty) () else System.err.println(message)
+  }
 
   /**
    * Initialize Snowplow tracker, if `monitoring` section is properly configured
@@ -65,10 +90,10 @@ object TrackerInterpreter {
    * @param tracker some tracker if enabled
    * @param error **sanitized** error message
    */
-  def trackError(tracker: Option[Tracker], error: String): Unit = tracker match {
+  def trackError(tracker: Option[Tracker]): Unit = tracker match {
     case Some(t) =>
-      t.trackUnstructEvent(SelfDescribingJson(LoadFailedSchema, JObject(Nil)))
-    case None => println(error)
+      t.trackSelfDescribingEvent(SelfDescribingData(LoadFailedSchema, JObject(Nil)))
+    case None => ()
   }
 
   /**
@@ -92,7 +117,7 @@ object TrackerInterpreter {
   def dumpStdout(s3Client: AmazonS3, key: S3.Key, content: String): Either[String, S3.Key] = {
     try {
       if (S3Interpreter.keyExists(s3Client, key)) {
-        Left(s"RDB LOADER ERROR: S3 log object [$key] already exists")
+        Left(s"S3 log object [$key] already exists")
       } else {
         val meta = new ObjectMetadata()
         meta.setContentLength(content.length)
@@ -118,7 +143,6 @@ object TrackerInterpreter {
    * @param dumpResult S3 dumping result, none if loader didn't try to dump
    */
   def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Int = {
-    println(result)
     (result, dumpResult) match {
       case (Log.LoadingSucceeded, None) =>
         println(s"INFO: Logs were not dumped to S3")
