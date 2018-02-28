@@ -99,6 +99,9 @@ object S3 {
 
   object Key extends tag.Tagger[S3KeyTag] {
 
+    def join(folder: Folder, name: String): Key =
+      coerce(folder + name)
+
     def getParent(key: Key): Folder = {
       val string = key.split("/").dropRight(1).mkString("/")
       Folder.coerce(string)
