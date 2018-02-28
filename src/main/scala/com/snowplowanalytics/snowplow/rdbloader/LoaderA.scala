@@ -56,7 +56,7 @@ object LoaderA {
   // Auxiliary ops
   case class Sleep(timeout: Long) extends LoaderA[Unit]
   case class Track(exitLog: Log) extends LoaderA[Unit]
-  case class Dump(key: S3.Key, exitLog: Log) extends LoaderA[Either[String, S3.Key]]
+  case class Dump(key: S3.Key) extends LoaderA[Either[String, S3.Key]]
   case class Exit(exitLog: Log, dumpResult: Option[Either[String, S3.Key]]) extends LoaderA[Int]
   case class Print(message: String) extends LoaderA[Unit]
 
@@ -100,7 +100,7 @@ object LoaderA {
     Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql))
 
   /** Execute multiple (against target in interpreter) */
-  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+  def executeUpdates(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
     val shortCircuiting = queries.traverse(query => EitherT(executeUpdate(query)))
     shortCircuiting.void.value
   }
@@ -116,7 +116,7 @@ object LoaderA {
     val begin = SqlString.unsafeCoerce("BEGIN")
     val commit = SqlString.unsafeCoerce("COMMIT")
     val transaction = (begin :: queries) :+ commit
-    executeQueries(transaction)
+    executeUpdates(transaction)
   }
 
 
@@ -143,8 +143,8 @@ object LoaderA {
     Free.liftF[LoaderA, Unit](Track(result))
 
   /** Dump log to S3 */
-  def dump(key: S3.Key, result: Log): Action[Either[String, S3.Key]] =
-    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(key, result))
+  def dump(key: S3.Key): Action[Either[String, S3.Key]] =
+    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(key))
 
   /** Close RDB Loader app with appropriate state */
   def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Action[Int] =

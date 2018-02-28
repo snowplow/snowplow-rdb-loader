@@ -15,6 +15,7 @@ package loaders
 
 import cats.data._
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.EventsTable
 
 // This project
 import LoaderA._
@@ -84,6 +85,28 @@ object RedshiftLoader {
       _ <- vacuum(statements)
       _ <- analyze(statements)
     } yield ()
+  }
+
+  def getLoad(checkManifest: Boolean, dbSchema: String, copy: AtomicCopy): LoaderAction[Unit] = {
+    def check(eventsTable: EventsTable): LoaderAction[Unit] = {
+      if (checkManifest) Common.checkLoadManifest(dbSchema, eventsTable) else LoaderAction.unit
+    }
+
+    copy match {
+      case StraightCopy(copy) => for {
+        _ <- EitherT(executeUpdate(copy))
+        _ <- check(Common.AtomicEvents(dbSchema))
+      } yield ()
+      case TransitCopy(copy) =>
+        val create = RedshiftLoadStatements.createTransitTable(dbSchema)
+        val destroy = RedshiftLoadStatements.destroyTransitTable(dbSchema)
+        for {
+          _ <- EitherT(executeUpdate(create))
+          _ <- check(Common.TransitTable(dbSchema))
+          _ <- EitherT(executeUpdate(copy))
+          _ <- EitherT(executeUpdate(destroy))
+        } yield ()
+    }
   }
 
   /**

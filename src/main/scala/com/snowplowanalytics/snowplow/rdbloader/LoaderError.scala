@@ -19,9 +19,7 @@ import cats.data.ValidatedNel
 import com.snowplowanalytics.manifest.core.ManifestError
 import com.snowplowanalytics.manifest.core.ManifestError._
 
-/**
- * Root error type
- */
+/** Root error type */
 sealed trait LoaderError
 
 object LoaderError {
@@ -146,8 +144,10 @@ object LoaderError {
   /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError
 
-  /** Exception to use as end- */
-  case class LoaderThrowable(origin: LoaderError) extends Throwable
+  /** Exception wrapper to pass to processing manifest */
+  case class LoaderThrowable(origin: LoaderError) extends Throwable {
+    override def getMessage: String = origin.show
+  }
 
   /**
    * Aggregate some failures into more compact error-list to not pollute end-error

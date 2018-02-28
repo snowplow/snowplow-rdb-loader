@@ -66,7 +66,7 @@ object PostgresqlLoader {
   def analyze(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.analyze match {
       case Some(analyze) =>
-        val result = executeQueries(List(analyze)).map(_.void)
+        val result = executeUpdates(List(analyze)).map(_.void)
         EitherT(result)
       case None =>
         val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))
@@ -81,7 +81,7 @@ object PostgresqlLoader {
   def vacuum(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.vacuum match {
       case Some(vacuum) =>
-        val result = executeQueries(List(vacuum)).map(_.void)
+        val result = executeUpdates(List(vacuum)).map(_.void)
         EitherT(result)
       case None =>
         val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))

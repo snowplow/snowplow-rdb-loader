@@ -36,22 +36,36 @@ object Common {
   /** Table for load manifests */
   val ManifestTable = "manifest"
 
-  val BeginTransaction = SqlString.unsafeCoerce("BEGIN")
-  val CommitTransaction = SqlString.unsafeCoerce("COMMIT")
+  /** Default name for temporary local table used for transient COPY */
+  val TransitEventsTable = "temp_transit_events"
+
+  val BeginTransaction: SqlString = SqlString.unsafeCoerce("BEGIN")
+  val CommitTransaction: SqlString = SqlString.unsafeCoerce("COMMIT")
+
+  /** ADT representing possible destination of events table */
+  sealed trait EventsTable { def getDescriptor: String }
+  case class AtomicEvents(schema: String) extends EventsTable {
+    def getDescriptor: String = getEventsTable(schema)
+  }
+  case class TransitTable(schema: String) extends EventsTable {
+    def getDescriptor: String = getTable(schema, TransitEventsTable)
+  }
+
+  def getTable(databaseSchema: String, tableName: String): String =
+    if (databaseSchema.isEmpty) tableName
+    else databaseSchema + "." + tableName
 
   /**
    * Correctly merge database schema and table name
    */
   def getEventsTable(databaseSchema: String): String =
-    if (databaseSchema.isEmpty) EventsTable
-    else databaseSchema + "." + EventsTable
+    getTable(databaseSchema, EventsTable)
 
   /**
    * Correctly merge database schema and table name
    */
   def getManifestTable(databaseSchema: String): String =
-    if (databaseSchema.isEmpty) ManifestTable
-    else databaseSchema + "." + ManifestTable
+    getTable(databaseSchema, ManifestTable)
 
   /**
    * Subpath to check `atomic-events` directory presence
@@ -104,7 +118,7 @@ object Common {
         else original
       case _: PostgresqlConfig =>
         // Safe to skip consistency check as whole folder will be downloaded
-        DataDiscovery.discoverFull(target, shredJob, region, assets)
+        DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
     }
   }
 
@@ -120,16 +134,21 @@ object Common {
 
   sealed trait SqlStringTag
 
-  /** Check if entry already exists in load manifest */
-  def checkLoadManifest(schema: String): LoaderAction[Unit] = {
+  /**
+    * Check if entry already exists in load manifest
+    * @param schema database schema, e.g. `atomic` to access manifest
+    * @param eventsTable atomic data table, usually `events` or temporary tablename
+    */
+  def checkLoadManifest(schema: String, eventsTable: EventsTable): LoaderAction[Unit] = {
     for {
-      latestAtomic <- getEtlTstamp(schema)
+      latestAtomic <- getEtlTstamp(eventsTable)
       _ <- latestAtomic match {
         case Some(events) => for {
           item <- getLatestManifestItem(schema, events.etlTstamp)
           _ <- item match {
             case Some(manifest) if manifest.etlTstamp == events.etlTstamp =>
-              val message = s"Load Manifest record for ${manifest.etlTstamp} already exists. Committed at ${manifest.commitTstamp}"
+              val message = s"Load Manifest record for ${manifest.etlTstamp} already exists. " +
+                s"Committed at ${manifest.commitTstamp}. Use --skip ${Step.LoadManifestCheck.asString} to skip (not recommended)"
               LoaderAction.liftE(LoaderError.LoadManifestError(message).asLeft)
             case _ => LoaderAction.unit
           }
@@ -140,10 +159,10 @@ object Common {
   }
 
   /** Get ETL timestamp of ongoing load */
-  private[loaders] def getEtlTstamp(schema: String): EitherT[Action, LoaderError, Option[Timestamp]] = {
+  private[loaders] def getEtlTstamp(eventsTable: EventsTable): EitherT[Action, LoaderError, Option[Timestamp]] = {
     val query =
       s"""SELECT etl_tstamp
-         | FROM ${Common.getEventsTable(schema)}
+         | FROM ${eventsTable.getDescriptor}
          | WHERE etl_tstamp IS NOT null
          | ORDER BY etl_tstamp DESC
          | LIMIT 1""".stripMargin
@@ -162,5 +181,4 @@ object Common {
 
     LoaderA.executeQuery[Option[LoadManifestItem]](SqlString.unsafeCoerce(query))
   }
-
 }

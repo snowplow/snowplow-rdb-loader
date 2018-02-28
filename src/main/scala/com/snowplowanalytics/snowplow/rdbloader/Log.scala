@@ -24,13 +24,13 @@ object Log {
    * Loading succeeded. No messages, 0 exit code
    */
   case object LoadingSucceeded extends Log {
-    override def toString: String = s"RDB Loader successfully completed"
+    override def toString: String = s"Completed successfully"
   }
 
   /**
    * Loading failed. Write error message. 1 exit code.
    */
   case class LoadingFailed(error: String) extends Log {
-    override def toString: String =  s"ERROR: $error\n"
+    override def toString: String =  s"Failed:\n$error"
   }
 }
