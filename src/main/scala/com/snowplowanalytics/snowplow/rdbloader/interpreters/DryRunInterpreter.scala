@@ -141,12 +141,11 @@ class DryRunInterpreter private[interpreters](
         case Sleep(timeout) =>
           sleepTime = sleepTime + timeout
           Thread.sleep(timeout)
-        case Track(_) =>
-          ()
-        case Dump(key, result) =>
-          val actionResult = result.toString + "\n"
+        case Track(log) =>
+          println(log.toString)
+        case Dump(key) =>
           val dryRunResult = "Dry-run action: \n" + getDryRunLogs
-          TrackerInterpreter.dumpStdout(amazonS3, key, actionResult + dryRunResult)
+          TrackerInterpreter.dumpStdout(amazonS3, key, dryRunResult)
         case Exit(loadResult, dumpResult) =>
           println("Dry-run action: \n" + getDryRunLogs)
           TrackerInterpreter.exit(loadResult, dumpResult)

@@ -88,9 +88,10 @@ object ManifestDiscovery {
   }
 
   /**
-    * Extract information about `folder` from processing (as `DataDiscovery`).
+    * Extract information about `folder` from processing manifest (as `DataDiscovery`).
     * Unprocessed items are those that were processed by RDB Shredder and were NOT
     * processed by RDB Loader. Will return `ManifestFailure` if some item is blocked
+    * `NoDataFailure` error if item is already processed or doesn't exist in manifest
     *
     * @param id storage target id to avoid "re-discovering" target
     * @param region AWS S3 Region for JSONPaths

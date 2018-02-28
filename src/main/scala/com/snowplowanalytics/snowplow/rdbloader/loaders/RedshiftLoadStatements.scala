@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -17,16 +17,19 @@ import cats.implicits._
 
 // This project
 import Common._
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import config.{SnowplowConfig, Step}
 import config.StorageTarget.RedshiftConfig
+import config.SnowplowConfig.OutputCompression
+import discovery.{DataDiscovery, ShreddedType}
+
+import RedshiftLoadStatements._
 
 
 /**
  * Result of discovery and SQL-statement generation steps
  *
  * @param dbSchema common DB schema (e.g. atomic)
- * @param events COPY FROM statement to load `events` table
+ * @param atomicCopy COPY FROM statement to load `events` table
  * @param shredded COPY FROM statements to load shredded tables
  * @param vacuum VACUUM statements **including `events` table** if necessary
  * @param analyze ANALYZE statements **including `events` table** if necessary
@@ -35,7 +38,7 @@ import config.StorageTarget.RedshiftConfig
  */
 case class RedshiftLoadStatements(
     dbSchema: String,
-    events: SqlString,
+    atomicCopy: AtomicCopy,
     shredded: List[SqlString],
     vacuum: Option[List[SqlString]],
     analyze: Option[List[SqlString]],
@@ -47,6 +50,22 @@ case class RedshiftLoadStatements(
 object RedshiftLoadStatements {
 
   val EventFieldSeparator = "\t"
+
+  sealed trait AtomicCopy
+  case class StraightCopy(copy: SqlString) extends AtomicCopy
+  case class TransitCopy(copy: SqlString) extends AtomicCopy
+
+  /** Next version of Statements-generator (not yet used anywhere) */
+  case class Helper(
+      dbSchema: String,
+      region: String,
+      roleArn: String,
+      maxError: Int,
+
+      outputCompression: OutputCompression,
+      steps: Set[Step],
+
+      discovery: DataDiscovery)
 
   /**
    * Properly sorted lift of Redshift statements
@@ -74,9 +93,6 @@ object RedshiftLoadStatements {
     }
   }
 
-  private def uniqStatements[A](lists: List[List[A]]): List[A] =
-    lists.flatten.distinct
-
   /**
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
@@ -95,7 +111,7 @@ object RedshiftLoadStatements {
    *
    * @param target Redshift storage target configuration
    * @param steps SQL steps
-   * @param atomicCopyStatements COPY statements for `events` table
+   * @param atomicCopy a way to copy data into atomic events table
    * @param shreddedStatements statements for shredded tables (include COPY,
    *                           ANALYZE and VACUUM)
    * @param discovery original discovery object
@@ -104,7 +120,7 @@ object RedshiftLoadStatements {
   def buildLoadStatements(
       target: RedshiftConfig,
       steps: Set[Step],
-      atomicCopyStatements: SqlString,
+      atomicCopy: AtomicCopy,
       shreddedStatements: List[ShreddedStatements],
       discovery: DataDiscovery
    ): RedshiftLoadStatements = {
@@ -129,22 +145,32 @@ object RedshiftLoadStatements {
 
 
   /**
-   * Build COPY FROM TSV SQL-statement for non-shredded types and atomic.events table
+   * Build COPY FROM TSV SQL-statement for atomic.events table
    *
    * @param config main Snowplow configuration
    * @param target Redshift storage target configuration
    * @param s3path S3 path to atomic-events folder with shredded TSV files
+   * @param transitCopy COPY not straight to events table, but to temporary local table
    * @return valid SQL statement to LOAD
    */
-  def buildCopyFromTsvStatement(config: SnowplowConfig, target: RedshiftConfig, s3path: S3.Folder): SqlString = {
+  def buildEventsCopy(config: SnowplowConfig, target: RedshiftConfig, s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
     val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
 
-    SqlString.unsafeCoerce(s"""
-      |COPY ${target.eventsTable} FROM '$s3path'
-      | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
-      | DELIMITER '$EventFieldSeparator' MAXERROR ${target.maxError}
-      | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
-      | TIMEFORMAT 'auto' ACCEPTINVCHARS $compressionFormat;""".stripMargin)
+    if (transitCopy) {
+      TransitCopy(SqlString.unsafeCoerce(
+        s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
+           | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
+           | DELIMITER '$EventFieldSeparator' MAXERROR ${target.maxError}
+           | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
+           | TIMEFORMAT 'auto' ACCEPTINVCHARS $compressionFormat""".stripMargin))
+    } else {
+      StraightCopy(SqlString.unsafeCoerce(
+        s"""COPY ${target.eventsTable} FROM '$s3path'
+           | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
+           | DELIMITER '$EventFieldSeparator' MAXERROR ${target.maxError}
+           | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
+           | TIMEFORMAT 'auto' ACCEPTINVCHARS $compressionFormat""".stripMargin))
+    }
   }
 
   /**
@@ -157,21 +183,14 @@ object RedshiftLoadStatements {
   def getManifestStatements(databaseSchema: String, shreddedCardinality: Int): SqlString = {
     val eventsTable = Common.getEventsTable(databaseSchema)
 
-    SqlString.unsafeCoerce(s"""
-      |INSERT INTO ${Common.getManifestTable(databaseSchema)}
-      | SELECT etl_tstamp, sysdate AS commit_tstamp, count(*) AS event_count, $shreddedCardinality AS shredded_cardinality
-      | FROM $eventsTable
-      | WHERE etl_tstamp IS NOT null
-      | GROUP BY 1
-      | ORDER BY etl_tstamp DESC
-      | LIMIT 1;""".stripMargin)
-  }
-
-  def getCheckManifestStatement(databaseSchema: String): SqlString = {
     SqlString.unsafeCoerce(
-      s"""
-         |
-       """.stripMargin)
+      s"""INSERT INTO ${Common.getManifestTable(databaseSchema)}
+         | SELECT etl_tstamp, sysdate AS commit_tstamp, count(*) AS event_count, $shreddedCardinality AS shredded_cardinality
+         | FROM $eventsTable
+         | WHERE etl_tstamp IS NOT null
+         | GROUP BY 1
+         | ORDER BY etl_tstamp DESC
+         | LIMIT 1""".stripMargin)
   }
 
   /**
@@ -183,15 +202,15 @@ object RedshiftLoadStatements {
    * @param tableName valid Redshift table name for shredded type
    * @return valid SQL statement to LOAD
    */
-  def buildCopyFromJsonStatement(config: SnowplowConfig, s3path: String, jsonPathsFile: String, tableName: String, maxError: Int, roleArn: String): SqlString = {
+  def buildCopyShreddedStatement(config: SnowplowConfig, s3path: String, jsonPathsFile: String, tableName: String, maxError: Int, roleArn: String): SqlString = {
     val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
 
-    SqlString.unsafeCoerce(s"""
-      |COPY $tableName FROM '$s3path'
-      | CREDENTIALS 'aws_iam_role=$roleArn' JSON AS '$jsonPathsFile'
-      | REGION AS '${config.aws.s3.region}'
-      | MAXERROR $maxError TRUNCATECOLUMNS TIMEFORMAT 'auto'
-      | ACCEPTINVCHARS $compressionFormat;""".stripMargin)
+    SqlString.unsafeCoerce(
+      s"""COPY $tableName FROM '$s3path'
+         | CREDENTIALS 'aws_iam_role=$roleArn' JSON AS '$jsonPathsFile'
+         | REGION AS '${config.aws.s3.region}'
+         | MAXERROR $maxError TRUNCATECOLUMNS TIMEFORMAT 'auto'
+         | ACCEPTINVCHARS $compressionFormat""".stripMargin)
   }
 
   /**
@@ -201,7 +220,7 @@ object RedshiftLoadStatements {
    * @return valid ANALYZE SQL-statement
    */
   def buildAnalyzeStatement(tableName: String): SqlString =
-    SqlString.unsafeCoerce(s"ANALYZE $tableName;")
+    SqlString.unsafeCoerce(s"ANALYZE $tableName")
 
   /**
    * Build VACUUM SQL-statement
@@ -210,25 +229,26 @@ object RedshiftLoadStatements {
    * @return valid VACUUM SQL-statement
    */
   def buildVacuumStatement(tableName: String): SqlString =
-    SqlString.unsafeCoerce(s"VACUUM SORT ONLY $tableName;")
+    SqlString.unsafeCoerce(s"VACUUM SORT ONLY $tableName")
 
-  def buildGetTimestampStatement(schema: String): SqlString = {
-    SqlString.unsafeCoerce(s"""
-      |SELECT etl_tstamp
-      | FROM ${Common.getEventsTable(schema)}
-      | WHERE etl_tstamp IS NOT null
-      | ORDER BY etl_tstamp DESC
-      | LIMIT 1""".stripMargin)
-  }
+  /** Build APPEND statement for moving data from transit temporary table to atomic events */
+  def buildAppendStatement(schema: String): SqlString =
+    SqlString.unsafeCoerce(s"ALTER TABLE ${AtomicEvents(schema).getDescriptor} APPEND FROM ${TransitTable(schema).getDescriptor}")
 
-  def buildGetManifestRecordStatement(schema: String, etlTstamp: String): SqlString = {
-    SqlString.unsafeCoerce(
-      s"""
-         |SELECT COUNT(*)
-         | FROM ${Common.getEventsTable(schema)}
-         | WHERE etl_tstamp IS '$etlTstamp'
-       """.stripMargin)
-  }
+  /** Create a temporary copy of atomic.events table */
+  def createTransitTable(schema: String): SqlString = SqlString.unsafeCoerce(
+    s"CREATE TABLE ${TransitTable(schema).getDescriptor} ( LIKE ${AtomicEvents(schema).getDescriptor} )")
+
+  /**
+    * Destroy the temporary copy of atomic.events table
+    * Safe to assume that we're not destroying other table,
+    * because table creation would fail whole process
+    */
+  def destroyTransitTable(schema: String): SqlString = SqlString.unsafeCoerce(
+    s"DROP TABLE ${TransitTable(schema).getDescriptor}")
+
+  private def uniqStatements[A](lists: List[List[A]]): List[A] =
+    lists.flatten.distinct
 
   /**
    * SQL statements for particular shredded type, grouped by their purpose
@@ -249,7 +269,7 @@ object RedshiftLoadStatements {
    */
   private def transformShreddedType(config: SnowplowConfig, target: RedshiftConfig, shreddedType: ShreddedType): ShreddedStatements = {
     val tableName = target.shreddedTable(ShreddedType.getTableName(shreddedType))
-    val copyFromJson = buildCopyFromJsonStatement(config, shreddedType.getLoadPath, shreddedType.jsonPaths, tableName, target.maxError, target.roleArn)
+    val copyFromJson = buildCopyShreddedStatement(config, shreddedType.getLoadPath, shreddedType.jsonPaths, tableName, target.maxError, target.roleArn)
     val analyze = buildAnalyzeStatement(tableName)
     val vacuum = buildVacuumStatement(tableName)
     ShreddedStatements(copyFromJson, analyze, vacuum)

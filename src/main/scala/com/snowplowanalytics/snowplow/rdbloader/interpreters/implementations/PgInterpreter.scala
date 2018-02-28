@@ -47,7 +47,6 @@ object PgInterpreter {
       conn.createStatement().executeUpdate(sql)
     } leftMap {
       case NonFatal(e: java.sql.SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
-        println(e.getMessage)
         StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
       case NonFatal(e) =>
         System.err.println("RDB Loader unknown error in executeUpdate")

@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
+import cats._
 import cats.data._
 import cats.free.Free
 import cats.implicits._
@@ -24,8 +25,8 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 
 /**
   * Result of data discovery in shredded.good folder
-  * @param base ahred run folder full path
-  * @param atomicCardinality amount of keys in atomic-events directory
+  * @param base shred run folder full path
+  * @param atomicCardinality amount of keys in atomic-events directory if known
   * @param shreddedTypes list of shredded types in this directory
   * @param specificFolder if specific target loader was provided by `--folder`
   *                       (remains default `false` until `setSpecificFolder`)
@@ -48,11 +49,14 @@ case class DataDiscovery(
    * Time in ms for run folder to setup eventual consistency,
    * based on amount of atomic and shredded files
    */
-  def consistencyTimeout: Long =
-    ((atomicCardinality * 0.1 * shreddedTypes.length).toLong + 5L) * 1000
+  def consistencyTimeout: Long = atomicCardinality match {
+    case Some(cardinality) =>
+      ((cardinality * 0.1 * shreddedTypes.length).toLong + 5L) * 1000
+    case None => 0L
+  }
 
   def show: String =
-    s"$runId with $atomicCardinality atomic files and following shredded types:\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
+    s"$runId with ${atomicCardinality.getOrElse("unknown amount of")} atomic files and following shredded types:\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
 }
 
 /**
@@ -106,7 +110,7 @@ object DataDiscovery {
         discovery <- groupKeysFull(keys)
       } yield discovery
 
-    target match {
+    val result = target match {
       case Global(folder) =>
         val keys: LoaderAction[ValidatedDataKeys] =
           listGoodBucket(folder).map(transformKeys(shredJob, region, assets))
@@ -124,6 +128,21 @@ object DataDiscovery {
         ManifestDiscovery.discover(id, region, assets)
       case ViaManifest(Some(folder)) =>
         ManifestDiscovery.discoverFolder(folder, id, region, assets).map(_.pure[List])
+    }
+
+    setSpecificFolder(target, result)
+  }
+
+  /** Properly set `specificFolder` flag */
+  def setSpecificFolder(target: DiscoveryTarget, discovery: LoaderAction[List[DataDiscovery]]): LoaderAction[List[DataDiscovery]] = {
+    val F = Functor[LoaderAction].compose[List]
+    F.map(discovery) { d =>
+      target match {
+        case InSpecificFolder(_) => d.copy(specificFolder = true)
+        case ViaManifest(Some(_)) => d.copy(specificFolder = true)
+        case ViaManifest(None) => d.copy(specificFolder = false)
+        case Global(_) => d.copy(specificFolder = false)
+      }
     }
   }
 
@@ -253,7 +272,7 @@ object DataDiscovery {
     case _ => false
   }
 
-  def isSpecial(key: S3.Key): Boolean = key.contains("$") || key == "_SUCCESS"
+  def isSpecial(key: S3.Key): Boolean = key.contains("$") || key.contains("_SUCCESS")
 
   // Consistency
 
