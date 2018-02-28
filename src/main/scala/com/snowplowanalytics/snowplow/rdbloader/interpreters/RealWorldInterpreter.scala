@@ -72,8 +72,9 @@ class RealWorldInterpreter private[interpreters](
   private val messages = collection.mutable.ListBuffer.empty[String]
 
   def log(message: String) = {
-    System.out.println(s"RDB Loader [${DateTime.now()}]: $message")
-    messages.append(message)
+    val endMessage = s"RDB Loader [${DateTime.now()}]: $message"
+    System.out.println(endMessage)
+    messages.append(endMessage)
   }
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
@@ -100,7 +101,7 @@ class RealWorldInterpreter private[interpreters](
             }
             result <- ManifestInterpreter.getUnprocessed(manifestClient, application, predicate) match {
               case Right(result) if result.isEmpty =>
-                log(s"No data discovered in processing manifest")
+                log(s"No new items discovered in processing manifest")
                 result.asRight
               case Right(h :: Nil) =>
                 log(s"Single ${h.id} item discovered")
@@ -129,11 +130,12 @@ class RealWorldInterpreter private[interpreters](
           } yield ()
 
         case ExecuteUpdate(query) =>
+          if (query.startsWith("COPY ")) { log(query.split(" ").take(2).mkString(" ")) }
+
           val result = for {
             conn <- dbConnection
             res <- PgInterpreter.executeUpdate(conn)(query)
           } yield res
-          println(query)
           result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
@@ -170,19 +172,19 @@ class RealWorldInterpreter private[interpreters](
         case Track(result) =>
           result match {
             case ExitLog.LoadingSucceeded =>
-              log("Tracking success")
               TrackerInterpreter.trackSuccess(tracker)
             case ExitLog.LoadingFailed(message) =>
-              log("Tracking failure")
               val secrets = List(cliConfig.target.password.getUnencrypted, cliConfig.target.username)
               val sanitizedMessage = Common.sanitize(message, secrets)
-              TrackerInterpreter.trackError(tracker, sanitizedMessage)
+              TrackerInterpreter.trackError(tracker)
+              log(sanitizedMessage)
           }
-        case Dump(key, result) =>
+          log(result.toString)
+        case Dump(key) =>
           log(s"Dumping $key")
-          TrackerInterpreter.dumpStdout(amazonS3, key, result.toString)
+          val logs = messages.mkString("\n") + "\n"
+          TrackerInterpreter.dumpStdout(amazonS3, key, logs)
         case Exit(loadResult, dumpResult) =>
-          log("Quit")
           dbConnection.foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)
 
@@ -202,7 +204,6 @@ class RealWorldInterpreter private[interpreters](
 
         case GetEc2Property(name) =>
           SshInterpreter.getKey(name)
-
       }
     }
   }
