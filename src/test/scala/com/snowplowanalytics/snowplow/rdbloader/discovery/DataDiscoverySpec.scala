@@ -31,6 +31,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
   Fail to proceed with empty target folder $e3
   Do not fail to proceed with empty shredded good folder $e4
   Successfully discover data in run folder $e5
+  Successfully discover data in specific folder $e6
   """
 
   def e1 = {
@@ -79,7 +80,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = List(
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        2L,
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
@@ -94,7 +95,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
-        2L,
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
@@ -187,7 +188,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = List(
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        2L,
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
@@ -202,7 +203,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
-        2L,
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
@@ -314,7 +315,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = List(
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        2L,
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),

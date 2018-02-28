@@ -71,7 +71,7 @@ object Main {
   private def close(logKey: Option[S3.Key], message: Log) = {
     logKey match {
       case Some(key) => for {
-        dumpResult <- LoaderA.dump(key, message)
+        dumpResult <- LoaderA.dump(key)
         status     <- LoaderA.exit(message, Some(dumpResult))
       } yield status
       case None => LoaderA.exit(message, None)
