@@ -28,6 +28,7 @@ import org.joda.time.DateTime
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.scalatracker._
+import com.snowplowanalytics.snowplow.scalatracker.emitters.TEmitter._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.{AsyncBatchEmitter, AsyncEmitter}
 
 // This project
@@ -71,11 +72,11 @@ object TrackerInterpreter {
       case Some(Collector((host, port))) =>
         val emitter = monitoring.snowplow.flatMap(_.method) match {
           case Some(GetMethod) =>
-            AsyncEmitter.createAndStart(host, port = port)
+            AsyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
           case Some(PostMethod) =>
-            AsyncBatchEmitter.createAndStart(host, port = port, bufferSize = 2)
+            AsyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 2)
           case None =>
-            AsyncEmitter.createAndStart(host, port = port)
+            AsyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
         }
         val tracker = new Tracker(List(emitter), "snowplow-rdb-loader", monitoring.snowplow.flatMap(_.appId).getOrElse("rdb-loader"))
         Some(tracker)
@@ -103,7 +104,7 @@ object TrackerInterpreter {
    */
   def trackSuccess(tracker: Option[Tracker]): Unit = tracker match {
     case Some(t) =>
-      t.trackUnstructEvent(SelfDescribingJson(LoadSucceededSchema, JObject(Nil)))
+      t.trackSelfDescribingEvent(SelfDescribingData(LoadSucceededSchema, JObject(Nil)))
     case None => ()
   }
 
