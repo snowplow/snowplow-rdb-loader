@@ -151,8 +151,9 @@ object ManifestDiscovery {
     val version = Semver.decodeSemver(record.application.version).toValidatedNel
     val types = record.payload.flatMap(RdbPayload.ShreddedTypesGet).map(_.shreddedTypes).getOrElse(Set.empty)
     val schemaKeys = types.toList.traverse { t => SchemaKey.fromUri(t) match {
-      case Some(ss) => ss.validNel[String]
-      case None => s"Key [$t] is invalid Iglu URI".invalidNel[SchemaKey]
+      case Some(ss) if ss.version.getModel.isEmpty => s"No support for partial schema: ${ss.toSchemaUri}".invalidNel[(SchemaKey, Int)]
+      case Some(ss) => (ss, ss.version.getModel.get).validNel[String]
+      case None => s"Key [$t] is invalid Iglu URI".invalidNel[(SchemaKey, Int)]
     }}
 
     val base = S3.Folder
@@ -160,8 +161,10 @@ object ManifestDiscovery {
       .leftMap(message => s"Path [${record.itemId}] is not valid base for shredded type. $message")
       .toValidatedNel
 
-    (version, schemaKeys, base).mapN { (v: Semver, k: List[SchemaKey], b: S3.Folder) =>
-      k.map(kk => ShreddedType.Info(b, kk.vendor, kk.name, kk.version.model, v))
+    (version, schemaKeys, base).mapN { (v: Semver, k: List[(SchemaKey, Int)], b: S3.Folder) =>
+      k.map { case (keyInfo, model) =>
+        ShreddedType.Info(b, keyInfo.vendor, keyInfo.name, model, v)
+      }
     } match {
       case Validated.Valid(infos) => infos.distinct.asRight
       case Validated.Invalid(errors) =>
