@@ -18,15 +18,11 @@ import cats.free.Free
 import cats.implicits._
 
 import com.snowplowanalytics.iglu.client.SchemaCriterion
-
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
-
-// This project
-
 
 /**
  * Container for S3 folder with shredded JSONs ready to load
@@ -214,11 +210,11 @@ object ShreddedType {
     val (bucket, path) = S3.splitS3Key(key)
     val (subpath, shredpath) = splitFilpath(path, shredJob)
     extractSchemaKey(shredpath, shredJob) match {
-      case Some(schemaKey) =>
+      case Some(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _))) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+        val result = Info(prefix, vendor, name, model, shredJob)
         result.asRight
-      case None =>
+      case _ =>
         ShreddedTypeKeyFailure(key).asLeft
     }
   }
@@ -233,14 +229,17 @@ object ShreddedType {
    * @param shredJob shred job version to decide what format should be present
    * @return valid schema key if found
    */
-  def extractSchemaKey(subpath: String, shredJob: Semver): Option[SchemaKey] =
-    if (shredJob <= ShredJobBeforeSparkVersion) SchemaKey.fromPath(subpath)
-    else subpath match {
+  def extractSchemaKey(subpath: String, shredJob: Semver): Option[SchemaKey] = {
+    if (shredJob <= ShredJobBeforeSparkVersion) {
+      val uri = "iglu:" + subpath
+      SchemaKey.fromUri(uri)
+    } else subpath match {
       case ShreddedSubpathPattern(vendor, name, format, version) =>
-        val igluPath = s"$vendor/$name/$format/$version"
-        SchemaKey.fromPath(igluPath)
+        val uri = s"iglu:$vendor/$name/$format/$version"
+        SchemaKey.fromUri(uri)
       case _ => None
     }
+  }
 
   /**
    * Split S3 filepath (without bucket name) into subpath and shreddedpath
