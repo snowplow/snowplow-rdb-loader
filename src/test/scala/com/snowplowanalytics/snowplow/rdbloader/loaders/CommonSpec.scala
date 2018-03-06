@@ -46,7 +46,7 @@ class CommonSpec extends Specification { def is = s2"""
       "localhost",
       "snowplowdb",
       15151,
-      StorageTarget.Disable,
+      SpecHelpers.disableSsl,
       "arn:aws:iam::719197435995:role/RedshiftLoadRole",
       "update",
       "snowplow-loader",
