@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import java.time.Instant
+import java.sql.{ Timestamp => SqlTimestamp }
 
 /** Different entities that are queried from database using `Decoder`s */
 object Entities {
@@ -8,10 +8,10 @@ object Entities {
   /** Count query */
   case class Count(count: Long)
 
-  case class Timestamp(etlTstamp: Instant)
+  case class Timestamp(etlTstamp: SqlTimestamp)
 
-  case class LoadManifestItem(etlTstamp: Instant,
-                              commitTstamp: Instant,
+  case class LoadManifestItem(etlTstamp: SqlTimestamp,
+                              commitTstamp: SqlTimestamp,
                               eventCount: Int,
                               shreddedCardinality: Int)
 }

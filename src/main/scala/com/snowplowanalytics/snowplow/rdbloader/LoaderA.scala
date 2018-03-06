@@ -87,10 +87,6 @@ object LoaderA {
   def manifestDiscover(loader: Application, shredder: Application, predicate: Option[Item => Boolean]): Action[Either[LoaderError, List[Item]]] =
     Free.liftF[LoaderA, Either[LoaderError, List[Item]]](ManifestDiscover(loader, shredder, predicate))
 
-  /** Execute single query (against target in interpreter) */
-  def executeQuery(query: SqlString): Action[Either[LoaderError, Long]] =
-    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
-
   /** Add Processing manifest records due loading */
   def manifestProcess(item: Item, load: LoaderAction[Unit]): LoaderAction[Unit] =
     EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
@@ -104,7 +100,6 @@ object LoaderA {
     val shortCircuiting = queries.traverse(query => EitherT(executeUpdate(query)))
     shortCircuiting.void.value
   }
-
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[A] =
