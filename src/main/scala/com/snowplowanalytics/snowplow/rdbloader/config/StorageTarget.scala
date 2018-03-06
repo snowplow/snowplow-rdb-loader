@@ -13,10 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
+import java.util.Properties
+
 import cats.data._
 import cats.implicits._
 
-import io.circe.{Decoder, DecodingFailure, HCursor, Json}
+import io.circe._
 import io.circe.Decoder._
 import io.circe.generic.auto._
 
@@ -45,7 +47,6 @@ sealed trait StorageTarget extends Product with Serializable {
   def database: String
   def schema: String
   def port: Int
-  def sslMode: StorageTarget.SslMode
   def username: String
   def password: StorageTarget.PasswordConfig
 
@@ -119,7 +120,7 @@ object StorageTarget {
                             host: String,
                             database: String,
                             port: Int,
-                            sslMode: SslMode,
+                            jdbc: RedshiftJdbc,
                             roleArn: String,
                             schema: String,
                             username: String,
@@ -136,17 +137,61 @@ object StorageTarget {
     * All possible JDBC according to Redshift documentation, except deprecated
     * and authentication-related
     */
-  private case class RedshiftJdbc(blockingRows: Option[Int],
-                                  disableIsValidQuery: Option[Boolean],
-                                  dsiLogLevel: Option[Int],
-                                  filterLevel: Option[String],
-                                  loginTimeout: Option[Int],
-                                  loglevel: Option[Int],
-                                  socketTimeout: Option[Int],
-                                  ssl: Option[Boolean],
-                                  sslRootCert: Option[String],
-                                  tcpKeepAlive: Option[Boolean],
-                                  tcpKeepAliveMinutes: Option[Int])
+  case class RedshiftJdbc(blockingRows: Option[Int],
+                          disableIsValidQuery: Option[Boolean],
+                          dsiLogLevel: Option[Int],
+                          filterLevel: Option[String],
+                          loginTimeout: Option[Int],
+                          loglevel: Option[Int],
+                          socketTimeout: Option[Int],
+                          ssl: Option[Boolean],
+                          sslMode: Option[String],
+                          sslRootCert: Option[String],
+                          tcpKeepAlive: Option[Boolean],
+                          tcpKeepAliveMinutes: Option[Int]) {
+    /** Either errors or list of mutators to update the `Properties` object */
+    val validation: Either[LoaderError, List[Properties => Unit]] = jdbcEncoder.encodeObject(this).toList.map {
+      case (property, value) => value.fold(
+        ((_: Properties) => ()).asRight,
+        b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
+        n => n.toInt match {
+          case Some(num) =>
+            ((props: Properties) => {
+              props.setProperty(property, num.toString)
+              ()
+            }).asRight
+          case None => s"Impossible to apply JDBC property [$property] with value [${value.noSpaces}]".asLeft
+        },
+        s => ((props: Properties) => { props.setProperty(property, s); ()}).asRight,
+        _ => s"Impossible to apply JDBC property [$property] with JSON array".asLeft,
+        _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
+      )
+    } traverse(_.toValidatedNel) match {
+      case Validated.Valid(updaters) => updaters.asRight[LoaderError]
+      case Validated.Invalid(errors) =>
+        val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
+        val error: LoaderError = LoaderError.DecodingError(messages)
+        error.asLeft[List[Properties => Unit]]
+    }
+  }
+
+  object RedshiftJdbc {
+    val empty = RedshiftJdbc(None, None, None, None, None, None, None, None, None, None, None, None)
+  }
+
+  implicit val jdbcDecoder: Decoder[RedshiftJdbc] =
+    Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
+
+  implicit val jdbcEncoder: ObjectEncoder[RedshiftJdbc] =
+    Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
+      (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
+        j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
+        j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
+
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
   case class ParameterStoreConfig(parameterName: String)
