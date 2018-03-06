@@ -116,10 +116,14 @@ object LoaderError {
    * @param path path, where data supposed to be found
    */
   case class NoDataFailure(path: S3.Folder) extends DiscoveryFailure {
-    // TODO: add warning that if there's manifest enabled - data can be there, but manifest blocks it
     def getMessage: String =
       s"No data discovered in [$path], while RDB Loader was explicitly pointed to it by '--folder' option. " +
         s"Either no such folder or it contains no files with data"
+
+    // Message for enabled manifest
+    def getManifestMessage: String =
+      s"Processing manifest does not have unprocessed item [$path]. It can be there, but " +
+        "already loaded by RDB Loader or unprocessed by RDB Shredder"
   }
 
   /**

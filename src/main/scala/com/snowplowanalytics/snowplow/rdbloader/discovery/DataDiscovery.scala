@@ -55,8 +55,11 @@ case class DataDiscovery(
     case None => 0L
   }
 
-  def show: String =
-    s"$runId with ${atomicCardinality.getOrElse("unknown amount of")} atomic files and following shredded types:\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
+  def show: String = {
+    val shredded = if (shreddedTypes.isEmpty) "without shredded types"
+    else s"with following shredded types :\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
+    s"$runId with ${atomicCardinality.getOrElse("unknown amount of")} atomic files and $shredded"
+  }
 }
 
 /**
@@ -123,7 +126,12 @@ object DataDiscovery {
               Free.pure(failure)
             } else transformKeys(shredJob, region, assets)(keys)
           }
-        group(keys)
+        for {
+          discoveries <- group(keys)
+          _ <- if (discoveries.lengthCompare(1) > 0) {
+            LoaderAction.liftA(LoaderA.print("More than one folder discovered with `--folder` option"))
+          } else LoaderAction.unit
+        } yield discoveries
       case ViaManifest(None) =>
         ManifestDiscovery.discover(id, region, assets)
       case ViaManifest(Some(folder)) =>
@@ -206,7 +214,9 @@ object DataDiscovery {
   private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.Key]): ValidatedDataKeys = {
     def id(x: ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]) = x
 
+    // Intermediate keys are keys that passed one check and not yet passed another
     val intermediateDataKeys = keys.map(parseDataKey(shredJob, _))
+    // Final keys passed all checks, e.g. JSONPaths for shredded data were fetched
     val finalDataKeys = intermediateDataKeys.traverse(transformDataKey(_, region, assets))
     sequenceInF(finalDataKeys, id)
   }
