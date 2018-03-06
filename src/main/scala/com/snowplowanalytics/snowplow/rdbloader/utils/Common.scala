@@ -27,6 +27,7 @@ import io.circe._
 
 // This project
 import LoaderError._
+import config.CliConfig
 
 /**
  * Various common utility functions
@@ -52,10 +53,16 @@ object Common {
    * @param result loading process state
    * @return log entry, which can be interpreted accordingly
    */
-  def interpret(result: Either[LoaderError, Unit]): Log = {
+  def interpret(config: CliConfig, result: Either[LoaderError, Unit]): Log = {
     result match {
       case Right(_) => Log.LoadingSucceeded
-      case Left(error) => Log.LoadingFailed(error.show)
+      case Left(e @ DiscoveryError(failures)) =>
+        val manifestError = failures.collect {
+          case e: NoDataFailure if config.target.processingManifest.nonEmpty => e.getManifestMessage
+        }
+        Log.LoadingFailed((e: LoaderError).show ++ s"\n${manifestError.mkString("\n")}")
+      case Left(error) =>
+        Log.LoadingFailed(error.show)
     }
   }
 

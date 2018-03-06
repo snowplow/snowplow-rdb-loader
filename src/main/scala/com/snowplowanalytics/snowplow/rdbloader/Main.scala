@@ -59,7 +59,7 @@ object Main {
         case Right(discovery) => load(config, discovery).value
         case Left(error) => ActionE.liftError(error)
       }
-      message     = utils.Common.interpret(result)
+      message     = utils.Common.interpret(config, result)
       _          <- LoaderA.track(message)
       status     <- close(config.logKey, message)
     } yield status

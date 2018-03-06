@@ -32,6 +32,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
   Do not fail to proceed with empty shredded good folder $e4
   Successfully discover data in run folder $e5
   Successfully discover data in specific folder $e6
+  Successfully discover several folders using `InSpecificFolder` (decide if desired) $e7
   """
 
   def e1 = {
