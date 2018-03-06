@@ -42,9 +42,9 @@ object PgInterpreter {
    * @param sql string with valid SQL statement
    * @return number of updated rows in case of success, failure otherwise
    */
-  def executeUpdate(conn: Connection)(sql: SqlString): Either[StorageTargetError, Int] =
+  def executeUpdate(conn: Connection)(sql: SqlString): Either[StorageTargetError, Long] =
     Either.catchNonFatal {
-      conn.createStatement().executeUpdate(sql)
+      conn.createStatement().executeUpdate(sql).toLong
     } leftMap {
       case NonFatal(e: java.sql.SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
         StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
@@ -59,7 +59,9 @@ object PgInterpreter {
       val resultSet = conn.createStatement().executeQuery(sql)
       ev.decode(resultSet) match {
         case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
-        case Right(a) => a.asRight[StorageTargetError]
+        case Right(a) =>
+          println(a)
+          a.asRight[StorageTargetError]
       }
     } catch {
       case NonFatal(e) =>
