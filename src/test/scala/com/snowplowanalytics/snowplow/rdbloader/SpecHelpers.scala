@@ -73,13 +73,16 @@ object SpecHelpers {
       Storage(StorageVersions(Semver(0,12,0,Some(ReleaseCandidate(4))),Semver(0,1,0,None))),
       Monitoring(Map(),Logging(DebugLevel),Some(SnowplowMonitoring(Some(GetMethod),Some("batch-pipeline"),Some("snplow.acme.com")))))
 
+  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
+  val enableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
+
   val validTarget = StorageTarget.RedshiftConfig(
     "e17c0ded0-eee7-4845-a7e6-8fdc88d599d0",
     "AWS Redshift enriched events storage",
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
     5439,
-    StorageTarget.Disable,
+    disableSsl,
     "arn:aws:iam::123456789876:role/RedshiftLoadRole",
     "atomic",
     "admin",

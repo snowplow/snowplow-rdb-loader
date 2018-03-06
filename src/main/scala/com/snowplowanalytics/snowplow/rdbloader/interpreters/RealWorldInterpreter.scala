@@ -64,7 +64,7 @@ class RealWorldInterpreter private[interpreters](
 
   // dbConnection is Either because not required for log dump
   // lazy to wait before tunnel established
-  private lazy val dbConnection = PgInterpreter.getConnection(cliConfig.target)
+  private lazy val dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
 
   lazy val manifest =
     ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, resolver)
@@ -134,20 +134,20 @@ class RealWorldInterpreter private[interpreters](
 
           val result = for {
             conn <- dbConnection
-            res <- PgInterpreter.executeUpdate(conn)(query)
+            res <- JdbcInterpreter.executeUpdate(conn)(query)
           } yield res
           result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
             conn <- dbConnection
             _ = log(s"Copying ${files.length} files via stdin")
-            res <- PgInterpreter.copyViaStdin(conn, files, query)
+            res <- JdbcInterpreter.copyViaStdin(conn, files, query)
           } yield res
 
         case ExecuteQuery(query, d) =>
           for {
             conn <- dbConnection
-            res <- PgInterpreter.executeQuery(conn)(query)(d)
+            res <- JdbcInterpreter.executeQuery(conn)(query)(d)
           } yield res
 
         case CreateTmpDir =>
