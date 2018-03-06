@@ -33,7 +33,7 @@ import db.Decoder
 import config.StorageTarget
 import loaders.Common.SqlString
 
-object PgInterpreter {
+object JdbcInterpreter {
 
   /**
    * Execute a single update-statement in provided Postgres connection
@@ -102,10 +102,6 @@ object PgInterpreter {
       case NonFatal(e) => Left(StorageTargetError(e.toString))
     }
 
-  def countRows(conn: Connection, queryStatement: String): Either[LoaderError, Int] = {
-    ???
-  }
-
   /**
    * Get Redshift or Postgres connection
    */
@@ -120,21 +116,24 @@ object PgInterpreter {
       val props = new Properties()
       props.setProperty("user", target.username)
       props.setProperty("password", password)
-      props.setProperty("tcpKeepAlive", "true")
 
       target match {
         case r: StorageTarget.RedshiftConfig =>
           val url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
-          if (r.sslMode == StorageTarget.Disable) {   // "disable" and "require" are not supported
-            props.setProperty("ssl", "false")         // by native Redshift JDBC Driver
-          } else {                                    // http://docs.aws.amazon.com/redshift/latest/mgmt/configure-jdbc-options.html
-            props.setProperty("ssl", "true")
-          }
-          Right(new RedshiftDriver().connect(url, props))
+          for {
+            _ <- r.jdbc.validation match {
+              case Left(error) => error.asLeft
+              case Right(propertyUpdaters) =>
+                propertyUpdaters.foreach(f => f(props)).asRight
+            }
+            connection <- Either.catchNonFatal(new RedshiftDriver().connect(url, props)).leftMap { x =>
+              LoaderError.StorageTargetError(x.getMessage)
+            }
+          } yield connection
 
-        case _: StorageTarget.PostgresqlConfig =>
-          val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
-          props.setProperty("sslmode", target.sslMode.asProperty)
+        case p: StorageTarget.PostgresqlConfig =>
+          val url = s"jdbc:postgresql://${p.host}:${p.port}/${p.database}"
+          props.setProperty("sslmode", p.sslMode.asProperty)
           Right(new PgDriver().connect(url, props))
       }
     } catch {
