@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
-import java.time.Instant
+import java.sql.{ Timestamp => SqlTimestamp }
 
 import cats.data._
 import cats.implicits._
@@ -113,7 +113,7 @@ object Common {
     cliConfig.target match {
       case _: RedshiftConfig =>
         val original = DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
-        if (cliConfig.steps.contains(Step.ConsistencyCheck))
+        if (cliConfig.steps.contains(Step.ConsistencyCheck) && cliConfig.target.processingManifest.isEmpty)
           DataDiscovery.checkConsistency(original)
         else original
       case _: PostgresqlConfig =>
@@ -171,11 +171,11 @@ object Common {
   }
 
   /** Get latest load manifest item */
-  private[loaders] def getLatestManifestItem(schema: String, etlTstamp: Instant): EitherT[Action, LoaderError, Option[LoadManifestItem]] = {
+  private[loaders] def getLatestManifestItem(schema: String, etlTstamp: SqlTimestamp): EitherT[Action, LoaderError, Option[LoadManifestItem]] = {
     val query =
       s"""SELECT *
          | FROM ${Common.getManifestTable(schema)}
-         | WHERE etl_tstamp = $etlTstamp
+         | WHERE etl_tstamp = '$etlTstamp'
          | ORDER BY etl_tstamp DESC
          | LIMIT 1""".stripMargin
 
