@@ -59,6 +59,10 @@ package object rdbloader {
       EitherT[Action, LoaderError, A](actionE)
   }
 
+  implicit class ActionOps[A](a: Action[A]) {
+    def liftA: LoaderAction[A] = LoaderAction.liftA(a)
+  }
+
   /** Non-short-circuiting version of `TargetLoading` */
   type ActionE[A] = Free[LoaderA, Either[LoaderError, A]]
 

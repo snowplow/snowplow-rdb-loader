@@ -24,6 +24,9 @@ import config.CliConfig
 
 trait Interpreter {
   def run: LoaderA ~> Id
+
+  /** For interpreters performing statements */
+  def getLastCopyStatements: String = ""
 }
 
 object Interpreter {

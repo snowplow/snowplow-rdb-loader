@@ -76,6 +76,7 @@ object S3 {
       result || s.startsWith(s"$prefix://")
     }
 
+  case class BlobObject(key: Key, size: Long)
 
   /**
    * Extract `s3://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events/` part from
@@ -121,8 +122,10 @@ object S3 {
   /**
    * Transform S3 object summary into valid S3 key string
    */
-  def getKey(s3ObjectSummary: S3ObjectSummary): S3.Key =
-    S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
+  def getKey(s3ObjectSummary: S3ObjectSummary): S3.BlobObject = {
+    val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
+    S3.BlobObject(key, s3ObjectSummary.getSize)
+  }
 
   // Tags for refined types
   sealed trait S3FolderTag

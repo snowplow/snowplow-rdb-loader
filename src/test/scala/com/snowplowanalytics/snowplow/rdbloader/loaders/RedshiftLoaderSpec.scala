@@ -48,7 +48,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
   import SpecHelpers._
 
-  val noDiscovery = DataDiscovery(Folder.coerce("s3://noop"), None, Nil, false, None)
+  val noDiscovery = DataDiscovery(Folder.coerce("s3://noop"), None, None, Nil, false, None)
   def newId = UUID.randomUUID()
   val time = Instant.now()
 
@@ -63,7 +63,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/_SUCCESS"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/$folder$"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-02")
-            ))
+            ).map(k => S3.BlobObject(k, 1L)))
 
           case LoaderA.Sleep(_) => ()
 
@@ -74,7 +74,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val expected =
-      List(DataDiscovery(S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(1), Nil, specificFolder = false, None))
+      List(DataDiscovery(S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(1), Some(1L), Nil, specificFolder = false, None))
 
     val action = Common.discover(CliConfig(validConfig, validTarget, Set.empty, None, None, false, SpecHelpers.resolverJson))
     val result = action.value.foldMap(interpreter)
@@ -87,7 +87,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
     val discovery = DataDiscovery(
-      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(3),
+      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"),
+      Some(3),
+      None,
       List(
         ShreddedType(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0)),
@@ -174,7 +176,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00003-fba35670-9b83-494b-be87-e7a4b1f59906.txt"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
               S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
-            ))
+            ).map(k => S3.BlobObject(k, 2L)))
 
           case LoaderA.Get(key: String) =>
             cache.get(key)
@@ -201,7 +203,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val result: Either[LoaderError, List[DataDiscovery]] = action.foldMap(interpreter)
 
     val expected = List(DataDiscovery(
-      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(3),
+      S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"),
+      Some(3),
+      Some(6),
       List(
         ShreddedType(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0, Some(Semver.ReleaseCandidate(4)))),
@@ -511,7 +515,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
         Record(base, application, id1, None, State.Processing, time.plusSeconds(10), author, None),
         Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload)
       )))
-    val discovery = DataDiscovery(base, Some(1), Nil, false, Some(item))
+    val discovery = DataDiscovery(base, Some(1), None, Nil, false, Some(item))
     val statements = RedshiftLoadStatements(
       "schem",
       RedshiftLoadStatements.StraightCopy("COPY to events table".sql),

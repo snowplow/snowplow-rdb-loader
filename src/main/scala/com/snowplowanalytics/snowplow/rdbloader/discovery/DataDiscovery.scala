@@ -35,6 +35,7 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 case class DataDiscovery(
     base: S3.Folder,
     atomicCardinality: Option[Long],
+    atomicSize: Option[Long],
     shreddedTypes: List[ShreddedType],
     specificFolder: Boolean,
     item: Option[Item]) {
@@ -57,8 +58,10 @@ case class DataDiscovery(
 
   def show: String = {
     val atomic = atomicCardinality.map(_.toString).getOrElse("unknown amount of")
-    val shredded = if (shreddedTypes.isEmpty) "without" else shreddedTypes.length.toString
-    s"$runId with $atomic atomic files and $shredded shredded types"
+    val shreddedTypesList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
+    val shredded = if (shreddedTypes.isEmpty) "without shredded types" else s"with following shredded types:\n$shreddedTypesList"
+    val size = atomicSize.map(s => s" (${(s / 1000000).toString} Mb) ").getOrElse(" ")
+    s"$runId with $atomic atomic files${size}and $shredded"
   }
 
   /** Check if atomic events possibly contains only empty files */
@@ -163,8 +166,8 @@ object DataDiscovery {
   /**
    * List whole directory excluding special files
    */
-  def listGoodBucket(folder: S3.Folder): LoaderAction[List[S3.Key]] =
-    EitherT(LoaderA.listS3(folder)).map(_.filterNot(isSpecial))
+  def listGoodBucket(folder: S3.Folder): LoaderAction[List[S3.BlobObject]] =
+    EitherT(LoaderA.listS3(folder)).map(_.filterNot(k => isSpecial(k.key)))
 
   // Full discovery
 
@@ -199,16 +202,17 @@ object DataDiscovery {
   def validateFolderFull(groupOfKeys: (S3.Folder, List[DataKeyFinal])): ValidatedNel[DiscoveryFailure, DataDiscovery] = {
     val empty = (List.empty[AtomicDataKey], List.empty[ShreddedDataKeyFinal])
     val (base, dataKeys) = groupOfKeys
-    val (atomicKeys, shreddedKeys) = dataKeys.foldLeft(empty) { case ((atomicKeys, shreddedTypes), key) =>
+    val (atomicKeys, shreddedKeys) = dataKeys.foldLeft(empty) { case ((atomic, shredded), key) =>
       key match {
-        case atomicKey: AtomicDataKey => (atomicKey :: atomicKeys, shreddedTypes)
-        case shreddedType: ShreddedDataKeyFinal => (atomicKeys, shreddedType :: shreddedTypes)
+        case atomicKey: AtomicDataKey => (atomicKey :: atomic, shredded)
+        case shreddedType: ShreddedDataKeyFinal => (atomic, shreddedType :: shredded)
       }
     }
 
     if (atomicKeys.nonEmpty) {
       val shreddedData = shreddedKeys.map(_.info).distinct
-      DataDiscovery(base, Some(atomicKeys.length), shreddedData, false, None).validNel
+      val size = Some(atomicKeys.foldMap(_.size))
+      DataDiscovery(base, Some(atomicKeys.length), size, shreddedData, false, None).validNel
     } else {
       AtomicDiscoveryFailure(base).invalidNel
     }
@@ -217,14 +221,12 @@ object DataDiscovery {
   /**
    * Transform list of S3 keys into list of `DataKeyFinal` for `DataDiscovery`
    */
-  private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.Key]): ValidatedDataKeys = {
-    def id(x: ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]) = x
-
+  private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.BlobObject]): ValidatedDataKeys = {
     // Intermediate keys are keys that passed one check and not yet passed another
     val intermediateDataKeys = keys.map(parseDataKey(shredJob, _))
     // Final keys passed all checks, e.g. JSONPaths for shredded data were fetched
     val finalDataKeys = intermediateDataKeys.traverse(transformDataKey(_, region, assets))
-    sequenceInF(finalDataKeys, id)
+    sequenceInF(finalDataKeys, identity[ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]])
   }
 
   /**
@@ -250,9 +252,9 @@ object DataDiscovery {
           ShreddedDataKeyFinal(fullPath, ShreddedType(info, jsonpath))
         }
         discoveryAction.value.map(_.toValidatedNel)
-      case Right(AtomicDataKey(fullPath)) =>
+      case Right(AtomicDataKey(fullPath, size)) =>
         val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
-          Free.pure(AtomicDataKey(fullPath).validNel[DiscoveryFailure])
+          Free.pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
         pure
       case Left(failure) =>
         val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
@@ -267,15 +269,15 @@ object DataDiscovery {
    * any invalid S3 key - not atomic events file neither shredded type file
    *
    * @param shredJob shred job version to check path pattern
-   * @param key particular S3 key in shredded good folder
+   * @param blobObject particular S3 key in shredded good folder
    */
-  private def parseDataKey(shredJob: Semver, key: S3.Key): Either[DiscoveryFailure, DataKeyIntermediate] = {
-    S3.getAtomicPath(key) match {
-      case Some(_) => AtomicDataKey(key).asRight
+  private def parseDataKey(shredJob: Semver, blobObject: S3.BlobObject): Either[DiscoveryFailure, DataKeyIntermediate] = {
+    S3.getAtomicPath(blobObject.key) match {
+      case Some(_) => AtomicDataKey(blobObject.key, blobObject.size).asRight
       case None =>
-        ShreddedType.transformPath(key, shredJob) match {
+        ShreddedType.transformPath(blobObject.key, shredJob) match {
           case Right(info) =>
-            ShreddedDataKeyIntermediate(key, info).asRight
+            ShreddedDataKeyIntermediate(blobObject.key, info).asRight
           case Left(e) => e.asLeft
         }
     }
@@ -401,7 +403,7 @@ object DataDiscovery {
    * It can be used as both "intermediate" and "final" because atomic-events
    * don't need any more validations, except path
    */
-  private case class AtomicDataKey(key: S3.Key) extends DataKeyIntermediate with DataKeyFinal {
+  private case class AtomicDataKey(key: S3.Key, size: Long) extends DataKeyIntermediate with DataKeyFinal {
     def base: S3.Folder = {
       val atomicEvents = S3.Key.getParent(key)
       S3.Folder.getParent(atomicEvents)

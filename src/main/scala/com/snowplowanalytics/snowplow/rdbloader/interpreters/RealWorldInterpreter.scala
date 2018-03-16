@@ -67,20 +67,18 @@ class RealWorldInterpreter private[interpreters](
   // lazy to wait before tunnel established
   private lazy val dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
 
-  lazy val manifest =
+  private lazy val manifest =
     ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, utils.Common.DefaultResolver) match {
       case Right(Some(m)) => m.asRight
       case Right(None) => LoaderLocalError("Processing Manifest is not configured").asLeft
       case Left(error) => error.asLeft
     }
 
+  // General messages that should be printed both to output and final log
   private val messages = collection.mutable.ListBuffer.empty[String]
 
-  def log(message: String) = {
-    val endMessage = s"RDB Loader [${DateTime.now()}]: $message"
-    System.out.println(endMessage)
-    messages.append(endMessage)
-  }
+  // DB messages that should be printed only to output and if failure is DB-related
+  private val messagesCopy = collection.mutable.ListBuffer.empty[String]
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
@@ -125,7 +123,7 @@ class RealWorldInterpreter private[interpreters](
           } yield ()
 
         case ExecuteUpdate(query) =>
-          if (query.startsWith("COPY ")) { log(query.split(" ").take(2).mkString(" ")) }
+          if (query.startsWith("COPY ")) { logCopy(query.split(" ").take(2).mkString(" ")) }
 
           val result = for {
             conn <- dbConnection
@@ -202,6 +200,28 @@ class RealWorldInterpreter private[interpreters](
       }
     }
   }
+
+
+  override def getLastCopyStatements: String = {
+    val last = messagesCopy.take(3)
+    if (last.isEmpty)
+      "No COPY statements were performed"
+    else
+      s"Last ${last.length} COPY statements:\n${last.mkString("\n")}"
+  }
+
+  private def log(message: String): Unit = {
+    val endMessage = s"RDB Loader [${DateTime.now()}]: $message"
+    System.out.println(message)
+    messages.append(endMessage)
+  }
+
+  private def logCopy(message: String): Unit = {
+    val endMessage = s"RDB Loader [${DateTime.now()}]: $message"
+    System.out.println(endMessage)
+    messagesCopy.append(endMessage)
+  }
+
 }
 
 object RealWorldInterpreter {

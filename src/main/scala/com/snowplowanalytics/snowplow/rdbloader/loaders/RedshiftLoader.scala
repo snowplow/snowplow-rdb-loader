@@ -13,14 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
-import cats.data._
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.EventsTable
 
 // This project
 import LoaderA._
 import RedshiftLoadStatements._
-import Common.{ SqlString, EventsTable }
+import Common.{ SqlString, EventsTable, checkLoadManifest, AtomicEvents, TransitTable }
 import discovery.DataDiscovery
 import config.{ SnowplowConfig, Step, StorageTarget }
 
@@ -50,7 +48,6 @@ object RedshiftLoader {
           steps: Set[Step],
           discovery: List[DataDiscovery]) = {
     val queue = buildQueue(config, target, steps)(discovery)
-    val checkManifest = steps.contains(Step.LoadManifestCheck)
 
     queue.traverse(loadFolder(steps)).void
   }
@@ -64,48 +61,55 @@ object RedshiftLoader {
   def loadFolder(steps: Set[Step])(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
     import LoaderA._
 
+    val checkManifest = steps.contains(Step.LoadManifestCheck)
+    val loadManifest = steps.contains(Step.LoadManifest)
+
     def loadTransaction = for {
-      _ <- getLoad(checkManifest, statements.dbSchema, statements.atomicCopy)
-      _ <- EitherT(executeUpdates(statements.shredded))
-      _ <- EitherT(executeUpdate(statements.manifest))
+      empty <- getLoad(checkManifest, statements.dbSchema, statements.atomicCopy, statements.discovery.possiblyEmpty)
+      _ <- executeUpdates(statements.shredded)
+      _ <- if (loadManifest && !empty) executeUpdate(statements.manifest) *> LoaderA.print("Load manifest: added new record").liftA
+           else if (loadManifest && empty) LoaderA.print(EmptyMessage).liftA
+           else LoaderAction.unit
     } yield ()
 
     for {
-      _ <- LoaderAction.liftA(LoaderA.print(s"Processing ${statements.base}"))
+      _ <- LoaderA.print(s"Loading ${statements.base}").liftA
 
-      _ <- EitherT(executeUpdate(Common.BeginTransaction))
+      _ <- executeUpdate(Common.BeginTransaction)
       _ <- statements.discovery.item match {
         case Some(item) => LoaderA.manifestProcess(item, loadTransaction)
         case None => loadTransaction
       }
-      _ <- EitherT(executeUpdate(Common.CommitTransaction))
-
-      _ <- LoaderAction.liftA(LoaderA.print("Loaded"))
-
+      _ <- executeUpdate(Common.CommitTransaction)
+      _ <- LoaderA.print(s"Loading finished for ${statements.base}").liftA
       _ <- vacuum(statements)
       _ <- analyze(statements)
     } yield ()
   }
 
-  def getLoad(checkManifest: Boolean, dbSchema: String, copy: AtomicCopy): LoaderAction[Unit] = {
-    def check(eventsTable: EventsTable): LoaderAction[Unit] = {
-      if (checkManifest) Common.checkLoadManifest(dbSchema, eventsTable) else LoaderAction.unit
-    }
+  /**
+    * Get COPY action, either straight or transit (along with load manifest check)
+    * @return
+    */
+  def getLoad(checkManifest: Boolean, dbSchema: String, copy: AtomicCopy, empty: Boolean): LoaderAction[Boolean] = {
+    def check(eventsTable: EventsTable): LoaderAction[Boolean] =
+      if (checkManifest) checkLoadManifest(dbSchema, eventsTable, empty) else LoaderAction.lift(false)
 
     copy match {
-      case StraightCopy(copy) => for {
-        _ <- EitherT(executeUpdate(copy))
-        _ <- check(Common.AtomicEvents(dbSchema))
-      } yield ()
-      case TransitCopy(copy) =>
+      case StraightCopy(copyStatement) => for {
+        _ <- executeUpdate(copyStatement)
+        emptyLoad <- check(AtomicEvents(dbSchema))
+      } yield emptyLoad
+      case TransitCopy(copyStatement) =>
         val create = RedshiftLoadStatements.createTransitTable(dbSchema)
         val destroy = RedshiftLoadStatements.destroyTransitTable(dbSchema)
         for {
-          _ <- EitherT(executeUpdate(create))
-          _ <- check(Common.TransitTable(dbSchema))
-          _ <- EitherT(executeUpdate(copy))
-          _ <- EitherT(executeUpdate(destroy))
-        } yield ()
+          _ <- executeUpdate(create)
+          // TODO: Transit copy provides more reliable empty-check
+          emptyLoad <- check(TransitTable(dbSchema))
+          _ <- executeUpdate(copyStatement)
+          _ <- executeUpdate(destroy)
+        } yield emptyLoad
     }
   }
 
@@ -117,10 +121,10 @@ object RedshiftLoader {
     statements.analyze match {
       case Some(analyze) =>
         for {
-          _ <- LoaderAction.liftA(LoaderA.print("Executing ANALYZE transaction"))
-          _ <- EitherT(executeTransaction(analyze))
+          _ <- executeTransaction(analyze)
+          _ <- LoaderA.print("ANALYZE transaction executed").liftA
         } yield ()
-      case None => LoaderAction.unit
+      case None => LoaderA.print("ANALYZE transaction skipped").liftA
     }
 
   /**
@@ -134,11 +138,13 @@ object RedshiftLoader {
         val actions = for {
           statement <- block
         } yield for {
-          _ <- LoaderA.print(statement)
+          _ <- LoaderA.print(statement).liftA
           _ <- executeUpdate(statement)
         } yield ()
-        LoaderAction.liftA(actions.sequence).void
-      case None => LoaderAction.liftA(LoaderA.print("Skip VACUUM"))
+        actions.sequence.void
+      case None => LoaderA.print("VACUUM queries skipped").liftA
     }
   }
+
+  private val EmptyMessage = "Not adding record to load manifest as atomic data seems to be empty"
 }

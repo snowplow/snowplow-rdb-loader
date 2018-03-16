@@ -15,7 +15,6 @@ package loaders
 
 import java.sql.{ Timestamp => SqlTimestamp }
 
-import cats.data._
 import cats.implicits._
 
 import shapeless.tag
@@ -138,28 +137,37 @@ object Common {
     * Check if entry already exists in load manifest
     * @param schema database schema, e.g. `atomic` to access manifest
     * @param eventsTable atomic data table, usually `events` or temporary tablename
+    * @param possiblyEmpty flag denoting that atomic data *can* be empty
+    * @return true if manifest record exists and atomic data is empty, assuming folder contains no events
+    *         and next manifest record shouldn't be written
     */
-  def checkLoadManifest(schema: String, eventsTable: EventsTable): LoaderAction[Unit] = {
+  def checkLoadManifest(schema: String, eventsTable: EventsTable, possiblyEmpty: Boolean): LoaderAction[Boolean] = {
     for {
-      latestAtomic <- getEtlTstamp(eventsTable)
-      _ <- latestAtomic match {
-        case Some(events) => for {
-          item <- getLatestManifestItem(schema, events.etlTstamp)
-          _ <- item match {
-            case Some(manifest) if manifest.etlTstamp == events.etlTstamp =>
-              val message = s"Load Manifest record for ${manifest.etlTstamp} already exists. " +
-                s"Committed at ${manifest.commitTstamp}. Use --skip ${Step.LoadManifestCheck.asString} to skip (not recommended)"
-              LoaderAction.liftE(LoaderError.LoadManifestError(message).asLeft)
-            case _ => LoaderAction.unit
+      latestAtomicTstamp <- getEtlTstamp(eventsTable)
+      isEmptyLoad <- latestAtomicTstamp match {
+        case Some(timestamp) => for {
+          _ <- LoaderA.print(s"Load manifest: latest timestamp in ${eventsTable.getDescriptor} is ${timestamp.etlTstamp}").liftA
+          item <- getManifestItem(schema, timestamp.etlTstamp)
+          empty <- item match {
+            case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp && possiblyEmpty =>
+              val message = s"Load manifest: record for ${manifest.etlTstamp} already exists, but atomic folder is empty"
+              for { _ <- LoaderA.print(message).liftA } yield true
+            case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp =>
+              val message = getLoadManifestMessage(manifest)
+              LoaderAction.liftE[Boolean](LoaderError.LoadManifestError(message).asLeft)
+            case Some(record) =>
+              for { _ <- LoaderA.print(s"Load manifest: latest record ${record.show}").liftA } yield false
+            case None =>
+              for { _ <- LoaderA.print(s"Load manifest: no records found").liftA } yield false
           }
-        } yield ()
-        case None => LoaderAction.unit
+        } yield empty
+        case None => LoaderAction.lift(false)
       }
-    } yield ()
+    } yield isEmptyLoad
   }
 
   /** Get ETL timestamp of ongoing load */
-  private[loaders] def getEtlTstamp(eventsTable: EventsTable): EitherT[Action, LoaderError, Option[Timestamp]] = {
+  private[loaders] def getEtlTstamp(eventsTable: EventsTable): LoaderAction[Option[Timestamp]] = {
     val query =
       s"""SELECT etl_tstamp
          | FROM ${eventsTable.getDescriptor}
@@ -171,7 +179,7 @@ object Common {
   }
 
   /** Get latest load manifest item */
-  private[loaders] def getLatestManifestItem(schema: String, etlTstamp: SqlTimestamp): EitherT[Action, LoaderError, Option[LoadManifestItem]] = {
+  private[loaders] def getManifestItem(schema: String, etlTstamp: SqlTimestamp): LoaderAction[Option[LoadManifestItem]] = {
     val query =
       s"""SELECT *
          | FROM ${Common.getManifestTable(schema)}
@@ -181,4 +189,10 @@ object Common {
 
     LoaderA.executeQuery[Option[LoadManifestItem]](SqlString.unsafeCoerce(query))
   }
+
+  private def getLoadManifestMessage(manifest: LoadManifestItem): String =
+    s"Load Manifest record for ${manifest.etlTstamp} already exists. Cannot proceed to loading. " +
+      s"Manifest item committed at ${manifest.commitTstamp} with ${manifest.eventCount} events " +
+      s"and ${manifest.shreddedCardinality} shredded types. " +
+      s"Use --skip ${Step.LoadManifestCheck.asString} to bypass this check"
 }

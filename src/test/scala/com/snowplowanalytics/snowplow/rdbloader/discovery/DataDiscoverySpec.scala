@@ -35,6 +35,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
   Successfully discover data in specific folder $e6
   Successfully discover several folders using `InSpecificFolder` (decide if desired) $e7
   listGoodBucket ignores special files $e8
+  show DataDiscovery with several shredded types $e9
   """
 
   def e1 = {
@@ -56,7 +57,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/atomic-events/part-0001"),
               S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00000"),
               S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00001")
-            ))
+            ).map(k => S3.BlobObject(k, 1L)))
 
           case LoaderA.Get(key: String) =>
             cache.get(key)
@@ -84,6 +85,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         Some(2L),
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
@@ -98,6 +100,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
+        Some(2L),
         Some(2L),
         List(
           ShreddedType(
@@ -143,16 +146,18 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
       private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
 
+      def blob(f: S3.Folder, k: String): S3.BlobObject = S3.BlobObject(S3.Key.coerce(f + k), 1L)
+
       def apply[A](effect: LoaderA[A]): TestState[A] = {
         effect match {
           case LoaderA.ListS3(bucket) =>
             State { (realWorld: RealWorld) =>
               if (realWorld.requests == 0) {
-                (realWorld.increment, Right(initial.map(k => S3.Key.coerce(bucket + k))))
+                (realWorld.increment, Right(initial.map(blob(bucket, _))))
               } else if (realWorld.requests == 1) {
-                (realWorld.increment, Right(second.map(k => S3.Key.coerce(bucket + k))))
+                (realWorld.increment, Right(second.map(blob(bucket, _))))
               } else if (realWorld.requests == 2 || realWorld.requests == 3) {
-                (realWorld.increment, Right(end.map(k => S3.Key.coerce(bucket + k))))
+                (realWorld.increment, Right(end.map(blob(bucket, _))))
               } else {
                 throw new RuntimeException("Invalid test state " + realWorld.toString)
               }
@@ -192,6 +197,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         Some(2L),
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
@@ -206,6 +212,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
+        Some(2L),
         Some(2L),
         List(
           ShreddedType(
@@ -292,7 +299,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
-            ))
+            ).map(k => S3.BlobObject(k, 1L)))
 
           case LoaderA.Get(key: String) =>
             cache.get(key)
@@ -318,6 +325,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = List(
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
+        Some(2L),
         Some(2L),
         List(
           ShreddedType(
@@ -351,7 +359,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
               S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
-            ))
+            ).map(k => S3.BlobObject(k, 1L)))
 
           case LoaderA.Get(key: String) =>
             cache.get(key)
@@ -377,6 +385,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = List(
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
+        Some(2L),
         Some(2L),
         List(
           ShreddedType(
@@ -414,7 +423,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
               // Another folder
               S3.Key.coerce(bucket + "run=2018-10-12-10-20-00/atomic-events/part-0000"),
               S3.Key.coerce(bucket + "run=2018-10-12-10-20-00/atomic-events/part-0001")
-            ))
+            ).map(k => S3.BlobObject(k, 1L)))
 
           case LoaderA.Get(key: String) =>
             cache.get(key)
@@ -444,6 +453,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
         Some(2L),
+        Some(2L),
         List(
           ShreddedType(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
@@ -457,6 +467,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       ),
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2018-10-12-10-20-00/"),
+        Some(2L),
         Some(2L),
         List(),
         specificFolder = true,
@@ -493,5 +504,18 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val result = DataDiscovery.listGoodBucket(prefix).value
 
     result.foldMap(interpreter).map(_.length) must beRight(3)
+  }
+
+  def e9 = {
+    val shreddedTypes = List(
+      ShreddedType(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
+      ShreddedType(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
+    )
+
+    val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), Some(8), Some(1024), shreddedTypes, false, None)
+    discovery.show must beEqualTo(
+      """|my-path with 8 atomic files (0 Mb) and with following shredded types:
+         |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
+         |  * iglu:com.acme/context/jsonschema/2-*-* (s3://assets/context_1.json)""".stripMargin)
   }
 }

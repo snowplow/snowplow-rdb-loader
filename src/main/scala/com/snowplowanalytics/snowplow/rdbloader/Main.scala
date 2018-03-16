@@ -57,6 +57,9 @@ object Main {
       data       <- discover(config).value
       result     <- data match {
         case Right(discovery) => load(config, discovery).value
+        case Left(LoaderError.StorageTargetError(message)) =>
+          val upadtedMessage = s"$message\n${interpreter.getLastCopyStatements}"
+          ActionE.liftError(LoaderError.StorageTargetError(upadtedMessage))
         case Left(error) => ActionE.liftError(error)
       }
       message     = utils.Common.interpret(config, result)

@@ -25,5 +25,8 @@ object Entities {
   case class LoadManifestItem(etlTstamp: SqlTimestamp,
                               commitTstamp: SqlTimestamp,
                               eventCount: Int,
-                              shreddedCardinality: Int)
+                              shreddedCardinality: Int) {
+    def show: String =
+      s"ETL timestamp $etlTstamp with $eventCount events and $shreddedCardinality shredded types, commited at $commitTstamp"
+  }
 }

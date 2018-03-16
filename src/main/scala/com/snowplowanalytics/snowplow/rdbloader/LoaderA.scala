@@ -80,8 +80,8 @@ object LoaderA {
     Free.liftF[LoaderA, Boolean](KeyExists(key))
 
   /** Download S3 key into local path */
-  def downloadData(source: S3.Folder, dest: Path): Action[Either[LoaderError, List[Path]]] =
-    Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest))
+  def downloadData(source: S3.Folder, dest: Path): LoaderAction[List[Path]] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest)))
 
   /** Discover data from manifest */
   def manifestDiscover(loader: Application, shredder: Application, predicate: Option[Item => Boolean]): Action[Either[LoaderError, List[Item]]] =
@@ -92,13 +92,13 @@ object LoaderA {
     EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
 
   /** Execute single SQL statement (against target in interpreter) */
-  def executeUpdate(sql: SqlString): Action[Either[LoaderError, Long]] =
-    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql))
+  def executeUpdate(sql: SqlString): LoaderAction[Long] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql)))
 
   /** Execute multiple (against target in interpreter) */
-  def executeUpdates(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
-    val shortCircuiting = queries.traverse(query => EitherT(executeUpdate(query)))
-    shortCircuiting.void.value
+  def executeUpdates(queries: List[SqlString]): LoaderAction[Unit] = {
+    val shortCircuiting = queries.traverse(query => executeUpdate(query))
+    EitherT(shortCircuiting.void.value)
   }
 
   /** Execute query and parse results into `A` */
@@ -107,7 +107,7 @@ object LoaderA {
 
 
   /** Execute SQL transaction (against target in interpreter) */
-  def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+  def executeTransaction(queries: List[SqlString]): LoaderAction[Unit] = {
     val begin = SqlString.unsafeCoerce("BEGIN")
     val commit = SqlString.unsafeCoerce("COMMIT")
     val transaction = (begin :: queries) :+ commit
@@ -116,17 +116,17 @@ object LoaderA {
 
 
   /** Perform PostgreSQL COPY table FROM STDIN (against target in interpreter) */
-  def copyViaStdin(files: List[Path], query: SqlString): Action[Either[LoaderError, Long]] =
-    Free.liftF[LoaderA, Either[LoaderError, Long]](CopyViaStdin(files, query))
+  def copyViaStdin(files: List[Path], query: SqlString): LoaderAction[Long] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Long]](CopyViaStdin(files, query)))
 
 
   /** Create tmp directory */
-  def createTmpDir: Action[Either[LoaderError, Path]] =
-    Free.liftF[LoaderA, Either[LoaderError, Path]](CreateTmpDir)
+  def createTmpDir: LoaderAction[Path] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Path]](CreateTmpDir))
 
   /** Delete directory */
-  def deleteDir(path: Path): Action[Either[LoaderError, Unit]] =
-    Free.liftF[LoaderA, Either[LoaderError, Unit]](DeleteDir(path))
+  def deleteDir(path: Path): LoaderAction[Unit] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](DeleteDir(path)))
 
 
   /** Block thread for some time */
