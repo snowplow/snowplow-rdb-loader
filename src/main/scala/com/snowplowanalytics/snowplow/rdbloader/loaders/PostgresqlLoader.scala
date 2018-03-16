@@ -14,8 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
 import cats.implicits._
-import cats.data._
-import cats.free.Free
 
 // This project
 import LoaderA._
@@ -33,7 +31,7 @@ object PostgresqlLoader {
    * @param steps SQL steps
    * @param discovery discovered data to load
    */
-  def run(target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]) = {
+  def run(target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]): LoaderAction[Unit] = {
     val statements = PostgresqlLoadStatements.build(target.eventsTable, steps)
 
     for {
@@ -52,10 +50,10 @@ object PostgresqlLoader {
    */
   def loadFolder(statement: PostgresqlLoadStatements)(discovery: DataDiscovery): LoaderAction[Long] = {
     for {
-      tmpdir <- EitherT(createTmpDir)
-      files  <- EitherT(downloadData(discovery.atomicEvents, tmpdir))
-      count  <- EitherT(copyViaStdin(files, statement.events))
-      _      <- EitherT(deleteDir(tmpdir))
+      tmpdir <- createTmpDir
+      files  <- downloadData(discovery.atomicEvents, tmpdir)
+      count  <- copyViaStdin(files, statement.events)
+      _      <- deleteDir(tmpdir)
     } yield count
   }
 
@@ -65,12 +63,8 @@ object PostgresqlLoader {
    */
   def analyze(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.analyze match {
-      case Some(analyze) =>
-        val result = executeUpdates(List(analyze)).map(_.void)
-        EitherT(result)
-      case None =>
-        val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))
-        EitherT(noop)
+      case Some(analyze) => executeUpdates(List(analyze)).void
+      case None => LoaderAction.unit
     }
   }
 
@@ -80,13 +74,8 @@ object PostgresqlLoader {
    */
   def vacuum(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.vacuum match {
-      case Some(vacuum) =>
-        val result = executeUpdates(List(vacuum)).map(_.void)
-        EitherT(result)
-      case None =>
-        val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))
-        EitherT(noop)
+      case Some(vacuum) => executeUpdates(List(vacuum)).void
+      case None => LoaderAction.unit
     }
   }
-
 }

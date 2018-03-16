@@ -181,7 +181,7 @@ object ManifestDiscovery {
       S3.Folder.parse(item.id)
         .leftMap(error => LoaderError.fromManifestError(ManifestError.parseError(error)))
 
-    (LoaderAction.liftE(base), shreddedTypes).mapN(DataDiscovery(_, None, _, false, Some(item)))
+    (LoaderAction.liftE(base), shreddedTypes).mapN(DataDiscovery(_, None, None, _, false, Some(item)))
   }
 
   /** Find 'Processed' by shredder, but only if it has valid state */
