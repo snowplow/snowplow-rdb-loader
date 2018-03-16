@@ -39,6 +39,8 @@ object Step {
   case object LoadManifestCheck extends SkipStep { def asString = "load_manifest_check" }
   /** Do not COPY data through temporary table, even with `--folder` option (makes sense only with `--folder`) */
   case object TransitCopy extends SkipStep { def asString = "transit_copy" }
+  /** Do not perform any interaction with load manifest, including `load_manifest_check` */
+  case object LoadManifest extends SkipStep { def asString = "load_manifest" }
 
   /**
    * Step that cannot be skipped nor included
@@ -74,6 +76,9 @@ object Step {
    * @return end set of steps
    */
   def constructSteps(toSkip: Set[SkipStep], toInclude: Set[IncludeStep]): Set[Step] = {
-    defaultSteps -- toSkip ++ toInclude
+    val updated = if (toSkip.contains(Step.LoadManifest))
+      defaultSteps - Step.LoadManifestCheck else defaultSteps
+
+    updated -- toSkip ++ toInclude
   }
 }

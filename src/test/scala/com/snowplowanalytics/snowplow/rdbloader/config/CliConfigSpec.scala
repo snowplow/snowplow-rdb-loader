@@ -31,6 +31,7 @@ class CliConfigSpec extends Specification { def is = s2"""
   Parse CLI options with dry-run $e6
   Parse CLI options with skipped consistency check $e7
   Parse CLI options without log key $e8
+  Skip load_manifest_check if load_manifest is skipped $e9
   """
 
   import SpecHelpers._
@@ -42,7 +43,7 @@ class CliConfigSpec extends Specification { def is = s2"""
       "--target", target,
       "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy)
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
 
     val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), None, false, resolverJson)
 
@@ -59,7 +60,7 @@ class CliConfigSpec extends Specification { def is = s2"""
       "-i", "vacuum",
       "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy)
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
 
     val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), None, false, resolverJson)
 
@@ -106,7 +107,7 @@ class CliConfigSpec extends Specification { def is = s2"""
       "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
       "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy)
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
 
     val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
 
@@ -124,7 +125,7 @@ class CliConfigSpec extends Specification { def is = s2"""
       "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
       "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy)
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
 
     val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), true, resolverJson)
 
@@ -142,7 +143,7 @@ class CliConfigSpec extends Specification { def is = s2"""
       "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
       "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.TransitCopy)
+    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.TransitCopy, Step.LoadManifest)
 
     val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
 

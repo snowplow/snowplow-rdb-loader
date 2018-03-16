@@ -50,9 +50,8 @@ object RedshiftLoader {
           steps: Set[Step],
           discovery: List[DataDiscovery]) = {
     val queue = buildQueue(config, target, steps)(discovery)
-    val checkManifest = steps.contains(Step.LoadManifestCheck)
 
-    queue.traverse(loadFolder(checkManifest, target.processingManifest.isDefined)).void
+    queue.traverse(loadFolder(steps, target.processingManifest.isDefined)).void
   }
 
   /**
@@ -61,13 +60,16 @@ object RedshiftLoader {
    * @param statements prepared load statements
    * @return application state
    */
-  def loadFolder(checkManifest: Boolean, processingManifest: Boolean)(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
+  def loadFolder(steps: Set[Step], processingManifest: Boolean)(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
     import LoaderA._
+
+    val checkManifest = steps.contains(Step.LoadManifestCheck)
+    val loadManifest = steps.contains(Step.LoadManifest)
 
     def loadTransaction = for {
       _ <- getLoad(checkManifest, statements.dbSchema, statements.atomicCopy)
       _ <- EitherT(executeUpdates(statements.shredded))
-      _ <- EitherT(executeUpdate(statements.manifest))
+      _ <- if (loadManifest) EitherT(executeUpdate(statements.manifest)) else LoaderAction.unit
     } yield ()
 
     for {
