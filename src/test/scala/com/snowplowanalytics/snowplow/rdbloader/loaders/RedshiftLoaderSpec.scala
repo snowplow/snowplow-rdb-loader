@@ -254,7 +254,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       noDiscovery
     )
 
-    val state = RedshiftLoader.loadFolder(false, false)(input)
+    val state = RedshiftLoader.loadFolder(Step.defaultSteps - Step.LoadManifestCheck, false)(input)
     val action = state.value
     val result = action.foldMap(interpreter)
 
@@ -312,7 +312,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       noDiscovery
     )
 
-    val state = RedshiftLoader.loadFolder(true, false)(input)
+    val state = RedshiftLoader.loadFolder(Step.defaultSteps, false)(input)
     val action = state.value
     val result = action.foldMap(interpreter)
 
@@ -372,7 +372,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       noDiscovery
     )
 
-    val state = RedshiftLoader.loadFolder(true, false)(input)
+    val state = RedshiftLoader.loadFolder(Step.defaultSteps, false)(input)
     val action = state.value
     val result = action.foldMap(interpreter)
 
@@ -477,7 +477,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val getStatements = RedshiftLoadStatements.getStatements(SpecHelpers.validConfig, SpecHelpers.validTargetWithManifest, Step.defaultSteps) _
     val statements = dataDiscovery.map(getStatements).value.foldMap(interpreter).right.toOption.get
 
-    val state = RedshiftLoader.loadFolder(true, true)(statements)
+    val state = RedshiftLoader.loadFolder(Step.defaultSteps, true)(statements)
     val result = state.value.foldMap(interpreter)
 
     val transactionsExpectation = queries.toList must beEqualTo(expected)
