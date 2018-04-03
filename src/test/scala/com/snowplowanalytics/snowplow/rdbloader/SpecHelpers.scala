@@ -63,13 +63,12 @@ object SpecHelpers {
             None,
             s3("s3://snowplow-acme-storage/logs"),
             ShreddedBucket(
-              s3("s3://snowplow-acme-storage/shredded/good/"),
-              s3("s3://snowplow-acme-storage/shredded/bad/"),
-              None,
-              s3("s3://snowplow-acme-storage/shredded-archive/")))
+              s3("s3://snowplow-acme-storage/shredded/good/")
+            )
+          )
         )
       ),
-      Enrich(EnrichVersions(Semver(1,9,0,None)),NoneCompression),
+      Enrich(NoneCompression),
       Storage(StorageVersions(Semver(0,12,0,Some(ReleaseCandidate(4))),Semver(0,1,0,None))),
       Monitoring(Map(),Logging(DebugLevel),Some(SnowplowMonitoring(Some(GetMethod),Some("batch-pipeline"),Some("snplow.acme.com")))))
 
