@@ -93,8 +93,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
     val ast: Either[Error, Json] = parser.parse(enrichYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.Enrich])
 
-    val versions = SnowplowConfig.EnrichVersions(Semver(1,8,0))
-    val expected = SnowplowConfig.Enrich(versions, SnowplowConfig.NoneCompression)
+    val expected = SnowplowConfig.Enrich(SnowplowConfig.NoneCompression)
 
     storage must beRight(expected)
   }
