@@ -392,7 +392,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       "BEGIN", "ACQUIRED",
       "COPY atomic.events", "SELECT etl_tstamp", "SELECT manifest",
       "COPY atomic.com_acme_context_1", "COPY atomic.com_acme_event_2", "COPY atomic.com_snowplowanalytics_snowplow_geolocation_context_1",
-      "INSERT INTO atomic.manifest", "RELEASED 12345678-aabb-ccdd-bfec-4c1cd9b00000",
+      "INSERT INTO atomic.manifest", "RELEASED",
       "COMMIT",
 
       "BEGIN",
