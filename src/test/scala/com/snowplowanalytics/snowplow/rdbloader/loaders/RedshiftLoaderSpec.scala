@@ -381,7 +381,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       "BEGIN", "ACQUIRED",
       "COPY atomic.events", "SELECT etl_tstamp", "SELECT manifest",
       "COPY atomic.com_acme_context_1", "COPY atomic.com_acme_event_2", "COPY atomic.com_snowplowanalytics_snowplow_geolocation_context_1",
-      "INSERT INTO atomic.manifest", "RELEASED 12345678-aabb-ccdd-bfec-4c1cd9b00000",
+      "INSERT INTO atomic.manifest", "RELEASED",
       "COMMIT",
 
       "BEGIN",
@@ -397,9 +397,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     type Err[A] = Either[ManifestError, A]
 
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      val lockHandler = ProcessingManifest.LockHandler[Err](() => Right(UUID.fromString("12345678-aabb-ccdd-bfec-4c1cd9b00000")),
+      val lockHandler = ProcessingManifest.LockHandler[Err](
         (_, _, _) => { queries.append(s"ACQUIRED"); Right((UUID.randomUUID(), Instant.now())) },
-        (_, _, _, _) => { queries.append(s"RELEASED"); Right((UUID.randomUUID(), Instant.now())) },
+        (_, _, id, _) => { queries.append(s"RELEASED"); Right((UUID.randomUUID(), Instant.now())) },
         (_, _, id, _) => { queries.append(s"FAILED $id"); Right((UUID.randomUUID(), Instant.now())) }
       )
 
