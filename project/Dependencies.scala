@@ -37,9 +37,6 @@ object Dependencies {
     val aws              = "1.11.319"
     val jSch             = "0.1.54"
 
-    // Java (Shredder)
-    val dynamodb         = "1.11.98"
-
     // Scala (test only)
     val specs2           = "4.0.4"
     val scalaCheck       = "1.12.6"
@@ -86,7 +83,7 @@ object Dependencies {
   val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
 
   // Java (Shredder)
-  val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"   % V.dynamodb
+  val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
 
   // Scala (test only)
   val specs2            = "org.specs2"            %% "specs2-core"             % V.specs2         % "test"
