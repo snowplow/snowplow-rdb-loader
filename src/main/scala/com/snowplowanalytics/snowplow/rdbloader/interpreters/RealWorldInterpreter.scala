@@ -173,13 +173,13 @@ class RealWorldInterpreter private[interpreters](
           result match {
             case ExitLog.LoadingSucceeded =>
               TrackerInterpreter.trackSuccess(tracker)
+              log(result.toString)
             case ExitLog.LoadingFailed(message) =>
               val secrets = List(cliConfig.target.password.getUnencrypted, cliConfig.target.username)
               val sanitizedMessage = Common.sanitize(message, secrets)
               TrackerInterpreter.trackError(tracker)
               log(sanitizedMessage)
           }
-          log(result.toString)
         case Dump(key) =>
           log(s"Dumping $key")
           val logs = messages.mkString("\n") + "\n"

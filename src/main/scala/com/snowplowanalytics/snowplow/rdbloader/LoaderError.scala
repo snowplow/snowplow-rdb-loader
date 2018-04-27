@@ -118,7 +118,7 @@ object LoaderError {
   case class NoDataFailure(path: S3.Folder) extends DiscoveryFailure {
     def getMessage: String =
       s"No data discovered in [$path], while RDB Loader was explicitly pointed to it by '--folder' option. " +
-        s"Either no such folder or it contains no files with data"
+        s"Possible reasons: S3 eventual consistency or folder does not contain any files"
 
     // Message for enabled manifest
     def getManifestMessage: String =
