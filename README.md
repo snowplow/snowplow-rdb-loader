@@ -1,5 +1,9 @@
 # Relational Database Loader
 
+[![Build Status][travis-image]][travis]
+[![Release][release-image]][releases]
+[![License][license-image]][license]
+
 ## Introduction
 
 This project contains applications required to load Snowplow data into relational databases.
@@ -55,4 +59,11 @@ limitations under the License.
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
 [shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred
 
+[travis-image]: https://travis-ci.org/snowplow/snowplow-rdb-loader.png?branch=master
+[travis]: http://travis-ci.org/snowplow/snowplow-rdb-loader
+
+[release-image]: http://img.shields.io/badge/release-r29-blue.svg?style=flat
+[releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
+
+[license-image]: http://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
 [license]: http://www.apache.org/licenses/LICENSE-2.0
