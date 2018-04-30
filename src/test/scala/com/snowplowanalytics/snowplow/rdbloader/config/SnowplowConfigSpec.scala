@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0, * and you may not use this file except in compliance with the Apache License Version 2.0.
  * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
@@ -93,8 +93,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
     val ast: Either[Error, Json] = parser.parse(enrichYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.Enrich])
 
-    val versions = SnowplowConfig.EnrichVersions(Semver(1,8,0))
-    val expected = SnowplowConfig.Enrich(versions, SnowplowConfig.NoneCompression)
+    val expected = SnowplowConfig.Enrich(SnowplowConfig.NoneCompression)
 
     storage must beRight(expected)
   }

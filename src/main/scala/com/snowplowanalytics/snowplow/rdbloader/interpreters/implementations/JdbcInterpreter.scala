@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -20,19 +20,20 @@ import java.util.Properties
 
 import scala.util.control.NonFatal
 
-import cats.implicits._
-
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
+
+import cats.implicits._
 
 import org.postgresql.copy.CopyManager
 import org.postgresql.jdbc.PgConnection
 import org.postgresql.{Driver => PgDriver}
 
 import LoaderError.StorageTargetError
+import db.Decoder
 import config.StorageTarget
 import loaders.Common.SqlString
 
-object PgInterpreter {
+object JdbcInterpreter {
 
   /**
    * Execute a single update-statement in provided Postgres connection
@@ -41,20 +42,43 @@ object PgInterpreter {
    * @param sql string with valid SQL statement
    * @return number of updated rows in case of success, failure otherwise
    */
-  def executeQuery(conn: Connection)(sql: SqlString): Either[StorageTargetError, Int] =
+  def executeUpdate(conn: Connection)(sql: SqlString): Either[StorageTargetError, Long] =
     Either.catchNonFatal {
-      conn.createStatement().executeUpdate(sql)
+      conn.createStatement().executeUpdate(sql).toLong
     } leftMap {
-      case NonFatal(e) => StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
+      case NonFatal(e: java.sql.SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
+        StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
+      case NonFatal(e) =>
+        System.err.println("RDB Loader unknown error in executeUpdate")
+        e.printStackTrace()
+        StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
+    }
+
+  def executeQuery[A](conn: Connection)(sql: SqlString)(implicit ev: Decoder[A]): Either[StorageTargetError, A] =
+    try {
+      val resultSet = conn.createStatement().executeQuery(sql)
+      ev.decode(resultSet) match {
+        case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
+        case Right(a) =>
+          println(a)
+          a.asRight[StorageTargetError]
+      }
+    } catch {
+      case NonFatal(e) =>
+        System.err.println("RDB Loader unknown error in executeQuery")
+        e.printStackTrace()
+        StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[A]
     }
 
   def setAutocommit(conn: Connection, autoCommit: Boolean): Either[LoaderError, Unit] =
     try {
       Right(conn.setAutoCommit(autoCommit))
     } catch {
-      case e: SQLException => Left(StorageTargetError(e.toString))
+      case e: SQLException =>
+        System.err.println("setAutocommit error")
+        e.printStackTrace()
+        Left(StorageTargetError(e.toString))
     }
-
 
   def copyViaStdin(conn: Connection, files: List[Path], copyStatement: SqlString): Either[LoaderError, Long] = {
     val copyManager = Either.catchNonFatal {
@@ -65,10 +89,7 @@ object PgInterpreter {
       manager <- copyManager
       _ <- setAutocommit(conn, false)
       result = files.traverse(copyIn(manager, copyStatement)(_)).map(_.combineAll)
-      _ = result match {
-        case Left(_) => conn.rollback()
-        case Right(_) => conn.commit()
-      }
+      _ = result.fold(_ => conn.rollback(), _ => conn.commit())
       _ <- setAutocommit(conn, true)
       endResult <- result
     } yield endResult
@@ -95,25 +116,31 @@ object PgInterpreter {
       val props = new Properties()
       props.setProperty("user", target.username)
       props.setProperty("password", password)
-      props.setProperty("tcpKeepAlive", "true")
 
       target match {
         case r: StorageTarget.RedshiftConfig =>
           val url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
-          if (r.sslMode == StorageTarget.Disable) {   // "disable" and "require" are not supported
-            props.setProperty("ssl", "false")         // by native Redshift JDBC Driver
-          } else {                                    // http://docs.aws.amazon.com/redshift/latest/mgmt/configure-jdbc-options.html
-            props.setProperty("ssl", "true")
-          }
-          Right(new RedshiftDriver().connect(url, props))
+          for {
+            _ <- r.jdbc.validation match {
+              case Left(error) => error.asLeft
+              case Right(propertyUpdaters) =>
+                propertyUpdaters.foreach(f => f(props)).asRight
+            }
+            connection <- Either.catchNonFatal(new RedshiftDriver().connect(url, props)).leftMap { x =>
+              LoaderError.StorageTargetError(x.getMessage)
+            }
+          } yield connection
 
-        case _: StorageTarget.PostgresqlConfig =>
-          val url = s"jdbc:postgresql://${target.host}:${target.port}/${target.database}"
-          props.setProperty("sslmode", target.sslMode.asProperty)
+        case p: StorageTarget.PostgresqlConfig =>
+          val url = s"jdbc:postgresql://${p.host}:${p.port}/${p.database}"
+          props.setProperty("sslmode", p.sslMode.asProperty)
           Right(new PgDriver().connect(url, props))
       }
     } catch {
-      case NonFatal(e) => Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
+      case NonFatal(e) =>
+        System.err.println("RDB Loader getConnection error")
+        e.printStackTrace()
+        Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
     }
   }
 }

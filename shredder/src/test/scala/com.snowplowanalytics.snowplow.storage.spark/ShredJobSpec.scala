@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -267,7 +267,11 @@ trait ShredJobSpec extends SparkSpec {
       Array.empty[String]
     }
 
-    val job = ShredJob(spark, config ++ dedupeConfig)
+    val shredJobConfig = ShredJobConfig
+      .loadConfigFrom(config ++ dedupeConfig)
+      .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
+
+    val job = new ShredJob(spark, shredJobConfig)
     job.run()
     deleteRecursively(input)
   }

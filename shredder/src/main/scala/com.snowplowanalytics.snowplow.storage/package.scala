@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -24,6 +24,9 @@ import iglu.client.JsonSchemaPair
  * See: http://www.artima.com/scalazine/articles/package_objects.html
  */
 package object spark {
-  /** Convenient for passing around the parts of an event. */
+  /**
+    * Convenient for passing around the parts of an event
+    * `event_id`, `event_fingerprint`, list of JSONs, `etl_tstamp`
+    */
   type EventComponents = Tuple4[String, String, List[JsonSchemaPair], String]
 }

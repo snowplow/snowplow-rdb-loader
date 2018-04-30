@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0, * and you may not use this file except in compliance with the Apache License Version 2.0.
  * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
@@ -24,9 +24,11 @@ import com.snowplowanalytics.iglu.client.Resolver
 class StorageTargetSpec extends Specification { def is = s2"""
   Parse Postgres storage target configuration $e1
   Parse Redshift storage target configuration $e2
-  Parse Postgres storage target (2-1-0) with tunnel $e3
-  Parse Redshift storage target (2-1-0) with encrypted password $e4
-  Fail to parse old Redshift storage target (2-0-1) with encrypted password $e5
+  Parse Redshift storage target (3-0-0) with tunnel $e3
+  Parse Redshift storage target (3-0-0) with encrypted password $e4
+  Fail to parse old Redshift storage target (3-0-0) with encrypted password $e5
+  Parse Redshift storage target (3-0-0) with many JDBC options  $e6
+  Fail to parse Redshift storage target (3-0-0) with wrong JDBC value $e7
   """
 
   private val resolverConfig = parseJson(
@@ -38,11 +40,21 @@ class StorageTargetSpec extends Specification { def is = s2"""
       |    "repositories": [
       |      {
       |        "name": "Iglu Central",
-      |        "priority": 0,
+      |        "priority": 1,
       |        "vendorPrefixes": [ "com.snowplowanalytics" ],
       |        "connection": {
       |          "http": {
       |            "uri": "http://iglucentral.com"
+      |          }
+      |        }
+      |      },
+      |      {
+      |        "name": "Embedded Test",
+      |        "priority": 0,
+      |        "vendorPrefixes": [ "com.snowplowanalytics" ],
+      |        "connection": {
+      |          "embedded": {
+      |            "path": "/embed"
       |          }
       |        }
       |      }
@@ -60,6 +72,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-0-1",
       |    "data": {
       |        "name": "PostgreSQL enriched events storage",
+      |        "id": "1111223344-eee7-4845-a7e6-8fdc88d599d0",
       |        "host": "mydatabase.host.acme.com",
       |        "database": "ADD HERE",
       |        "port": 5432,
@@ -73,7 +86,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     """.stripMargin
 
     val expected = StorageTarget.PostgresqlConfig(
-      None,
+      "1111223344-eee7-4845-a7e6-8fdc88d599d0",
       "PostgreSQL enriched events storage",
       "mydatabase.host.acme.com",
       "ADD HERE",
@@ -82,6 +95,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "atomic",
       "ADD HERE",
       StorageTarget.PlainText("ADD HERE"),
+      None,
       None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
@@ -90,13 +104,16 @@ class StorageTargetSpec extends Specification { def is = s2"""
   def e2 = {
     val config = """
       |{
-      |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-0-0",
+      |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
       |    "data": {
       |        "name": "AWS Redshift enriched events storage",
-      |        "host": "ADD HERE",
+      |        "id": "1111223344-dddd-4845-a7e6-8fdc88d599d0",
+      |        "host": "example.host",
       |        "database": "ADD HERE",
       |        "port": 5439,
-      |        "sslMode": "DISABLE",
+      |        "jdbc": { "ssl": true },
+      |        "processingManifest": null,
+      |        "sshTunnel": null,
       |        "username": "ADD HERE",
       |        "password": "ADD HERE",
       |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
@@ -109,19 +126,19 @@ class StorageTargetSpec extends Specification { def is = s2"""
     """.stripMargin
 
     val expected = StorageTarget.RedshiftConfig(
-      None,
+      "1111223344-dddd-4845-a7e6-8fdc88d599d0",
       "AWS Redshift enriched events storage",
-      "ADD HERE",
+      "example.host",
       "ADD HERE",
       5439,
-      StorageTarget.Disable,
-      "arn:aws:iam::123456789876:role/RedshiftLoadRol" +
-        "e",
+      SpecHelpers.enableSsl,
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
       StorageTarget.PlainText("ADD HERE"),
       1,
       20000,
+      None,
       None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
@@ -130,13 +147,15 @@ class StorageTargetSpec extends Specification { def is = s2"""
   def e3 = {
     val config = """
                    |{
-                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0",
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
                    |    "data": {
                    |        "name": "AWS Redshift enriched events storage",
-                   |        "host": "ADD HERE",
+                   |        "id": "1111223344-dddd-4845-a7e6-8fdc88d599d0",
+                   |        "host": "example.com",
                    |        "database": "ADD HERE",
                    |        "port": 5439,
-                   |        "sslMode": "DISABLE",
+                   |        "jdbc": {"ssl": true},
+                   |        "processingManifest": null,
                    |        "username": "ADD HERE",
                    |        "password": "ADD HERE",
                    |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
@@ -149,6 +168,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
                    |                "host": "bastion.acme.com",
                    |                "port": 22,
                    |                "user": "snowplow-loader",
+                   |                "passphrase": null,
                    |                "key": {
                    |                     "ec2ParameterStore": {
                    |                         "parameterName": "snowplow.rdbloader.redshift.key"
@@ -170,19 +190,20 @@ class StorageTargetSpec extends Specification { def is = s2"""
     val destination = StorageTarget.DestinationConfig("10.0.0.11", 5439)
     val tunnel = StorageTarget.TunnelConfig(bastion, 15151, destination)
     val expected = StorageTarget.RedshiftConfig(
-      None,
+      "1111223344-dddd-4845-a7e6-8fdc88d599d0",
       "AWS Redshift enriched events storage",
-      "ADD HERE",
+      "example.com",
       "ADD HERE",
       5439,
-      StorageTarget.Disable,
+      SpecHelpers.enableSsl,
       "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
       StorageTarget.PlainText("ADD HERE"),
       1,
       20000,
-      Some(tunnel))
+      Some(tunnel),
+      None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
   }
@@ -190,13 +211,16 @@ class StorageTargetSpec extends Specification { def is = s2"""
   def e4 = {
     val config = """
                    |{
-                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0",
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
                    |    "data": {
                    |        "name": "AWS Redshift enriched events storage",
-                   |        "host": "ADD HERE",
+                   |        "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
+                   |        "host": "192.168.1.12",
                    |        "database": "ADD HERE",
                    |        "port": 5439,
-                   |        "sslMode": "DISABLE",
+                   |        "jdbc": {},
+                   |        "processingManifest": null,
+                   |        "sshTunnel": null,
                    |        "username": "ADD HERE",
                    |        "password": {
                    |            "ec2ParameterStore": {
@@ -213,18 +237,19 @@ class StorageTargetSpec extends Specification { def is = s2"""
                  """.stripMargin
 
     val expected = StorageTarget.RedshiftConfig(
-      None,
+      "33334444-eee7-4845-a7e6-8fdc88d599d0",
       "AWS Redshift enriched events storage",
-      "ADD HERE",
+      "192.168.1.12",
       "ADD HERE",
       5439,
-      StorageTarget.Disable,
+      StorageTarget.RedshiftJdbc.empty,
       "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
       StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
       1,
       20000,
+      None,
       None)
 
     parseWithDefaultResolver(config).toEither must beRight(expected)
@@ -233,13 +258,13 @@ class StorageTargetSpec extends Specification { def is = s2"""
   def e5 = {
     val config = """
                    |{
-                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-0-1",
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
                    |    "data": {
                    |        "name": "AWS Redshift enriched events storage",
                    |        "host": "ADD HERE",
                    |        "database": "ADD HERE",
                    |        "port": 5439,
-                   |        "sslMode": "DISABLE",
+                   |        "jdbc": {},
                    |        "username": "ADD HERE",
                    |        "password": {
                    |            "ec2ParameterStore": {
@@ -256,5 +281,107 @@ class StorageTargetSpec extends Specification { def is = s2"""
                  """.stripMargin
 
     parseWithDefaultResolver(config).toEither must beLeft
+  }
+
+  def e6 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
+                   |        "host": "192.168.1.12",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "jdbc": {
+                   |          "sslMode": "verify-ca",
+                   |          "loglevel": 1,
+                   |          "BlockingRowsMode": 3,
+                   |          "socketTimeout": 100,
+                   |          "DisableIsValidQuery": true,
+                   |          "tcpKeepAlive": false
+                   |        },
+                   |        "processingManifest": null,
+                   |        "sshTunnel": null,
+                   |        "username": "ADD HERE",
+                   |        "password": {
+                   |            "ec2ParameterStore": {
+                   |                "parameterName": "snowplow.rdbloader.redshift.password"
+                   |            }
+                   |        },
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "purpose": "ENRICHED_EVENTS"
+                   |    }
+                   |}
+                 """.stripMargin
+
+    val expected = StorageTarget.RedshiftConfig(
+      "33334444-eee7-4845-a7e6-8fdc88d599d0",
+      "AWS Redshift enriched events storage",
+      "192.168.1.12",
+      "ADD HERE",
+      5439,
+      StorageTarget.RedshiftJdbc(
+        Some(3),
+        Some(true),
+        None,
+        None,
+        None,
+        Some(1),
+        Some(100),
+        None,
+        Some("verify-ca"),
+        None,
+        Some(false),
+        None
+      ),
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+      "atomic",
+      "ADD HERE",
+      StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
+      1,
+      20000,
+      None,
+      None)
+
+    parseWithDefaultResolver(config).toEither must beRight(expected)
+  }
+
+  def e7 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
+                   |        "host": "192.168.1.12",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "jdbc": {
+                   |          "sslMode": "enabled"
+                   |        },
+                   |        "processingManifest": null,
+                   |        "sshTunnel": null,
+                   |        "username": "ADD HERE",
+                   |        "password": {
+                   |            "ec2ParameterStore": {
+                   |                "parameterName": "snowplow.rdbloader.redshift.password"
+                   |            }
+                   |        },
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "purpose": "ENRICHED_EVENTS"
+                   |    }
+                   |}
+                 """.stripMargin
+
+    parseWithDefaultResolver(config).toEither must beLeft.like {
+      case nel => nel.toList.map(_.message) must contain(startingWith("error: instance value (\"enabled\") not found in enum"))
+    }
   }
 }

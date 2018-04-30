@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -223,15 +223,15 @@ object DuplicateStorage {
 
     /**
       * Indempotent action to create duplicates table
-      * If table with name already exists - do nothing and just return name
-      * If table doesn't exist - create table with predefined structure and return name
-      * This is blocking operation as opposed to `DynamoDB#createTable`
+      * If table with name already exists - block until is available and return name
+      * If table doesn't exist - throw exception
       *
       * @param client AWS DynamoDB client with established connection
       * @param name DynamoDB table name
       * @return same table name or throw exception
       */
-    def getOrCreateTable(client: AmazonDynamoDB, name: String): String = {
+    @throws[IllegalStateException]
+    private[spark] def getOrCreateTable(client: AmazonDynamoDB, name: String): String = {
       val request = new DescribeTableRequest().withTableName(name)
       val result = try {
         Option(client.describeTable(request).getTable)
@@ -242,7 +242,8 @@ object DuplicateStorage {
         case Some(description) =>
           waitForActive(client, name, description)
           name
-        case None => createTable(client, name).getTableName
+        case None =>
+          throw new IllegalStateException("Amazon DynamoDB table for event manifest is unavailable")
       }
     }
 
@@ -261,7 +262,7 @@ object DuplicateStorage {
       val schema = List(
         new KeySchemaElement(eventIdColumn, KeyType.HASH),
         new KeySchemaElement(fingerprintColumn, KeyType.RANGE))
-      
+
       val request = new CreateTableRequest()
         .withTableName(name)
         .withAttributeDefinitions(pks.asJava)

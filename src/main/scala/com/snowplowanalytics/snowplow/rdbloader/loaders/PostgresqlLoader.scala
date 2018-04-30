@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,38 +14,30 @@ package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
 import cats.implicits._
+import cats.data._
 import cats.free.Free
 
 // This project
 import LoaderA._
-import config.{Step, SnowplowConfig}
+import config.Step
 import config.StorageTarget.PostgresqlConfig
+import discovery.DataDiscovery
 
 object PostgresqlLoader {
 
   /**
-   * Discovery data in `shredded.good`, build SQL statements to
-   * load this data and build `LoaderA` structure to interpret.
+   * Build SQL statements out of discovery and load data
    * Primary working method. Does not produce side-effects
    *
-   * @param config main Snowplow configuration
    * @param target Redshift storage target configuration
    * @param steps SQL steps
+   * @param discovery discovered data to load
    */
-  def run(config: SnowplowConfig, target: PostgresqlConfig, steps: Set[Step], folder: Option[S3.Folder]) = {
-    val shreddedGood = config.aws.s3.buckets.shredded.good
-    val discoveryTarget = folder match {
-      case Some(f) => DataDiscovery.InShreddedGood(f)
-      case None => DataDiscovery.InShreddedGood(shreddedGood)
-    }
-
-    // Should be safe to skip consistency check as whole folder gets downloaded
-    val discovery = DataDiscovery.discoverAtomic(discoveryTarget)
+  def run(target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]) = {
     val statements = PostgresqlLoadStatements.build(target.eventsTable, steps)
 
     for {
-      folders <- discovery.addStep(Step.Discover)
-      _ <- folders.traverse(loadFolder(statements))
+      _ <- discovery.traverse(loadFolder(statements))
       _ <- analyze(statements)
       _ <- vacuum(statements)
     } yield ()
@@ -58,12 +50,12 @@ object PostgresqlLoader {
    * @param discovery discovered run folder
    * @return changed app state
    */
-  def loadFolder(statement: PostgresqlLoadStatements)(discovery: DataDiscovery): TargetLoading[LoaderError, Long] = {
+  def loadFolder(statement: PostgresqlLoadStatements)(discovery: DataDiscovery): LoaderAction[Long] = {
     for {
-      tmpdir <- createTmpDir.withoutStep
-      files  <- downloadData(discovery.atomicEvents, tmpdir).addStep(Step.Download)
-      count  <- copyViaStdin(files, statement.events).addStep(Step.Load)
-      _      <- deleteDir(tmpdir).addStep(Step.Delete)
+      tmpdir <- EitherT(createTmpDir)
+      files  <- EitherT(downloadData(discovery.atomicEvents, tmpdir))
+      count  <- EitherT(copyViaStdin(files, statement.events))
+      _      <- EitherT(deleteDir(tmpdir))
     } yield count
   }
 
@@ -71,14 +63,14 @@ object PostgresqlLoader {
    * Return action executing VACUUM statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def analyze(statements: PostgresqlLoadStatements): TargetLoading[LoaderError, Unit] = {
+  def analyze(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.analyze match {
       case Some(analyze) =>
-        val result = executeQueries(List(analyze)).map(_.void)
-        result.addStep(Step.Analyze)
+        val result = executeUpdates(List(analyze)).map(_.void)
+        EitherT(result)
       case None =>
         val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))
-        noop.withoutStep
+        EitherT(noop)
     }
   }
 
@@ -86,14 +78,14 @@ object PostgresqlLoader {
    * Return action executing ANALYZE statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def vacuum(statements: PostgresqlLoadStatements): TargetLoading[LoaderError, Unit] = {
+  def vacuum(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
     statements.vacuum match {
       case Some(vacuum) =>
-        val result = executeQueries(List(vacuum)).map(_.void)
-        result.addStep(Step.Vacuum)
+        val result = executeUpdates(List(vacuum)).map(_.void)
+        EitherT(result)
       case None =>
         val noop: Action[Either[LoaderError, Unit]] = Free.pure(Right(()))
-        noop.withoutStep
+        EitherT(noop)
     }
   }
 

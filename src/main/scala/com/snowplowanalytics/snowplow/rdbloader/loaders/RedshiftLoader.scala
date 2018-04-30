@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,15 +13,16 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
-import cats.free.Free
+import cats.data._
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.EventsTable
 
 // This project
 import LoaderA._
 import RedshiftLoadStatements._
-import Common.SqlString
-import config.{ SnowplowConfig, Step }
-import config.StorageTarget.RedshiftConfig
+import Common.{ SqlString, EventsTable }
+import discovery.DataDiscovery
+import config.{ SnowplowConfig, Step, StorageTarget }
 
 
 /**
@@ -43,49 +44,15 @@ object RedshiftLoader {
    * @param config main Snowplow configuration
    * @param target Redshift storage target configuration
    * @param steps SQL steps
-   * @param folder specific run-folder to load from instead shredded.good
    */
-  def run(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], folder: Option[S3.Folder]) = {
-    for {
-      statements <- discover(config, target, steps, folder).addStep(Step.Discover)
-      result <- load(statements)
-    } yield result
+  def run(config: SnowplowConfig,
+          target: StorageTarget.RedshiftConfig,
+          steps: Set[Step],
+          discovery: List[DataDiscovery]) = {
+    val queue = buildQueue(config, target, steps)(discovery)
+
+    queue.traverse(loadFolder(steps, target.processingManifest.isDefined)).void
   }
-
-  /**
-   * Discovers data in `shredded.good` folder with its associated metadata
-   * (types, JSONPath files etc) and build SQL-statements to load it
-   *
-   * @param config main Snowplow configuration
-   * @param target Redshift storage target configuration
-   * @param steps SQL steps
-   * @return action to perform all necessary S3 interactions
-   */
-  def discover(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], folder: Option[S3.Folder]): Discovery[LoadQueue] = {
-    val discoveryTarget = folder match {
-      case Some(f) => DataDiscovery.InSpecificFolder(f)
-      case None => DataDiscovery.InShreddedGood(config.aws.s3.buckets.shredded.good)
-    }
-
-    val shredJob = config.storage.versions.rdbShredder
-    val region = config.aws.s3.region
-    val assets = config.aws.s3.buckets.jsonpathAssets
-
-    val discovery = DataDiscovery.discoverFull(discoveryTarget, shredJob, region, assets)
-
-    val consistent = if (steps.contains(Step.ConsistencyCheck)) DataDiscovery.checkConsistency(discovery) else discovery
-
-    Discovery.map(consistent)(buildQueue(config, target, steps))
-  }
-
-  /**
-   * Load all discovered data one by one
-   *
-   * @param queue properly sorted list of load statements
-   * @return application state with performed steps and success/failure result
-   */
-  def load(queue: LoadQueue) =
-    queue.traverse(loadFolder).void
 
   /**
    * Perform data-loading for a single run folder.
@@ -93,43 +60,87 @@ object RedshiftLoader {
    * @param statements prepared load statements
    * @return application state
    */
-  def loadFolder(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Unit] = {
+  def loadFolder(steps: Set[Step], processingManifest: Boolean)(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
     import LoaderA._
 
-    val loadStatements = statements.events :: statements.shredded ++ List(statements.manifest)
+    val checkManifest = steps.contains(Step.LoadManifestCheck)
+    val loadManifest = steps.contains(Step.LoadManifest)
+
+    def loadTransaction = for {
+      _ <- getLoad(checkManifest, statements.dbSchema, statements.atomicCopy)
+      _ <- EitherT(executeUpdates(statements.shredded))
+      _ <- if (loadManifest) EitherT(executeUpdate(statements.manifest)) else LoaderAction.unit
+    } yield ()
 
     for {
-      _ <- executeTransaction(loadStatements).addStep(Step.Load)
+      _ <- LoaderAction.liftA(LoaderA.print(s"Processing ${statements.base}"))
+
+      _ <- EitherT(executeUpdate(Common.BeginTransaction))
+      _ <- statements.discovery.item match {
+        case Some(item) => LoaderA.manifestProcess(item, loadTransaction)
+        case None => loadTransaction
+      }
+      _ <- EitherT(executeUpdate(Common.CommitTransaction))
+
+      _ <- LoaderAction.liftA(LoaderA.print("Loaded"))
+
       _ <- vacuum(statements)
       _ <- analyze(statements)
     } yield ()
+  }
+
+  def getLoad(checkManifest: Boolean, dbSchema: String, copy: AtomicCopy): LoaderAction[Unit] = {
+    def check(eventsTable: EventsTable): LoaderAction[Unit] = {
+      if (checkManifest) Common.checkLoadManifest(dbSchema, eventsTable) else LoaderAction.unit
+    }
+
+    copy match {
+      case StraightCopy(copy) => for {
+        _ <- EitherT(executeUpdate(copy))
+        _ <- check(Common.AtomicEvents(dbSchema))
+      } yield ()
+      case TransitCopy(copy) =>
+        val create = RedshiftLoadStatements.createTransitTable(dbSchema)
+        val destroy = RedshiftLoadStatements.destroyTransitTable(dbSchema)
+        for {
+          _ <- EitherT(executeUpdate(create))
+          _ <- check(Common.TransitTable(dbSchema))
+          _ <- EitherT(executeUpdate(copy))
+          _ <- EitherT(executeUpdate(destroy))
+        } yield ()
+    }
   }
 
   /**
    * Return action executing VACUUM statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def analyze(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Unit] = {
+  def analyze(statements: RedshiftLoadStatements): LoaderAction[Unit] =
     statements.analyze match {
-      case Some(analyze) => executeTransaction(analyze).addStep(Step.Analyze)
-      case None =>
-        val noop: Action[Either[LoaderError, Unit]] = Free.pure(().asRight)
-        noop.withoutStep
+      case Some(analyze) =>
+        for {
+          _ <- LoaderAction.liftA(LoaderA.print("Executing ANALYZE transaction"))
+          _ <- EitherT(executeTransaction(analyze))
+        } yield ()
+      case None => LoaderAction.unit
     }
-  }
 
   /**
    * Return action executing ANALYZE statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def vacuum(statements: RedshiftLoadStatements): TargetLoading[LoaderError, Unit] = {
+  def vacuum(statements: RedshiftLoadStatements): LoaderAction[Unit] = {
     statements.vacuum match {
       case Some(vacuum) =>
         val block = SqlString.unsafeCoerce("END") :: vacuum
-        executeQueries(block).addStep(Step.Vacuum)
-      case None =>
-        val noop: Action[Either[LoaderError, Unit]] = Free.pure(().asRight)
-        noop.withoutStep
+        val actions = for {
+          statement <- block
+        } yield for {
+          _ <- LoaderA.print(statement)
+          _ <- executeUpdate(statement)
+        } yield ()
+        LoaderAction.liftA(actions.sequence).void
+      case None => LoaderAction.liftA(LoaderA.print("Skip VACUUM"))
     }
   }
 }

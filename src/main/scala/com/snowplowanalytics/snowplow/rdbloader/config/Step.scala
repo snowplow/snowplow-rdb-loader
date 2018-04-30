@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -29,12 +29,18 @@ object Step {
   sealed trait IncludeStep extends Step with StringEnum
   case object Vacuum extends IncludeStep { def asString = "vacuum" }
 
-  /**
-   * Step that will be included if not skip it explicitly
-   */
+  /** Step that will be included if not skip it explicitly */
   sealed trait SkipStep extends Step with StringEnum
+  /** Redshift ANALYZE */
   case object Analyze extends SkipStep { def asString = "analyze" }
+  /** Perform additional sleep until S3 is consistent */
   case object ConsistencyCheck extends SkipStep { def asString = "consistency_check" }
+  /** Perform defensive check that `etl_tstamp` is not in load manifest yet */
+  case object LoadManifestCheck extends SkipStep { def asString = "load_manifest_check" }
+  /** Do not COPY data through temporary table, even with `--folder` option (makes sense only with `--folder`) */
+  case object TransitCopy extends SkipStep { def asString = "transit_copy" }
+  /** Do not perform any interaction with load manifest, including `load_manifest_check` */
+  case object LoadManifest extends SkipStep { def asString = "load_manifest" }
 
   /**
    * Step that cannot be skipped nor included
@@ -58,10 +64,8 @@ object Step {
       case Left(e) => throw new RuntimeException(e)
     } } }
 
-  /**
-   * Steps included into app by default
-   */
-  val defaultSteps = sealedDescendants[SkipStep] ++ Set.empty[Step]
+  /** Steps included into app by default */
+  val defaultSteps: Set[Step] = sealedDescendants[SkipStep] ++ Set.empty[Step]
 
   /**
    * Remove explicitly disabled steps and add optional steps
@@ -72,6 +76,9 @@ object Step {
    * @return end set of steps
    */
   def constructSteps(toSkip: Set[SkipStep], toInclude: Set[IncludeStep]): Set[Step] = {
-    defaultSteps -- toSkip ++ toInclude
+    val updated = if (toSkip.contains(Step.LoadManifest))
+      defaultSteps - Step.LoadManifestCheck else defaultSteps
+
+    updated -- toSkip ++ toInclude
   }
 }

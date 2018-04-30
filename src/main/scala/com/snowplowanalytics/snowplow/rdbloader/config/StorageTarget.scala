@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,10 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
+import java.util.Properties
+
 import cats.data._
 import cats.implicits._
 
-import io.circe.{Decoder, DecodingFailure, HCursor, Json}
+import io.circe._
 import io.circe.Decoder._
 import io.circe.generic.auto._
 
@@ -39,19 +41,21 @@ import utils.Common._
  * Any of those can be safely coerced
  */
 sealed trait StorageTarget extends Product with Serializable {
+  def id: String
   def name: String
   def host: String
   def database: String
   def schema: String
   def port: Int
-  def sslMode: StorageTarget.SslMode
   def username: String
   def password: StorageTarget.PasswordConfig
 
-  def eventsTable =
+  def processingManifest: Option[StorageTarget.ProcessingManifestConfig]
+
+  def eventsTable: String =
     loaders.Common.getEventsTable(schema)
 
-  def shreddedTable(tableName: String) =
+  def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
   def purpose: StorageTarget.Purpose
@@ -72,52 +76,122 @@ object StorageTarget {
   case object FailedEvents extends Purpose { def asString = "FAILED_EVENTS" }
   case object EnrichedEvents extends Purpose { def asString = "ENRICHED_EVENTS" }
 
-  implicit val sslModeDecoder =
+  implicit val sslModeDecoder: Decoder[SslMode] =
     decodeStringEnum[SslMode]
 
-  implicit val purposeDecoder =
+  implicit val purposeDecoder: Decoder[Purpose] =
     decodeStringEnum[Purpose]
 
   /**
-   * Redshift config
+    * Configuration to access Snowplow Processing Manifest
+    * @param amazonDynamoDb Amazon DynamoDB table, the single available implementation
+    */
+  case class ProcessingManifestConfig(amazonDynamoDb: ProcessingManifestConfig.AmazonDynamoDbConfig)
+
+  object ProcessingManifestConfig {
+    case class AmazonDynamoDbConfig(tableName: String)
+  }
+
+  /**
+   * PostgreSQL config
    * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-1-0`
    */
-  case class PostgresqlConfig(
-      id: Option[String],
-      name: String,
-      host: String,
-      database: String,
-      port: Int,
-      sslMode: SslMode,
-      schema: String,
-      username: String,
-      password: PasswordConfig,
-      sshTunnel: Option[TunnelConfig])
+  case class PostgresqlConfig(id: String,
+                              name: String,
+                              host: String,
+                              database: String,
+                              port: Int,
+                              sslMode: SslMode,
+                              schema: String,
+                              username: String,
+                              password: PasswordConfig,
+                              sshTunnel: Option[TunnelConfig],
+                              processingManifest: Option[ProcessingManifestConfig])
     extends StorageTarget {
     val purpose = EnrichedEvents
   }
 
   /**
    * Redshift config
-   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/2-1-0`
+   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0`
    */
-  case class RedshiftConfig(
-      id: Option[String],
-      name: String,
-      host: String,
-      database: String,
-      port: Int,
-      sslMode: SslMode,
-      roleArn: String,
-      schema: String,
-      username: String,
-      password: PasswordConfig,
-      maxError: Int,
-      compRows: Long,
-      sshTunnel: Option[TunnelConfig])
+  case class RedshiftConfig(id: String,
+                            name: String,
+                            host: String,
+                            database: String,
+                            port: Int,
+                            jdbc: RedshiftJdbc,
+                            roleArn: String,
+                            schema: String,
+                            username: String,
+                            password: PasswordConfig,
+                            maxError: Int,
+                            compRows: Long,
+                            sshTunnel: Option[TunnelConfig],
+                            processingManifest: Option[ProcessingManifestConfig])
     extends StorageTarget {
     val purpose = EnrichedEvents
   }
+
+  /**
+    * All possible JDBC according to Redshift documentation, except deprecated
+    * and authentication-related
+    */
+  case class RedshiftJdbc(blockingRows: Option[Int],
+                          disableIsValidQuery: Option[Boolean],
+                          dsiLogLevel: Option[Int],
+                          filterLevel: Option[String],
+                          loginTimeout: Option[Int],
+                          loglevel: Option[Int],
+                          socketTimeout: Option[Int],
+                          ssl: Option[Boolean],
+                          sslMode: Option[String],
+                          sslRootCert: Option[String],
+                          tcpKeepAlive: Option[Boolean],
+                          tcpKeepAliveMinutes: Option[Int]) {
+    /** Either errors or list of mutators to update the `Properties` object */
+    val validation: Either[LoaderError, List[Properties => Unit]] = jdbcEncoder.encodeObject(this).toList.map {
+      case (property, value) => value.fold(
+        ((_: Properties) => ()).asRight,
+        b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
+        n => n.toInt match {
+          case Some(num) =>
+            ((props: Properties) => {
+              props.setProperty(property, num.toString)
+              ()
+            }).asRight
+          case None => s"Impossible to apply JDBC property [$property] with value [${value.noSpaces}]".asLeft
+        },
+        s => ((props: Properties) => { props.setProperty(property, s); ()}).asRight,
+        _ => s"Impossible to apply JDBC property [$property] with JSON array".asLeft,
+        _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
+      )
+    } traverse(_.toValidatedNel) match {
+      case Validated.Valid(updaters) => updaters.asRight[LoaderError]
+      case Validated.Invalid(errors) =>
+        val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
+        val error: LoaderError = LoaderError.DecodingError(messages)
+        error.asLeft[List[Properties => Unit]]
+    }
+  }
+
+  object RedshiftJdbc {
+    val empty = RedshiftJdbc(None, None, None, None, None, None, None, None, None, None, None, None)
+  }
+
+  implicit val jdbcDecoder: Decoder[RedshiftJdbc] =
+    Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
+
+  implicit val jdbcEncoder: ObjectEncoder[RedshiftJdbc] =
+    Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
+      (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
+        j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
+        j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
+
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
   case class ParameterStoreConfig(parameterName: String)

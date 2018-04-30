@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,32 +14,33 @@
 lazy val loader = project.in(file("."))
   .settings(
     name := "snowplow-rdb-loader",
-    version := "0.14.0",
+    version := "0.15.0-rc5",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     mainClass in Compile := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.scalifySettings)
+  .settings(BuildSettings.scalifySettings(name in shredder, version in shredder))
   .settings(BuildSettings.assemblySettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.scopt,
       Dependencies.scalaz7,
-      Dependencies.json4s,
       Dependencies.igluClient,
-      Dependencies.igluCore,
+      Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
       Dependencies.catsFree,
       Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
+      Dependencies.manifest,
 
       Dependencies.postgres,
       Dependencies.redshift,
       Dependencies.redshiftSdk,
       Dependencies.s3,
       Dependencies.ssm,
+      Dependencies.dynamodb,
       Dependencies.jSch,
 
       Dependencies.specs2,
@@ -51,13 +52,14 @@ lazy val loader = project.in(file("."))
 lazy val shredder = project.in(file("shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
-    version     := "0.13.0",
+    version     := "0.14.0-rc1",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
+  .settings(BuildSettings.scalifySettings(name, version))
   .settings(
     libraryDependencies ++= Seq(
       // Java
@@ -65,11 +67,12 @@ lazy val shredder = project.in(file("shredder"))
       // Scala
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
-      Dependencies.json4s,
       Dependencies.scalaz7,
       Dependencies.scopt,
       Dependencies.commonEnrich,
       Dependencies.igluClient,
+      Dependencies.igluCoreCirce,
+      Dependencies.manifest,
       // Scala (test only)
       Dependencies.specs2
     )

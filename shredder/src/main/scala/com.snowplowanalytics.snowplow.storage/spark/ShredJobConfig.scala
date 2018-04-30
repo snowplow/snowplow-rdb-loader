@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -36,8 +36,17 @@ case class ShredJobConfig(
   outFolder: String = "",
   badFolder: String = "",
   igluConfig: String = "",
-  duplicateStorageConfig: Option[String] = None
-)
+  duplicateStorageConfig: Option[String] = None,
+  dynamodbManifestTable: Option[String] = None,
+  itemId: Option[String] = None
+) {
+  /** Get both manifest table and item id to process */
+  def getManifestData: Option[(String, String)] =
+    for {
+      t <- dynamodbManifestTable
+      i <- itemId
+    } yield (t, i)
+}
 
 object ShredJobConfig {
   private val parser = new scopt.OptionParser[ShredJobConfig]("ShredJob") {
@@ -57,7 +66,20 @@ object ShredJobConfig {
     opt[String]("duplicate-storage-config").optional().valueName("<duplicate storage config")
       .action((d, c) => c.copy(duplicateStorageConfig = Some(d)))
       .text("Duplicate storage configuration")
+    opt[String]("processing-manifest-table").optional().valueName("<dynamodb table name>")
+      .action((d, c) => c.copy(dynamodbManifestTable = Some(d)))
+      .text("Processing manifest table")
+    opt[String]("item-id").optional().valueName("<id>")
+      .action((d, c) => c.copy(itemId = Some(d)))
+      .text("Unique folder identificator for processing manifest (e.g. S3 URL)")
     help("help").text("Prints this usage text")
+    checkConfig(c =>
+      (c.dynamodbManifestTable, c.itemId) match {
+        case (Some(_), Some(_)) => success
+        case (None, None) => success
+        case (t, i) => failure(s"Both --processing-manifest-table and --item-id-should be either provided or omitted. Processing manifest: $t, item id: $i")
+      }
+    )
   }
 
   /**

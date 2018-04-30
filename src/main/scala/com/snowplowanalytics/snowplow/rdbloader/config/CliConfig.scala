@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,11 +13,15 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
+import java.util.Base64
+import java.nio.charset.StandardCharsets
+
 import cats.data._
 import cats.implicits._
 
-import java.util.Base64
-import java.nio.charset.StandardCharsets
+import com.snowplowanalytics.iglu.client.Resolver
+
+import org.json4s.JValue
 
 // This project
 import LoaderError._
@@ -33,6 +37,8 @@ import utils.{ Common, Compat }
  * @param logKey file on S3 to dump logs
  * @param folder specific run-folder to load (skipping discovery)
  * @param dryRun if RDB Loader should just discover data and print SQL
+ * @param resolverConfig proven to be valid resolver configuration
+  *                       (to not hold side-effecting object)
  */
 case class CliConfig(
   configYaml: SnowplowConfig,
@@ -40,7 +46,8 @@ case class CliConfig(
   steps: Set[Step],
   logKey: Option[S3.Key],
   folder: Option[S3.Folder],
-  dryRun: Boolean)
+  dryRun: Boolean,
+  resolverConfig: JValue)
 
 object CliConfig {
 
@@ -136,12 +143,13 @@ object CliConfig {
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
     val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
     val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(DecodingError).toValidatedNel).sequence
-    val target = loadTarget(rawConfig.resolver, rawConfig.target)
+    val resolver = loadResolver(rawConfig.resolver)
+    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
     val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
 
-    (target |@| config |@| logkey |@| folder).map {
-      case (t, c, l, f) => CliConfig(c, t, steps, l, f, rawConfig.dryRun)
+    (target, config, logkey, folder, resolver).mapN {
+      case (t, c, l, f, (j, _)) => CliConfig(c, t, steps, l, f, rawConfig.dryRun, j)
     }
   }
 
@@ -161,20 +169,23 @@ object CliConfig {
     }
   }
 
+  /** Decode Iglu Resolver and associated JSON config */
+  private def loadResolver(resolverConfigB64: String): ValidatedNel[ConfigError, (JValue, Resolver)] = {
+    base64decode(resolverConfigB64)
+      .flatMap(Common.safeParse)
+      .toValidatedNel
+      .andThen(json => Compat.convertIgluResolver(json).map((json, _)))
+      .map { case (json, resolver) => (json, resolver) }
+  }
+
   /**
    * Decode and validate base64-encoded storage target config JSON
    *
-   * @param resolverConfigB64 base64-encoded Iglu resolver config
+   * @param resolver working Iglu resolver
    * @param targetConfigB64 base64-encoded storage target JSON
    * @return either aggregated list of errors (from both resolver and target)
-   *         or successfuly decoded storage target
+   *         or successfully decoded storage target
    */
-  private def loadTarget(resolverConfigB64: String, targetConfigB64: String) = {
-    val json = base64decode(resolverConfigB64).flatMap(Common.safeParse).toValidatedNel
-    val resolver = json.andThen(Compat.convertIgluResolver)
-    val decodedTarget = base64decode(targetConfigB64).toValidatedNel
-    (resolver |@| decodedTarget).tupled.andThen {
-      case (r, t) => StorageTarget.parseTarget(r, t)
-    }
-  }
+  private def loadTarget(resolver: Resolver, targetConfigB64: String) =
+    base64decode(targetConfigB64).toValidatedNel.andThen(StorageTarget.parseTarget(resolver, _))
 }

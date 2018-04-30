@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -64,19 +64,11 @@ object SnowplowConfig {
       log: Folder,
       shredded: ShreddedBucket)
 
-  case class ShreddedBucket(
-      good: Folder,
-      bad: Folder,
-      errors: Option[Folder],
-      archive: Folder)
+  case class ShreddedBucket(good: Folder)
 
   // enrich section
 
-  case class Enrich(
-     versions: EnrichVersions,
-     outputCompression: OutputCompression)
-
-  case class EnrichVersions(sparkEnrich: Semver)
+  case class Enrich(outputCompression: OutputCompression)
 
   sealed trait OutputCompression extends StringEnum
   case object NoneCompression extends OutputCompression { val asString = "NONE" }
@@ -128,7 +120,7 @@ object SnowplowConfig {
      * Codecs should be declared in exact this order (reverse of their appearence in class)
      */
     private implicit val decoderConfiguration =
-      Configuration.default.withSnakeCaseKeys
+      Configuration.default.withSnakeCaseMemberNames
 
     implicit val decodeTrackerMethod: Decoder[TrackerMethod] =
       decodeStringEnum[TrackerMethod]
@@ -144,9 +136,6 @@ object SnowplowConfig {
 
     implicit val decodeOutputCompression: Decoder[OutputCompression] =
       decodeStringEnum[OutputCompression]
-
-    implicit val enrichVersionsDecoder: Decoder[EnrichVersions] =
-      ConfiguredDecoder.decodeCaseClass
 
     implicit val enrichDecoder: Decoder[Enrich] =
       ConfiguredDecoder.decodeCaseClass

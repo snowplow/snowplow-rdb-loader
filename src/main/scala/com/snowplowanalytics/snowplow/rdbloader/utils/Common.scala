@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -27,7 +27,7 @@ import io.circe._
 
 // This project
 import LoaderError._
-import config.Step
+import config.CliConfig
 
 /**
  * Various common utility functions
@@ -44,7 +44,7 @@ object Common {
    */
   def sanitize(message: String, stopWords: List[String]): String =
     stopWords.foldLeft(message) { (result, secret) =>
-      result.replaceAll(secret, "x" * secret.length)
+      result.replace(secret, "x" * secret.length)
     }
 
   /**
@@ -53,10 +53,16 @@ object Common {
    * @param result loading process state
    * @return log entry, which can be interpreted accordingly
    */
-  def interpret(result: (List[Step], Either[LoaderError, Unit])): Log = {
+  def interpret(config: CliConfig, result: Either[LoaderError, Unit]): Log = {
     result match {
-      case (steps, Right(_)) => Log.LoadingSucceeded(steps.reverse)
-      case (steps, Left(error)) => Log.LoadingFailed(error.show, steps.reverse)
+      case Right(_) => Log.LoadingSucceeded
+      case Left(e @ DiscoveryError(failures)) =>
+        val manifestError = failures.collect {
+          case e: NoDataFailure if config.target.processingManifest.nonEmpty => e.getManifestMessage
+        }
+        Log.LoadingFailed((e: LoaderError).show ++ s"\n${manifestError.mkString("\n")}")
+      case Left(error) =>
+        Log.LoadingFailed(error.show)
     }
   }
 

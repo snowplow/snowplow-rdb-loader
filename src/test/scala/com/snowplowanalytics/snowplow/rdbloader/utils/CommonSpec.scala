@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,15 +13,37 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package utils
 
+import cats.implicits._
+
+import LoaderError._
+import S3.Key.{coerce => s3}
+import config.{ CliConfig, Step }
+
 import org.specs2.Specification
 
 class CommonSpec extends Specification { def is = s2"""
   Sanitize message $e1
+  Sanitize message that contains invalid regular expression $e2
+  Correctly interpret final message $e3
   """
 
   def e1 = {
     val message = "Outputpassword. Output username"
     val result = Common.sanitize(message, List("password", "username"))
     result must beEqualTo("Outputxxxxxxxx. Output xxxxxxxx")
+  }
+
+  def e2 = {
+    val message = "Output$**^. Output username"
+    val result = Common.sanitize(message, List("""$**^""", "username"))
+    result must beEqualTo("Outputxxxx. Output xxxxxxxx")
+  }
+
+  def e3 = {
+    val loadResult = StorageTargetError("Some exception").asLeft
+    val cliConfig = CliConfig(SpecHelpers.validConfig, SpecHelpers.validTarget, Step.defaultSteps, Some(s3("s3://bucket/key")), None, false, SpecHelpers.resolverJson)
+
+    val result = Common.interpret(cliConfig, loadResult)
+    result must beEqualTo(Log.LoadingFailed("Data loading error Some exception"))
   }
 }

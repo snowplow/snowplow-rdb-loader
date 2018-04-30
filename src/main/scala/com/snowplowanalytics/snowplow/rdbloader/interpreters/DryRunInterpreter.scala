@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader
 package interpreters
 
 import java.nio.file._
+import java.time.Instant
+import java.util.UUID
 
 import scala.collection.mutable.ListBuffer
 
@@ -22,13 +24,19 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
+
+import com.snowplowanalytics.manifest.core.{ManifestError, ProcessingManifest}
 
 // This project
 import config.CliConfig
 import LoaderA._
+import LoaderError.LoaderLocalError
 import loaders.Common.SqlString
-import implementations.{S3Interpreter, TrackerInterpreter}
+import discovery.ManifestDiscovery
+import implementations.{S3Interpreter, TrackerInterpreter, ManifestInterpreter}
+
 
 /**
   * Interpreter performs all actual side-effecting work,
@@ -39,12 +47,15 @@ import implementations.{S3Interpreter, TrackerInterpreter}
 class DryRunInterpreter private[interpreters](
     cliConfig: CliConfig,
     amazonS3: AmazonS3,
-    tracker: Option[Tracker]) extends Interpreter {
+    tracker: Option[Tracker],
+    resolver: Resolver) extends Interpreter {
 
   private val logQueries = ListBuffer.empty[SqlString]
   private val logCopyFiles = ListBuffer.empty[Path]
   private val logMessages = ListBuffer.empty[String]
   private var sleepTime = 0L
+
+  private val interpreter = this
 
   /**
     * Successfully fetched JSONPaths
@@ -52,6 +63,9 @@ class DryRunInterpreter private[interpreters](
     * Value: "s3://my-jsonpaths/redshift/vendor/filename_1.json"
     */
   private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+
+  lazy val manifest =
+    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, resolver)
 
   def getDryRunLogs: String = {
     val sleep = s"Consistency check sleep time: $sleepTime\n"
@@ -80,13 +94,39 @@ class DryRunInterpreter private[interpreters](
           logMessages.append(s"Downloading data from [$source] to [$dest]")
           List.empty[Path].asRight[LoaderError]
 
-        case ExecuteQuery(query) =>
+        case ManifestDiscover(application, predicate) =>
+          for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some(manifestClient) => manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            result <- ManifestInterpreter.getUnprocessed(manifestClient, application, predicate)
+          } yield result
+        case ManifestProcess(item, load) =>
+          for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some (manifestClient) => manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            process = ManifestInterpreter.process(interpreter, load)
+            app = ManifestDiscovery.getLoaderApp(cliConfig.target.id)
+            dummyHandler = DryRunInterpreter.dummyLockHandler(manifestClient.LockHandler)
+            processItem = ProcessingManifest.processItemWithHandler(dummyHandler) _
+            _ <- processItem(app, None, process)(item).leftMap(LoaderError.fromManifestError)
+          } yield ()
+
+        case ExecuteUpdate(query) =>
           logQueries.append(query)
           0L.asRight[LoaderError]
         case CopyViaStdin(files, _) =>
           // Will never work while `DownloadData` is noop
           logCopyFiles.appendAll(files)
           0L.asRight[LoaderError]
+
+        case ExecuteQuery(_, _) =>
+          None.asRight    // All used decoders return something with Option
 
         case CreateTmpDir =>
           logMessages.append("Created temporary directory")
@@ -96,15 +136,16 @@ class DryRunInterpreter private[interpreters](
           logMessages.append(s"Deleted temporary directory [${path.toString}]").asRight
 
 
+        case Print(message) =>
+          println(message)
         case Sleep(timeout) =>
           sleepTime = sleepTime + timeout
           Thread.sleep(timeout)
-        case Track(_) =>
-          ()
-        case Dump(key, result) =>
-          val actionResult = result.toString + "\n"
+        case Track(log) =>
+          println(log.toString)
+        case Dump(key) =>
           val dryRunResult = "Dry-run action: \n" + getDryRunLogs
-          TrackerInterpreter.dumpStdout(amazonS3, key, actionResult + dryRunResult)
+          TrackerInterpreter.dumpStdout(amazonS3, key, dryRunResult)
         case Exit(loadResult, dumpResult) =>
           println("Dry-run action: \n" + getDryRunLogs)
           TrackerInterpreter.exit(loadResult, dumpResult)
@@ -129,3 +170,14 @@ class DryRunInterpreter private[interpreters](
   }
 }
 
+object DryRunInterpreter {
+
+  type LockHandlerF = ProcessingManifest.LockHandler[ManifestInterpreter.ManifestE]
+
+  /** Update LockHandler to not perform any real actions and never fail */
+  def dummyLockHandler(lockHandler: LockHandlerF): LockHandlerF = {
+    lockHandler
+      .copy(release = (_, _, _, _) => { println("release"); (UUID.randomUUID(), Instant.now()).asRight[ManifestError] })
+      .copy(acquire = (_, _, _) => { println("acquired"); (UUID.randomUUID(), Instant.now()).asRight[ManifestError] })
+  }
+}

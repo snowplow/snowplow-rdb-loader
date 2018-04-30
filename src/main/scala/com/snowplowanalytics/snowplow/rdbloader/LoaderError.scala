@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,10 +13,13 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
+import cats.implicits._
+import cats.data.ValidatedNel
 
-/**
- * Root error type
- */
+import com.snowplowanalytics.manifest.core.ManifestError
+import com.snowplowanalytics.manifest.core.ManifestError._
+
+/** Root error type */
 sealed trait LoaderError
 
 object LoaderError {
@@ -27,6 +30,7 @@ object LoaderError {
       case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.map(_.getMessage).mkString("\n")
       case l: StorageTargetError => "Data loading error " + l.message
       case l: LoaderLocalError => "Internal Exception " + l.message
+      case m: LoadManifestError => "Load Manifest: " + m.message
     }
   }
 
@@ -44,12 +48,18 @@ object LoaderError {
    * Contains multiple step failures
    */
   case class DiscoveryError(failures: List[DiscoveryFailure]) extends LoaderError
+  object DiscoveryError {
+    def apply(single: DiscoveryFailure): LoaderError = DiscoveryError(List(single))
+  }
 
   /**
    * Error representing failure on database loading (or executing any statements)
    * These errors have short-circuit semantics (as in `scala.Either`)
    */
   case class StorageTargetError(message: String) extends LoaderError
+
+  /** `atomic.manifest` prevents this folder to be loaded */
+  case class LoadManifestError(message: String) extends LoaderError
 
   /**
    * Discovery failure. Represents failure of single step.
@@ -96,15 +106,24 @@ object LoaderError {
    */
   case class ShreddedTypeKeyFailure(path: S3.Key) extends DiscoveryFailure {
     def getMessage: String =
-      s"Cannot extract contexts or self-describing events from file [$path]. Corrupted shredded/good state or unexpected Snowplow Shred job version"
+      s"Cannot extract contexts or self-describing events from file [$path]. " +
+        s"Corrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
   /**
-   * No data, while it must be present
+   * No data, while it **must** be present. Happens only with passed `--folder`, because on
+   * global discovery folder can be empty e.g. due eventual consistency
+   * @param path path, where data supposed to be found
    */
   case class NoDataFailure(path: S3.Folder) extends DiscoveryFailure {
     def getMessage: String =
-      s"No data discovered in [$path]. Either no such folder or it contains no files with data"
+      s"No data discovered in [$path], while RDB Loader was explicitly pointed to it by '--folder' option. " +
+        s"Possible reasons: S3 eventual consistency or folder does not contain any files"
+
+    // Message for enabled manifest
+    def getManifestMessage: String =
+      s"Processing manifest does not have unprocessed item [$path]. It can be there, but " +
+        "already loaded by RDB Loader or unprocessed by RDB Shredder"
   }
 
   /**
@@ -115,8 +134,24 @@ object LoaderError {
       s"Cannot extract contexts or self-describing events from directory [$path].\nInvalid key example: $example. Total $invalidKeyCount invalid keys.\nCorrupted shredded/good state or unexpected Snowplow Shred job version"
   }
 
+  case class ManifestFailure(manifestError: ManifestError) extends DiscoveryFailure {
+    def getMessage: String = manifestError.show
+  }
+
+  /** Turn non-empty list of discovery failures into top-level `LoaderError` */
+  def flattenValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
+    validated.leftMap(errors => DiscoveryError(errors.toList): LoaderError).toEither
+
+  def fromManifestError(manifestError: ManifestError): LoaderError =
+    DiscoveryError(ManifestFailure(manifestError))
+
   /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError
+
+  /** Exception wrapper to pass to processing manifest */
+  case class LoaderThrowable(origin: LoaderError) extends Throwable {
+    override def getMessage: String = origin.show
+  }
 
   /**
    * Aggregate some failures into more compact error-list to not pollute end-error

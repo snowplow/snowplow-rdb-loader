@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -24,14 +24,21 @@ import cats.implicits._
 
 import com.amazonaws.services.s3.AmazonS3
 
+import com.snowplowanalytics.iglu.client.Resolver
+
+import org.joda.time.DateTime
+
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
+import com.snowplowanalytics.manifest.core.ManifestError
+
 // This project
-import config.CliConfig
 import LoaderA._
 import LoaderError.LoaderLocalError
+import config.CliConfig
+import discovery.ManifestDiscovery
 import utils.Common
-import implementations.{PgInterpreter, S3Interpreter, SshInterpreter, TrackerInterpreter}
+import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 
 /**
@@ -43,7 +50,10 @@ import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 class RealWorldInterpreter private[interpreters](
   cliConfig: CliConfig,
   amazonS3: AmazonS3,
-  tracker: Option[Tracker]) extends Interpreter {
+  tracker: Option[Tracker],
+  resolver: Resolver) extends Interpreter {
+
+  private val interpreter = this
 
   /**
     * Successfully fetched JSONPaths
@@ -54,35 +64,98 @@ class RealWorldInterpreter private[interpreters](
 
   // dbConnection is Either because not required for log dump
   // lazy to wait before tunnel established
-  private lazy val dbConnection = PgInterpreter.getConnection(cliConfig.target)
+  private lazy val dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
+
+  lazy val manifest =
+    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, resolver)
+
+  private val messages = collection.mutable.ListBuffer.empty[String]
+
+  def log(message: String) = {
+    val endMessage = s"RDB Loader [${DateTime.now()}]: $message"
+    System.out.println(endMessage)
+    messages.append(endMessage)
+  }
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
     def apply[A](effect: LoaderA[A]): Id[A] = {
       effect match {
         case ListS3(folder) =>
+          log(s"Listing $folder")
           S3Interpreter.list(amazonS3, folder).map(summaries => summaries.map(S3.getKey))
         case KeyExists(key) =>
           S3Interpreter.keyExists(amazonS3, key)
         case DownloadData(source, dest) =>
           S3Interpreter.downloadData(amazonS3, source, dest)
 
-        case ExecuteQuery(query) =>
+
+        case ManifestDiscover(application, predicate) =>
           for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some(manifestClient) =>
+                log(s"Discovering through processing manifest [${manifestClient.primaryTable}]")
+                manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            result <- ManifestInterpreter.getUnprocessed(manifestClient, application, predicate) match {
+              case Right(result) if result.isEmpty =>
+                log(s"No new items discovered in processing manifest")
+                result.asRight
+              case Right(h :: Nil) =>
+                log(s"Single ${h.id} item discovered")
+                List(h).asRight
+              case Right(result) =>
+                log(s"Multiple (${result.length}) items discovered")
+                result.asRight
+              case other => other
+            }
+          } yield result
+        case ManifestProcess(item, load) =>
+          for {
+            optionalManifest <- manifest
+            manifestClient <- optionalManifest match {
+              case Some (manifestClient) => manifestClient.asRight
+              case None => LoaderLocalError("Processing Manifest is not configured").asLeft
+            }
+            process = ManifestInterpreter.process(interpreter, load)
+            app = ManifestDiscovery.getLoaderApp(cliConfig.target.id)
+            _ <- manifestClient.processItem(app, None, process)(item).leftMap {
+              case ManifestError.ApplicationError(e, _, _) =>
+                val message = Option(e.getMessage).getOrElse(e.toString)
+                LoaderError.StorageTargetError(message)
+              case e => LoaderError.fromManifestError(e)
+            }
+          } yield ()
+
+        case ExecuteUpdate(query) =>
+          if (query.startsWith("COPY ")) { log(query.split(" ").take(2).mkString(" ")) }
+
+          val result = for {
             conn <- dbConnection
-            res <- PgInterpreter.executeQuery(conn)(query)
+            res <- JdbcInterpreter.executeUpdate(conn)(query)
           } yield res
+          result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
             conn <- dbConnection
-            res <- PgInterpreter.copyViaStdin(conn, files, query)
+            _ = log(s"Copying ${files.length} files via stdin")
+            res <- JdbcInterpreter.copyViaStdin(conn, files, query)
+          } yield res
+
+        case ExecuteQuery(query, d) =>
+          for {
+            conn <- dbConnection
+            res <- JdbcInterpreter.executeQuery(conn)(query)(d)
           } yield res
 
         case CreateTmpDir =>
           try {
             Files.createTempDirectory("rdb-loader").asRight
           } catch {
-            case NonFatal(e) => LoaderLocalError("Cannot create temporary directory.\n" + e.toString).asLeft
+            case NonFatal(e) =>
+              LoaderLocalError("Cannot create temporary directory.\n" + e.toString).asLeft
           }
         case DeleteDir(path) =>
           try {
@@ -91,19 +164,26 @@ class RealWorldInterpreter private[interpreters](
             case NonFatal(e) => LoaderLocalError(s"Cannot delete directory [${path.toString}].\n" + e.toString).asLeft
           }
 
+        case Print(message) =>
+          log(message)
         case Sleep(timeout) =>
+          log(s"Sleeping $timeout milliseconds")
           Thread.sleep(timeout)
         case Track(result) =>
           result match {
-            case ExitLog.LoadingSucceeded(_) =>
+            case ExitLog.LoadingSucceeded =>
               TrackerInterpreter.trackSuccess(tracker)
-            case ExitLog.LoadingFailed(message, _) =>
+              log(result.toString)
+            case ExitLog.LoadingFailed(message) =>
               val secrets = List(cliConfig.target.password.getUnencrypted, cliConfig.target.username)
               val sanitizedMessage = Common.sanitize(message, secrets)
-              TrackerInterpreter.trackError(tracker, sanitizedMessage)
+              TrackerInterpreter.trackError(tracker)
+              log(sanitizedMessage)
           }
-        case Dump(key, result) =>
-          TrackerInterpreter.dumpStdout(amazonS3, key, result.toString)
+        case Dump(key) =>
+          log(s"Dumping $key")
+          val logs = messages.mkString("\n") + "\n"
+          TrackerInterpreter.dumpStdout(amazonS3, key, logs)
         case Exit(loadResult, dumpResult) =>
           dbConnection.foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)
@@ -116,13 +196,14 @@ class RealWorldInterpreter private[interpreters](
           ()
 
         case EstablishTunnel(config) =>
+          log("Establishing SSH tunnel")
           SshInterpreter.establishTunnel(config)
         case CloseTunnel() =>
+          log("Closing SSH tunnel")
           SshInterpreter.closeTunnel()
 
         case GetEc2Property(name) =>
           SshInterpreter.getKey(name)
-
       }
     }
   }

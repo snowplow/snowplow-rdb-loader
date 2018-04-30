@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,39 +13,59 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
+import java.sql.{ Timestamp => SqlTimestamp }
+
+import cats.data._
+import cats.implicits._
+
 import shapeless.tag
 import shapeless.tag._
 
 // This project
-import config.CliConfig
+import config.{ CliConfig, Step }
 import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
+import db.Entities._
+import discovery.DataDiscovery
 
 
 object Common {
 
-  /**
-   * Main "atomic" table name
-   */
+  /** Main "atomic" table name */
   val EventsTable = "events"
 
-  /**
-   * Table for load manifests
-   */
+  /** Table for load manifests */
   val ManifestTable = "manifest"
+
+  /** Default name for temporary local table used for transient COPY */
+  val TransitEventsTable = "temp_transit_events"
+
+  val BeginTransaction: SqlString = SqlString.unsafeCoerce("BEGIN")
+  val CommitTransaction: SqlString = SqlString.unsafeCoerce("COMMIT")
+
+  /** ADT representing possible destination of events table */
+  sealed trait EventsTable { def getDescriptor: String }
+  case class AtomicEvents(schema: String) extends EventsTable {
+    def getDescriptor: String = getEventsTable(schema)
+  }
+  case class TransitTable(schema: String) extends EventsTable {
+    def getDescriptor: String = getTable(schema, TransitEventsTable)
+  }
+
+  def getTable(databaseSchema: String, tableName: String): String =
+    if (databaseSchema.isEmpty) tableName
+    else databaseSchema + "." + tableName
 
   /**
    * Correctly merge database schema and table name
    */
   def getEventsTable(databaseSchema: String): String =
-    if (databaseSchema.isEmpty) EventsTable
-    else databaseSchema + "." + EventsTable
+    getTable(databaseSchema, EventsTable)
 
   /**
    * Correctly merge database schema and table name
    */
   def getManifestTable(databaseSchema: String): String =
-    if (databaseSchema.isEmpty) ManifestTable
-    else databaseSchema + "." + ManifestTable
+    getTable(databaseSchema, ManifestTable)
 
   /**
    * Subpath to check `atomic-events` directory presence
@@ -59,15 +79,47 @@ object Common {
    *
    * @param cliConfig RDB Loader app configuration
    */
-  def load(cliConfig: CliConfig): TargetLoading[LoaderError, Unit] = {
+  def load(cliConfig: CliConfig, discovery: List[DataDiscovery]): LoaderAction[Unit] = {
     val loadDb = cliConfig.target match {
       case postgresqlTarget: PostgresqlConfig =>
-        PostgresqlLoader.run(cliConfig.configYaml, postgresqlTarget, cliConfig.steps, cliConfig.folder)
+        PostgresqlLoader.run(postgresqlTarget, cliConfig.steps, discovery)
       case redshiftTarget: RedshiftConfig =>
-        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, cliConfig.folder)
+        RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, discovery)
     }
 
     Security.bracket(cliConfig.target.sshTunnel, loadDb)
+  }
+
+  /**
+    * Choose a discovery strategy and perform it
+    *
+    * @param cliConfig RDB Loader app configuration
+    */
+  def discover(cliConfig: CliConfig): LoaderAction[List[DataDiscovery]] = {
+    // Shortcuts
+    val shredJob = cliConfig.configYaml.storage.versions.rdbShredder
+    val region = cliConfig.configYaml.aws.s3.region
+    val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
+
+    val target = (cliConfig.target.processingManifest, cliConfig.folder) match {
+      case (None, Some(f)) =>
+        DataDiscovery.InSpecificFolder(f)
+      case (Some(_), f) =>
+        DataDiscovery.ViaManifest(f)
+      case (None, None) =>
+        DataDiscovery.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
+    }
+
+    cliConfig.target match {
+      case _: RedshiftConfig =>
+        val original = DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
+        if (cliConfig.steps.contains(Step.ConsistencyCheck) && cliConfig.target.processingManifest.isEmpty)
+          DataDiscovery.checkConsistency(original)
+        else original
+      case _: PostgresqlConfig =>
+        // Safe to skip consistency check as whole folder will be downloaded
+        DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
+    }
   }
 
   /**
@@ -81,4 +133,52 @@ object Common {
   }
 
   sealed trait SqlStringTag
+
+  /**
+    * Check if entry already exists in load manifest
+    * @param schema database schema, e.g. `atomic` to access manifest
+    * @param eventsTable atomic data table, usually `events` or temporary tablename
+    */
+  def checkLoadManifest(schema: String, eventsTable: EventsTable): LoaderAction[Unit] = {
+    for {
+      latestAtomic <- getEtlTstamp(eventsTable)
+      _ <- latestAtomic match {
+        case Some(events) => for {
+          item <- getLatestManifestItem(schema, events.etlTstamp)
+          _ <- item match {
+            case Some(manifest) if manifest.etlTstamp == events.etlTstamp =>
+              val message = s"Load Manifest record for ${manifest.etlTstamp} already exists. " +
+                s"Committed at ${manifest.commitTstamp}. Use --skip ${Step.LoadManifestCheck.asString} to skip (not recommended)"
+              LoaderAction.liftE(LoaderError.LoadManifestError(message).asLeft)
+            case _ => LoaderAction.unit
+          }
+        } yield ()
+        case None => LoaderAction.unit
+      }
+    } yield ()
+  }
+
+  /** Get ETL timestamp of ongoing load */
+  private[loaders] def getEtlTstamp(eventsTable: EventsTable): EitherT[Action, LoaderError, Option[Timestamp]] = {
+    val query =
+      s"""SELECT etl_tstamp
+         | FROM ${eventsTable.getDescriptor}
+         | WHERE etl_tstamp IS NOT null
+         | ORDER BY etl_tstamp DESC
+         | LIMIT 1""".stripMargin
+
+    LoaderA.executeQuery[Option[Timestamp]](SqlString.unsafeCoerce(query))
+  }
+
+  /** Get latest load manifest item */
+  private[loaders] def getLatestManifestItem(schema: String, etlTstamp: SqlTimestamp): EitherT[Action, LoaderError, Option[LoadManifestItem]] = {
+    val query =
+      s"""SELECT *
+         | FROM ${Common.getManifestTable(schema)}
+         | WHERE etl_tstamp = '$etlTstamp'
+         | ORDER BY etl_tstamp DESC
+         | LIMIT 1""".stripMargin
+
+    LoaderA.executeQuery[Option[LoadManifestItem]](SqlString.unsafeCoerce(query))
+  }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -17,7 +17,7 @@ import cats.data.Validated._
 // This project
 import interpreters.Interpreter
 import config.CliConfig
-import loaders.Common.load
+import loaders.Common.{ load, discover }
 
 /**
  * Application entry point
@@ -53,9 +53,13 @@ object Main {
   def run(config: CliConfig): Int = {
     val interpreter = Interpreter.initialize(config)
 
-    val actions = for {
-      result     <- load(config).value.run(Nil)
-      message     = utils.Common.interpret(result)
+    val actions: Action[Int] = for {
+      data       <- discover(config).value
+      result     <- data match {
+        case Right(discovery) => load(config, discovery).value
+        case Left(error) => ActionE.liftError(error)
+      }
+      message     = utils.Common.interpret(config, result)
       _          <- LoaderA.track(message)
       status     <- close(config.logKey, message)
     } yield status
@@ -67,7 +71,7 @@ object Main {
   private def close(logKey: Option[S3.Key], message: Log) = {
     logKey match {
       case Some(key) => for {
-        dumpResult <- LoaderA.dump(key, message)
+        dumpResult <- LoaderA.dump(key)
         status     <- LoaderA.exit(message, Some(dumpResult))
       } yield status
       case None => LoaderA.exit(message, None)

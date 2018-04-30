@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -15,12 +15,15 @@ package com.snowplowanalytics.snowplow.rdbloader
 import java.nio.file.Path
 
 import cats.free.Free
+import cats.data.EitherT
 import cats.implicits._
 
+import com.snowplowanalytics.manifest.core.{ Item, Application }
+
 // This library
-import LoaderError.DiscoveryError
 import Security.Tunnel
 import loaders.Common.SqlString
+import db.Decoder
 
 /**
  * RDB Loader algebra. Used to build Free data-structure,
@@ -31,13 +34,20 @@ sealed trait LoaderA[A]
 object LoaderA {
 
   // Discovery ops
-  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[DiscoveryError, List[S3.Key]]]
+  case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.Key]]]
   case class KeyExists(key: S3.Key) extends LoaderA[Boolean]
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
 
+  // Processing Manifest ops
+  case class ManifestDiscover(application: Application, predicate: Item => Boolean) extends LoaderA[Either[LoaderError, List[Item]]]
+  case class ManifestProcess(item: Item, load: LoaderAction[Unit]) extends LoaderA[Either[LoaderError, Unit]]
+
   // Loading ops
-  case class ExecuteQuery(query: SqlString) extends LoaderA[Either[LoaderError, Long]]
-  case class CopyViaStdin(files: List[Path], query: SqlString) extends LoaderA[Either[LoaderError, Long]]
+  case class ExecuteUpdate(sql: SqlString) extends LoaderA[Either[LoaderError, Long]]
+  case class CopyViaStdin(files: List[Path], sql: SqlString) extends LoaderA[Either[LoaderError, Long]]
+
+  // JDBC ops
+  case class ExecuteQuery[A](query: SqlString, ev: Decoder[A]) extends LoaderA[Either[LoaderError, A]]
 
   // FS ops
   case object CreateTmpDir extends LoaderA[Either[LoaderError, Path]]
@@ -46,8 +56,9 @@ object LoaderA {
   // Auxiliary ops
   case class Sleep(timeout: Long) extends LoaderA[Unit]
   case class Track(exitLog: Log) extends LoaderA[Unit]
-  case class Dump(key: S3.Key, exitLog: Log) extends LoaderA[Either[String, S3.Key]]
+  case class Dump(key: S3.Key) extends LoaderA[Either[String, S3.Key]]
   case class Exit(exitLog: Log, dumpResult: Option[Either[String, S3.Key]]) extends LoaderA[Int]
+  case class Print(message: String) extends LoaderA[Unit]
 
   // Cache ops
   case class Put(key: String, value: Option[S3.Key]) extends LoaderA[Unit]
@@ -61,9 +72,8 @@ object LoaderA {
   case class GetEc2Property(name: String) extends LoaderA[Either[LoaderError, String]]
 
 
-  /** Get *all* S3 keys prefixed with some folder */
-  def listS3(bucket: S3.Folder): Action[Either[DiscoveryError, List[S3.Key]]] =
-    Free.liftF[LoaderA, Either[DiscoveryError, List[S3.Key]]](ListS3(bucket))
+  def listS3(bucket: S3.Folder): Action[Either[LoaderError, List[S3.Key]]] =
+    Free.liftF[LoaderA, Either[LoaderError, List[S3.Key]]](ListS3(bucket))
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): Action[Boolean] =
@@ -73,21 +83,35 @@ object LoaderA {
   def downloadData(source: S3.Folder, dest: Path): Action[Either[LoaderError, List[Path]]] =
     Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest))
 
+  /** Discover data from manifest */
+  def manifestDiscover(application: Application, predicate: Item => Boolean): Action[Either[LoaderError, List[Item]]] =
+    Free.liftF[LoaderA, Either[LoaderError, List[Item]]](ManifestDiscover(application, predicate))
 
-  /** Execute single query (against target in interpreter) */
-  def executeQuery(query: SqlString): Action[Either[LoaderError, Long]] =
-    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteQuery(query))
+  /** Add Processing manifest records due loading */
+  def manifestProcess(item: Item, load: LoaderAction[Unit]): LoaderAction[Unit] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
+
+  /** Execute single SQL statement (against target in interpreter) */
+  def executeUpdate(sql: SqlString): Action[Either[LoaderError, Long]] =
+    Free.liftF[LoaderA, Either[LoaderError, Long]](ExecuteUpdate(sql))
 
   /** Execute multiple (against target in interpreter) */
-  def executeQueries(queries: List[SqlString]): Action[Either[LoaderError, Unit]] =
-    queries.traverse(executeQuery).map(eithers => eithers.sequence.map(_.combineAll))
+  def executeUpdates(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
+    val shortCircuiting = queries.traverse(query => EitherT(executeUpdate(query)))
+    shortCircuiting.void.value
+  }
+
+  /** Execute query and parse results into `A` */
+  def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[A] =
+    EitherT(Free.liftF[LoaderA, Either[LoaderError, A]](ExecuteQuery[A](query, ev)))
+
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString]): Action[Either[LoaderError, Unit]] = {
     val begin = SqlString.unsafeCoerce("BEGIN")
     val commit = SqlString.unsafeCoerce("COMMIT")
     val transaction = (begin :: queries) :+ commit
-    executeQueries(transaction)
+    executeUpdates(transaction)
   }
 
 
@@ -114,12 +138,16 @@ object LoaderA {
     Free.liftF[LoaderA, Unit](Track(result))
 
   /** Dump log to S3 */
-  def dump(key: S3.Key, result: Log): Action[Either[String, S3.Key]] =
-    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(key, result))
+  def dump(key: S3.Key): Action[Either[String, S3.Key]] =
+    Free.liftF[LoaderA, Either[String, S3.Key]](Dump(key))
 
   /** Close RDB Loader app with appropriate state */
   def exit(result: Log, dumpResult: Option[Either[String, S3.Key]]): Action[Int] =
     Free.liftF[LoaderA, Int](Exit(result, dumpResult))
+
+  /** Print message to stdout */
+  def print(message: String): Action[Unit] =
+    Free.liftF[LoaderA, Unit](Print(message))
 
 
   /** Put value into cache (stored in interpreter) */

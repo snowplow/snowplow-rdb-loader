@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Functor
+import cats.data.EitherT
 import cats.implicits._
 
 import config.StorageTarget.TunnelConfig
@@ -37,13 +38,13 @@ object Security {
   }
 
   /** Perform loading and make sure tunnel is closed */
-  def bracket(tunnelConfig: Option[TunnelConfig], action: TargetLoading[LoaderError, Unit]): TargetLoading[LoaderError, Unit] = {
+  def bracket(tunnelConfig: Option[TunnelConfig], action: LoaderAction[Unit]): LoaderAction[Unit] = {
     tunnelConfig match {
       case Some(tunnel) => for {
-        identity <- getIdentity(tunnel).withoutStep
-        _ <- LoaderA.establishTunnel(Security.Tunnel(tunnel, identity)).withoutStep
+        identity <- EitherT(getIdentity(tunnel))
+        _ <- EitherT(LoaderA.establishTunnel(Security.Tunnel(tunnel, identity)))
         _ <- action
-        _ <- LoaderA.closeTunnel().withoutStep
+        _ <- EitherT(LoaderA.closeTunnel())
       } yield ()
       case None => action
     }

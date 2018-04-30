@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -36,8 +36,8 @@ object S3 {
 
     def parse(s: String): Either[String, Folder] = s match {
       case _ if !correctlyPrefixed(s) => "Bucket name must start with s3:// prefix".asLeft
-      case _ if s.length > 1024        => "Key length cannot be more than 1024 symbols".asLeft
-      case _                           => coerce(s).asRight
+      case _ if s.length > 1024       => "Key length cannot be more than 1024 symbols".asLeft
+      case _                          => coerce(s).asRight
     }
 
     def coerce(s: String): Folder =

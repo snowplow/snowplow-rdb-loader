@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -11,17 +11,16 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
-
-import org.scalacheck.Gen
+package discovery
 
 import cats.implicits._
 
-import org.specs2.Specification
-import org.specs2.ScalaCheck
+import org.scalacheck.Gen
+import org.specs2.{ScalaCheck, Specification}
 
 // This project
-import ShreddedType._
-import config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 
 object ShreddedTypeSpec {
 

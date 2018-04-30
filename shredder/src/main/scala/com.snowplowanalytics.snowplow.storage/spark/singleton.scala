@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,22 +12,28 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics
-package snowplow
+package com.snowplowanalytics.snowplow
 package storage.spark
 
-// Jackson
+// Iglu
+import com.snowplowanalytics.iglu.client.Resolver
 import com.fasterxml.jackson.databind.JsonNode
+import com.github.fge.jsonschema.core.report.ProcessingMessage
 
-// Snowplow
-import iglu.client.Resolver
+// SCE
 import enrich.common.{FatalEtlError, ValidatedNelMessage}
+
+// This project
+import utils.base64.base64ToJsonNode
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
+
   /** Singleton for Iglu's Resolver to maintain one Resolver per node. */
   object ResolverSingleton {
+
     @volatile private var instance: Resolver = _
+
     /**
      * Retrieve or build an instance of Iglu's Resolver.
      * @param igluConfig JSON representing the Iglu configuration
@@ -49,28 +55,31 @@ object singleton {
      * @param igluConfig JSON representing the Iglu resolver
      * @return A Resolver or one or more error messages boxed in a Scalaz ValidationNel
      */
-    private[spark] def getIgluResolver(igluConfig: String): ValidatedNelMessage[Resolver] =
+    private[spark] def getIgluResolver(igluConfig: String): ValidatedNelMessage[Resolver] = {
+      val json = base64ToJsonNode(igluConfig, "iglu")
+
       for {
-        node <- (utils.base64.base64ToJsonNode(igluConfig, "iglu")
-          .toValidationNel: ValidatedNelMessage[JsonNode])
-        reso <- Resolver.parse(node)
-      } yield reso
+        node <- json.toValidationNel[ProcessingMessage, JsonNode]
+        resolver <- Resolver.parse(node)
+      } yield resolver
+    }
   }
 
   /** Singleton for DuplicateStorage to maintain one per node. */
   object DuplicateStorageSingleton {
+    import DuplicateStorage._
+
     @volatile private var instance: Option[DuplicateStorage] = _
+
     /**
      * Retrieve or build an instance of DuplicateStorage.
      * @param dupStorageConfig configuration for DuplicateStorage
      */
-    def get(
-      dupStorageConfig: Option[DuplicateStorage.DuplicateStorageConfig]
-    ): Option[DuplicateStorage] = {
+    def get(dupStorageConfig: Option[DuplicateStorageConfig]): Option[DuplicateStorage] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = dupStorageConfig.map(DuplicateStorage.initStorage) match {
+            instance = dupStorageConfig.map(initStorage) match {
               case Some(v) => v.fold(e => throw new FatalEtlError(e.toString), c => Some(c))
               case None => None
             }

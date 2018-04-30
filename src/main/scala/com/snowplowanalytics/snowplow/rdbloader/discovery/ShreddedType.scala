@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2017 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -11,17 +11,18 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 package com.snowplowanalytics.snowplow.rdbloader
+package discovery
 
-import cats.implicits._
+import cats.data._
 import cats.free.Free
+import cats.implicits._
 
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.client.SchemaCriterion
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
-// This project
-import LoaderError._
-import config.Semver
-import utils.Common.toSnakeCase
-
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
+import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
 
 /**
  * Container for S3 folder with shredded JSONs ready to load
@@ -31,9 +32,7 @@ import utils.Common.toSnakeCase
  * @param jsonPaths existing JSONPaths file
  */
 case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
-  /**
-   * Get S3 prefix which Redshift should LOAD FROM
-   */
+  /** Get S3 prefix which Redshift should LOAD FROM */
   def getLoadPath: String = {
    if (info.shredJob <= ShreddedType.ShredJobBeforeSparkVersion) {
      s"${info.base}${info.vendor}/${info.name}/jsonschema/${info.model}-"
@@ -41,6 +40,9 @@ case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
      s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
    }
   }
+
+  /** Human-readable form */
+  def show: String = s"${info.toCriterion.toString} ($jsonPaths)"
 }
 
 /**
@@ -58,7 +60,9 @@ object ShreddedType {
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
    */
-  case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver)
+  case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
+    def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
+  }
 
   /**
    * Basis for Snowplow hosted assets bucket.
@@ -167,6 +171,23 @@ object ShreddedType {
     }
   }
 
+  /** Discover multiple JSONPaths for shredded types at once and turn into `LoaderAction` */
+  def discoverBatch(region: String,
+                    jsonpathAssets: Option[S3.Folder],
+                    raw: List[ShreddedType.Info]): LoaderAction[List[ShreddedType]] = {
+    // Discover data for single item
+    def discover(info: ShreddedType.Info): Action[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
+      val jsonpaths = ShreddedType.discoverJsonPath(region, jsonpathAssets, info)
+      val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType(info, s3key)))
+      shreddedType.map(_.toValidatedNel)
+    }
+
+    val action: Action[Either[LoaderError, List[ShreddedType]]] =
+      sequenceInF(raw.traverse(discover), LoaderError.flattenValidated[List[ShreddedType]])
+
+    LoaderAction(action)
+  }
+
   /**
    * Get Snowplow hosted assets S3 bucket for specific region
    *
@@ -189,11 +210,11 @@ object ShreddedType {
     val (bucket, path) = S3.splitS3Key(key)
     val (subpath, shredpath) = splitFilpath(path, shredJob)
     extractSchemaKey(shredpath, shredJob) match {
-      case Some(schemaKey) =>
+      case Some(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _))) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+        val result = Info(prefix, vendor, name, model, shredJob)
         result.asRight
-      case None =>
+      case _ =>
         ShreddedTypeKeyFailure(key).asLeft
     }
   }
@@ -208,14 +229,17 @@ object ShreddedType {
    * @param shredJob shred job version to decide what format should be present
    * @return valid schema key if found
    */
-  def extractSchemaKey(subpath: String, shredJob: Semver): Option[SchemaKey] =
-    if (shredJob <= ShredJobBeforeSparkVersion) SchemaKey.fromPath(subpath)
-    else subpath match {
+  def extractSchemaKey(subpath: String, shredJob: Semver): Option[SchemaKey] = {
+    if (shredJob <= ShredJobBeforeSparkVersion) {
+      val uri = "iglu:" + subpath
+      SchemaKey.fromUri(uri)
+    } else subpath match {
       case ShreddedSubpathPattern(vendor, name, format, version) =>
-        val igluPath = s"$vendor/$name/$format/$version"
-        SchemaKey.fromPath(igluPath)
+        val uri = s"iglu:$vendor/$name/$format/$version"
+        SchemaKey.fromUri(uri)
       case _ => None
     }
+  }
 
   /**
    * Split S3 filepath (without bucket name) into subpath and shreddedpath
