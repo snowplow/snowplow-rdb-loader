@@ -197,7 +197,7 @@ object CrossBatchDeduplicationSpec {
       config.flatMap { case (client, config) => DuplicateStorage.initStorage(config) match {
         case scalaz.Success(t) => scalaz.Success(t)
         case scalaz.Failure(_) =>
-          DuplicateStorage.DynamoDbStorage.createTable(client, config.name)
+          DuplicateStorage.DynamoDbStorage.createTable(client, config.dynamodbTable)
           DuplicateStorage.initStorage(config)
       } }.valueOr(e => throw new RuntimeException(e.toString))
     }
