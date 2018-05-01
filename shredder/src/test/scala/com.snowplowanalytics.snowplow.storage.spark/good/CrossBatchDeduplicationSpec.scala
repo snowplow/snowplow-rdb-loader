@@ -21,6 +21,7 @@ import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.amazonaws.services.dynamodbv2.document.Table
 import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanRequest}
+import com.amazonaws.services.dynamodbv2.AmazonDynamoDB
 
 // joda-time
 import org.joda.time.DateTime
@@ -164,31 +165,41 @@ object CrossBatchDeduplicationSpec {
      * It'll delete table if it exist and recreate new one
      */
     private def getStorage() = {
-      val config = getStagingCredentials.map { case (accessKeyId, secretAccessKey) =>
+      def build(accessKeyId: String, secretAccessKey: String): (AmazonDynamoDB, DuplicateStorage.DynamoDbConfig) = {
+        val credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey)
+        val client = AmazonDynamoDBClientBuilder
+          .standard()
+          .withRegion(dynamodbDuplicateStorageRegion)
+          .withCredentials(new AWSStaticCredentialsProvider(credentials))
+          .build()
         try {   // Send request to delete previously created table and wait unit it is deleted
-          val credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey)
-          val client = AmazonDynamoDBClientBuilder
-            .standard()
-            .withRegion(dynamodbDuplicateStorageRegion)
-            .withCredentials(new AWSStaticCredentialsProvider(credentials))
-            .build()
           client.deleteTable(dynamodbDuplicateStorageTable)
           new Table(client, dynamodbDuplicateStorageTable).waitForDelete()
+          ()
         } catch {
           case _: ResourceNotFoundException => ()
         }
 
-        DuplicateStorage.DynamoDbConfig(
+        val config = DuplicateStorage.DynamoDbConfig(
           name = "Duplicate Storage Integration Test",
           accessKeyId = accessKeyId,
           secretAccessKey = secretAccessKey,
           awsRegion = dynamodbDuplicateStorageRegion,
           dynamodbTable = dynamodbDuplicateStorageTable
         )
+
+        (client, config)
       }
 
-      config.flatMap(DuplicateStorage.initStorage)
-        .valueOr(e => throw new RuntimeException(e.toString))
+      val config: scalaz.ValidationNel[String, (AmazonDynamoDB, DuplicateStorage.DynamoDbConfig)] =
+        getStagingCredentials.map((build _).tupled)
+
+      config.flatMap { case (client, config) => DuplicateStorage.initStorage(config) match {
+        case scalaz.Success(t) => scalaz.Success(t)
+        case scalaz.Failure(_) =>
+          DuplicateStorage.DynamoDbStorage.createTable(client, config.name)
+          DuplicateStorage.initStorage(config)
+      } }.valueOr(e => throw new RuntimeException(e.toString))
     }
 
     /** Get list of item ids that were stored during the test */

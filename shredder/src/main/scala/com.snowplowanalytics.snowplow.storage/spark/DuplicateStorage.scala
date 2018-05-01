@@ -162,7 +162,7 @@ object DuplicateStorage {
             .withRegion(awsRegion)
             .withCredentials(new AWSStaticCredentialsProvider(credentials))
             .build()
-          val table = DynamoDbStorage.getOrCreateTable(client, tableName)
+          val table = DynamoDbStorage.checkTable(client, tableName)
           new DynamoDbStorage(client, table).success
         } catch {
           case NonFatal(e) =>
@@ -222,16 +222,14 @@ object DuplicateStorage {
     val timeToLiveColumn = "ttl"
 
     /**
-      * Indempotent action to create duplicates table
-      * If table with name already exists - block until is available and return name
-      * If table doesn't exist - throw exception
+      * Check that table is available (block for some time if necessary)
       *
       * @param client AWS DynamoDB client with established connection
       * @param name DynamoDB table name
       * @return same table name or throw exception
       */
     @throws[IllegalStateException]
-    private[spark] def getOrCreateTable(client: AmazonDynamoDB, name: String): String = {
+    private[spark] def checkTable(client: AmazonDynamoDB, name: String): String = {
       val request = new DescribeTableRequest().withTableName(name)
       val result = try {
         Option(client.describeTable(request).getTable)
