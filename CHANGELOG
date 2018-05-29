@@ -1,3 +1,9 @@
+Release 29 (2018-04-30)
+-----------------------
+RDB Shredder: bump to 0.13.1 (#105)
+RDB Shredder: bump scala-common-enrich to 0.32.0 (#99)
+RDB Shredder: align PostgresConstraints with atomic.events 0.10.0 (#103)
+
 Release 28 (2017-11-13)
 -----------------------
 Common: add CI/CD (#55)
