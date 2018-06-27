@@ -24,7 +24,7 @@ object Dependencies {
     val circeYaml        = "0.8.0"
     val circe            = "0.9.3"
     val cats             = "1.1.0"
-    val manifest         = "0.1.0-M5"
+    val manifest         = "0.1.0-M6"
     val fs2              = "0.10.5"
 
     // Scala (Shredder)
