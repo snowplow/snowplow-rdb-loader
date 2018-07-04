@@ -39,7 +39,7 @@ object TrackerInterpreter {
   import scala.concurrent.ExecutionContext.Implicits.global
 
   val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer(1,0,0))
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeded", "jsonschema", SchemaVer(1,0,0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer(1,0,0))
 
   /** Callback for failed  */
