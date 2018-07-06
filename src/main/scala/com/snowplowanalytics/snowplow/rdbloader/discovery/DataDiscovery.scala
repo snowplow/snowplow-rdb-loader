@@ -55,8 +55,17 @@ case class DataDiscovery(
     case None => 0L
   }
 
-  def show: String =
-    s"$runId with ${atomicCardinality.getOrElse("unknown amount of")} atomic files and following shredded types:\n${shreddedTypes.map(t => "  + " + t.show).mkString("\n")}"
+  def show: String = {
+    val atomic = atomicCardinality.map(_.toString).getOrElse("unknown amount of")
+    val shredded = if (shreddedTypes.isEmpty) "without" else shreddedTypes.length.toString
+    s"$runId with $atomic atomic files and $shredded shredded types"
+  }
+
+  /** Check if atomic events possibly contains only empty files */
+  def possiblyEmpty: Boolean = (atomicCardinality, atomicSize) match {
+    case (Some(c), Some(s)) => s / c <= 20  // 20 bytes is size of empty gzipped file
+    case _ => false                         // Impossible to deduce
+  }
 }
 
 /**

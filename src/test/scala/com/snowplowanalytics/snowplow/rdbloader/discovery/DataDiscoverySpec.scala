@@ -15,6 +15,7 @@ package discovery
 
 import cats.data.State
 import cats.{Id, ~>}
+import cats.syntax.either._
 
 import org.specs2.Specification
 
@@ -32,6 +33,8 @@ class DataDiscoverySpec extends Specification { def is = s2"""
   Do not fail to proceed with empty shredded good folder $e4
   Successfully discover data in run folder $e5
   Successfully discover data in specific folder $e6
+  Successfully discover several folders using `InSpecificFolder` (decide if desired) $e7
+  listGoodBucket ignores special files $e8
   """
 
   def e1 = {
@@ -466,5 +469,29 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)
+  }
+
+  def e8 = {
+    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+      def apply[A](effect: LoaderA[A]): Id[A] = {
+        effect match {
+          case LoaderA.ListS3(bucket) =>
+            Right(List(
+              S3.BlobObject(S3.Key.join(bucket, "_SUCCESS"), 0L),
+              S3.BlobObject(S3.Key.join(bucket, "part-00000-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L),
+              S3.BlobObject(S3.Key.join(bucket, "part-00001-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L),
+              S3.BlobObject(S3.Key.join(bucket, "part-00002-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L)))
+
+          case action =>
+            throw new RuntimeException(s"Unexpected Action [$action]")
+        }
+      }
+    }
+
+    val prefix = S3.Folder.coerce("s3://sp-com-acme-123987939231-10-batch-archive/main/shredded/good/run=2018-07-05-00-55-16/atomic-events/")
+
+    val result = DataDiscovery.listGoodBucket(prefix).value
+
+    result.foldMap(interpreter).map(_.length) must beRight(3)
   }
 }
