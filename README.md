@@ -45,8 +45,8 @@ limitations under the License.
 [techdocs-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/techdocs.png
 [setup-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/setup.png
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
-[setup]: https://github.com/snowplow/snowplow/wiki/setting-up-EmrEtlRunner
-[techdocs]: https://github.com/snowplow/snowplow/wiki/RDB_Loader
+[setup]: https://github.com/snowplow/snowplow/wiki/Relational-Database-Loader#setup
+[techdocs]: https://github.com/snowplow/snowplow/wiki/Relational-Database-Loader
 
 [spark]: http://spark.apache.org/
 [emr-etl-runner]: https://github.com/snowplow/snowplow/tree/master/3-enrich/emr-etl-runner
