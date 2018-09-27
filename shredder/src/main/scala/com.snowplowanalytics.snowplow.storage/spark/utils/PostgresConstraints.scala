@@ -36,7 +36,7 @@ object PostgresConstraints {
     null,  // domain_sessionidx
     128,   // network_userid
     2,     // geo_country
-    2,     // geo_region
+    3,     // geo_region
     75,    // geo_city
     15,    // geo_zipcode
     null,  // geo_latitude
