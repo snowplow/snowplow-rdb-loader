@@ -31,7 +31,7 @@ object Dependencies {
 
     // Scala (Shredder)
     val analyticsSdk     = "0.4.2"
-    val spark            = "2.2.0"
+    val spark            = "2.3.2"
     val eventsManifest   = "0.2.0"
     val schemaDdl        = "0.9.0"
 

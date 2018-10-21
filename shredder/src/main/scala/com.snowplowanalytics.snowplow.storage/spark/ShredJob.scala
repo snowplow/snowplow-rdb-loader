@@ -113,7 +113,9 @@ object ShredJob extends SparkJob {
     classOf[scala.collection.immutable.Map$EmptyMap$],
     classOf[scala.collection.immutable.Set$EmptySet$],
     classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
-    classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
+    classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult],
+    classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
+    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats]
   )
 
   def sparkConfig(): SparkConf = new SparkConf()
