@@ -28,7 +28,7 @@ object Dependencies {
     val fs2              = "0.10.5"
 
     // Scala (Shredder)
-    val spark           = "2.2.0"
+    val spark           = "2.3.0"
     val commonEnrich    = "0.32.0"
 
     // Java (Loader)
