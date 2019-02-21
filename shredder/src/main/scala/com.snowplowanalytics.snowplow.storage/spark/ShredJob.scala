@@ -226,7 +226,7 @@ object ShredJob extends SparkJob {
    * lengths based on Postgres' column types.
    * @param originalLine The original TSV line
    * @param newEventId A new event ID present in case of a synthetic duplicate
-   * @return The original line with the proper fields removed respecting the Postgres constaints
+   * @return The original line with the proper fields removed respecting the Postgres constraints
    */
   def alterEnrichedEvent(originalLine: String, newEventId: Option[String]): String = {
     import com.snowplowanalytics.snowplow.enrich.common.utils.ConversionUtils

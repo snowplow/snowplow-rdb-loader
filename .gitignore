@@ -9,3 +9,5 @@ src_managed/
 project/boot/
 project/plugins/project/
 
+# IntelliJ
+.idea/*
