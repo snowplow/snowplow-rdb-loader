@@ -19,6 +19,7 @@ lazy val common = project.in(file("common"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.slf4j,
       Dependencies.badrows,
       Dependencies.igluClient,
       Dependencies.scalaTracker,
@@ -102,12 +103,6 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
-    ),
-
-    dependencyOverrides ++= Seq(
-      Dependencies.dynamodb,
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.2"
     )
   )
   .dependsOn(common)
