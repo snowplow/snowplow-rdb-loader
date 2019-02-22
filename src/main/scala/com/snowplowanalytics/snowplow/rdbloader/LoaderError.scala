@@ -14,8 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
 import cats.implicits._
-import cats.data.ValidatedNel
-
+import cats.data.{NonEmptyList, ValidatedNel}
 import com.snowplowanalytics.manifest.core.ManifestError
 import com.snowplowanalytics.manifest.core.ManifestError._
 
@@ -32,6 +31,35 @@ object LoaderError {
       case l: LoaderLocalError => "Internal Exception " + l.message
       case m: LoadManifestError => "Load Manifest: " + m.message
     }
+  }
+
+  /** Overloaded method to surface helpful error messages
+    * in case a [[RawConfig]] cannot be successfully
+    * transformed into a [[CliConfig]].
+    */
+  object ErrorSurface {
+    object ValidationStep extends Enumeration {
+      type ValidationStep = Value
+      val logkeyValidation, folderValidation, resolverValidation, targetValidation = Value
+    }
+    import ValidationStep._
+
+    def surface(error: ConfigError): ConfigError = error match {
+      case ParseError(message) =>
+        ParseError("Error trying to base64-decode the <config.yml> file passed to `--config`. Underlying error message:\n" + message)
+      case DecodingError(message) =>
+        DecodingError("Error trying to parse the base64-decoded YAML string. Underlying error message:\n" + message)
+      case ValidationError(message) =>
+        ValidationError("Error trying to validate the argument passed to `--config`. Underlying error message:\n" + message)
+    }
+
+    def surface(message: String, validationStep: ValidationStep): ConfigError =
+      if (validationStep == logkeyValidation) DecodingError("Error trying to parse the <s3key> passed to `--logkey`. Underlying error message:\n" + message)
+      else DecodingError("Error trying to parse the <s3folder> passed to `--folder`. Underlying error message:\n" + message)
+
+    def surface(errors: NonEmptyList[LoaderError.ConfigError], validationStep: ValidationStep): ConfigError =
+      if (validationStep == resolverValidation) ValidationError("Error trying to validate the argument passed to `--resolver`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
+      else ValidationError("Error trying to validate the argument passed to `--target`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
   }
 
   /**

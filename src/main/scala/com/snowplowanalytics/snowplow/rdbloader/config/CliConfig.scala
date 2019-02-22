@@ -25,6 +25,8 @@ import org.json4s.JValue
 
 // This project
 import LoaderError._
+import LoaderError.ErrorSurface._
+import LoaderError.ErrorSurface.ValidationStep._
 import generated.ProjectMetadata
 import utils.{ Common, Compat }
 
@@ -133,7 +135,7 @@ object CliConfig {
   private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, None, None, false)
 
   /**
-   * Validated and transform initial raw cli arguments into
+   * Validate and transform initial raw cli arguments into
    * ready-to-use `CliConfig`, aggregating errors if any
    *
    * @param rawConfig initial raw arguments
@@ -141,12 +143,12 @@ object CliConfig {
    *         non empty list of config errors in case of failure
    */
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
-    val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
-    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(DecodingError).toValidatedNel).sequence
-    val resolver = loadResolver(rawConfig.resolver)
-    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
+    val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).leftMap(surface).toValidatedNel
+    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(surface(_, logkeyValidation)).toValidatedNel).sequence
+    val resolver = loadResolver(rawConfig.resolver).leftMap(surface(_, resolverValidation)).toValidatedNel
+    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }.leftMap(surface(_, targetValidation)).toValidatedNel
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
-    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
+    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(surface(_, folderValidation)).toValidatedNel).sequence
 
     (target, config, logkey, folder, resolver).mapN {
       case (t, c, l, f, (j, _)) => CliConfig(c, t, steps, l, f, rawConfig.dryRun, j)
@@ -186,6 +188,6 @@ object CliConfig {
    * @return either aggregated list of errors (from both resolver and target)
    *         or successfully decoded storage target
    */
-  private def loadTarget(resolver: Resolver, targetConfigB64: String) =
+  private def loadTarget(resolver: Resolver, targetConfigB64: String): ValidatedNel[LoaderError.ConfigError, StorageTarget] =
     base64decode(targetConfigB64).toValidatedNel.andThen(StorageTarget.parseTarget(resolver, _))
 }
