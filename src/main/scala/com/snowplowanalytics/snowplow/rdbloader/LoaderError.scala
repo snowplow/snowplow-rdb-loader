@@ -38,11 +38,13 @@ object LoaderError {
     * transformed into a [[CliConfig]].
     */
   object ErrorSurface {
-    object ValidationStep extends Enumeration {
-      type ValidationStep = Value
-      val logkeyValidation, folderValidation, resolverValidation, targetValidation = Value
+    sealed trait ValidationStep
+    object ValidationStep {
+      final case object Logkey extends ValidationStep
+      final case object Folder extends ValidationStep
+      final case object Resolver extends ValidationStep
+      final case object Target extends ValidationStep
     }
-    import ValidationStep._
 
     def surface(error: ConfigError): ConfigError = error match {
       case ParseError(message) =>
@@ -54,12 +56,17 @@ object LoaderError {
     }
 
     def surface(message: String, validationStep: ValidationStep): ConfigError =
-      if (validationStep == logkeyValidation) DecodingError("Error trying to parse the <s3key> passed to `--logkey`. Underlying error message:\n" + message)
-      else DecodingError("Error trying to parse the <s3folder> passed to `--folder`. Underlying error message:\n" + message)
+      validationStep match {
+        case ValidationStep.Logkey => DecodingError("Error trying to parse the <s3key> passed to `--logkey`. Underlying error message:\n" + message)
+        case _ => DecodingError("Error trying to parse the <s3folder> passed to `--folder`. Underlying error message:\n" + message)
+      }
 
     def surface(errors: NonEmptyList[LoaderError.ConfigError], validationStep: ValidationStep): ConfigError =
-      if (validationStep == resolverValidation) ValidationError("Error trying to validate the argument passed to `--resolver`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
-      else ValidationError("Error trying to validate the argument passed to `--target`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
+      validationStep match {
+        case ValidationStep.Resolver => ValidationError("Error trying to validate the argument passed to `--resolver`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
+        case _ => ValidationError("Error trying to validate the argument passed to `--target`. Underlying errors:\n" + errors.map(_.message).toList.mkString("\n"))
+      }
+
   }
 
   /**

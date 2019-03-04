@@ -26,7 +26,6 @@ import org.json4s.JValue
 // This project
 import LoaderError._
 import LoaderError.ErrorSurface._
-import LoaderError.ErrorSurface.ValidationStep._
 import generated.ProjectMetadata
 import utils.{ Common, Compat }
 
@@ -144,11 +143,11 @@ object CliConfig {
    */
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
     val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).leftMap(surface).toValidatedNel
-    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(surface(_, logkeyValidation)).toValidatedNel).sequence
-    val resolver = loadResolver(rawConfig.resolver).leftMap(surface(_, resolverValidation)).toValidatedNel
-    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }.leftMap(surface(_, targetValidation)).toValidatedNel
+    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(surface(_, ValidationStep.Logkey)).toValidatedNel).sequence
+    val resolver = loadResolver(rawConfig.resolver).leftMap(surface(_, ValidationStep.Resolver)).toValidatedNel
+    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }.leftMap(surface(_, ValidationStep.Target)).toValidatedNel
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
-    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(surface(_, folderValidation)).toValidatedNel).sequence
+    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(surface(_, ValidationStep.Folder)).toValidatedNel).sequence
 
     (target, config, logkey, folder, resolver).mapN {
       case (t, c, l, f, (j, _)) => CliConfig(c, t, steps, l, f, rawConfig.dryRun, j)
