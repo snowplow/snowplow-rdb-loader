@@ -144,7 +144,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       val eventIds = lines.map(_.split("\t").apply(6))
 
       val exactTwoEventsIds = eventIds.size mustEqual 2
-      val distinctIds = eventIds(0) mustNotEqual eventIds(1)
+      val distinctIds = eventIds.head mustNotEqual eventIds(1)
 
       exactTwoEventsIds.and(distinctIds)
     }
@@ -152,8 +152,8 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       val Some((contexts, f)) = readPartFile(dirs.output, EventDeduplicationSpec.expected.path)
       expectedFiles += f
       val updatedLines = contexts.map(EventDeduplicationSpec.eraseHierarchy)
-      updatedLines mustEqual
-        Seq(EventDeduplicationSpec.expected.contents, EventDeduplicationSpec.expected.contents)
+      updatedLines must containTheSameElementsAs(Seq(EventDeduplicationSpec.expected.contents, EventDeduplicationSpec.expected.contents))
+
     }
     "shred additional, non-duplicate contexts into their appropriate path" in {
       val Some((contexts, f)) =
@@ -172,7 +172,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must be empty
+      listFilesWithExclusions(dirs.output, expectedFiles.toList) must beEmpty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir

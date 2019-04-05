@@ -16,13 +16,20 @@ package com.snowplowanalytics
 package snowplow
 package storage.spark
 
-// Scalaz
-import scalaz._
-import Scalaz._
+import java.nio.charset.StandardCharsets.UTF_8
 
-// Snowplow
-import iglu.client.validation.ProcessingMessageMethods._
-import enrich.common.ValidatedNelMessage
+import io.circe.Json
+import io.circe.parser.parse
+
+import cats.data.ValidatedNel
+import cats.implicits._
+
+import com.monovore.decline.{Command, Opts}
+
+import org.apache.commons.codec.DecoderException
+import org.apache.commons.codec.binary.Base64
+
+import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
 
 /**
  * Case class representing the configuration for the shred job.
@@ -31,15 +38,14 @@ import enrich.common.ValidatedNelMessage
  * @param badFolder Output folder where the malformed events will be stored
  * @param igluConfig JSON representing the Iglu configuration
  */
-case class ShredJobConfig(
-  inFolder: String = "",
-  outFolder: String = "",
-  badFolder: String = "",
-  igluConfig: String = "",
-  duplicateStorageConfig: Option[String] = None,
-  dynamodbManifestTable: Option[String] = None,
-  itemId: Option[String] = None
-) {
+case class ShredJobConfig(inFolder: String,
+                          outFolder: String,
+                          badFolder: String,
+                          igluConfig: Json,
+                          duplicateStorageConfig: Option[Json],
+                          dynamodbManifestTable: Option[String],
+                          itemId: Option[String]) {
+
   /** Get both manifest table and item id to process */
   def getManifestData: Option[(String, String)] =
     for {
@@ -49,48 +55,60 @@ case class ShredJobConfig(
 }
 
 object ShredJobConfig {
-  private val parser = new scopt.OptionParser[ShredJobConfig]("ShredJob") {
-    head("ShredJob")
-    opt[String]("input-folder").required().valueName("<input folder>")
-      .action((f, c) => c.copy(inFolder = f))
-      .text("Folder where the input events are located")
-    opt[String]("output-folder").required().valueName("<output folder>")
-      .action((f, c) => c.copy(outFolder = f))
-      .text("Output folder where the shredded events will be stored")
-    opt[String]("bad-folder").required().valueName("<bad folder>")
-      .action((f, c) => c.copy(badFolder = f))
-      .text("Output folder where the malformed events will be stored")
-    opt[String]("iglu-config").required().valueName("<iglu config>")
-      .action((i, c) => c.copy(igluConfig = i))
-      .text("Iglu configuration")
-    opt[String]("duplicate-storage-config").optional().valueName("<duplicate storage config")
-      .action((d, c) => c.copy(duplicateStorageConfig = Some(d)))
-      .text("Duplicate storage configuration")
-    opt[String]("processing-manifest-table").optional().valueName("<dynamodb table name>")
-      .action((d, c) => c.copy(dynamodbManifestTable = Some(d)))
-      .text("Processing manifest table")
-    opt[String]("item-id").optional().valueName("<id>")
-      .action((d, c) => c.copy(itemId = Some(d)))
-      .text("Unique folder identificator for processing manifest (e.g. S3 URL)")
-    help("help").text("Prints this usage text")
-    checkConfig(c =>
-      (c.dynamodbManifestTable, c.itemId) match {
-        case (Some(_), Some(_)) => success
-        case (None, None) => success
-        case (t, i) => failure(s"Both --processing-manifest-table and --item-id-should be either provided or omitted. Processing manifest: $t, item id: $i")
-      }
-    )
+
+  object Base64Json {
+    val decoder = new Base64(true)
+
+    def decode(str: String): ValidatedNel[String, Json] = {
+      Either
+        .catchOnly[DecoderException](decoder.decode(str))
+        .map(arr => new String(arr, UTF_8))
+        .leftMap(_.getMessage)
+        .flatMap(str => parse(str).leftMap(_.show))
+        .toValidatedNel
+    }
   }
+
+  val inputFolder = Opts.option[String]("input-folder",
+    "Folder where the input events are located",
+    metavar = "<path>")
+  val outputFolder = Opts.option[String]("output-folder",
+    "Output folder where the shredded events will be stored",
+    metavar = "<path>")
+  val badFolder = Opts.option[String]("bad-folder",
+    "Output folder where the malformed events will be stored",
+    metavar = "<path>")
+  val igluConfig = Opts.option[String]("iglu-config",
+    "Base64-encoded Iglu Client JSON config",
+    metavar = "<base64>").mapValidated(Base64Json.decode)
+
+  val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
+    "Base64-encoded Events Manifest JSON config",
+    metavar = "<base64>").mapValidated(Base64Json.decode).orNone
+
+  val processingManifestTable = Opts.option[String]("processing-manifest-table",
+    "Processing manifest table",
+    metavar = "<name>").orNone
+  val itemId = Opts.option[String]("item-id",
+    "Unique folder identificator for processing manifest (e.g. S3 URL)",
+    metavar = "<id>").orNone
+
+  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId).mapN {
+    (input, output, bad, iglu, dupeStorage, manifest, itemId) => ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId)
+  }.validate("--item-id and --processing-manifest-table must be either both provided or both absent") {
+    case ShredJobConfig(_, _, _, _, _, manifest, i) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
+    case _ => false
+  }
+
+
+  val command = Command(s"${ProjectMetadata.shredderName}-${ProjectMetadata.shredderVersion}",
+    "Apache Spark job to prepare Snowplow enriched data to being loaded into Amazon Redshift warehouse")(shredJobConfig)
 
   /**
    * Load a ShredJobConfig from command line arguments.
    * @param args The command line arguments
    * @return The job config or one or more error messages boxed in a Scalaz Validation Nel
    */
-  def loadConfigFrom(args: Array[String]): ValidatedNelMessage[ShredJobConfig] =
-    parser.parse(args, ShredJobConfig()) match {
-      // We try to build the resolver early to detect failures before starting the job
-      case Some(c) => singleton.ResolverSingleton.getIgluResolver(c.igluConfig).map(_ => c)
-      case None => "Parsing of the configuration failed".toProcessingMessage.failureNel
-    }
+  def loadConfigFrom(args: Array[String]): Either[String, ShredJobConfig] =
+    command.parse(args).leftMap(_.toString())
 }
