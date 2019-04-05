@@ -16,22 +16,37 @@ package com.snowplowanalytics.snowplow.storage.spark
 
 import io.circe.Json
 
+import cats.Id
 import cats.implicits._
+import cats.effect.Clock
 
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 
-import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.resolver.registries.{Registry, RegistryError, RegistryLookup}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 
 import com.snowplowanalytics.manifest.ItemId
-import com.snowplowanalytics.manifest.core.{Application, ManifestError }
+import com.snowplowanalytics.manifest.core.{Application, ManifestError}
 import com.snowplowanalytics.manifest.dynamodb.DynamoDbManifest
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
 
+import scala.concurrent.duration.TimeUnit
+
 object DynamodbManifest {
 
   type ManifestFailure[A] = Either[ManifestError, A]
+
+  implicit val manifestFailureCloeck: Clock[ManifestFailure] = new Clock[ManifestFailure] {
+    def realTime(unit: TimeUnit): ManifestFailure[Long] = Clock[Id].realTime(unit).asRight
+    def monotonic(unit: TimeUnit): ManifestFailure[Long] = Clock[Id].monotonic(unit).asRight
+  }
+
+  implicit val manifestFailureLookup: RegistryLookup[ManifestFailure] = new RegistryLookup[ManifestFailure] {
+    def lookup(repositoryRef: Registry, schemaKey: SchemaKey): ManifestFailure[Either[RegistryError, Json]] =
+      RegistryLookup[Id].lookup(repositoryRef, schemaKey).asRight
+  }
 
   case class ShredderManifest(manifest: DynamoDbManifest[ManifestFailure], itemId: ItemId)
 
@@ -65,8 +80,8 @@ object DynamodbManifest {
   }
 
   /** Create a DynamoDB-backed Processing Manifest client */
-  def initialize(tableName: String, resolver: Resolver): DynamoDbManifest[ManifestFailure] = {
+  def initialize[F[_]](tableName: String, igluClient: Client[ManifestFailure, Json]): DynamoDbManifest[ManifestFailure] = {
     val client = AmazonDynamoDBClientBuilder.standard().build()
-    DynamoDbManifest[ManifestFailure](client, tableName, resolver)
+    DynamoDbManifest[ManifestFailure](client, tableName, igluClient.resolver)
   }
 }
