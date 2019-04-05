@@ -66,15 +66,23 @@ lazy val shredder = project.in(file("shredder"))
       // Java
       Dependencies.dynamodb,
       // Scala
+      Dependencies.decline,
+      Dependencies.analyticsSdk,
+      Dependencies.eventsManifest,
+      Dependencies.circeJawn,
+      Dependencies.circeLiteral,
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
-      Dependencies.scalaz7,
-      Dependencies.scopt,
-      Dependencies.commonEnrich,
       Dependencies.igluClient,
       Dependencies.igluCoreCirce,
       Dependencies.manifest,
       // Scala (test only)
       Dependencies.specs2
+    ),
+
+    dependencyOverrides ++= Seq(
+      Dependencies.dynamodb,
+      "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7",
+      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.2"
     )
   )
