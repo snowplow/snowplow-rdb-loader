@@ -26,6 +26,11 @@ import org.apache.commons.codec.binary.Base64
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 
+import cats.data.{ Validated, ValidatedNel }
+import cats.syntax.apply._
+import cats.syntax.option._
+import cats.syntax.validated._
+
 // Json4s
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse}
@@ -33,10 +38,6 @@ import org.json4s.jackson.JsonMethods.{compact, parse}
 // Specs2
 import org.specs2.matcher.Matcher
 import org.specs2.matcher.Matchers._
-
-// Scalaz
-import scalaz._
-import Scalaz._
 
 
 object ShredJobSpec {
@@ -218,10 +219,10 @@ object ShredJobSpec {
           |}
         |}""".stripMargin
     } match {
-      case Success(config) =>
+      case Validated.Valid(config) =>
         val encoder = new Base64(true)
         new String(encoder.encode(config.replaceAll("[\n\r]","").getBytes()))
-      case Failure(error) if CI => throw new RuntimeException("Cannot get AWS DynamoDB CI configuration. " + error.toList.mkString(", "))
+      case Validated.Invalid(error) if CI => throw new RuntimeException("Cannot get AWS DynamoDB CI configuration. " + error.toList.mkString(", "))
     }
 
   /** Check if tests are running in continuous integration environment */
@@ -233,14 +234,14 @@ object ShredJobSpec {
   }
 
   /** Get environment variable wrapped into `Validation` */
-  def getEnv(envvar: String): ValidationNel[String, String] = sys.env.get(envvar) match {
-    case Some(v) => Success(v)
-    case None => Failure(NonEmptyList(s"Environment variable [$envvar] is not available"))
+  def getEnv(envvar: String): ValidatedNel[String, String] = sys.env.get(envvar) match {
+    case Some(v) => v.validNel
+    case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
   /** Get environment variables required to access to staging environment */
   def getStagingCredentials =
-    (getEnv("AWS_STAGING_ACCESS_KEY_ID") |@| getEnv("AWS_STAGING_SECRET_ACCESS_KEY")).tupled
+    (getEnv("AWS_STAGING_ACCESS_KEY_ID"), getEnv("AWS_STAGING_SECRET_ACCESS_KEY")).tupled
 }
 
 /** Trait to mix in in every spec for the shred job. */

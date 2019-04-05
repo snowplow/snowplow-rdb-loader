@@ -13,7 +13,11 @@
 package com.snowplowanalytics.snowplow.storage.spark 
 package good
 
-// Scala
+import java.time.Instant
+import java.util.UUID
+
+import cats.syntax.either._
+
 import scala.collection.JavaConverters._
 
 // AWS SDK
@@ -23,28 +27,29 @@ import com.amazonaws.services.dynamodbv2.document.Table
 import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanRequest}
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDB
 
-// joda-time
-import org.joda.time.DateTime
-
 // Specs2
 import org.specs2.mutable.Specification
+
+import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifestConfig, EventsManifest, DynamoDbManifest => DynamoDbEventsManifest }
+
+import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig.DynamoDb.Credentials
 
 object CrossBatchDeduplicationSpec {
   import ShredJobSpec._
 
   // original duplicated event_id
-  val dupeUuid = "1799a90f-f570-4414-b91a-b0db8f39cc2e"
+  val dupeUuid = UUID.fromString("1799a90f-f570-4414-b91a-b0db8f39cc2e")
   val dupeFp = "bed9a39a0917874d2ff072033a6413d8"
 
-  val uniqueUuid = "e271698a-3e86-4b2f-bb1b-f9f7aa5666c1"
+  val uniqueUuid = UUID.fromString("e271698a-3e86-4b2f-bb1b-f9f7aa5666c1")
   val uniqueFp = "e79bef64f3185e9d7c10d5dfdf27b9a3"
 
-  val inbatchDupeUuid = "2718ac0f-f510-4314-a98a-cfdb8f39abe4"
+  val inbatchDupeUuid = UUID.fromString("2718ac0f-f510-4314-a98a-cfdb8f39abe4")
   val inbatchDupeFp = "aba1c39a091787aa231072033a647caa"
 
   // ETL Timestamps (use current timestamp as we cannot use timestamps from past)
-  val previousEtlTstamp = DuplicateStorage.RedshiftTstampFormat.print(DateTime.now.minus(3600 * 2))
-  val currentEtlTstamp = DuplicateStorage.RedshiftTstampFormat.print(DateTime.now)
+  val previousEtlTstamp = Instant.now().minusSeconds(3600 * 2)
+  val currentEtlTstamp = Instant.now()
 
   // Events, including one cross-batch duplicate and in-batch duplicates
   val lines = Lines(
@@ -136,14 +141,14 @@ object CrossBatchDeduplicationSpec {
     import ShredJobSpec._
 
     /** Helper container class to hold components stored in DuplicationStorage */
-    case class DuplicateTriple(eventId: String, eventFingerprint: String, etlTstamp: String)
+    case class DuplicateTriple(eventId: UUID, eventFingerprint: String, etlTstamp: Instant)
 
     // Events processed in previous runs
     val dupeStorage = List(
       // Event stored during last ETL, which duplicate will be present
       DuplicateTriple(dupeUuid, dupeFp, previousEtlTstamp),
       // Same payload, but unique id
-      DuplicateTriple("randomUuid", dupeFp, previousEtlTstamp),
+      DuplicateTriple(UUID.randomUUID(), dupeFp, previousEtlTstamp),
       // Synthetic duplicate
       DuplicateTriple(dupeUuid, "randomFp", previousEtlTstamp),
       // Event written during last (failed) ETL
@@ -165,7 +170,7 @@ object CrossBatchDeduplicationSpec {
      * It'll delete table if it exist and recreate new one
      */
     private def getStorage() = {
-      def build(accessKeyId: String, secretAccessKey: String): (AmazonDynamoDB, DuplicateStorage.DynamoDbConfig) = {
+      def build(accessKeyId: String, secretAccessKey: String): (AmazonDynamoDB, EventsManifestConfig.DynamoDb) = {
         val credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey)
         val client = AmazonDynamoDBClientBuilder
           .standard()
@@ -180,10 +185,9 @@ object CrossBatchDeduplicationSpec {
           case _: ResourceNotFoundException => ()
         }
 
-        val config = DuplicateStorage.DynamoDbConfig(
+        val config = EventsManifestConfig.DynamoDb(
           name = "Duplicate Storage Integration Test",
-          accessKeyId = accessKeyId,
-          secretAccessKey = secretAccessKey,
+          auth = Some(Credentials(accessKeyId, secretAccessKey)),
           awsRegion = dynamodbDuplicateStorageRegion,
           dynamodbTable = dynamodbDuplicateStorageTable
         )
@@ -191,14 +195,13 @@ object CrossBatchDeduplicationSpec {
         (client, config)
       }
 
-      val config: scalaz.ValidationNel[String, (AmazonDynamoDB, DuplicateStorage.DynamoDbConfig)] =
-        getStagingCredentials.map((build _).tupled)
+      val config = getStagingCredentials.map((build _).tupled).toEither.leftMap(_.toList.mkString(", "))
 
-      config.flatMap { case (client, config) => DuplicateStorage.initStorage(config) match {
-        case scalaz.Success(t) => scalaz.Success(t)
-        case scalaz.Failure(_) =>
-          DuplicateStorage.DynamoDbStorage.createTable(client, config.dynamodbTable)
-          DuplicateStorage.initStorage(config)
+      config.flatMap { case (client, config) => EventsManifest.initStorage(config) match {
+        case Right(t) => t.asRight
+        case Left(_) =>
+          DynamoDbEventsManifest.createTable(client, config.dynamodbTable, None, None)
+          EventsManifest.initStorage(config)
       } }.valueOr(e => throw new RuntimeException(e.toString))
     }
 

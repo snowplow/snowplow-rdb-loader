@@ -16,20 +16,22 @@ object Dependencies {
 
   object V {
     // Scala (Loader)
+    val decline          = "0.6.2"
     val scopt            = "3.6.0"
     val scalaz7          = "7.0.9"
-    val igluClient       = "0.5.0"
+    val igluClient       = "0.6.0-M5"
     val igluCore         = "0.2.0"
     val scalaTracker     = "0.5.0"
     val circeYaml        = "0.8.0"
-    val circe            = "0.9.3"
+    val circe            = "0.11.1"
     val cats             = "1.1.0"
-    val manifest         = "0.1.0"
-    val fs2              = "0.10.5"
+    val manifest         = "0.2.0-M1"
+    val fs2              = "1.0.4"
 
     // Scala (Shredder)
+    val analyticsSdk    = "0.4.1"
     val spark           = "2.2.0"
-    val commonEnrich    = "0.32.0"
+    val eventsManifest  = "0.2.0-M2"
 
     // Java (Loader)
     val postgres         = "42.0.0"
@@ -44,17 +46,12 @@ object Dependencies {
 
 
   val resolutionRepos = Seq(
-    // For specs2
-    "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases",
     // Redshift native driver
-    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",
-    // For Snowplow libs (SCE transient)
-    "Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/",
-    // For uaParser utils (SCE transient)
-    "user-agent-parser repo" at "https://clojars.org/repo/"
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
   )
 
   // Scala (Loader)
+  val decline           = "com.monovore"          %% "decline"                      % V.decline
   val scopt             = "com.github.scopt"      %% "scopt"                        % V.scopt
   val scalaz7           = "org.scalaz"            %% "scalaz-core"                  % V.scalaz7
   val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"            % V.igluClient
@@ -70,9 +67,12 @@ object Dependencies {
   val fs2               = "co.fs2"                %% "fs2-core"                     % V.fs2
 
   // Scala (Shredder)
-  val commonEnrich      = "com.snowplowanalytics" %% "snowplow-common-enrich" % V.commonEnrich
-  val sparkCore         = "org.apache.spark"      %% "spark-core"             % V.spark           % "provided"
-  val sparkSQL          = "org.apache.spark"      %% "spark-sql"              % V.spark           % "provided"
+  val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
+  val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest" % V.eventsManifest
+  val circeJawn         = "io.circe"              %% "circe-jawn"               % V.circe
+  val circeLiteral      = "io.circe"              %% "circe-literal"            % V.circe
+  val sparkCore         = "org.apache.spark"      %% "spark-core"               % V.spark           % "provided"
+  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                % V.spark           % "provided"
 
   // Java (Loader)
   val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
