@@ -23,7 +23,7 @@ import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.registries.{Registry, RegistryError, RegistryLookup}
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData, SchemaList}
 
 import com.snowplowanalytics.manifest.ItemId
 import com.snowplowanalytics.manifest.core.{Application, ManifestError}
@@ -45,6 +45,7 @@ object DynamodbManifest {
 
   implicit val manifestFailureLookup: RegistryLookup[ManifestFailure] = new RegistryLookup[ManifestFailure] {
     def lookup(repositoryRef: Registry, schemaKey: SchemaKey): ManifestFailure[Either[RegistryError, Json]] = ???
+    def list(registry: Registry, vendor: String, name: String): ManifestFailure[Option[SchemaList]] = ???
   }
 
   case class ShredderManifest(manifest: DynamoDbManifest[ManifestFailure], itemId: ItemId)

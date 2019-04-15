@@ -21,8 +21,10 @@ import cats.instances.list._
 import cats.syntax.show._
 import cats.syntax.either._
 import cats.syntax.foldable._
+
 import io.circe.Json
 import io.circe.literal._
+
 import java.util.UUID
 import java.time.Instant
 import java.time.format.DateTimeParseException
@@ -35,6 +37,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
+import org.apache.spark.storage.StorageLevel
 
 // AWS SDK
 import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException
@@ -303,6 +306,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     // Enriched TSV lines along with their shredded components
     val common = input
       .map(line => loadAndShred(ResolverSingleton.get(shredConfig.igluConfig), line))
+      .setName("common")
       .cache()
 
     // Handling of malformed rows; drop good, turn malformed into `BadRow`
@@ -322,7 +326,6 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
         (first.original, absent)
       }
       .setName("good")
-      .cache()
 
     // Deduplication operation succeeded
     val dupeSucceeded = good
@@ -334,7 +337,6 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
         recordPayload(event.inventory.map(_.schemaKey))
         event
       }
-      .cache()
 
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
     val syntheticDupes = dupeSucceeded
@@ -346,20 +348,29 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val goodWithSyntheticDupes = dupeSucceeded
+    val identifiedSyntheticDupes = dupeSucceeded
       .map(event => event.event_id -> event)
       .leftOuterJoin(syntheticDupes)
-      .map {
-        case (_, (shredded, None)) =>
-          shredded
-        case (_, (shredded, Some(_))) =>
-          val newEventId = UUID.randomUUID()
-          val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${shredded.event_id}}""")
-          val updatedContexts = newContext :: shredded.derived_contexts.data
-          shredded.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts))
-      }
-      .setName("goodWithSyntheticDupes")
+      .setName("identifiedSyntheticDupes")
       .cache()
+
+    val uniqueGood = identifiedSyntheticDupes.flatMap {
+      case (_, (shredded, None)) => Some(shredded)
+      case _ => None
+    }.setName("uniqueGood")
+
+    // Avoid recomputing UUID at all costs in order to not create orphan shredded entities
+    val syntheticDupedGood = identifiedSyntheticDupes.flatMap {
+      case (_, (shredded, Some(_))) =>
+        val newEventId = UUID.randomUUID()
+        val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${shredded.event_id}}""")
+        val updatedContexts = newContext :: shredded.derived_contexts.data
+        Some(shredded.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts)))
+      case _ =>
+        None
+    }.persist(StorageLevel.MEMORY_AND_DISK_SER).setName("syntheticDupedGood")
+
+    val goodWithSyntheticDupes = (uniqueGood ++ syntheticDupedGood).cache().setName("goodWithSyntheticDupes")
 
     // Ready the events for database load
     val events = goodWithSyntheticDupes.map(e => Row(alterEnrichedEvent(e)))
