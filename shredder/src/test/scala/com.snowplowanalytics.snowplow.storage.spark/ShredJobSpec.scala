@@ -17,6 +17,8 @@ package snowplow.storage.spark
 
 import java.io.{BufferedWriter, File, FileWriter, IOException}
 
+import org.apache.commons.io.filefilter.IOFileFilter
+
 import scala.collection.JavaConverters._
 import scala.io.Source
 import scala.util.Random
@@ -81,6 +83,12 @@ object ShredJobSpec {
     }
   }
 
+  /** Ignore empty files on output (necessary since https://github.com/snowplow/snowplow-rdb-loader/issues/142) */
+  val NonEmpty = new org.apache.commons.io.filefilter.IOFileFilter {
+    def accept(file: File): Boolean = file.length() > 1L
+    def accept(dir: File, name: String): Boolean = true
+  }
+
   /**
    * Recursively list files in a given path, excluding the supplied paths.
    * @param root A root filepath
@@ -88,7 +96,7 @@ object ShredJobSpec {
    * @return the list of files contained in the root, minus the exclusions
    */
   def listFilesWithExclusions(root: File, exclusions: List[String]): List[String] =
-    FileUtils.listFiles(root, TrueFileFilter.INSTANCE, TrueFileFilter.INSTANCE)
+    FileUtils.listFiles(root, NonEmpty, TrueFileFilter.TRUE)
       .asScala
       .toList
       .map(_.getCanonicalPath)
