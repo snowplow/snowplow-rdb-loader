@@ -20,7 +20,7 @@ object Dependencies {
     val scopt            = "3.6.0"
     val scalaz7          = "7.0.9"
     val igluClient       = "0.6.0"
-    val igluCore         = "0.2.0"
+    val igluCore         = "0.5.1"
     val scalaTracker     = "0.5.0"
     val circeYaml        = "0.8.0"
     val circe            = "0.11.1"
@@ -30,7 +30,7 @@ object Dependencies {
     val fs2              = "1.0.4"
 
     // Scala (Shredder)
-    val analyticsSdk    = "0.4.1"
+    val analyticsSdk    = "0.4.2"
     val spark           = "2.2.0"
     val eventsManifest  = "0.2.0"
 
