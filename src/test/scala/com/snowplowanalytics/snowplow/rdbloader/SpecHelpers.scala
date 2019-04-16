@@ -14,18 +14,17 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.io.Source.fromInputStream
 
-import org.json4s.jackson.JsonMethods.{parse => jsonParse}
-
-import S3.Folder.{coerce => s3}
-
+import cats.Id
 import cats.implicits._
 
-import io.circe.jawn.{ parse => circeParse }
+import io.circe.jawn.parse
 
 import com.snowplowanalytics.iglu.client.Resolver
 
+import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
+import S3.Folder.{coerce => s3}
 import config.{ SnowplowConfig, Semver, StorageTarget }
 import config.Semver._
 import config.SnowplowConfig._
@@ -38,8 +37,8 @@ object SpecHelpers {
 
   val resolverStream = getClass.getResourceAsStream("/resolver.json.base64")
   val resolverConfig = fromInputStream(resolverStream).getLines.mkString("\n")
-  val resolverJson = jsonParse(new String(java.util.Base64.getDecoder.decode(resolverConfig)))
-  val resolver = Resolver.parse(resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
+  val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
+  val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
 
   val targetStream = getClass.getResourceAsStream("/valid-redshift.json.base64")
   val target = fromInputStream(targetStream).getLines.mkString("\n")
@@ -75,7 +74,7 @@ object SpecHelpers {
   val enableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
 
   val validTarget = StorageTarget.RedshiftConfig(
-    "e17c0ded0-eee7-4845-a7e6-8fdc88d599d0",
+    "e17c0ded-eee7-4845-a7e6-8fdc88d599d0",
     "AWS Redshift enriched events storage",
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
@@ -91,7 +90,7 @@ object SpecHelpers {
     None)
 
   val validTargetWithManifest = StorageTarget.RedshiftConfig(
-    "e17c0ded0-eee7-4845-a7e6-8fdc88d599d0",
+    "e17c0ded-eee7-4845-a7e6-8fdc88d599d0",
     "AWS Redshift enriched events storage",
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
@@ -170,11 +169,11 @@ object SpecHelpers {
   }
 
   def getPayload(jsonArray: String) = {
-    circeParse(
+    parse(
       s"""|{
           |"schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbshredder/processed_payload/jsonschema/1-0-0",
           |"data": {"shreddedTypes": $jsonArray}
-          |}""".stripMargin).toOption.flatMap(_.toData).getOrElse(throw new RuntimeException("invalid json")).some
+          |}""".stripMargin).toOption.flatMap(json => SelfDescribingData.parse(json).toOption).getOrElse(throw new RuntimeException("Invalid processed_payload"))
   }
 
   implicit class AsSql(s: String) {

@@ -38,10 +38,7 @@ object LoaderError {
    * Top-level error, representing error in configuration
    * Will always be printed to EMR stderr
    */
-  sealed trait ConfigError extends LoaderError { def message: String }
-  case class ParseError(message: String) extends ConfigError
-  case class DecodingError(message: String) extends ConfigError
-  case class ValidationError(message: String) extends ConfigError
+  case class ConfigError(message: String) extends LoaderError
 
   /**
    * Error representing failure on events (or types, or JSONPaths) discovery
@@ -136,6 +133,7 @@ object LoaderError {
 
   case class ManifestFailure(manifestError: ManifestError) extends DiscoveryFailure {
     def getMessage: String = manifestError.show
+    override def toString: String = getMessage
   }
 
   /** Turn non-empty list of discovery failures into top-level `LoaderError` */

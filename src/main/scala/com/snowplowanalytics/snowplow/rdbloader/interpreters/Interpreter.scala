@@ -17,6 +17,8 @@ import cats.{ ~>, Id}
 import cats.effect.IO
 import cats.syntax.either._
 
+import com.snowplowanalytics.iglu.client.Client
+
 import implementations.{S3Interpreter, TrackerInterpreter}
 
 // This project
@@ -38,8 +40,8 @@ object Interpreter {
     * @return prepared interpreter
     */
   def initialize(cliConfig: CliConfig): Interpreter = {
-    val resolver = utils.Compat.convertIgluResolver(cliConfig.resolverConfig)
-      .fold(x => throw new RuntimeException(s"Initialization error. Cannot initialize Iglu Resolver. ${x.toList.mkString(", ")}"), r => r)
+    val resolver = Client.parseDefault(cliConfig.resolverConfig).value
+      .fold(x => throw new RuntimeException(s"Initialization error. Cannot initialize Iglu Resolver. $x"), identity)
     val amazonS3 = S3Interpreter.getClient(cliConfig.configYaml.aws)
     val tracker = TrackerInterpreter.initializeTracking(cliConfig.configYaml.monitoring)
 
