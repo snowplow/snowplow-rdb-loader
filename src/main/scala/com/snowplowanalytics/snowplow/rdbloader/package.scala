@@ -17,7 +17,12 @@ import cats.data._
 import cats.free.Free
 import cats.implicits._
 
+import cats.effect.Clock
+
 import rdbloader.LoaderError.DiscoveryFailure
+import rdbloader.interpreters.implementations.ManifestInterpreter.ManifestE
+
+import scala.concurrent.duration.{ TimeUnit, MILLISECONDS, NANOSECONDS }
 
 package object rdbloader {
 
@@ -107,5 +112,15 @@ package object rdbloader {
   implicit class AggregateErrors[A, B](eithers: List[Either[A, B]]) {
     def aggregatedErrors: ValidatedNel[A, List[B]] =
       eithers.map(_.toValidatedNel).sequence
+  }
+
+  implicit val catsClockManifestInstance: Clock[ManifestE] = Clock.create[ManifestE]
+
+  implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
+    override def realTime(unit: TimeUnit): Id[Long] =
+      unit.convert(System.nanoTime(), NANOSECONDS)
+
+    override def monotonic(unit: TimeUnit): Id[Long] =
+      unit.convert(System.currentTimeMillis(), MILLISECONDS)
   }
 }

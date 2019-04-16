@@ -186,7 +186,7 @@ object CrossBatchDeduplicationSpec {
         }
 
         val config = EventsManifestConfig.DynamoDb(
-          id = None,
+          None,
           name = "Duplicate Storage Integration Test",
           auth = Some(Credentials("fake", "fake")),
           awsRegion = dynamodbDuplicateStorageRegion,

@@ -20,9 +20,13 @@ import cats._
 import cats.data.{State => _, _}
 import cats.implicits._
 
+import io.circe.DecodingFailure
+
 import com.snowplowanalytics.manifest.pure.PureManifest
 import com.snowplowanalytics.manifest.core._
 import com.snowplowanalytics.manifest.core.ManifestError._
+
+import com.snowplowanalytics.iglu.client.Resolver
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.{DiscoveryError, ManifestFailure}
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
@@ -80,14 +84,14 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val records = List(
       Record("invalidFolder", shredderApp13, id1, None, State.New, time, author, None),
       Record("invalidFolder", shredderApp13, id2, Some(id1), State.Processing, time10, author, None),
-      Record("invalidFolder", shredderApp13, newId, Some(id2), State.Processed, time20, author, payload)
+      Record("invalidFolder", shredderApp13, newId, Some(id2), State.Processed, time20, author, payload.some)
     )
 
     val action = ManifestDiscovery.discover("test-storage", "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beLeft.like {
       case DiscoveryError(List(ManifestFailure(Corrupted(Corruption.ParseError(error))))) =>
-        error must endingWith("Key [iglu:com.acme/event/jsonschema/0-0-1] is invalid Iglu URI, Path [invalidFolder] is not valid base for shredded type. Bucket name must start with s3:// prefix")
+        error must endingWith("Key [iglu:com.acme/event/jsonschema/0-0-1] is invalid Iglu URI, INVALID_SCHEMAVER, Path [invalidFolder] is not valid base for shredded type. Bucket name must start with s3:// prefix")
     }
   }
 
@@ -105,13 +109,13 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val records = List(
       Record(base1, shredderApp13, newId, None, State.New, time, author, None),
       Record(base1, shredderApp13, id1, Some(id2), State.Processing, time10, author, None),
-      Record(base1, shredderApp13, newId, Some(id1), State.Processed, time20, author, payload1),
+      Record(base1, shredderApp13, newId, Some(id1), State.Processed, time20, author, payload1.some),
       Record(base1, loaderApp13, id2, None, State.Processing, time.plusSeconds(30), author, None),
       Record(base1, loaderApp13, newId, Some(id2), State.Processed, time.plusSeconds(30), author, None),
 
       Record(base2, shredderApp13, newId, None, State.New, time, author, None),
       Record(base2, shredderApp13, id3, None, State.Processing, time.plusSeconds(50), author, None),
-      Record(base2, shredderApp13, newId, Some(id3), State.Processed, time.plusSeconds(60), author, payload2)
+      Record(base2, shredderApp13, newId, Some(id3), State.Processed, time.plusSeconds(60), author, payload2.some)
     )
 
     val item = Item(NonEmptyList.fromListUnsafe(records.slice(5, 8)))
@@ -142,15 +146,15 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val records = List(
       Record(base1, shredderApp13, newId, None, State.New, time, author, None),
       Record(base1, shredderApp13, id1, None, State.Processing, time.plusSeconds(10), author, None),
-      Record(base1, shredderApp13, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload1),
+      Record(base1, shredderApp13, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload1.some),
 
       Record(base2, shredderApp13, newId, None, State.New, time, author, None),
       Record(base2, shredderApp13, id2, None, State.Processing, time.plusSeconds(10), author, None),
-      Record(base2, shredderApp13, newId, Some(id2), State.Processed, time.plusSeconds(20), author, payload1),
+      Record(base2, shredderApp13, newId, Some(id2), State.Processed, time.plusSeconds(20), author, payload1.some),
 
       Record(base3, shredderApp13, newId, None, State.New, time, author, None),
       Record(base3, shredderApp13, id3, None, State.Processing, time.plusSeconds(50), author, None),
-      Record(base3, shredderApp13, newId, Some(id3), State.Processed, time.plusSeconds(60), author, payload2)
+      Record(base3, shredderApp13, newId, Some(id3), State.Processed, time.plusSeconds(60), author, payload2.some)
     )
     val item1 = Item(NonEmptyList.fromListUnsafe(records.slice(0, 3)))
     val item2 = Item(NonEmptyList.fromListUnsafe(records.slice(3, 6)))
@@ -193,7 +197,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val records = List(
       Record(base1, shredderApp13, newId, None, State.New, time, author, None),
       Record(base1, shredderApp13, id2, None, State.Processing, time.plusSeconds(10), author, None),
-      Record(base1, shredderApp13, newId, Some(id2), State.Failed, time.plusSeconds(20), author, payload1))
+      Record(base1, shredderApp13, newId, Some(id2), State.Failed, time.plusSeconds(20), author, payload1.some))
     val item1 = Item(NonEmptyList.fromListUnsafe(records.slice(0, 3)))
 
     val action = ManifestDiscovery.discover("id", "us-east-1", None)
@@ -207,7 +211,13 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
 
 object ManifestDiscoverySpec {
 
-  private val manifest = PureManifest(SpecHelpers.resolver)
+  val resolver = Resolver
+    .parse[PureManifest.PureManifestEffect](resolverJson)
+    .value.runA(List.empty).unsafeRunSync()
+    .leftMap(x => DecodingFailure(x.toString, Nil))
+    .flatten.toOption.get
+
+  private val manifest = PureManifest(resolver)
 
   def interpreter(records: List[Record]): LoaderA ~> Id = new (LoaderA ~> Id) {
     import manifest._
