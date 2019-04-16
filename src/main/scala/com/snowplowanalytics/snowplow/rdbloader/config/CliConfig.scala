@@ -16,17 +16,20 @@ package config
 import java.util.Base64
 import java.nio.charset.StandardCharsets
 
+import cats.Id
 import cats.data._
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.client.Resolver
+import com.monovore.decline.{ Opts, Argument, Command }
 
-import org.json4s.JValue
+import com.snowplowanalytics.iglu.client.Client
+
+import io.circe.Json
+import io.circe.parser.{ parse => parseJson }
 
 // This project
 import LoaderError._
 import generated.ProjectMetadata
-import utils.{ Common, Compat }
 
 /**
  * Validated and parsed result application config
@@ -47,48 +50,31 @@ case class CliConfig(
   logKey: Option[S3.Key],
   folder: Option[S3.Folder],
   dryRun: Boolean,
-  resolverConfig: JValue)
+  resolverConfig: Json)
 
 object CliConfig {
 
-  val parser = new scopt.OptionParser[RawConfig]("rdb-loader") {
-    head("Relational Database Loader", ProjectMetadata.version)
+  val config = Opts.option[String]("config",
+    "base64-encoded string with config.yml content", "c", "config.yml")
+  val target = Opts.option[String]("target",
+    "base64-encoded string with single storage target configuration JSON", "t", "target.json")
+  val resolver = Opts.option[String]("resolver",
+    "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
+  val logkey = Opts.option[String]("logkey",
+    "S3 key to dump logs", "l", "path").orNone
+  val include = Opts.option[Set[Step.IncludeStep]]("include",
+    "include optional work steps", "i").withDefault(Set.empty[Step.IncludeStep])
+  val skip = Opts.option[Set[Step.SkipStep]]("skip",
+    "skip default steps", "s").withDefault(Set.empty[Step.SkipStep])
+  val folder = Opts.option[String]("folder",
+    "exact run folder to load", metavar = "s3-folder").orNone
+  val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
-    opt[String]('c', "config").required().valueName("<config.yml>").
-      action((x, c) ⇒ c.copy(config = x)).
-      text("base64-encoded string with config.yml content")
-
-    opt[String]('t', "target").required().valueName("<target.json>").
-      action((x, c) => c.copy(target = x)).
-      text("base64-encoded string with single storage target configuration JSON")
-
-    opt[String]('r', "resolver").required().valueName("<resolver.json>").
-      action((x, c) => c.copy(resolver = x)).
-      text("base64-encoded string with Iglu resolver configuration JSON")
-
-    opt[String]('l', "logkey").valueName("<name>").
-      action((x, c) => c.copy(logkey = Some(x))).
-      text("S3 key to dump logs")
-
-    opt[Seq[Step.IncludeStep]]('i', "include").
-      action((x, c) => c.copy(include = x)).
-      text("include optional work steps")
-
-    opt[Seq[Step.SkipStep]]('s', "skip").
-      action((x, c) => c.copy(skip = x)).
-      text("skip default steps")
-
-    opt[String]("folder").valueName("<s3-folder>").
-      action((x, c) => c.copy(folder = Some(x))).
-      text("exact run folder to load")
-
-    opt[Unit]("dry-run").
-      action((_, c) => c.copy(dryRun = true)).
-      text("do not perform loading, but print SQL statements")
-
-    help("help").text("prints this usage text")
-
+  val rawConfig = (config, target, resolver, logkey, include, skip, folder, dryRun).mapN {
+    case (cfg, storage, iglu, log, i, s, fld, dry) => RawConfig(cfg, storage, iglu, i.toSeq, s.toSeq, log, fld, dry)
   }
+
+  val parser = Command[RawConfig](ProjectMetadata.name, ProjectMetadata.version)(rawConfig)
 
   /**
    * Parse raw CLI arguments into validated and transformed application config
@@ -102,8 +88,8 @@ object CliConfig {
    *         some application config if everything was validated
    *         correctly
    */
-  def parse(argv: Seq[String]): Option[ValidatedNel[ConfigError, CliConfig]] =
-    parser.parse(argv, rawCliConfig).map(transform)
+  def parse(argv: Seq[String]): ValidatedNel[ConfigError, CliConfig] =
+    parser.parse(argv).leftMap(help => ConfigError(help.toString)).toValidatedNel.andThen(transform)
 
 
   /**
@@ -132,6 +118,39 @@ object CliConfig {
   // Always invalid initial parsing configuration
   private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, None, None, false)
 
+  type Parsed[A] = ValidatedNel[ConfigError, A]
+
+  /** Wrapper for any Base64-encoded entity */
+  case class Base64Encoded[A](decode: A)
+
+  implicit def base64EncodedInstance[A: Argument]: Argument[Base64Encoded[A]] = new Argument[Base64Encoded[A]] {
+    def read(string: String): ValidatedNel[String, Base64Encoded[A]] = {
+      val str = Validated
+        .catchOnly[IllegalArgumentException](new String(Base64.getDecoder.decode(string), StandardCharsets.UTF_8))
+        .leftMap(_.getMessage)
+        .toValidatedNel
+      str.andThen(Argument[A].read).map(a => Base64Encoded(a))
+    }
+
+    def defaultMetavar: String = "base64"
+  }
+
+  implicit def includeStepsArgumentInstance: Argument[Set[Step.IncludeStep]] =
+    new Argument[Set[Step.IncludeStep]] {
+      def read(string: String): ValidatedNel[String, Set[Step.IncludeStep]] =
+        string.split(",").toList.traverse(utils.Common.fromString[Step.IncludeStep](_).toValidatedNel).map(_.toSet)
+
+      def defaultMetavar: String = "steps"
+    }
+
+  implicit def skipStepsArgumentInstance: Argument[Set[Step.SkipStep]] =
+    new Argument[Set[Step.SkipStep]] {
+      def read(string: String): ValidatedNel[String, Set[Step.SkipStep]] =
+        string.split(",").toList.traverse(utils.Common.fromString[Step.SkipStep](_).toValidatedNel).map(_.toSet)
+
+      def defaultMetavar: String = "steps"
+    }
+
   /**
    * Validated and transform initial raw cli arguments into
    * ready-to-use `CliConfig`, aggregating errors if any
@@ -141,14 +160,14 @@ object CliConfig {
    *         non empty list of config errors in case of failure
    */
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
-    val config = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
-    val logkey = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(DecodingError).toValidatedNel).sequence
-    val resolver = loadResolver(rawConfig.resolver)
-    val target = resolver.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
+    val config: Parsed[SnowplowConfig] = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
+    val logkey: Parsed[Option[S3.Key]] = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(ConfigError).toValidatedNel).sequence
+    val client: Parsed[(Json, Client[Id, Json])] = loadResolver(rawConfig.resolver).toValidatedNel
+    val target: Parsed[StorageTarget] = client.andThen { case (_, r) => loadTarget(r, rawConfig.target).toValidatedNel }
+    val folder: Parsed[Option[S3.Folder]] = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(ConfigError).toValidatedNel).sequence
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
-    val folder = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(DecodingError).toValidatedNel).sequence
 
-    (target, config, logkey, folder, resolver).mapN {
+    (target, config, logkey, folder, client).mapN {
       case (t, c, l, f, (j, _)) => CliConfig(c, t, steps, l, f, rawConfig.dryRun, j)
     }
   }
@@ -157,25 +176,19 @@ object CliConfig {
    * Safely decode base64 string into plain-text string
    *
    * @param string string, supposed to be base64-encoded
-   * @return either error with full desciption or
+   * @return either error with full description or
    *         plain string in case of success
    */
-  private def base64decode(string: String): Either[ConfigError, String] = {
-    try {
-      Right(new String(Base64.getDecoder.decode(string), StandardCharsets.UTF_8))
-    } catch {
-      case e: IllegalArgumentException =>
-        Left(ParseError(e.getMessage))
-    }
-  }
+  private def base64decode(string: String): Either[ConfigError, String] =
+    Either
+      .catchOnly[IllegalArgumentException](new String(Base64.getDecoder.decode(string), StandardCharsets.UTF_8))
+      .leftMap(exception => ConfigError(exception.getMessage))
 
   /** Decode Iglu Resolver and associated JSON config */
-  private def loadResolver(resolverConfigB64: String): ValidatedNel[ConfigError, (JValue, Resolver)] = {
+  private def loadResolver(resolverConfigB64: String): Either[ConfigError, (Json, Client[Id, Json])] = {
     base64decode(resolverConfigB64)
-      .flatMap(Common.safeParse)
-      .toValidatedNel
-      .andThen(json => Compat.convertIgluResolver(json).map((json, _)))
-      .map { case (json, resolver) => (json, resolver) }
+      .flatMap(string => parseJson(string).leftMap(error => ConfigError(error.show)))
+      .flatMap { json => Client.parseDefault[Id](json).value.leftMap(error => ConfigError(error.show)).map(c => (json, c)) }
   }
 
   /**
@@ -186,6 +199,6 @@ object CliConfig {
    * @return either aggregated list of errors (from both resolver and target)
    *         or successfully decoded storage target
    */
-  private def loadTarget(resolver: Resolver, targetConfigB64: String) =
-    base64decode(targetConfigB64).toValidatedNel.andThen(StorageTarget.parseTarget(resolver, _))
+  private def loadTarget(resolver: Client[Id, Json], targetConfigB64: String) =
+    base64decode(targetConfigB64).flatMap(StorageTarget.parseTarget(resolver, _))
 }

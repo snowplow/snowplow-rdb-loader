@@ -139,7 +139,7 @@ object ShredJob extends SparkJob {
         ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
     }
 
-    val atomicLengths = singleton.ResolverSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema, 2) match {
+    val atomicLengths = singleton.ResolverSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema) match {   // TODO: retry
       case Right(schema) =>
         EventUtils.getAtomicLengths(schema).fold(e => throw new RuntimeException(e), identity)
       case Left(error) =>
@@ -240,7 +240,7 @@ object ShredJob extends SparkJob {
           case e: ProvisionedThroughputExceededException =>
             throw UnexpectedEtlException(e.toString)
           case NonFatal(e) =>
-            Left(BadRow.DeduplicationError(event, Option(e.getMessage).getOrElse(e.toString)))
+            Left(BadRow.RuntimeError(event, Option(e.getMessage).getOrElse(e.toString)))
         }
       case _ => Right(true)
     }

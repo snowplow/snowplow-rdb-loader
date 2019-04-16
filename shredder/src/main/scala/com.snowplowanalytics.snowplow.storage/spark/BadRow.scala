@@ -16,40 +16,40 @@ import cats.data.NonEmptyList
 
 import io.circe.{Encoder, Json}
 import io.circe.syntax._
+import io.circe.literal._
 
 import com.snowplowanalytics.iglu.client.ClientError
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{ SchemaKey, SchemaVer, SelfDescribingData }
+import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
 
 sealed trait BadRow {
-  def toCompactJson: String
+  def toData: SelfDescribingData[Json]
+
+  def toCompactJson: String =
+    toData.normalize.noSpaces
 }
 
 object BadRow {
 
+  val ParsingErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "loader_parsing_error", "jsonschema", SchemaVer.Full(1, 0, 0))
+  val IgluErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "loader_iglu_error", "jsonschema", SchemaVer.Full(1, 0, 0))
+  val RuntimeErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "loader_runtime_error", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  case class ShreddingError(original: String, errors: NonEmptyList[String]) extends BadRow {
-    def toCompactJson: String =
-      Json.obj(
-        "original" := original.asJson,
-        "errors" := errors.asJson
-      ).noSpaces
+  case class ShreddingError(payload: String, errors: NonEmptyList[String]) extends BadRow {
+    def toData: SelfDescribingData[Json] =
+      SelfDescribingData[Json](ParsingErrorSchema, json"""{"payload": $payload, "errors": $errors}""")
   }
 
   case class ValidationError(original: Event, errors: NonEmptyList[SchemaError]) extends BadRow {
-    def toCompactJson: String =
-      Json.obj(
-        "original" := original.asJson,
-        "errors" := errors.asJson
-      ).noSpaces
+    def toData: SelfDescribingData[Json] =
+      SelfDescribingData[Json](IgluErrorSchema, json"""{"event": $original, "errors": $errors}""")
   }
 
-  case class DeduplicationError(original: Event, error: String) extends BadRow {
-    def toCompactJson: String = Json.obj(
-      "original" := original.asJson,
-      "error" := error.asJson
-    ).noSpaces
+  case class RuntimeError(original: Event, error: String) extends BadRow {
+    def toData: SelfDescribingData[Json] =
+      SelfDescribingData[Json](RuntimeErrorSchema, json"""{"event": $original, "error": $error}""")
   }
 
   case class SchemaError(schema: SchemaKey, error: ClientError)
