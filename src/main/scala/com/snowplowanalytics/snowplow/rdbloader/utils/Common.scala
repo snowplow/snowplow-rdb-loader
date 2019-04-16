@@ -15,24 +15,22 @@ package utils
 
 import scala.reflect.runtime.universe._
 import scala.reflect.runtime.{universe => ru}
-import scala.util.control.NonFatal
 
 import cats.data._
 import cats.implicits._
-
-import org.json4s.JValue
-import org.json4s.jackson.{parseJson => parseJson4s}
 
 import io.circe._
 
 import com.snowplowanalytics.manifest.core.Common.{ EmbeddedRegistry => ManifestRegistry }
 
-import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.client.repositories.{EmbeddedRepositoryRef, RepositoryRefConfig}
+import com.snowplowanalytics.iglu.client.{ Resolver, Client }
+import com.snowplowanalytics.iglu.client.resolver.registries.Registry
+import com.snowplowanalytics.iglu.client.validator.CirceValidator
 
 // This project
 import LoaderError._
 import config.CliConfig
+import interpreters.implementations.ManifestInterpreter.ManifestE
 
 /**
  * Various common utility functions
@@ -111,20 +109,6 @@ object Common {
     Decoder.instance(parseEnum[A])
 
   /**
-    * Helper method to parse Json4s JSON AST without exceptions
-    * Truncate invalid JSON in error to prevent exposing credentials
-    *
-    * @param json string presumably containing valid JSON
-    * @return json4s JValue AST if success
-    */
-  def safeParse(json: String): Either[ConfigError, JValue] =
-    try {
-      parseJson4s(json).asRight
-    } catch {
-      case NonFatal(_) => ParseError(s"Invalid JSON [${json.take(10)}...]").asLeft
-    }
-
-  /**
    * Parse element of `StringEnum` sealed hierarchy from circe AST
    *
    * @param hCursor parser's cursor
@@ -171,11 +155,12 @@ object Common {
   private val m = ru.runtimeMirror(getClass.getClassLoader)
 
   /** Registry embedded into RDB Loader jar */
-  private val loaderRefConf = RepositoryRefConfig("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
-  val LoaderRegistry = EmbeddedRepositoryRef(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
+  private val loaderRefConf = Registry.Config("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
+  val LoaderRegistry = Registry.Embedded(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
 
   /** Iglu Resolver containing all schemas processing manifest uses */
-  val DefaultResolver = Resolver(10, ManifestRegistry, LoaderRegistry)
+  val DefaultClient: Client[ManifestE, Json] =
+    Client(Resolver(List(ManifestRegistry, LoaderRegistry), None), CirceValidator)
 
   /**
    * Reflection method to get runtime object by compiler's `Symbol`

@@ -10,7 +10,8 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.interpreters.implementations
+package com.snowplowanalytics.snowplow.rdbloader
+package interpreters.implementations
 
 import scala.util.{Failure, Success}
 
@@ -18,13 +19,14 @@ import cats.data._
 import cats.implicits._
 import cats.effect._
 
+import io.circe.Json
+
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
-import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.manifest.core.{Item, ManifestError, ProcessingManifest, Application}
 import com.snowplowanalytics.manifest.dynamodb.DynamoDbManifest
 
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.ProcessingManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ManifestDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.interpreters.Interpreter
@@ -38,11 +40,11 @@ object ManifestInterpreter {
 
   def initialize(manifestConfig: Option[ProcessingManifestConfig],
                  emrRegion: String,
-                 resolver: Resolver): Either[LoaderError, Option[DynamoDbManifest[ManifestE]]] = {
+                 resolver: Client[ManifestE, Json]): Either[LoaderError, Option[DynamoDbManifest[ManifestE]]] = {
     try {
       manifestConfig.map { config =>
         val dynamodbClient = AmazonDynamoDBClientBuilder.standard().withRegion(emrRegion).build()
-        DynamoDbManifest[ManifestE](dynamodbClient, config.amazonDynamoDb.tableName, resolver)
+        DynamoDbManifest[ManifestE](dynamodbClient, config.amazonDynamoDb.tableName, resolver.resolver)
       }.asRight[LoaderError]
     } catch {
       case NonFatal(e) =>

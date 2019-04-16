@@ -13,14 +13,14 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
-import cats.data.Validated
+import cats.data.{ Validated, NonEmptyList }
 
 // specs2
 import org.specs2.Specification
 
 import S3.Key.{coerce => s3}
 import S3.Folder.{coerce => dir}
-import LoaderError.{ConfigError, DecodingError, ValidationError}
+import LoaderError.ConfigError
 
 class CliConfigSpec extends Specification { def is = s2"""
   Parse minimal valid configuration $e1
@@ -49,7 +49,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e2 = {
@@ -66,7 +66,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e3 = {
@@ -79,10 +79,10 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome.like {
+    result must be like {
       case Validated.Invalid(nel) =>
-        val validationError = nel.toList must contain((error: ConfigError) => error.isInstanceOf[ValidationError])
-        val decodingError = nel.toList must contain((error: ConfigError) => error.isInstanceOf[DecodingError])
+        val validationError = nel.toList must contain(ConfigError("DecodingFailure at .id: Attempt to decode value on failed cursor"))
+        val decodingError = nel.toList must contain(ConfigError("DecodingFailure at .aws.s3.buckets.jsonpath_assets: Bucket name must start with s3:// prefix"))
         validationError.and(decodingError)
     }
   }
@@ -96,7 +96,10 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beNone
+    result must be like {
+      case Validated.Invalid(NonEmptyList(ConfigError(error), Nil)) => error must startWith("Unknown IncludeStep [nosuchstep]")
+      case _ => ko("CLI args are not invalidated")
+    }
   }
 
   def e5 = {
@@ -113,7 +116,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e6 = {
@@ -131,7 +134,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e7 = {
@@ -149,7 +152,7 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e8 = {
@@ -165,9 +168,8 @@ class CliConfigSpec extends Specification { def is = s2"""
     val expected = CliConfig(validConfig, validTarget, expectedSteps, None, Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
 
     val result = CliConfig.parse(cli)
-    println(result.flatMap(_.toOption).get.steps)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 
   def e9 = {
@@ -184,6 +186,6 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     val result = CliConfig.parse(cli)
 
-    result must beSome(Validated.Valid(expected))
+    result must beEqualTo(Validated.Valid(expected))
   }
 }

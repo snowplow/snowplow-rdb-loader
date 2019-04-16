@@ -24,9 +24,11 @@ import cats.data._
 import cats.implicits._
 import cats.effect.IO
 
+import io.circe.Json
+
 import com.amazonaws.services.s3.AmazonS3
 
-import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
 import com.snowplowanalytics.manifest.core.{ManifestError, ProcessingManifest, LockHandler}
@@ -52,7 +54,7 @@ class DryRunInterpreter private[interpreters](
     cliConfig: CliConfig,
     amazonS3: AmazonS3,
     tracker: Option[Tracker],
-    resolver: Resolver) extends Interpreter {
+    resolver: Client[Id, Json]) extends Interpreter {
 
   private val logQueries = ListBuffer.empty[SqlString]
   private val logCopyFiles = ListBuffer.empty[Path]
@@ -69,7 +71,7 @@ class DryRunInterpreter private[interpreters](
   private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
 
   lazy val manifest =
-    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, resolver) match {
+    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, utils.Common.DefaultClient) match {
       case Right(Some(m)) => m.asRight
       case Right(None) => LoaderLocalError("Processing Manifest is not configured").asLeft
       case Left(error) => error.asLeft
