@@ -483,7 +483,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Record(base, application, newId, None, State.New, time, author, None),
       List(
         Record(base, application, id1, None, State.Processing, time.plusSeconds(10), author, None),
-        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload)
+        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload.some)
       )))
 
     val dataDiscovery = for {
@@ -513,7 +513,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Record(base, application, newId, None, State.New, time, author, None),
       List(
         Record(base, application, id1, None, State.Processing, time.plusSeconds(10), author, None),
-        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload)
+        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload.some)
       )))
     val discovery = DataDiscovery(base, Some(1), None, Nil, false, Some(item))
     val statements = RedshiftLoadStatements(

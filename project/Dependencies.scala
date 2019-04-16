@@ -17,14 +17,12 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val scopt            = "3.6.0"
-    val scalaz7          = "7.0.9"
     val igluClient       = "0.6.0-M6"
     val igluCore         = "0.5.0-M1"
     val scalaTracker     = "0.5.0"
-    val circeYaml        = "0.8.0"
+    val circeYaml        = "0.9.0"
     val circe            = "0.11.1"
-    val cats             = "1.1.0"
+    val cats             = "1.6.0"
     val manifest         = "0.2.0-M1"
     val fs2              = "1.0.4"
 
@@ -53,8 +51,6 @@ object Dependencies {
 
   // Scala (Loader)
   val decline           = "com.monovore"          %% "decline"                      % V.decline
-  val scopt             = "com.github.scopt"      %% "scopt"                        % V.scopt
-  val scalaz7           = "org.scalaz"            %% "scalaz-core"                  % V.scalaz7
   val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"            % V.igluClient
   val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker"       % V.scalaTracker
   val manifest          = "com.snowplowanalytics" %% "snowplow-processing-manifest" % V.manifest
@@ -62,9 +58,9 @@ object Dependencies {
   val cats              = "org.typelevel"         %% "cats"                         % V.cats
   val catsFree          = "org.typelevel"         %% "cats-free"                    % V.cats
   val circeCore         = "io.circe"              %% "circe-core"                   % V.circe
-  val circeYaml         = "io.circe"              %% "circe-yaml"                   % V.circeYaml
   val circeGeneric      = "io.circe"              %% "circe-generic"                % V.circe
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"         % V.circe
+  val circeYaml         = "io.circe"              %% "circe-yaml"                   % V.circeYaml
   val fs2               = "co.fs2"                %% "fs2-core"                     % V.fs2
 
   // Scala (Shredder)

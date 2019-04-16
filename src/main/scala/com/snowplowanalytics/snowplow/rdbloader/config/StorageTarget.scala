@@ -15,24 +15,21 @@ package config
 
 import java.util.Properties
 
+import cats.Id
 import cats.data._
 import cats.implicits._
 
 import io.circe._
+import io.circe.parser.parse
 import io.circe.Decoder._
 import io.circe.generic.auto._
 
-import org.json4s.JValue
-
-import com.github.fge.jsonschema.core.report.ProcessingMessage
-
-import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.client.validation.ValidatableJValue._
+import com.snowplowanalytics.iglu.core.SelfDescribingData
+import com.snowplowanalytics.iglu.core.circe.instances._
+import com.snowplowanalytics.iglu.client.Client
 
 // This project
 import LoaderError._
-import utils.Compat._
 import utils.Common._
 
 
@@ -170,7 +167,7 @@ object StorageTarget {
       case Validated.Valid(updaters) => updaters.asRight[LoaderError]
       case Validated.Invalid(errors) =>
         val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
-        val error: LoaderError = LoaderError.DecodingError(messages)
+        val error: LoaderError = LoaderError.ConfigError(messages)
         error.asLeft[List[Properties => Unit]]
     }
   }
@@ -243,46 +240,36 @@ object StorageTarget {
     * @param validJson JSON that is presumably self-describing storage target configuration
     * @return validated entity of `StorageTarget` ADT if success
     */
-  def decodeStorageTarget(validJson: Json): Either[DecodingError, StorageTarget] = {
-    val nameDataPair = for {
-      jsonObject <- validJson.asObject
-      schema     <- jsonObject.toMap.get("schema")
-      data       <- jsonObject.toMap.get("data")
-      schemaKey  <- schema.asString
-      key        <- SchemaKey.fromUri(schemaKey)
-    } yield (key.name, data)
-
-    nameDataPair match {
-      case Some(("redshift_config", data)) => data.as[RedshiftConfig].leftMap(e => DecodingError(e.getMessage()))
-      case Some(("postgresql_config", data)) => data.as[PostgresqlConfig].leftMap(e => DecodingError(e.getMessage()))
-      case Some((name, _)) => DecodingError(s"Unsupported storage target [$name]").asLeft
-      case None => DecodingError("Not a self-describing JSON was used as storage target configuration").asLeft
+  def decodeStorageTarget(validJson: SelfDescribingData[Json]): Either[ConfigError, StorageTarget] =
+    (validJson.schema.name, validJson.data) match {
+      case ("redshift_config", data) => data.as[RedshiftConfig].leftMap(e => ConfigError(e.show))
+      case ("postgresql_config", data) => data.as[PostgresqlConfig].leftMap(e => ConfigError(e.show))
+      case (name, _) => ConfigError(s"Unsupported storage target [$name]").asLeft
     }
-  }
 
   /**
     * Parse string as `StorageTarget` validating it via Iglu resolver
     *
-    * @param resolver Iglu resolver
+    * @param client Iglu resolver and validator
     * @param target string presumably containing self-describing JSON with storage target
     * @return valid `StorageTarget` OR
     *         non-empty list of errors (such as validation or parse errors)
     */
-  def parseTarget(resolver: Resolver, target: String): ValidatedNel[ConfigError, StorageTarget] = {
-    val json = safeParse(target).toValidatedNel
-    val validatedJson = json.andThen(validate(resolver))
-    validatedJson.andThen(decodeStorageTarget(_).toValidatedNel)
-  }
+  def parseTarget(client: Client[Id, Json], target: String): Either[ConfigError, StorageTarget] =
+    parse(target)
+      .leftMap(e => ConfigError(e.show))
+      .flatMap(json => SelfDescribingData.parse(json).leftMap(e => ConfigError(s"Not a self-describing JSON, ${e.code}")))
+      .flatMap(payload => validate(client)(payload))
+      .flatMap(decodeStorageTarget)
 
   /**
     * Validate json4s JValue AST with Iglu Resolver and immediately convert it into circe AST
     *
-    * @param resolver Iglu Resolver object
+    * @param client Iglu resolver and validator
     * @param json json4s AST
     * @return circe AST
     */
-  private def validate(resolver: Resolver)(json: JValue): ValidatedNel[ConfigError, Json] = {
-    val result: ValidatedNel[ProcessingMessage, JValue] = json.validate(dataOnly = false)(resolver)
-    result.map(jvalueToCirce).leftMapNel(e => ValidationError(e.toString))  // Convert from Iglu client's format, TODO compat
+  private def validate(client: Client[Id, Json])(json: SelfDescribingData[Json]): Either[ConfigError, SelfDescribingData[Json]] = {
+    client.check(json).value.leftMap(e => ConfigError(e.show)).as(json)
   }
 }
