@@ -31,14 +31,12 @@ object Main {
    */
   def main(argv: Array[String]): Unit = {
     CliConfig.parse(argv) match {
-      case Some(Valid(config)) =>
+      case Valid(config) =>
         val status = run(config)
         sys.exit(status)
-      case Some(Invalid(errors)) =>
+      case Invalid(errors) =>
         println("Configuration error")
         errors.toList.foreach(error => println(error.message))
-        sys.exit(1)
-      case None =>
         sys.exit(1)
     }
   }
