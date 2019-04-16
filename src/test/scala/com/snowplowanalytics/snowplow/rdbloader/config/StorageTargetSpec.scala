@@ -12,14 +12,14 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
-// json4s
-import org.json4s.jackson.parseJson
+import cats.Id
+import io.circe.literal._
 
 // specs2
 import org.specs2.Specification
 
 // Iglu client
-import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.Client
 
 class StorageTargetSpec extends Specification { def is = s2"""
   Parse Postgres storage target configuration $e1
@@ -31,39 +31,39 @@ class StorageTargetSpec extends Specification { def is = s2"""
   Fail to parse Redshift storage target (3-0-0) with wrong JDBC value $e7
   """
 
-  private val resolverConfig = parseJson(
+  private val resolverConfig =
+    json"""
+      {
+        "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-2",
+        "data": {
+          "cacheSize": 500,
+          "repositories": [
+            {
+              "name": "Iglu Central",
+              "priority": 1,
+              "vendorPrefixes": [ "com.snowplowanalytics" ],
+              "connection": {
+                "http": {
+                  "uri": "http://iglucentral.com"
+                }
+              }
+            },
+            {
+              "name": "Embedded Test",
+              "priority": 0,
+              "vendorPrefixes": [ "com.snowplowanalytics" ],
+              "connection": {
+                "embedded": {
+                  "path": "/embed"
+                }
+              }
+            }
+          ]
+        }
+      }
     """
-      |{
-      |  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-2",
-      |  "data": {
-      |    "cacheSize": 500,
-      |    "repositories": [
-      |      {
-      |        "name": "Iglu Central",
-      |        "priority": 1,
-      |        "vendorPrefixes": [ "com.snowplowanalytics" ],
-      |        "connection": {
-      |          "http": {
-      |            "uri": "http://iglucentral.com"
-      |          }
-      |        }
-      |      },
-      |      {
-      |        "name": "Embedded Test",
-      |        "priority": 0,
-      |        "vendorPrefixes": [ "com.snowplowanalytics" ],
-      |        "connection": {
-      |          "embedded": {
-      |            "path": "/embed"
-      |          }
-      |        }
-      |      }
-      |    ]
-      |  }
-      |}
-    """.stripMargin)
 
-  private val resolver = Resolver.parse(resolverConfig).toOption.get
+  private val resolver = Client.parseDefault[Id](resolverConfig).value.fold(throw _, identity)
   private val parseWithDefaultResolver = StorageTarget.parseTarget(resolver, _: String)
 
   def e1 = {
@@ -98,7 +98,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       None,
       None)
 
-    parseWithDefaultResolver(config).toEither must beRight(expected)
+    parseWithDefaultResolver(config) must beRight(expected)
   }
 
   def e2 = {
@@ -141,7 +141,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       None,
       None)
 
-    parseWithDefaultResolver(config).toEither must beRight(expected)
+    parseWithDefaultResolver(config) must beRight(expected)
   }
 
   def e3 = {
@@ -205,7 +205,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       Some(tunnel),
       None)
 
-    parseWithDefaultResolver(config).toEither must beRight(expected)
+    parseWithDefaultResolver(config) must beRight(expected)
   }
 
   def e4 = {
@@ -252,7 +252,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       None,
       None)
 
-    parseWithDefaultResolver(config).toEither must beRight(expected)
+    parseWithDefaultResolver(config) must beRight(expected)
   }
 
   def e5 = {
@@ -280,7 +280,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
                    |}
                  """.stripMargin
 
-    parseWithDefaultResolver(config).toEither must beLeft
+    parseWithDefaultResolver(config) must beLeft
   }
 
   def e6 = {
@@ -347,7 +347,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       None,
       None)
 
-    parseWithDefaultResolver(config).toEither must beRight(expected)
+    parseWithDefaultResolver(config) must beRight(expected)
   }
 
   def e7 = {
@@ -380,8 +380,9 @@ class StorageTargetSpec extends Specification { def is = s2"""
                    |}
                  """.stripMargin
 
-    parseWithDefaultResolver(config).toEither must beLeft.like {
-      case nel => nel.toList.map(_.message) must contain(startingWith("error: instance value (\"enabled\") not found in enum"))
+    parseWithDefaultResolver(config) must beLeft.like {
+      case LoaderError.ConfigError(message) => message must contain("$.jdbc.sslMode: does not have a value in the enumeration [verify-ca, verify-full]")
+      case _ => ko("Not a DecodingError")
     }
   }
 }

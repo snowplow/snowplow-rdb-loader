@@ -147,9 +147,9 @@ object ManifestDiscovery {
     val version = Semver.decodeSemver(record.application.version).toValidatedNel
     val types = record.payload.flatMap(RdbPayload.ShreddedTypesGet).map(_.shreddedTypes).getOrElse(Set.empty)
     val schemaKeys = types.toList.traverse { t => SchemaKey.fromUri(t) match {
-      case Some(ss) if ss.version.getModel.isEmpty => s"No support for partial schema: ${ss.toSchemaUri}".invalidNel[(SchemaKey, Int)]
-      case Some(ss) => (ss, ss.version.getModel.get).validNel[String]
-      case None => s"Key [$t] is invalid Iglu URI".invalidNel[(SchemaKey, Int)]
+      case Right(ss) if ss.version.getModel.isEmpty => s"No support for partial schema: ${ss.toSchemaUri}".invalidNel[(SchemaKey, Int)]
+      case Right(ss) => (ss, ss.version.getModel.get).validNel[String]
+      case Left(err) => s"Key [$t] is invalid Iglu URI, ${err.code}".invalidNel[(SchemaKey, Int)]
     }}
 
     val base = S3.Folder
