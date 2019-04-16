@@ -17,8 +17,7 @@ import cats.data._
 import cats.free.Free
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.client.SchemaCriterion
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SchemaCriterion}
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
@@ -42,7 +41,7 @@ case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
   }
 
   /** Human-readable form */
-  def show: String = s"${info.toCriterion.toString} ($jsonPaths)"
+  def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
 }
 
 /**
@@ -232,11 +231,11 @@ object ShreddedType {
   def extractSchemaKey(subpath: String, shredJob: Semver): Option[SchemaKey] = {
     if (shredJob <= ShredJobBeforeSparkVersion) {
       val uri = "iglu:" + subpath
-      SchemaKey.fromUri(uri)
+      SchemaKey.fromUri(uri).toOption
     } else subpath match {
       case ShreddedSubpathPattern(vendor, name, format, version) =>
         val uri = s"iglu:$vendor/$name/$format/$version"
-        SchemaKey.fromUri(uri)
+        SchemaKey.fromUri(uri).toOption
       case _ => None
     }
   }

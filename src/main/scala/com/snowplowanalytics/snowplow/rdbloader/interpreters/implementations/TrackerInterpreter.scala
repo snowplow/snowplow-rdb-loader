@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 package interpreters.implementations
 
 import java.io.ByteArrayInputStream
+import java.util.UUID
 import java.nio.charset.StandardCharsets
 
 import scala.util.control.NonFatal
@@ -38,9 +39,15 @@ object TrackerInterpreter {
 
   import scala.concurrent.ExecutionContext.Implicits.global
 
-  val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer(1,0,0))
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer(1,0,0))
-  val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer(1,0,0))
+  val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer.Full(1,0,0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
+  val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
+
+  implicit val uuidProviderId: UUIDProvider[Id] =
+    new UUIDProvider[Id] {
+      def generateUUID: Id[UUID] =
+        UUID.randomUUID()
+    }
 
   /** Callback for failed  */
   private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {
@@ -89,7 +96,6 @@ object TrackerInterpreter {
    * Track error if `tracker` is enabled. Print error otherwise
    *
    * @param tracker some tracker if enabled
-   * @param error **sanitized** error message
    */
   def trackError(tracker: Option[Tracker]): Unit = tracker match {
     case Some(t) =>

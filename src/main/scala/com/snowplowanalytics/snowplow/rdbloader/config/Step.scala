@@ -51,19 +51,6 @@ object Step {
   case object Discover extends DefaultStep
   case object Load extends DefaultStep
 
-
-  implicit val optionalStepRead =
-    scopt.Read.reads { (fromString[IncludeStep](_)).andThen { s => s match {
-      case Right(x) => x
-      case Left(e) => throw new RuntimeException(e)
-    } } }
-
-  implicit val skippableStepRead =
-    scopt.Read.reads { (fromString[SkipStep](_)).andThen { s => s match {
-      case Right(x) => x
-      case Left(e) => throw new RuntimeException(e)
-    } } }
-
   /** Steps included into app by default */
   val defaultSteps: Set[Step] = sealedDescendants[SkipStep] ++ Set.empty[Step]
 
