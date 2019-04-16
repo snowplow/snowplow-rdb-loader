@@ -47,7 +47,7 @@ object SnowplowConfig {
    */
   def parse(configYml: String): Either[ConfigError, SnowplowConfig] = {
     val yaml: Either[Error, Yaml] = parser.parse(configYml)
-    yaml.flatMap(_.as[SnowplowConfig]).leftMap(e => DecodingError(e.show))
+    yaml.flatMap(_.as[SnowplowConfig]).leftMap(e => ConfigError(e.show))
   }
 
   // aws section
