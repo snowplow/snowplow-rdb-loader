@@ -24,8 +24,7 @@ lazy val loader = project.in(file("."))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
-      Dependencies.scopt,
-      Dependencies.scalaz7,
+      Dependencies.decline,
       Dependencies.igluClient,
       Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
@@ -33,6 +32,7 @@ lazy val loader = project.in(file("."))
       Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
+      Dependencies.circeLiteral,
       Dependencies.manifest,
       Dependencies.fs2,
 
