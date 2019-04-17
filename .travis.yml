@@ -2,7 +2,7 @@ language: scala
 scala:
 - 2.11.12
 jdk:
-- oraclejdk8
+- oraclejdk11
 before_deploy: pip install --user release-manager==0.3.0
 env:
   global:
