@@ -84,7 +84,7 @@ object ShredJobSpec {
   }
 
   /** Ignore empty files on output (necessary since https://github.com/snowplow/snowplow-rdb-loader/issues/142) */
-  val NonEmpty = new org.apache.commons.io.filefilter.IOFileFilter {
+  val NonEmpty = new IOFileFilter {
     def accept(file: File): Boolean = file.length() > 1L
     def accept(dir: File, name: String): Boolean = true
   }
@@ -286,7 +286,7 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run()
+    job.run(Map.empty)
     deleteRecursively(input)
   }
 
