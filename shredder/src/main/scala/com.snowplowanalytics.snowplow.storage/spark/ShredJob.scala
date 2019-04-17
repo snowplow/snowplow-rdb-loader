@@ -54,7 +54,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsMan
 // Snowplow
 import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.{ Client, ClientError }
 import DynamodbManifest.ShredderManifest
 
 case class FatalEtlError(msg: String) extends Error(msg)
@@ -66,6 +66,8 @@ object ShredJob extends SparkJob {
   private val StartTime = Instant.now()
 
   val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1,0,0))
+
+  val AtomicSchema = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
   case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) {
     def dump: String = json"""
@@ -86,9 +88,6 @@ object ShredJob extends SparkJob {
         }
       }""".noSpaces
   }
-
-
-  val current = Instant.now()
 
   def getEntities(event: Event): List[SelfDescribingData[Json]] =
     event.unstruct_event.data.toList ++
@@ -117,7 +116,8 @@ object ShredJob extends SparkJob {
     classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
     classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
   )
-  override def sparkConfig(): SparkConf = new SparkConf()
+
+  def sparkConfig(): SparkConf = new SparkConf()
     .setAppName(getClass.getSimpleName)
     .setIfMissing("spark.master", "local[*]")
     .set("spark.serializer", classOf[KryoSerializer].getName)
@@ -138,19 +138,25 @@ object ShredJob extends SparkJob {
         ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
     }
 
-    runJob(manifest, job).get
+    val atomicLengths = singleton.ResolverSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema, 2) match {
+      case Right(schema) =>
+        EventUtils.getAtomicLengths(schema).fold(e => throw new RuntimeException(e), identity)
+      case Left(error) =>
+        throw new RuntimeException(s"RDB Shredder could not fetch ${AtomicSchema.toSchemaUri} schema at initialization. ${(error: ClientError).show}")
+    }
+
+    runJob(manifest, atomicLengths, job).get
   }
 
   /** Start a job, if necessary recording process to manifest */
-  def runJob(manifest: Option[ShredderManifest], job: ShredJob): Try[Unit] = {
-
+  def runJob(manifest: Option[ShredderManifest], lengths: Map[String, Int], job: ShredJob): Try[Unit] = {
     manifest match {
       case None =>      // Manifest is not enabled, simply run a job
-        Try(job.run()).map(_ => None)
+        Try(job.run(lengths)).map(_ => None)
       case Some(ShredderManifest(manifest, itemId)) =>   // Manifest is enabled.
         // Envelope job into function to pass to `Manifest.processItem` later
         val process: ProcessNew = () => Try {
-          job.run()
+          job.run(lengths)
           val shreddedTypes = job.shreddedTypes.value.toSet
           DynamodbManifest.processedPayload(shreddedTypes)
         }
@@ -293,7 +299,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - finding synthetic duplicates and adding them back with new ids
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
-  def run(): Unit = {
+  def run(atomicLengths: Map[String, Int]): Unit = {
     import ShredJob._
 
     val input = sc.textFile(shredConfig.inFolder)
@@ -368,7 +374,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     val goodWithSyntheticDupes = (uniqueGood ++ syntheticDupedGood).cache().setName("goodWithSyntheticDupes")
 
     // Ready the events for database load
-    val events = goodWithSyntheticDupes.map(e => Row(alterEnrichedEvent(e)))
+    val events = goodWithSyntheticDupes.map(e => Row(EventUtils.alterEnrichedEvent(e, atomicLengths)))
 
     // Write as strings to `atomic-events` directory
     spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
