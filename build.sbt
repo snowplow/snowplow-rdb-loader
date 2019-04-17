@@ -71,6 +71,7 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.eventsManifest,
       Dependencies.circeJawn,
       Dependencies.circeLiteral,
+      Dependencies.schemaDdl,
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
       Dependencies.igluClient,
