@@ -30,9 +30,10 @@ object Dependencies {
     val fs2              = "1.0.4"
 
     // Scala (Shredder)
-    val analyticsSdk    = "0.4.2-M1"
-    val spark           = "2.2.0"
-    val eventsManifest  = "0.2.0-M2"
+    val analyticsSdk     = "0.4.2-M1"
+    val spark            = "2.2.0"
+    val eventsManifest   = "0.2.0-M2"
+    val schemaDdl        = "0.9.0"
 
     // Java (Loader)
     val postgres         = "42.0.0"
