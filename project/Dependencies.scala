@@ -29,9 +29,10 @@ object Dependencies {
     val fs2              = "1.0.4"
 
     // Scala (Shredder)
-    val analyticsSdk    = "0.4.2-M1"
-    val spark           = "2.2.0"
-    val eventsManifest  = "0.2.0-M2"
+    val analyticsSdk     = "0.4.2-M1"
+    val spark            = "2.2.0"
+    val eventsManifest   = "0.2.0-M2"
+    val schemaDdl        = "0.9.0"
 
     // Java (Loader)
     val postgres         = "42.0.0"
@@ -68,11 +69,12 @@ object Dependencies {
 
   // Scala (Shredder)
   val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
-  val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest" % V.eventsManifest
-  val circeJawn         = "io.circe"              %% "circe-jawn"               % V.circe
-  val circeLiteral      = "io.circe"              %% "circe-literal"            % V.circe
-  val sparkCore         = "org.apache.spark"      %% "spark-core"               % V.spark           % "provided"
-  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                % V.spark           % "provided"
+  val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
+  val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
+  val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
+  val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
+  val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % "provided"
+  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % "provided"
 
   // Java (Loader)
   val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
