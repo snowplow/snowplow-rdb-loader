@@ -88,7 +88,7 @@ object ShredJobSpec {
    * @return the list of files contained in the root, minus the exclusions
    */
   def listFilesWithExclusions(root: File, exclusions: List[String]): List[String] =
-    FileUtils.listFiles(root, TrueFileFilter.INSTANCE, TrueFileFilter.INSTANCE)
+    FileUtils.listFiles(root, TrueFileFilter.TRUE, TrueFileFilter.TRUE)
       .asScala
       .toList
       .map(_.getCanonicalPath)
@@ -273,7 +273,7 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run()
+    job.run(Map.empty)
     deleteRecursively(input)
   }
 

@@ -27,7 +27,6 @@ import io.circe.literal._
 
 import java.util.UUID
 import java.time.Instant
-import java.time.format.DateTimeParseException
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -54,7 +53,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsMan
 // Snowplow
 import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.{ Client, ClientError }
 import DynamodbManifest.ShredderManifest
 
 case class FatalEtlError(msg: String) extends Error(msg)
@@ -62,6 +61,12 @@ case class UnexpectedEtlException(msg: String) extends Error(msg)
 
 /** Helpers method for the shred job */
 object ShredJob extends SparkJob {
+
+  private val StartTime = Instant.now()
+
+  val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1,0,0))
+
+  val AtomicSchema = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
   case class FingerprintedEvent(original: Event, fingerprint: Either[UUID, String]) {
     def getFingerprint: String = fingerprint.fold(_.toString, identity)
@@ -86,9 +91,6 @@ object ShredJob extends SparkJob {
         }
       }""".noSpaces
   }
-
-
-  val current = Instant.now()
 
   def getEntities(event: Event): List[SelfDescribingData[Json]] =
     event.unstruct_event.data.toList ++
@@ -118,14 +120,15 @@ object ShredJob extends SparkJob {
     classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
     classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
   )
-  override def sparkConfig(): SparkConf = new SparkConf()
+
+  def sparkConfig(): SparkConf = new SparkConf()
     .setAppName(getClass.getSimpleName)
     .setIfMissing("spark.master", "local[*]")
     .set("spark.serializer", classOf[KryoSerializer].getName)
     .registerKryoClasses(classesToRegister)
 
 
-  override def run(spark: SparkSession, args: Array[String]): Unit = {
+  def run(spark: SparkSession, args: Array[String]): Unit = {
     // Job configuration
     val shredConfig = ShredJobConfig
       .loadConfigFrom(args)
@@ -140,19 +143,25 @@ object ShredJob extends SparkJob {
         ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
     }
 
-    runJob(manifest, job).get
+    val atomicLengths = singleton.ResolverSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema, 2) match {
+      case Right(schema) =>
+        EventUtils.getAtomicLengths(schema).fold(e => throw new RuntimeException(e), identity)
+      case Left(error) =>
+        throw new RuntimeException(s"RDB Shredder could not fetch ${AtomicSchema.toSchemaUri} schema at initialization. ${(error: ClientError).show}")
+    }
+
+    runJob(manifest, atomicLengths, job).get
   }
 
   /** Start a job, if necessary recording process to manifest */
-  def runJob(manifest: Option[ShredderManifest], job: ShredJob): Try[Unit] = {
-
+  def runJob(manifest: Option[ShredderManifest], lengths: Map[String, Int], job: ShredJob): Try[Unit] = {
     manifest match {
       case None =>      // Manifest is not enabled, simply run a job
-        Try(job.run()).map(_ => None)
+        Try(job.run(lengths)).map(_ => None)
       case Some(ShredderManifest(manifest, itemId)) =>   // Manifest is enabled.
         // Envelope job into function to pass to `Manifest.processItem` later
         val process: ProcessNew = () => Try {
-          job.run()
+          job.run(lengths)
           val shreddedTypes = job.shreddedTypes.value.toSet
           DynamodbManifest.processedPayload(shreddedTypes)
         }
@@ -168,12 +177,12 @@ object ShredJob extends SparkJob {
   }
 
   /**
-   * Pipeline the loading of raw lines into shredded JSONs.
-   * @param line The incoming raw line (hopefully holding a Snowplow enriched event)
-   * @param resolver The implicit Iglu resolver used for schema lookups
-   * @return a Validation boxing either a Nel of ProcessingMessages on Failure,
-   *         or a (possibly empty) List of JSON instances + schema on Success
-   */
+    * Pipeline the loading of raw lines into shredded JSONs.
+    * @param client The Iglu resolver used for schema lookups
+    * @param line The incoming raw line (hopefully holding a Snowplow enriched event)
+    * @return a Validation boxing either a Nel of ProcessingMessages on Failure,
+    *         or a (possibly empty) List of JSON instances + schema on Success
+    */
   def loadAndShred(client: Client[Id, Json], line: String): Either[BadRow, FingerprintedEvent] =
     for {
       event <- Event.parse(line).toEither.leftMap(errors => BadRow.ShreddingError(line, errors))
@@ -186,33 +195,6 @@ object ShredJob extends SparkJob {
       .traverse_(entity => client.check(entity).value.leftMap(x => (entity.schema, x)).toValidatedNel)
       .toEither
       .leftMap { errors => BadRow.ValidationError(event, errors.map(BadRow.SchemaError.tupled)) }
-
-  val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1,0,0))
-
-  /**
-   * Ready the enriched event for database load by removing a few JSON fields and truncating field
-   * lengths based on Postgres' column types.
-   * @param originalLine The original TSV line
-   * @return The original line with the proper fields removed respecting the Postgres constaints
-   */
-  def alterEnrichedEvent(originalLine: Event): String = {
-    def tranformDate(s: String): String =
-      Either.catchOnly[DateTimeParseException](Instant.parse(s)).map(_.formatted).getOrElse(s)
-    def transformBool(b: Boolean): String =
-      if (b) "1" else "0"
-
-    // TODO: truncate
-    val tabular = originalLine.ordered.flatMap {
-      case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
-      case (key, Some(value)) if key.endsWith("_tstamp") =>
-        Some(value.fold("", transformBool, _ => value.show, tranformDate, _ => value.noSpaces, _ => value.noSpaces))
-      case (_, Some(value)) =>
-        Some(value.fold("", transformBool, _ => value.show, identity, _ => value.noSpaces, _ => value.noSpaces))
-      case (_, None) => Some("")
-    }
-
-    tabular.mkString("\t")
-  }
 
   /**
    * The path at which to store the altered enriched events.
@@ -251,7 +233,7 @@ object ShredJob extends SparkJob {
     (event, duplicateStorage) match {
       case (_, Some(storage)) =>
         try {
-          Right(storage.put(event.original.event_id, event.getFingerprint, event.original.etl_tstamp.getOrElse(current)))
+          Right(storage.put(event.original.event_id, event.getFingerprint, event.original.etl_tstamp.getOrElse(StartTime)))
         } catch {
           case e: ProvisionedThroughputExceededException =>
             throw UnexpectedEtlException(e.toString)
@@ -298,7 +280,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - finding synthetic duplicates and adding them back with new ids
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
-  def run(): Unit = {
+  def run(atomicLengths: Map[String, Int]): Unit = {
     import ShredJob._
 
     val input = sc.textFile(shredConfig.inFolder)
@@ -373,7 +355,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     val goodWithSyntheticDupes = (uniqueGood ++ syntheticDupedGood).cache().setName("goodWithSyntheticDupes")
 
     // Ready the events for database load
-    val events = goodWithSyntheticDupes.map(e => Row(alterEnrichedEvent(e)))
+    val events = goodWithSyntheticDupes.map(e => Row(EventUtils.alterEnrichedEvent(e, atomicLengths)))
 
     // Write as strings to `atomic-events` directory
     spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
