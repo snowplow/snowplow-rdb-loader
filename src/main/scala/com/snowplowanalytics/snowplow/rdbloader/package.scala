@@ -39,6 +39,11 @@ package object rdbloader {
    */
   type Action[A] = Free[LoaderA, A]
 
+  object Action {
+    def lift[A](value: A): Action[A] =
+      Free.pure[LoaderA, A](value)
+  }
+
   /**
     * Loading effect, producing value of type `A` with possible `LoaderError`
     *
