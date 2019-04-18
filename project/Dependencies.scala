@@ -48,7 +48,9 @@ object Dependencies {
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release"
+    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",
+    // Speed-up build
+    "snowplow" at "https://snowplow.bintray.com/snowplow-maven"
   )
 
   // Scala (Loader)
