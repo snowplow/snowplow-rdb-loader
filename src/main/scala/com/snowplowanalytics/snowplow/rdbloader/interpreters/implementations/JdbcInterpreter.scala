@@ -49,8 +49,8 @@ object JdbcInterpreter {
       case NonFatal(e: java.sql.SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
         StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance")
       case NonFatal(e) =>
-        System.err.println("RDB Loader unknown error in executeUpdate")
-        e.printStackTrace()
+        println("RDB Loader unknown error in executeUpdate")
+        e.printStackTrace(System.out)
         StorageTargetError(Option(e.getMessage).getOrElse(e.toString))
     }
 
@@ -65,8 +65,8 @@ object JdbcInterpreter {
       }
     } catch {
       case NonFatal(e) =>
-        System.err.println("RDB Loader unknown error in executeQuery")
-        e.printStackTrace()
+        println("RDB Loader unknown error in executeQuery")
+        e.printStackTrace(System.out)
         StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[A]
     }
 
@@ -75,8 +75,8 @@ object JdbcInterpreter {
       Right(conn.setAutoCommit(autoCommit))
     } catch {
       case e: SQLException =>
-        System.err.println("setAutocommit error")
-        e.printStackTrace()
+        println("setAutocommit error")
+        e.printStackTrace(System.out)
         Left(StorageTargetError(e.toString))
     }
 
@@ -117,17 +117,27 @@ object JdbcInterpreter {
       props.setProperty("user", target.username)
       props.setProperty("password", password)
 
+
       target match {
         case r: StorageTarget.RedshiftConfig =>
-          val url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
+          def connect() =
+            Either.catchNonFatal(new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props))
+
           for {
             _ <- r.jdbc.validation match {
               case Left(error) => error.asLeft
               case Right(propertyUpdaters) =>
                 propertyUpdaters.foreach(f => f(props)).asRight
             }
-            connection <- Either.catchNonFatal(new RedshiftDriver().connect(url, props)).leftMap { x =>
-              LoaderError.StorageTargetError(x.getMessage)
+            firstAttempt = connect()
+            connection <- firstAttempt match {
+              case Right(c) =>
+                c.asRight
+              case Left(e) =>
+                println("Error during connection acquisition. Sleeping and making another attempt")
+                e.printStackTrace(System.out)
+                Thread.sleep(60000)
+                connect().leftMap(e2 => LoaderError.StorageTargetError(e2.getMessage))
             }
           } yield connection
 
@@ -138,8 +148,8 @@ object JdbcInterpreter {
       }
     } catch {
       case NonFatal(e) =>
-        System.err.println("RDB Loader getConnection error")
-        e.printStackTrace()
+        println("RDB Loader getConnection error")
+        e.printStackTrace(System.out)
         Left(StorageTargetError(s"Problems with establishing DB connection\n${e.getMessage}"))
     }
   }
