@@ -16,6 +16,7 @@ package interpreters
 import java.io.IOException
 import java.nio.file._
 import java.nio.file.attribute.BasicFileAttributes
+import java.sql.Connection
 
 import scala.util.control.NonFatal
 
@@ -43,6 +44,7 @@ import discovery.ManifestDiscovery
 import utils.Common
 import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
 
 /**
  * Interpreter performs all actual side-effecting work,
@@ -67,7 +69,18 @@ class RealWorldInterpreter private[interpreters](
 
   // dbConnection is Either because not required for log dump
   // lazy to wait before tunnel established
-  private lazy val dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
+  private var dbConnection: Either[LoaderError, Connection] = _
+
+  private def getConnection(force: Boolean = false): Either[LoaderError, Connection] = {
+    if (dbConnection == null) {
+      dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
+    }
+    if (force) {
+      println("Forcing reconnection to DB")
+      dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
+    }
+    dbConnection
+  }
 
   private lazy val manifest =
     ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, utils.Common.DefaultClient) match {
@@ -81,6 +94,21 @@ class RealWorldInterpreter private[interpreters](
 
   // DB messages that should be printed only to output and if failure is DB-related
   private val messagesCopy = collection.mutable.ListBuffer.empty[String]
+
+  def executeWithRetry[A](action: Connection => SqlString => Either[LoaderError.StorageTargetError, A])(sql: SqlString) = {
+    val firstAttempt = for { conn <- getConnection(); r <- action(conn)(sql) } yield r
+    firstAttempt match {
+      case Left(LoaderError.StorageTargetError(message)) if message.contains("Connection refused") =>
+        println(message)
+        println("Sleeping and making another try")
+        Thread.sleep(10000)
+        for {
+          conn <- getConnection(true)
+          r <- action(conn)(sql)
+        } yield r
+      case other => other
+    }
+  }
 
   def run: LoaderA ~> Id = new (LoaderA ~> Id) {
 
@@ -126,22 +154,18 @@ class RealWorldInterpreter private[interpreters](
 
         case ExecuteUpdate(query) =>
           if (query.startsWith("COPY ")) { logCopy(query.split(" ").take(2).mkString(" ")) }
+          executeWithRetry[Long](JdbcInterpreter.executeUpdate)(query).asInstanceOf[Id[A]]
 
-          val result = for {
-            conn <- dbConnection
-            res <- JdbcInterpreter.executeUpdate(conn)(query)
-          } yield res
-          result.asInstanceOf[Id[A]]
         case CopyViaStdin(files, query) =>
           for {
-            conn <- dbConnection
+            conn <- getConnection()
             _ = log(s"Copying ${files.length} files via stdin")
             res <- JdbcInterpreter.copyViaStdin(conn, files, query)
           } yield res
 
         case ExecuteQuery(query, d) =>
           for {
-            conn <- dbConnection
+            conn <- getConnection()
             res <- JdbcInterpreter.executeQuery(conn)(query)(d)
           } yield res
 
@@ -180,7 +204,7 @@ class RealWorldInterpreter private[interpreters](
           val logs = messages.mkString("\n") + "\n"
           TrackerInterpreter.dumpStdout(amazonS3, key, logs)
         case Exit(loadResult, dumpResult) =>
-          dbConnection.foreach(c => c.close())
+          getConnection().foreach(c => c.close())
           TrackerInterpreter.exit(loadResult, dumpResult)
 
 

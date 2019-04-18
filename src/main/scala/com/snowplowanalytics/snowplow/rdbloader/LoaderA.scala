@@ -129,7 +129,7 @@ object LoaderA {
     EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](DeleteDir(path)))
 
 
-  /** Block thread for some time */
+  /** Block thread for some time, milliseconds */
   def sleep(timeout: Long): Action[Unit] =
     Free.liftF[LoaderA, Unit](Sleep(timeout))
 
