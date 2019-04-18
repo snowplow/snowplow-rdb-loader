@@ -40,6 +40,7 @@ object Common {
 
   val BeginTransaction: SqlString = SqlString.unsafeCoerce("BEGIN")
   val CommitTransaction: SqlString = SqlString.unsafeCoerce("COMMIT")
+  val AbortTransaction: SqlString = SqlString.unsafeCoerce("ABORT")
 
   /** ADT representing possible destination of events table */
   sealed trait EventsTable { def getDescriptor: String }
@@ -119,6 +120,31 @@ object Common {
         // Safe to skip consistency check as whole folder will be downloaded
         DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
     }
+  }
+
+  /**
+    * Inspect loading result and make an attempt to retry if it failed with "Connection refused"
+    * @param loadAction set of queries inside a transaction loading atomic and shredded only
+    *                   (no vacuum or analyze)
+    */
+  def retryIfFailed(loadAction: LoaderAction[Unit]): LoaderAction[Unit] = {
+    val retry = loadAction.value.flatMap[Either[LoaderError, Unit]] {
+      case Left(LoaderError.StorageTargetError(message)) if message.contains("Connection refused") =>
+        for {
+          _          <- LoaderA.print(s"Loading failed with [$message], making another attempt")
+          retransact <- (LoaderA.executeUpdate(Common.AbortTransaction) *> LoaderA.executeUpdate(Common.BeginTransaction)).value
+          _          <- LoaderA.sleep(60000)
+          result     <- retransact match {
+            case Right(_) => loadAction.value
+            case Left(_)  => Action.lift(retransact.void)
+          }
+        } yield result
+      case e @ Left(_) =>
+        LoaderA.print("Loading failed, no retries will be made") *> Action.lift(e)
+      case success =>
+        Action.lift(success)
+    }
+    LoaderAction(retry)
   }
 
   /**
