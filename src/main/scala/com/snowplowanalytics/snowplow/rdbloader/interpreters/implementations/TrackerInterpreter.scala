@@ -65,7 +65,7 @@ object TrackerInterpreter {
     val message = toMsg(response, true)
 
     // The only place in interpreters where println used instead of logger as this is async function
-    if (message.isEmpty) () else System.err.println(message)
+    if (message.isEmpty) () else println(message)
   }
 
   /**
