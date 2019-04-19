@@ -28,6 +28,7 @@ lazy val loader = project.in(file("."))
       Dependencies.igluClient,
       Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
+      Dependencies.scalaTrackerEmit,
       Dependencies.catsFree,
       Dependencies.circeYaml,
       Dependencies.circeGeneric,

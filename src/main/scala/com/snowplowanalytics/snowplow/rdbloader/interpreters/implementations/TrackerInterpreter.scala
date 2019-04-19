@@ -18,25 +18,27 @@ import java.nio.charset.StandardCharsets
 
 import scala.util.control.NonFatal
 
+import cats.Id
+import cats.data.NonEmptyList
+
+import io.circe.Json
+
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.ObjectMetadata
-
-import org.json4s.JObject
 
 import org.joda.time.DateTime
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.scalatracker._
-import com.snowplowanalytics.snowplow.scalatracker.emitters.TEmitter._
-import com.snowplowanalytics.snowplow.scalatracker.emitters.{AsyncBatchEmitter, AsyncEmitter}
+import com.snowplowanalytics.snowplow.scalatracker.emitters.id._
+import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
+import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncBatchEmitter, SyncEmitter}
 
 // This project
 import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
 
 object TrackerInterpreter {
-
-  import scala.concurrent.ExecutionContext.Implicits.global
 
   val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
@@ -67,18 +69,18 @@ object TrackerInterpreter {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking(monitoring: Monitoring): Option[Tracker] = {
+  def initializeTracking(monitoring: Monitoring): Option[Tracker[Id]] = {
     monitoring.snowplow.flatMap(_.collector) match {
       case Some(Collector((host, port))) =>
         val emitter = monitoring.snowplow.flatMap(_.method) match {
           case Some(GetMethod) =>
-            AsyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
+            SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
           case Some(PostMethod) =>
-            AsyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 2)
+            SyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 2)
           case None =>
-            AsyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
+            SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
         }
-        val tracker = new Tracker(List(emitter), "snowplow-rdb-loader", monitoring.snowplow.flatMap(_.appId).getOrElse("rdb-loader"))
+        val tracker = new Tracker[Id](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.flatMap(_.appId).getOrElse("rdb-loader"))
         Some(tracker)
       case Some(_) => None
       case None => None
@@ -90,9 +92,9 @@ object TrackerInterpreter {
    *
    * @param tracker some tracker if enabled
    */
-  def trackError(tracker: Option[Tracker]): Unit = tracker match {
+  def trackError(tracker: Option[Tracker[Id]]): Unit = tracker match {
     case Some(t) =>
-      t.trackSelfDescribingEvent(SelfDescribingData(LoadFailedSchema, JObject(Nil)))
+      t.trackSelfDescribingEvent(SelfDescribingData(LoadFailedSchema, Json.fromFields(List.empty)))
     case None => ()
   }
 
@@ -101,9 +103,9 @@ object TrackerInterpreter {
    *
    * @param tracker some tracker if enabled
    */
-  def trackSuccess(tracker: Option[Tracker]): Unit = tracker match {
+  def trackSuccess(tracker: Option[Tracker[Id]]): Unit = tracker match {
     case Some(t) =>
-      t.trackSelfDescribingEvent(SelfDescribingData(LoadSucceededSchema, JObject(Nil)))
+      t.trackSelfDescribingEvent(SelfDescribingData(LoadSucceededSchema, Json.fromFields(List.empty)))
     case None => ()
   }
 
