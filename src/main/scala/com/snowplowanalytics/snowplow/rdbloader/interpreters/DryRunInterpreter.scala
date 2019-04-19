@@ -53,7 +53,7 @@ import implementations.ManifestInterpreter.ManifestE
 class DryRunInterpreter private[interpreters](
     cliConfig: CliConfig,
     amazonS3: AmazonS3,
-    tracker: Option[Tracker],
+    tracker: Option[Tracker[Id]],
     resolver: Client[Id, Json]) extends Interpreter {
 
   private val logQueries = ListBuffer.empty[SqlString]
