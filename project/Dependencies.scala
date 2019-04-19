@@ -19,7 +19,7 @@ object Dependencies {
     val decline          = "0.6.2"
     val igluClient       = "0.6.0-M6"
     val igluCore         = "0.5.0-M1"
-    val scalaTracker     = "0.5.0"
+    val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
     val circe            = "0.11.1"
     val cats             = "1.6.0"
@@ -29,7 +29,7 @@ object Dependencies {
     // Scala (Shredder)
     val analyticsSdk     = "0.4.2-M1"
     val spark            = "2.2.0"
-    val eventsManifest   = "0.2.0-M2"
+    val eventsManifest   = "0.2.0"
     val schemaDdl        = "0.9.0"
 
     // Java (Loader)
@@ -52,18 +52,19 @@ object Dependencies {
   )
 
   // Scala (Loader)
-  val decline           = "com.monovore"          %% "decline"                      % V.decline
-  val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"            % V.igluClient
-  val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker"       % V.scalaTracker
-  val manifest          = "com.snowplowanalytics" %% "snowplow-processing-manifest" % V.manifest
-  val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"              % V.igluCore
-  val cats              = "org.typelevel"         %% "cats"                         % V.cats
-  val catsFree          = "org.typelevel"         %% "cats-free"                    % V.cats
-  val circeCore         = "io.circe"              %% "circe-core"                   % V.circe
-  val circeGeneric      = "io.circe"              %% "circe-generic"                % V.circe
-  val circeGenericExtra = "io.circe"              %% "circe-generic-extras"         % V.circe
-  val circeYaml         = "io.circe"              %% "circe-yaml"                   % V.circeYaml
-  val fs2               = "co.fs2"                %% "fs2-core"                     % V.fs2
+  val decline           = "com.monovore"          %% "decline"                           % V.decline
+  val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"                 % V.igluClient
+  val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker-core"       % V.scalaTracker
+  val scalaTrackerEmit  = "com.snowplowanalytics" %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
+  val manifest          = "com.snowplowanalytics" %% "snowplow-processing-manifest"      % V.manifest
+  val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"                   % V.igluCore
+  val cats              = "org.typelevel"         %% "cats"                              % V.cats
+  val catsFree          = "org.typelevel"         %% "cats-free"                         % V.cats
+  val circeCore         = "io.circe"              %% "circe-core"                        % V.circe
+  val circeGeneric      = "io.circe"              %% "circe-generic"                     % V.circe
+  val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe
+  val circeYaml         = "io.circe"              %% "circe-yaml"                        % V.circeYaml
+  val fs2               = "co.fs2"                %% "fs2-core"                          % V.fs2
 
   // Scala (Shredder)
   val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
