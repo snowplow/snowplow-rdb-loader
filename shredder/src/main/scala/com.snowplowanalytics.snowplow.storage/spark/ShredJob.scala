@@ -27,7 +27,6 @@ import io.circe.literal._
 
 import java.util.UUID
 import java.time.Instant
-import java.time.format.DateTimeParseException
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -145,18 +144,26 @@ object ShredJob extends SparkJob {
         throw new RuntimeException(s"RDB Shredder could not fetch ${AtomicSchema.toSchemaUri} schema at initialization. ${(error: ClientError).show}")
     }
 
-    runJob(manifest, atomicLengths, job).get
+    val eventsManifest: Option[EventsManifestConfig] = shredConfig.duplicateStorageConfig.map { json =>
+      val config = EventsManifestConfig
+        .parseJson[Id](singleton.ResolverSingleton.get(shredConfig.igluConfig), json)
+        .valueOr(err => throw FatalEtlError(err))
+      val _ = singleton.DuplicateStorageSingleton.get(Some(config))   // Just to check it can be initialized
+      config
+    }
+
+    runJob(manifest, eventsManifest, atomicLengths, job).get
   }
 
   /** Start a job, if necessary recording process to manifest */
-  def runJob(manifest: Option[ShredderManifest], lengths: Map[String, Int], job: ShredJob): Try[Unit] = {
+  def runJob(manifest: Option[ShredderManifest], eventsManifest: Option[EventsManifestConfig], lengths: Map[String, Int], job: ShredJob): Try[Unit] = {
     manifest match {
       case None =>      // Manifest is not enabled, simply run a job
-        Try(job.run(lengths)).map(_ => None)
+        Try(job.run(lengths, eventsManifest)).map(_ => None)
       case Some(ShredderManifest(manifest, itemId)) =>   // Manifest is enabled.
         // Envelope job into function to pass to `Manifest.processItem` later
         val process: ProcessNew = () => Try {
-          job.run(lengths)
+          job.run(lengths, eventsManifest)
           val shreddedTypes = job.shreddedTypes.value.toSet
           DynamodbManifest.processedPayload(shreddedTypes)
         }
@@ -189,32 +196,6 @@ object ShredJob extends SparkJob {
       .traverse_(entity => client.check(entity).value.leftMap(x => (entity.schema, x)).toValidatedNel)
       .toEither
       .leftMap { errors => BadRow.ValidationError(event, errors.map(BadRow.SchemaError.tupled)) }
-
-  /**
-   * Ready the enriched event for database load by removing a few JSON fields and truncating field
-   * lengths based on Postgres' column types.
-   * @param originalLine The original TSV line
-   * @return The original line with the proper fields removed respecting the Postgres constaints
-   */
-  def alterEnrichedEvent(originalLine: Event): String = {
-    def tranformDate(s: String): String =
-      Either.catchOnly[DateTimeParseException](Instant.parse(s)).map(_.formatted).getOrElse(s)
-    def transformBool(b: Boolean): String =
-      if (b) "1" else "0"
-
-    // TODO: truncate
-    val tabular = originalLine.ordered.flatMap {
-      case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
-      case (key, Some(value)) if key.endsWith("_tstamp") =>
-        Some(value.fold("", transformBool, _ => value.show, tranformDate, _ => value.noSpaces, _ => value.noSpaces))
-      case (_, Some(value)) =>
-        Some(value.fold("", transformBool, _ => value.show, identity, _ => value.noSpaces, _ => value.noSpaces))
-      case (_, None) => Some("")
-    }
-
-    tabular.mkString("\t")
-  }
-
   /**
    * The path at which to store the altered enriched events.
    * @param outFolder shredded/good/run=xxx
@@ -279,14 +260,6 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
   val shreddedTypes = new StringSetAccumulator
   sc.register(shreddedTypes)
 
-  val dupStorageConfig = shredConfig.duplicateStorageConfig.map { config =>
-    EventsManifestConfig.parseJson[Id](ResolverSingleton.get(shredConfig.igluConfig), config).fold(err => throw FatalEtlError(err), identity)
-  }
-
-  // We try to build DuplicateStorage early to detect failures before starting the job and create
-  // the table if it doesn't exist
-  @transient private val _: Option[EventsManifest] = DuplicateStorageSingleton.get(dupStorageConfig)
-
   /** Save set of found shredded types into accumulator if processing manifest is enabled */
   def recordPayload(inventory: Set[SchemaKey]): Unit =
     if (shredConfig.dynamodbManifestTable.isEmpty) ()
@@ -299,7 +272,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - finding synthetic duplicates and adding them back with new ids
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
-  def run(atomicLengths: Map[String, Int]): Unit = {
+  def run(atomicLengths: Map[String, Int], eventsManifest: Option[EventsManifestConfig]): Unit = {
     import ShredJob._
 
     val input = sc.textFile(shredConfig.inFolder)
@@ -323,7 +296,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
       .map { case (_, s) =>
         val first = s.head
-        val absent = dedupeCrossBatch(first, DuplicateStorageSingleton.get(dupStorageConfig))
+        val absent = dedupeCrossBatch(first, DuplicateStorageSingleton.get(eventsManifest))
         (first, absent)
       }
       .setName("good")
