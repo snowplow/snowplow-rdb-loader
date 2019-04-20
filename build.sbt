@@ -61,6 +61,7 @@ lazy val shredder = project.in(file("shredder"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
   .settings(BuildSettings.scalifySettings(name, version))
+  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
