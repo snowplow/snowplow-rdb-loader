@@ -28,14 +28,22 @@ import org.apache.commons.codec.binary.Base64
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 
-import cats.data.{ Validated, ValidatedNel }
-import cats.syntax.apply._
+import cats.data.ValidatedNel
+import cats.syntax.either._
 import cats.syntax.option._
 import cats.syntax.validated._
+
+import io.circe.literal._
+import io.circe.optics.JsonPath._
+import io.circe.parser.{ parse => parseCirce }
 
 // Json4s
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse}
+
+import com.snowplowanalytics.iglu.core.SelfDescribingData
+import com.snowplowanalytics.iglu.core.circe.implicits._
+import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 // Specs2
 import org.specs2.matcher.Matcher
@@ -218,43 +226,24 @@ object ShredJobSpec {
    * If not all envvars are available, but CI is set - it will throw runtime exception as impoperly configured CI environment
    * If not all envvars are available, but CI isn't set - it will return empty JSON, which should not be used anywhere (in JobSpecHelpers)
    */
-  lazy val duplicateStorageConfig: String =
-    getStagingCredentials.map { case (accessKeyId, secretAccessKey) =>
-      s"""|{
-          |"schema": "iglu:com.snowplowanalytics.snowplow.storage/amazon_dynamodb_config/jsonschema/1-0-0",
-          |"data": {
-            |"name": "local",
-            |"accessKeyId": "$accessKeyId",
-            |"secretAccessKey": "$secretAccessKey",
-            |"awsRegion": "$dynamodbDuplicateStorageRegion",
-            |"dynamodbTable": "$dynamodbDuplicateStorageTable",
-            |"purpose": "DUPLICATE_TRACKING"
-          |}
-        |}""".stripMargin
-    } match {
-      case Validated.Valid(config) =>
-        val encoder = new Base64(true)
-        new String(encoder.encode(config.replaceAll("[\n\r]","").getBytes()))
-      case Validated.Invalid(error) if CI => throw new RuntimeException("Cannot get AWS DynamoDB CI configuration. " + error.toList.mkString(", "))
-    }
-
-  /** Check if tests are running in continuous integration environment */
-  def CI = sys.env.get("CI") match {
-    case Some("true") => true
-    case _ =>
-      println("WARNING! Test requires CI envvar to be set and DynamoDB credentials available")
-      false
-  }
+  lazy val duplicateStorageConfig =
+    json"""{
+      "schema": "iglu:com.snowplowanalytics.snowplow.storage/amazon_dynamodb_config/jsonschema/2-0-0",
+      "data": {
+        "id": "7cad3d9b-1610-4310-823d-e79de7fc58e6",
+        "name": "local",
+        "auth": null,
+        "awsRegion": $dynamodbDuplicateStorageRegion,
+        "dynamodbTable": $dynamodbDuplicateStorageTable,
+        "purpose": "EVENTS_MANIFEST"
+      }
+    }"""
 
   /** Get environment variable wrapped into `Validation` */
   def getEnv(envvar: String): ValidatedNel[String, String] = sys.env.get(envvar) match {
     case Some(v) => v.validNel
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
-
-  /** Get environment variables required to access to staging environment */
-  def getStagingCredentials =
-    (getEnv("AWS_STAGING_ACCESS_KEY_ID"), getEnv("AWS_STAGING_SECRET_ACCESS_KEY")).tupled
 }
 
 /** Trait to mix in in every spec for the shred job. */
@@ -275,18 +264,21 @@ trait ShredJobSpec extends SparkSpec {
       "--iglu-config", igluConfig
     )
 
-    val dedupeConfig = if (crossBatchDedupe && CI) {
-      Array("--duplicate-storage-config", duplicateStorageConfig)
+    val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
+      val encoder = new Base64(true)
+      val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
+      val config = SelfDescribingData.parse(duplicateStorageConfig).leftMap(_.code).flatMap(EventsManifestConfig.DynamoDb.extract).valueOr(e => throw FatalEtlError(e))
+      (Array("--duplicate-storage-config", encoded), Some(config))
     } else {
-      Array.empty[String]
+      (Array.empty[String], None)
     }
 
     val shredJobConfig = ShredJobConfig
-      .loadConfigFrom(config ++ dedupeConfig)
+      .loadConfigFrom(config ++ dedupeConfigCli)
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty)
+    job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
   }
 
