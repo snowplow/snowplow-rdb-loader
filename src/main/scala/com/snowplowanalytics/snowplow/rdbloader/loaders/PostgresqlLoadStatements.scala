@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2018 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -19,10 +19,6 @@ import config.Step
 /**
  * End-of-discovery data for PostgreSQL.
  * Contains all SQL-statements need to be executed
- *
- * @param events
- * @param analyze
- * @param vacuum
  */
 case class PostgresqlLoadStatements(events: SqlString, analyze: Option[SqlString], vacuum: Option[SqlString])
 
