@@ -37,6 +37,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
  * @param outFolder Output folder where the shredded events will be stored
  * @param badFolder Output folder where the malformed events will be stored
  * @param igluConfig JSON representing the Iglu configuration
+ * @param jsonOnly don't try to produce TSV output
  */
 case class ShredJobConfig(inFolder: String,
                           outFolder: String,
@@ -44,7 +45,8 @@ case class ShredJobConfig(inFolder: String,
                           igluConfig: Json,
                           duplicateStorageConfig: Option[Json],
                           dynamodbManifestTable: Option[String],
-                          itemId: Option[String]) {
+                          itemId: Option[String],
+                          jsonOnly: Boolean) {
 
   /** Get both manifest table and item id to process */
   def getManifestData: Option[(String, String)] =
@@ -92,11 +94,12 @@ object ShredJobConfig {
   val itemId = Opts.option[String]("item-id",
     "Unique folder identificator for processing manifest (e.g. S3 URL)",
     metavar = "<id>").orNone
+  val jsonOnly = Opts.flag("json-only", "Do not produce tabular output").orFalse
 
-  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId).mapN {
-    (input, output, bad, iglu, dupeStorage, manifest, itemId) => ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId)
+  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, jsonOnly).mapN {
+    (input, output, bad, iglu, dupeStorage, manifest, itemId, jsonOnly) => ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, jsonOnly)
   }.validate("--item-id and --processing-manifest-table must be either both provided or both absent") {
-    case ShredJobConfig(_, _, _, _, _, manifest, i) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
+    case ShredJobConfig(_, _, _, _, _, manifest, i, _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
     case _ => false
   }
 
