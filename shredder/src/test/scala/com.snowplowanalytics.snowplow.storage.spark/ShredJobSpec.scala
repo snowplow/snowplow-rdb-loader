@@ -218,6 +218,41 @@ object ShredJobSpec {
     ))
   }
 
+  private val igluConfigWithLocal = {
+    val encoder = new Base64(true)
+    new String(encoder.encode(
+      """|{
+         |"schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
+         |"data": {
+         |"cacheSize": 500,
+         |"repositories": [
+         |{
+         |"name": "Local Iglu Server",
+         |"priority": 0,
+         |"vendorPrefixes": [ "com.snowplowanalytics" ],
+         |"connection": {
+         |"http": {
+         |"uri": "http://localhost:8083/api"
+         |}
+         |}
+         |},
+         |{
+         |"name": "Iglu Central",
+         |"priority": 0,
+         |"vendorPrefixes": [ "com.snowplowanalytics" ],
+         |"connection": {
+         |"http": {
+         |"uri": "http://iglucentral.com"
+         |}
+         |}
+         |}
+         |]
+         |}
+         |}""".stripMargin.replaceAll("[\n\r]","").getBytes()
+    ))
+
+  }
+
   val dynamodbDuplicateStorageTable = "snowplow-integration-test-crossbatch-deduplication"
   val dynamodbDuplicateStorageRegion = "us-east-1"
   /**
@@ -277,9 +312,37 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig)
+    job.run(Map.empty, dedupeConfig, true)
     deleteRecursively(input)
   }
+
+  def runShredJobTabular(lines: Lines, crossBatchDedupe: Boolean = false): Unit = {
+    val input = mkTmpFile("input", createParents = true, containing = lines.some)
+    val config = Array(
+      "--input-folder", input.toString(),
+      "--output-folder", dirs.output.toString(),
+      "--bad-folder", dirs.badRows.toString(),
+      "--iglu-config", igluConfigWithLocal
+    )
+
+    val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
+      val encoder = new Base64(true)
+      val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
+      val config = SelfDescribingData.parse(duplicateStorageConfig).leftMap(_.code).flatMap(EventsManifestConfig.DynamoDb.extract).valueOr(e => throw FatalEtlError(e))
+      (Array("--duplicate-storage-config", encoded), Some(config))
+    } else {
+      (Array.empty[String], None)
+    }
+
+    val shredJobConfig = ShredJobConfig
+      .loadConfigFrom(config ++ dedupeConfigCli)
+      .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
+
+    val job = new ShredJob(spark, shredJobConfig)
+    job.run(Map.empty, dedupeConfig, false)
+    deleteRecursively(input)
+  }
+
 
   override def afterAll(): Unit = {
     super.afterAll()
