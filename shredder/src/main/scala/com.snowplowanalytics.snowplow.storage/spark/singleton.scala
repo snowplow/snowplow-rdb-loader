@@ -31,7 +31,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsMa
 object singleton {
 
   /** Singleton for Iglu's Resolver to maintain one Resolver per node. */
-  object ResolverSingleton {
+  object IgluSingleton {
 
     @volatile private var instance: Client[Id, Json] = _
 
@@ -44,7 +44,7 @@ object singleton {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = getIgluResolver(igluConfig)
+            instance = getIgluClient(igluConfig)
               .valueOr(e => throw FatalEtlError(e.toString))
           }
         }
@@ -58,7 +58,7 @@ object singleton {
       * @param igluConfig JSON representing the Iglu resolver
       * @return A Resolver or one or more error messages boxed in a Scalaz ValidationNel
       */
-    private[spark] def getIgluResolver(igluConfig: Json): Either[String, Client[Id, Json]] =
+    private[spark] def getIgluClient(igluConfig: Json): Either[String, Client[Id, Json]] =
       Client.parseDefault(igluConfig).leftMap(_.show).value
   }
 

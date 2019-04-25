@@ -33,6 +33,7 @@ import scala.util.control.NonFatal
 
 // Spark
 import org.apache.spark.{SparkConf, SparkContext}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
@@ -69,7 +70,7 @@ object ShredJob extends SparkJob {
   val AtomicSchema = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
   case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) {
-    def dump: String = json"""
+    def dumpJson: String = json"""
       {
         "schema": {
           "vendor": ${entity.schema.vendor},
@@ -103,11 +104,20 @@ object ShredJob extends SparkJob {
     classOf[Event],
     classOf[Instant],
     classOf[com.snowplowanalytics.iglu.core.SchemaVer$Full],
-    classOf[io.circe.Json$JObject],
     classOf[io.circe.JsonObject$LinkedHashMapJsonObject],
+    classOf[io.circe.Json$JObject],
     classOf[io.circe.Json$JString],
     classOf[io.circe.Json$JArray],
     classOf[io.circe.Json$JNull$],
+    classOf[io.circe.Json$JNumber],
+    classOf[io.circe.Json$JBoolean],
+    classOf[io.circe.Json],
+    Class.forName("io.circe.JsonLong"),
+    Class.forName("io.circe.JsonDecimal"),
+    Class.forName("io.circe.JsonBigDecimal"),
+    Class.forName("io.circe.JsonBiggerDecimal"),
+    Class.forName("io.circe.JsonDouble"),
+    Class.forName("io.circe.JsonFloat"),
     classOf[java.util.LinkedHashMap[_, _]],
     classOf[java.util.ArrayList[_]],
     classOf[scala.collection.immutable.Map$EmptyMap$],
@@ -135,7 +145,7 @@ object ShredJob extends SparkJob {
     // Processing manifest, existing only on a driver. Iglu Resolver without cache
     val manifest = shredConfig.getManifestData.map {
       case (m, i) =>
-        val resolver = singleton.ResolverSingleton.get(shredConfig.igluConfig)
+        val resolver = singleton.IgluSingleton.get(shredConfig.igluConfig)
         ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
     }
 
@@ -148,24 +158,28 @@ object ShredJob extends SparkJob {
 
     val eventsManifest: Option[EventsManifestConfig] = shredConfig.duplicateStorageConfig.map { json =>
       val config = EventsManifestConfig
-        .parseJson[Id](singleton.ResolverSingleton.get(shredConfig.igluConfig), json)
+        .parseJson[Id](singleton.IgluSingleton.get(shredConfig.igluConfig), json)
         .valueOr(err => throw FatalEtlError(err))
       val _ = singleton.DuplicateStorageSingleton.get(Some(config))   // Just to check it can be initialized
       config
     }
 
-    runJob(manifest, eventsManifest, atomicLengths, job).get
+    runJob(manifest, eventsManifest, atomicLengths, job, true).get
   }
 
   /** Start a job, if necessary recording process to manifest */
-  def runJob(manifest: Option[ShredderManifest], eventsManifest: Option[EventsManifestConfig], lengths: Map[String, Int], job: ShredJob): Try[Unit] = {
+  def runJob(manifest: Option[ShredderManifest],
+             eventsManifest: Option[EventsManifestConfig],
+             lengths: Map[String, Int],
+             job: ShredJob,
+             jsonOnly: Boolean): Try[Unit] = {
     manifest match {
       case None =>      // Manifest is not enabled, simply run a job
-        Try(job.run(lengths, eventsManifest)).map(_ => None)
+        Try(job.run(lengths, eventsManifest, jsonOnly)).map(_ => None)
       case Some(ShredderManifest(manifest, itemId)) =>   // Manifest is enabled.
         // Envelope job into function to pass to `Manifest.processItem` later
         val process: ProcessNew = () => Try {
-          job.run(lengths, eventsManifest)
+          job.run(lengths, eventsManifest, jsonOnly)
           val shreddedTypes = job.shreddedTypes.value.toSet
           DynamodbManifest.processedPayload(shreddedTypes)
         }
@@ -211,10 +225,11 @@ object ShredJob extends SparkJob {
   /**
    * The path at which to store the shredded types.
    * @param outFolder shredded/good/run=xxx
+   * @param json pre-R31 output path
    * @return The shredded types output path
    */
-  def getShreddedTypesOutputPath(outFolder: String): String = {
-    val shreddedTypesSubdirectory = "shredded-types"
+  def getShreddedTypesOutputPath(outFolder: String, json: Boolean): String = {
+    val shreddedTypesSubdirectory = if (json) "shredded-types" else "shredded-tsv"   // TODO: change to shredded-json
     s"$outFolder${if (outFolder.endsWith("/")) "" else "/"}$shreddedTypesSubdirectory"
   }
 
@@ -274,14 +289,16 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - finding synthetic duplicates and adding them back with new ids
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
-  def run(atomicLengths: Map[String, Int], eventsManifest: Option[EventsManifestConfig]): Unit = {
+  def run(atomicLengths: Map[String, Int],
+          eventsManifest: Option[EventsManifestConfig],
+          jsonOnly: Boolean): Unit = {
     import ShredJob._
 
     val input = sc.textFile(shredConfig.inFolder)
 
     // Enriched TSV lines along with their shredded components
     val common = input
-      .map(line => loadAndShred(ResolverSingleton.get(shredConfig.igluConfig), line))
+      .map(line => loadAndShred(IgluSingleton.get(shredConfig.igluConfig), line))
       .setName("common")
       .cache()
 
@@ -290,7 +307,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .flatMap { shredded => shredded.swap.toOption }
       .map { badRow => Row(badRow.toCompactJson) }
 
-    // Handling of properly-formed rows; drop bad, turn proper events to `Shredded`
+    // Handling of properly-formed rows; drop bad, turn proper events to `Event`
     // Pefrorm in-batch and cross-batch natural deduplications and writes found types to accumulator
     // only one event from an event id and event fingerprint combination is kept
     val good = common
@@ -358,16 +375,25 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .text(getAlteredEnrichedOutputPath(shredConfig.outFolder))
 
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val jsons = goodWithSyntheticDupes
+    val shredded = goodWithSyntheticDupes
       .flatMap(getShreddedEntities)
-      .map { h => (h.entity.schema.vendor, h.entity.schema.name, h.entity.schema.format, h.entity.schema.version.asString, h.dump) }
+      .map(Shredded.fromHierarchy(jsonOnly, singleton.IgluSingleton.get(shredConfig.igluConfig).resolver))
 
-    jsons
-      .toDF("vendor", "name", "format", "version", "json")
-      .write
-      .partitionBy("vendor", "name", "format", "version")
-      .mode(SaveMode.Append)
-      .text(getShreddedTypesOutputPath(shredConfig.outFolder))
+    if (jsonOnly) {
+      val jsons = shredded.map(s => s.json.getOrElse(throw FatalEtlError(s"Inconsistent configuration. Can be shredded only into JSON. Got $s")))
+      writeShredded(jsons, true)
+    } else {    // Partition TSV and JSON
+      writeShredded(shredded.flatMap(_.json), true)
+      writeShredded(shredded.flatMap(_.tabular), false)
+    }
+
+    def writeShredded(data: RDD[(String, String, String, String, String)], json: Boolean): Unit =
+      data
+        .toDF("vendor", "name", "format", "version", "data")
+        .write
+        .partitionBy("vendor", "name", "format", "version")
+        .mode(SaveMode.Append)
+        .text(getShreddedTypesOutputPath(shredConfig.outFolder, json))
 
     // Deduplication operation failed due to DynamoDB
     val dupeFailed = good.flatMap {
