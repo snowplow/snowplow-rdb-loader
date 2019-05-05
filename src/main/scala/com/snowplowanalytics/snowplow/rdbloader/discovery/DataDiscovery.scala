@@ -251,7 +251,7 @@ object DataDiscovery {
       case Right(ShreddedDataKeyIntermediate(fullPath, info)) =>
         val jsonpathAction = EitherT(ShreddedType.discoverJsonPath(region, assets, info))
         val discoveryAction = jsonpathAction.map { jsonpath =>
-          ShreddedDataKeyFinal(fullPath, ShreddedType(info, jsonpath))
+          ShreddedDataKeyFinal(fullPath, ShreddedType.Json(info, jsonpath))
         }
         discoveryAction.value.map(_.toValidatedNel)
       case Right(AtomicDataKey(fullPath, size)) =>

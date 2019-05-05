@@ -23,31 +23,50 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
 
-/**
- * Container for S3 folder with shredded JSONs ready to load
- * Usually it represents self-describing event or custom/derived context
- *
- * @param info raw metadata extracted from S3 Key
- * @param jsonPaths existing JSONPaths file
- */
-case class ShreddedType(info: ShreddedType.Info, jsonPaths: S3.Key) {
+sealed trait ShreddedType {
+  /** raw metadata extracted from S3 Key */
+  def info: ShreddedType.Info
   /** Get S3 prefix which Redshift should LOAD FROM */
-  def getLoadPath: String = {
-   if (info.shredJob <= ShreddedType.ShredJobBeforeSparkVersion) {
-     s"${info.base}${info.vendor}/${info.name}/jsonschema/${info.model}-"
-   } else {
-     s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
-   }
-  }
-
+  def getLoadPath: String
   /** Human-readable form */
-  def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
+  def show: String
 }
 
 /**
  * Companion object for `ShreddedType` containing discovering functions
  */
 object ShreddedType {
+
+  /**
+    * Container for S3 folder with shredded JSONs ready to load
+    * Usually it represents self-describing event or custom/derived context
+    *
+    * @param jsonPaths existing JSONPaths file
+    */
+  case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
+    def getLoadPath: String = {
+      if (info.shredJob <= ShredJobBeforeSparkVersion) {
+        s"${info.base}${info.vendor}/${info.name}/jsonschema/${info.model}-"
+      } else {
+        s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
+      }
+    }
+
+    def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
+  }
+
+  /**
+    * Container for S3 folder with shredded JSONs ready to load
+    * Usually it represents self-describing event or custom/derived context
+    *
+    * @param info raw metadata extracted from S3 Key
+    */
+  case class Tabular(info: Info) extends ShreddedType {
+    def getLoadPath: String =
+      s"${info.base}shredded-tsv/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}"
+
+    def show: String = s"${info.toCriterion.asString} TSV"
+  }
 
   /**
    * Raw metadata that can be parsed from S3 Key.
@@ -84,11 +103,11 @@ object ShreddedType {
      """/format=(?<format>[a-zA-Z0-9-_]+)""" +
      """/version=(?<schemaver>[1-9][0-9]*(?:-(?:0|[1-9][0-9]*)){2})$""").r
 
-  /**
-   * Version of legacy Shred job, where old path pattern was used
-   * `com.acme/event/jsonschema/1-0-0`
-   */
+  /** Version of legacy Shred job, where old path pattern was used `com.acme/event/jsonschema/1-0-0` */
   val ShredJobBeforeSparkVersion = Semver(0,11,0)
+
+  /** Version of legacy Shred job, where TSV output was not possible */
+  val ShredJobBeforeTabularVersion = Semver(0,15,0)
 
   /**
    * vendor + name + format + version + filename
@@ -177,7 +196,7 @@ object ShreddedType {
     // Discover data for single item
     def discover(info: ShreddedType.Info): Action[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
       val jsonpaths = ShreddedType.discoverJsonPath(region, jsonpathAssets, info)
-      val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType(info, s3key)))
+      val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType.Json(info, s3key)))
       shreddedType.map(_.toValidatedNel)
     }
 
