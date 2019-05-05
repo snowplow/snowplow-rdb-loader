@@ -20,6 +20,8 @@ import cats.implicits._
 
 import com.snowplowanalytics.manifest.core.{ Item, Application }
 
+import com.snowplowanalytics.iglu.schemaddl.migrations.Migration.OrderedSchemas
+
 // This library
 import Security.Tunnel
 import loaders.Common.SqlString
@@ -70,6 +72,9 @@ object LoaderA {
 
   // Security ops
   case class GetEc2Property(name: String) extends LoaderA[Either[LoaderError, String]]
+
+  // Iglu ops
+  case class GetSchemas(vendor: String, name: String, model: Int) extends LoaderA[Either[LoaderError, OrderedSchemas]]
 
 
   def listS3(bucket: S3.Folder): Action[Either[LoaderError, List[S3.BlobObject]]] =
@@ -171,5 +176,10 @@ object LoaderA {
   /** Retrieve decrypted property from EC2 Parameter Store */
   def getEc2Property(name: String): Action[Either[LoaderError, String]] =
     Free.liftF[LoaderA, Either[LoaderError, String]](GetEc2Property(name))
+
+
+  /** Retrieve list of schemas from Iglu Server */
+  def getSchemas(vendor: String, name: String, model: Int): Action[Either[LoaderError, OrderedSchemas]] =
+    Free.liftF[LoaderA, Either[LoaderError, OrderedSchemas]](GetSchemas(vendor, name, model))
 }
 

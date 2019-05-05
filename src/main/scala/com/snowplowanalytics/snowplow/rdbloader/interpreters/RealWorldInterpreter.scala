@@ -27,9 +27,9 @@ import io.circe.Json
 
 import com.amazonaws.services.s3.AmazonS3
 
-import com.snowplowanalytics.iglu.client.Client
-
 import org.joda.time.DateTime
+
+import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
@@ -40,11 +40,12 @@ import LoaderA._
 import LoaderError.LoaderLocalError
 import Interpreter.runIO
 import config.CliConfig
-import discovery.ManifestDiscovery
+import discovery.{ ManifestDiscovery, DiscoveryFailure }
 import utils.Common
 import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.getOrdered
 
 /**
  * Interpreter performs all actual side-effecting work,
@@ -52,11 +53,10 @@ import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
  * It contains and handles configuration, connections and mutable state,
  * all real-world interactions, except argument parsing
  */
-class RealWorldInterpreter private[interpreters](
-  cliConfig: CliConfig,
-  amazonS3: AmazonS3,
-  tracker: Option[Tracker[Id]],
-  resolver: Client[Id, Json]) extends Interpreter {
+class RealWorldInterpreter private[interpreters](cliConfig: CliConfig,
+                                                 amazonS3: AmazonS3,
+                                                 tracker: Option[Tracker[Id]],
+                                                 igluClient: Client[Id, Json]) extends Interpreter {
 
   private val interpreter = this
 
@@ -76,7 +76,7 @@ class RealWorldInterpreter private[interpreters](
       dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
     }
     if (force) {
-      println("Forcing reconnection to DB")
+      System.out.println("Forcing reconnection to DB")
       dbConnection = JdbcInterpreter.getConnection(cliConfig.target)
     }
     dbConnection
@@ -96,11 +96,14 @@ class RealWorldInterpreter private[interpreters](
   private val messagesCopy = collection.mutable.ListBuffer.empty[String]
 
   def executeWithRetry[A](action: Connection => SqlString => Either[LoaderError.StorageTargetError, A])(sql: SqlString) = {
-    val firstAttempt = for { conn <- getConnection(); r <- action(conn)(sql) } yield r
+    val firstAttempt = for {
+      conn <- getConnection()
+      _ <- JdbcInterpreter.setAutocommit(conn, false)
+      r <- action(conn)(sql)
+    } yield r
     firstAttempt match {
       case Left(LoaderError.StorageTargetError(message)) if message.contains("Connection refused") =>
-        println(message)
-        println("Sleeping and making another try")
+        System.out.println("Sleeping and making another try")
         Thread.sleep(10000)
         for {
           conn <- getConnection(true)
@@ -223,6 +226,12 @@ class RealWorldInterpreter private[interpreters](
 
         case GetEc2Property(name) =>
           SshInterpreter.getKey(name)
+
+        case GetSchemas(vendor, name, model) =>
+          getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
+            val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
+            LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
+          }.value
       }
     }
   }
