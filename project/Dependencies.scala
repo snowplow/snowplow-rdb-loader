@@ -57,6 +57,7 @@ object Dependencies {
   val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker-core"       % V.scalaTracker
   val scalaTrackerEmit  = "com.snowplowanalytics" %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
   val manifest          = "com.snowplowanalytics" %% "snowplow-processing-manifest"      % V.manifest
+  val igluCore          = "com.snowplowanalytics" %% "iglu-core"                         % V.igluCore
   val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"         %% "cats"                              % V.cats
   val catsFree          = "org.typelevel"         %% "cats-free"                         % V.cats
