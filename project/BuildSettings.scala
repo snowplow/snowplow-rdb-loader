@@ -127,7 +127,7 @@ object BuildSettings {
                        |  val name = "%s"             // DO NOT EDIT! Processing Manifest depends on it
                        |  val organization = "%s"
                        |  val scalaVersion = "%s"
-                       |
+                       |  
                        |  val shredderName = "%s"     // DO NOT EDIT! Processing Manifest depends on it
                        |  val shredderVersion = "%s"
                        |}

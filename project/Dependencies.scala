@@ -17,8 +17,8 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val igluClient       = "0.6.0-M6"
-    val igluCore         = "0.5.0-M1"
+    val igluClient       = "0.6.0-M7"
+    val igluCore         = "0.5.0"
     val scalaTracker     = "0.6.1-M1"
     val circeYaml        = "0.9.0"
     val circe            = "0.11.1"
