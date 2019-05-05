@@ -19,7 +19,7 @@ import cats.syntax.either._
 
 import org.specs2.Specification
 
-import LoaderError.{DiscoveryError, NoDataFailure}
+import LoaderError.DiscoveryError
 import config.Semver
 import discovery.ShreddedType._
 import S3.Folder.{coerce => dir}
@@ -87,10 +87,10 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
@@ -103,7 +103,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/add_to_cart_1.json"))
         ),
@@ -199,10 +199,10 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
@@ -215,13 +215,13 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/add_to_cart_1.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","geolocation",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/geolocation_1.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","custom_context",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/custom_context_1.json"))
         ),
@@ -254,7 +254,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-08-21-19-18-20")
 
-    val expected = DiscoveryError(List(NoDataFailure(shreddedGood)))
+    val expected = DiscoveryError(List(DiscoveryFailure.NoDataFailure(shreddedGood)))
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(shreddedGood)
     val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None)
@@ -328,10 +328,10 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
@@ -388,10 +388,10 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
@@ -455,10 +455,10 @@ class DataDiscoverySpec extends Specification { def is = s2"""
         Some(2L),
         Some(2L),
         List(
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType(
+          ShreddedType.Json(
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
@@ -508,8 +508,8 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
   def e9 = {
     val shreddedTypes = List(
-      ShreddedType(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
-      ShreddedType(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
+      ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
+      ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
     )
 
     val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), Some(8), Some(1024), shreddedTypes, false, None)

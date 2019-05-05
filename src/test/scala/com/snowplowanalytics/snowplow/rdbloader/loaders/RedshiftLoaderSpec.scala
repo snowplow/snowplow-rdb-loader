@@ -91,7 +91,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Some(3),
       None,
       List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0)),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )
@@ -102,9 +102,13 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val atomic =
       s"""COPY atomic.events FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/atomic-events/'
          | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1'
-         | DELIMITER '$separator' MAXERROR 1
-         | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
-         | TIMEFORMAT 'auto' ACCEPTINVCHARS """.stripMargin
+         | DELIMITER '$separator'
+         | MAXERROR 1
+         | TIMEFORMAT 'auto'
+         | EMPTYASNULL
+         | FILLRECORD
+         | TRUNCATECOLUMNS
+         | ACCEPTINVCHARS """.stripMargin
 
     val vacuum = List(
       sql("VACUUM SORT ONLY atomic.events"),
@@ -118,7 +122,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       """COPY atomic.com_snowplowanalytics_snowplow_submit_form_1 FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-'
         | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json'
         | REGION AS 'us-east-1'
-        | MAXERROR 1 TRUNCATECOLUMNS TIMEFORMAT 'auto'
+        | MAXERROR 1
+        | TIMEFORMAT 'auto'
+        | TRUNCATECOLUMNS
         | ACCEPTINVCHARS """.stripMargin))
 
     val manifest =
@@ -207,7 +213,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Some(3),
       Some(6),
       List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0, Some(Semver.ReleaseCandidate(4)))),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )
