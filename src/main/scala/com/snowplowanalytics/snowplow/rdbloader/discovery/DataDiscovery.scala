@@ -133,7 +133,7 @@ object DataDiscovery {
         val keys: LoaderAction[ValidatedDataKeys] =
           listGoodBucket(folder).map { keys =>
             if (keys.isEmpty) {
-              val failure = Validated.Invalid(NonEmptyList(NoDataFailure(folder), Nil))
+              val failure = Validated.Invalid(NonEmptyList(DiscoveryFailure.NoDataFailure(folder), Nil))
               Free.pure(failure)
             } else transformKeys(shredJob, region, assets)(keys)
           }
@@ -190,7 +190,7 @@ object DataDiscovery {
           case Validated.Valid(discovery) =>
             discovery.asRight
           case Validated.Invalid(failures) =>
-            val aggregated = LoaderError.aggregateDiscoveryFailures(failures.toList).distinct
+            val aggregated = DiscoveryFailure.aggregateDiscoveryFailures(failures).distinct
             DiscoveryError(aggregated).asLeft
         }
       }
@@ -216,7 +216,7 @@ object DataDiscovery {
       val size = Some(atomicKeys.foldMap(_.size))
       DataDiscovery(base, Some(atomicKeys.length), size, shreddedData, false, None).validNel
     } else {
-      AtomicDiscoveryFailure(base).invalidNel
+      DiscoveryFailure.AtomicDiscoveryFailure(base).invalidNel
     }
   }
 
@@ -251,9 +251,11 @@ object DataDiscovery {
       case Right(ShreddedDataKeyIntermediate(fullPath, info)) =>
         val jsonpathAction = EitherT(ShreddedType.discoverJsonPath(region, assets, info))
         val discoveryAction = jsonpathAction.map { jsonpath =>
-          ShreddedDataKeyFinal(fullPath, ShreddedType(info, jsonpath))
+          ShreddedDataKeyFinal(fullPath, ShreddedType.Json(info, jsonpath))
         }
         discoveryAction.value.map(_.toValidatedNel)
+      case Right(key @ ShreddedDataKeyTabular(_, _)) =>
+        Free.pure(key.toFinal.validNel[DiscoveryFailure])
       case Right(AtomicDataKey(fullPath, size)) =>
         val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
           Free.pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
@@ -278,8 +280,10 @@ object DataDiscovery {
       case Some(_) => AtomicDataKey(blobObject.key, blobObject.size).asRight
       case None =>
         ShreddedType.transformPath(blobObject.key, shredJob) match {
-          case Right(info) =>
+          case Right((false, info)) =>
             ShreddedDataKeyIntermediate(blobObject.key, info).asRight
+          case Right((true, info)) =>
+            ShreddedDataKeyTabular(blobObject.key, info).asRight
           case Left(e) => e.asLeft
         }
     }
@@ -325,9 +329,10 @@ object DataDiscovery {
             discovered <- Free.pure(control.orElse(original))
           } yield discovered
         case (Right(o), Right(c)) if o.sortBy(_.base.toString) == c.sortBy(_.base.toString) =>
-          val message = o.map(x => s"+ ${x.show}").mkString("\n")
+          val found = o.map(x => s"+ ${x.show}").mkString("\n")
+          val message = if (found.isEmpty) "No run ids discovered" else s"Following run ids found:\n$found"
           for {
-            _ <- LoaderA.print(s"Consistency check passed after ${attempt - 1} attempt. Following run ids found:\n$message")
+            _ <- LoaderA.print(s"Consistency check passed after ${attempt - 1} attempt. " ++ message)
             discovered <- Free.pure(original)
           } yield discovered
         case (Right(o), Right(c)) =>
@@ -414,6 +419,17 @@ object DataDiscovery {
    * It is intermediate because shredded type doesn't contain its JSONPath yet
    */
   private case class ShreddedDataKeyIntermediate(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate
+
+  /** Shredded key that doesn't need a JSONPath file and can be mapped to final */
+  private case class ShreddedDataKeyTabular(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate {
+    def base: S3.Folder = {
+      val atomicEvents = S3.Key.getParent(key)
+      S3.Folder.getParent(atomicEvents)
+    }
+
+    def toFinal: ShreddedDataKeyFinal =
+      ShreddedDataKeyFinal(key, ShreddedType.Tabular(info))
+  }
 
   /**
    * S3 key, representing intermediate shredded type file

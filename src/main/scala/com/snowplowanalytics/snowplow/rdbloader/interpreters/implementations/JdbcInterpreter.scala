@@ -59,9 +59,7 @@ object JdbcInterpreter {
       val resultSet = conn.createStatement().executeQuery(sql)
       ev.decode(resultSet) match {
         case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
-        case Right(a) =>
-          println(a)
-          a.asRight[StorageTargetError]
+        case Right(a) => a.asRight[StorageTargetError]
       }
     } catch {
       case NonFatal(e) =>
@@ -110,13 +108,12 @@ object JdbcInterpreter {
       val password = target.password match {
         case StorageTarget.PlainText(text) => text
         case StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-          SshInterpreter.getKey(key.parameterName).getOrElse(throw new RuntimeException("Cannot retrieve JDBC password from EC2 Parameter Store"))
+          SshInterpreter.getKey(key.parameterName).valueOr(error => throw new RuntimeException(s"Cannot retrieve JDBC password from EC2 Parameter Store. ${error.show}"))
       }
 
       val props = new Properties()
       props.setProperty("user", target.username)
       props.setProperty("password", password)
-
 
       target match {
         case r: StorageTarget.RedshiftConfig =>

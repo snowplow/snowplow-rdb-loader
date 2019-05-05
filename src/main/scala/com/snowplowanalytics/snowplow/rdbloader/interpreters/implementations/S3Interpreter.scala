@@ -29,7 +29,8 @@ import scala.collection.convert.wrapAsScala._
 import scala.util.control.NonFatal
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError.{DiscoveryError, DownloadFailure, S3Failure}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError.DiscoveryError
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.{S3Failure, DownloadFailure}
 
 
 /**

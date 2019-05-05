@@ -19,7 +19,7 @@ import cats.implicits._
 
 import cats.effect.Clock
 
-import rdbloader.LoaderError.DiscoveryFailure
+import rdbloader.discovery.DiscoveryFailure
 import rdbloader.interpreters.implementations.ManifestInterpreter.ManifestE
 
 import scala.concurrent.duration.{ TimeUnit, MILLISECONDS, NANOSECONDS }

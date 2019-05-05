@@ -29,6 +29,7 @@ import com.snowplowanalytics.iglu.client.validator.CirceValidator
 
 // This project
 import LoaderError._
+import discovery.DiscoveryFailure
 import config.CliConfig
 import interpreters.implementations.ManifestInterpreter.ManifestE
 
@@ -61,7 +62,7 @@ object Common {
       case Right(_) => Log.LoadingSucceeded
       case Left(e @ DiscoveryError(failures)) =>
         val manifestError = failures.collect {
-          case e: NoDataFailure if config.target.processingManifest.nonEmpty => e.getManifestMessage
+          case e: DiscoveryFailure.NoDataFailure if config.target.processingManifest.nonEmpty => e.getManifestMessage
         }
         Log.LoadingFailed((e: LoaderError).show ++ s"\n${manifestError.mkString("\n")}")
       case Left(error) =>
