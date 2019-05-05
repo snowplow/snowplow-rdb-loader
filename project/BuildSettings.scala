@@ -42,7 +42,6 @@ object BuildSettings {
       "-unchecked",
       "-Ywarn-unused-import",
       "-Ywarn-nullary-unit",
-      "-Xfatal-warnings",
       "-Xlint",
       "-Yinline-warnings",
       "-language:higherKinds",

@@ -91,7 +91,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Some(3),
       None,
       List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0)),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )
@@ -207,7 +207,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       Some(3),
       Some(6),
       List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0, Some(Semver.ReleaseCandidate(4)))),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )

@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import cats.syntax.flatMap._
 import cats.data.Validated._
 
 // This project
@@ -52,7 +53,7 @@ object Main {
     val interpreter = Interpreter.initialize(config)
 
     val actions: Action[Int] = for {
-      data       <- discover(config).value
+      data       <- discover(config).flatTap(db.Migration.perform(config.target.schema)).value
       result     <- data match {
         case Right(discovery) => load(config, discovery).value
         case Left(LoaderError.StorageTargetError(message)) =>
