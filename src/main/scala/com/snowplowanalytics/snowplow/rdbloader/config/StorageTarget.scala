@@ -55,8 +55,6 @@ sealed trait StorageTarget extends Product with Serializable {
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
-  def purpose: StorageTarget.Purpose
-
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 }
 
@@ -68,16 +66,8 @@ object StorageTarget {
   case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
   case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
 
-  sealed trait Purpose extends StringEnum
-  case object DuplicateTracking extends Purpose { def asString = "DUPLICATE_TRACKING" }
-  case object FailedEvents extends Purpose { def asString = "FAILED_EVENTS" }
-  case object EnrichedEvents extends Purpose { def asString = "ENRICHED_EVENTS" }
-
   implicit val sslModeDecoder: Decoder[SslMode] =
     decodeStringEnum[SslMode]
-
-  implicit val purposeDecoder: Decoder[Purpose] =
-    decodeStringEnum[Purpose]
 
   /**
     * Configuration to access Snowplow Processing Manifest
@@ -104,9 +94,7 @@ object StorageTarget {
                               password: PasswordConfig,
                               sshTunnel: Option[TunnelConfig],
                               processingManifest: Option[ProcessingManifestConfig])
-    extends StorageTarget {
-    val purpose = EnrichedEvents
-  }
+    extends StorageTarget
 
   /**
    * Redshift config
@@ -126,9 +114,7 @@ object StorageTarget {
                             compRows: Long,
                             sshTunnel: Option[TunnelConfig],
                             processingManifest: Option[ProcessingManifestConfig])
-    extends StorageTarget {
-    val purpose = EnrichedEvents
-  }
+    extends StorageTarget
 
   /**
     * All possible JDBC according to Redshift documentation, except deprecated

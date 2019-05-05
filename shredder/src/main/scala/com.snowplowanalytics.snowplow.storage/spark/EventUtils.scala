@@ -27,19 +27,17 @@ import cats.syntax.show._
 import cats.effect.Clock
 
 import com.snowplowanalytics.iglu.core._
-import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.client.ClientError.ResolutionError
 
-import com.snowplowanalytics.iglu.schemaddl.IgluSchema
 import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
-import com.snowplowanalytics.iglu.schemaddl.migrations.Migration.OrderedSchemas
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.{ getOrdered, FlatteningError }
 
 object EventUtils {
   /**
@@ -85,18 +83,6 @@ object EventUtils {
       rootId.toString, rootTstamp.formatted, "events", s"""["events","${schema.name}"]""", "events")
 
   /**
-    * Error specific to shredding JSON instance into tabular format
-    * `SchemaList` is unavailable (in case no Iglu Server hosts this schemas)
-    * Particular schema could not be fetched, thus whole flattening algorithm cannot be built
-    */
-  sealed trait FlatteningError
-  object FlatteningError {
-    case class SchemaListResolution(error: ResolutionError) extends FlatteningError
-    case class SchemaResolution(error: ResolutionError) extends FlatteningError
-    case class Parsing(error: String) extends FlatteningError
-  }
-
-  /**
     * Transform a self-desribing entity into tabular format, using its known schemas to get a correct order of columns
     * @param resolver Iglu resolver to get list of known schemas
     * @param instance self-describing JSON that needs to be transformed
@@ -108,27 +94,6 @@ object EventUtils {
   /** Prevents data with newlines and tabs from breaking the loading process */
   private def escape(s: String): String =
     s.replace('\n', ' ').replace('\t', ' ')
-
-  // Cache = Map[SchemaKey, OrderedSchemas]
-
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey) =
-    for {
-      schemaList <- EitherT[F, ResolutionError, SchemaList](resolver.listSchemas(key.vendor, key.name, Some(key.version.model))).leftMap(FlatteningError.SchemaListResolution)
-      ordered <- OrderedSchemas.fromSchemaList(schemaList, fetch(resolver))
-    } yield ordered
-
-  def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FlatteningError, IgluSchema] =
-    for {
-      json <- EitherT(resolver.lookupSchema(key, 2)).leftMap(FlatteningError.SchemaResolution)
-      schema <- EitherT.fromEither(parseSchema(json))
-    } yield schema
-
-  /** Parse JSON into self-describing schema, or return `FlatteningError` */
-  private def parseSchema(json: Json): Either[FlatteningError, IgluSchema] =
-    for {
-      selfDescribing <- SelfDescribingSchema.parse(json).leftMap(code => FlatteningError.Parsing(s"Cannot parse ${json.noSpaces} payload as self-describing schema, ${code.code}"))
-      parsed <- Schema.parse(selfDescribing.schema).toRight(FlatteningError.Parsing(s"Cannot parse ${selfDescribing.self.schemaKey.toSchemaUri} payload as JSON Schema"))
-    } yield SelfDescribingSchema(selfDescribing.self, parsed)
 
   /** Get maximum length for a string value */
   private def getLength(schema: Schema): Option[Int] =

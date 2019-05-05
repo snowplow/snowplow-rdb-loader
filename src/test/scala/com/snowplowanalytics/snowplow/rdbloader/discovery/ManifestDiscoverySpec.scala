@@ -28,7 +28,7 @@ import com.snowplowanalytics.manifest.core.ManifestError._
 
 import com.snowplowanalytics.iglu.client.Resolver
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError.{DiscoveryError, ManifestFailure}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError.DiscoveryError
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 
 import org.specs2.Specification
@@ -90,7 +90,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val action = ManifestDiscovery.discover("test-storage", "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beLeft.like {
-      case DiscoveryError(List(ManifestFailure(Corrupted(Corruption.ParseError(error))))) =>
+      case DiscoveryError(List(DiscoveryFailure.ManifestFailure(Corrupted(Corruption.ParseError(error))))) =>
         error must endingWith("Key [iglu:com.acme/event/jsonschema/0-0-1] is invalid Iglu URI, INVALID_SCHEMAVER, Path [invalidFolder] is not valid base for shredded type. Bucket name must start with s3:// prefix")
     }
   }
@@ -124,7 +124,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beRight(List(
       DataDiscovery(base2, None, None, List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(base2, "com.acme", "context", 1, Semver(0,13,0)),
           S3.Key.coerce("s3://jsonpaths-assets/com.acme/context_1.json")
         )
@@ -162,19 +162,19 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
 
     val expected = List(
       DataDiscovery(base1, None, None, List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(base1, "com.acme", "event", 1, Semver(0,13,0)),
           S3.Key.coerce("s3://jsonpaths-assets-other/com.acme/event_1.json")
         )
       ), specificFolder = false, Some(item1)),
       DataDiscovery(base2, None, None, List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(base2, "com.acme", "event", 1, Semver(0,13,0)),
           S3.Key.coerce("s3://jsonpaths-assets-other/com.acme/event_1.json")
         )
       ), specificFolder = false, Some(item2)),
       DataDiscovery(base3, None, None, List(
-        ShreddedType(
+        ShreddedType.Json(
           ShreddedType.Info(base3, "com.acme", "context", 1, Semver(0,13,0)),
           S3.Key.coerce("s3://jsonpaths-assets/com.acme/context_1.json")
         )
@@ -203,7 +203,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     val action = ManifestDiscovery.discover("id", "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beLeft.like {
-      case DiscoveryError(List(ManifestFailure(Locked(_, None)))) => ok
+      case DiscoveryError(List(DiscoveryFailure.ManifestFailure(Locked(_, None)))) => ok
       case error => ko(s"Discovery failed not due Failed record: ${error.show}")
     }
   }

@@ -160,16 +160,24 @@ object RedshiftLoadStatements {
       TransitCopy(SqlString.unsafeCoerce(
         s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
-           | DELIMITER '$EventFieldSeparator' MAXERROR ${target.maxError}
-           | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
-           | TIMEFORMAT 'auto' ACCEPTINVCHARS $compressionFormat""".stripMargin))
+           | DELIMITER '$EventFieldSeparator'
+           | MAXERROR ${target.maxError}
+           | TIMEFORMAT 'auto'
+           | EMPTYASNULL
+           | FILLRECORD
+           | TRUNCATECOLUMNS
+           | ACCEPTINVCHARS $compressionFormat""".stripMargin))
     } else {
       StraightCopy(SqlString.unsafeCoerce(
         s"""COPY ${target.eventsTable} FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
-           | DELIMITER '$EventFieldSeparator' MAXERROR ${target.maxError}
-           | EMPTYASNULL FILLRECORD TRUNCATECOLUMNS
-           | TIMEFORMAT 'auto' ACCEPTINVCHARS $compressionFormat""".stripMargin))
+           | DELIMITER '$EventFieldSeparator'
+           | MAXERROR ${target.maxError}
+           | TIMEFORMAT 'auto'
+           | EMPTYASNULL
+           | FILLRECORD
+           | TRUNCATECOLUMNS
+           | ACCEPTINVCHARS $compressionFormat""".stripMargin))
     }
   }
 
@@ -197,20 +205,34 @@ object RedshiftLoadStatements {
    * Build COPY FROM JSON SQL-statement for shredded types
    *
    * @param config main Snowplow configuration
-   * @param s3path S3 path to folder with shredded JSON files
-   * @param jsonPathsFile S3 path to JSONPath file
    * @param tableName valid Redshift table name for shredded type
    * @return valid SQL statement to LOAD
    */
-  def buildCopyShreddedStatement(config: SnowplowConfig, s3path: String, jsonPathsFile: String, tableName: String, maxError: Int, roleArn: String): SqlString = {
+  def buildCopyShreddedStatement(config: SnowplowConfig, shreddedType: ShreddedType, tableName: String, maxError: Int, roleArn: String): SqlString = {
     val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
 
-    SqlString.unsafeCoerce(
-      s"""COPY $tableName FROM '$s3path'
-         | CREDENTIALS 'aws_iam_role=$roleArn' JSON AS '$jsonPathsFile'
-         | REGION AS '${config.aws.s3.region}'
-         | MAXERROR $maxError TRUNCATECOLUMNS TIMEFORMAT 'auto'
-         | ACCEPTINVCHARS $compressionFormat""".stripMargin)
+    shreddedType match {
+      case ShreddedType.Json(_, jsonPathsFile) =>
+        SqlString.unsafeCoerce(
+          s"""COPY $tableName FROM '${shreddedType.getLoadPath}'
+             | CREDENTIALS 'aws_iam_role=$roleArn' JSON AS '$jsonPathsFile'
+             | REGION AS '${config.aws.s3.region}'
+             | MAXERROR $maxError
+             | TIMEFORMAT 'auto'
+             | TRUNCATECOLUMNS
+             | ACCEPTINVCHARS $compressionFormat""".stripMargin)
+      case ShreddedType.Tabular(_) =>
+        SqlString.unsafeCoerce(
+          s"""COPY $tableName FROM '${shreddedType.getLoadPath}'
+             | CREDENTIALS 'aws_iam_role=$roleArn'
+             | REGION AS '${config.aws.s3.region}'
+             | MAXERROR $maxError
+             | TIMEFORMAT 'auto'
+             | DELIMITER '$EventFieldSeparator'
+             | TRUNCATECOLUMNS
+             | EMPTYASNULL
+             | ACCEPTINVCHARS $compressionFormat""".stripMargin)
+    }
   }
 
   /**
@@ -269,7 +291,7 @@ object RedshiftLoadStatements {
    */
   private def transformShreddedType(config: SnowplowConfig, target: RedshiftConfig, shreddedType: ShreddedType): ShreddedStatements = {
     val tableName = target.shreddedTable(ShreddedType.getTableName(shreddedType))
-    val copyFromJson = buildCopyShreddedStatement(config, shreddedType.getLoadPath, shreddedType.jsonPaths, tableName, target.maxError, target.roleArn)
+    val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, target.maxError, target.roleArn)
     val analyze = buildAnalyzeStatement(tableName)
     val vacuum = buildVacuumStatement(tableName)
     ShreddedStatements(copyFromJson, analyze, vacuum)

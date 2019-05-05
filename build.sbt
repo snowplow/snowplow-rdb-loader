@@ -11,6 +11,25 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
+lazy val common = project.in(file("common"))
+  .settings(Seq(
+    name := "snowplow-rdb-loader-common"
+  ))
+  .settings(BuildSettings.buildSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(
+    libraryDependencies ++= Seq(
+      Dependencies.igluClient,
+      Dependencies.igluCoreCirce,
+      Dependencies.scalaTracker,
+      Dependencies.scalaTrackerEmit,
+      Dependencies.circeGeneric,
+      Dependencies.circeGenericExtra,
+      Dependencies.circeLiteral,
+      Dependencies.schemaDdl
+    )
+  )
+
 lazy val loader = project.in(file("."))
   .settings(
     name := "snowplow-rdb-loader",
@@ -26,6 +45,7 @@ lazy val loader = project.in(file("."))
     libraryDependencies ++= Seq(
       Dependencies.decline,
       Dependencies.igluClient,
+      Dependencies.igluCore,
       Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
@@ -36,6 +56,7 @@ lazy val loader = project.in(file("."))
       Dependencies.circeLiteral,
       Dependencies.manifest,
       Dependencies.fs2,
+      Dependencies.schemaDdl,
 
       Dependencies.postgres,
       Dependencies.redshift,
@@ -50,6 +71,7 @@ lazy val loader = project.in(file("."))
       Dependencies.scalaCheck
     )
   )
+  .dependsOn(common)
 
 lazy val shredder = project.in(file("shredder"))
   .settings(
@@ -92,3 +114,4 @@ lazy val shredder = project.in(file("shredder"))
       "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.2"
     )
   )
+  .dependsOn(common)
