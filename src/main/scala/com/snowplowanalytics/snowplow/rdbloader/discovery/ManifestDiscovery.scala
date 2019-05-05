@@ -105,7 +105,7 @@ object ManifestDiscovery {
                      jsonpathAssets: Option[S3.Folder]): LoaderAction[DataDiscovery] = {
     val itemA: ActionE[Item] = LoaderA.manifestDiscover(getLoaderApp(id), ShredderApp, (folderPredicate(id, folder)(_)).some).map {
       case Right(h :: _) => h.asRight[LoaderError]
-      case Right(Nil) => DiscoveryError(NoDataFailure(folder) :: Nil).asLeft[Item]
+      case Right(Nil) => DiscoveryError(DiscoveryFailure.NoDataFailure(folder) :: Nil).asLeft[Item]
       case Left(error) => error.asLeft
     }
 
@@ -127,12 +127,12 @@ object ManifestDiscovery {
     val processedRecord = findProcessed(shredderRecords)
 
     processedRecord.map(_.flatMap(parseRecord)) match {
-      case Some(either) => either.leftMap { error => DiscoveryError(ManifestFailure(error)) }
+      case Some(either) => either.leftMap { error => DiscoveryError(DiscoveryFailure.ManifestFailure(error)) }
       case None =>
         // Impossible error-state if function is used on filtered `Item` before
         val message = s"Item [${item.id}] does not have 'PROCESSED' state for $ShredderName"
         val error: ManifestError = Corrupted(Corruption.InvalidContent(NonEmptyList.one(message)))
-        DiscoveryError(ManifestFailure(error)).asLeft
+        DiscoveryError(DiscoveryFailure.ManifestFailure(error)).asLeft
     }
   }
 

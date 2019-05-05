@@ -40,6 +40,7 @@ object S3 {
       case _                          => coerce(s).asRight
     }
 
+    /** Turn proper `s3://bucket/path/` string into `Folder` */
     def coerce(s: String): Folder =
       apply(appendTrailingSlash(fixPrefix(s)).asInstanceOf[Folder])
 

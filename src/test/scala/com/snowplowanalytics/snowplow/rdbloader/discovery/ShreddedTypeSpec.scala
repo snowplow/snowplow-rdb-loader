@@ -22,51 +22,6 @@ import org.specs2.{ScalaCheck, Specification}
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 
-object ShreddedTypeSpec {
-
-  /**
-   * `Gen` instance for a vendor/name-like string
-   */
-  implicit val alphaNum: Gen[String] = for {
-    n <- Gen.chooseNum(1, 5)
-    d <- Gen.oneOf('_', '.', '-')
-    s <- Gen.listOf(Gen.alphaNumChar)
-      .map(_.mkString)
-      .suchThat(_.nonEmpty)
-    (a, b) = s.splitAt(n)
-    r <- Gen.const(s"$a$d$b")
-      .suchThat(x => !x.startsWith(d.toString))
-      .suchThat(x => !x.endsWith(d.toString))
-  } yield r
-
-  implicit val subpath: Gen[String] = for {
-    s <- Gen.listOf(Gen.listOf(Gen.alphaNumChar).map(_.mkString).suchThat(!_.isEmpty))
-    path = s.mkString("/")
-  } yield if (path.isEmpty) "" else path + "/"
-
-  /**
-   * Elements for shredded path
-   */
-  type ShreddedTypeElements = (String, String, String, String, Int, Int, Int)
-
-  /**
-   * Generator of `ShreddedTypeElements`
-   * This generator doesn't guarantee that all elements are valid
-   * (such as `name` without dots), it allows to test parse failures
-   */
-  val shreddedTypeElementsGen = for {
-    subpath <- subpath
-    vendor <- alphaNum
-    name <- alphaNum
-    format <- alphaNum
-    model <- Gen.chooseNum(0, 10)
-    revision <- Gen.chooseNum(0, 10)
-    addition <- Gen.chooseNum(0, 10)
-  } yield (subpath, vendor, name, format, model, revision, addition)
-
-
-}
-
 class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
   Transform correct S3 path $e1
   Fail to transform path without valid vendor $e2
@@ -76,6 +31,8 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
   Transform correct S3 path without root folder $e6
   Modern and legacy transformation always give same result $e7
   Transform full modern shredded key $e8
+  extractedSchemaKey parsed a path for tabular output $e9
+  Transform correct tabular S3 path $e10
   """
 
   import ShreddedTypeSpec._
@@ -83,7 +40,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
   def e1 = {
     val path = "cross-batch-test/shredded-archive/run=2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0/part-00000-00001"
     val expectedPrefix = S3.Folder.coerce("s3://rdb-test/cross-batch-test/shredded-archive/run=2017-04-27-14-39-42")
-    val expected = Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0))
+    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0)))
     val key = S3.Key.coerce(s"s3://rdb-test/$path")
 
     val result = ShreddedType.transformPath(key, Semver(0,10,0))
@@ -108,7 +65,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     val path = "com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0/part-00000-00001"
     val key = S3.Key.coerce(s"s3://rdb-test/$path")
     val result = ShreddedType.transformPath(key, Semver(0,10,0))
-    val expected = Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0))
+    val expected = (false, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0)))
     result must beRight(expected)
   }
 
@@ -116,7 +73,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001"
     val key = S3.Key.coerce(s"s3://rdb-test/shredded-types/$path")
     val result = ShreddedType.transformPath(key, Semver(0,13,0))
-    val expected = Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0))
+    val expected = (false, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
     result must beRight(expected)
   }
 
@@ -125,7 +82,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     val key = S3.Key.coerce(s"s3://rdb-test/$path")
 
     val expectedPrefix = S3.Folder.coerce("s3://rdb-test/run%3D2017-04-27-14-39-42")
-    val expected = Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,11,0))
+    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,11,0)))
 
     val result = ShreddedType.transformPath(key, Semver(0,11,0))
     result must beRight(expected)
@@ -141,8 +98,8 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
         val eitherMatch = legacyResult.void.leftMap(_ => ()) must beEqualTo(modernResult.void.leftMap(_ => ()))
         val valueMatch = (legacyResult, modernResult) match {
           case (l: Right[_, _], m: Right[_, _]) =>
-            val legacy = l.b.copy(shredJob = Semver(0,0,0))   // Erase Shred job versions
-            val modern = m.b.copy(shredJob = Semver(0,0,0))
+            val legacy = l.b._2.copy(shredJob = Semver(0,0,0))   // Erase Shred job versions
+            val modern = m.b._2.copy(shredJob = Semver(0,0,0))
             legacy must beEqualTo(modern)
           case (Left(_), Left(_)) => ok
           case _ => ko
@@ -156,9 +113,71 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001")
 
     val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-    val expected = Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0))
+    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
 
     val result = ShreddedType.transformPath(key, Semver(0,13,0))
     result must beRight(expected)
   }
+
+  def e9 = {
+    val input = "shredded-tsv/vendor=com.snowplow/name=event/format=jsonschema/version=1"
+    ShreddedType.extractSchemaKey(input, Semver(0,18,0)) must beSome(Extracted.Tabular("com.snowplow", "event", "jsonschema", 1))
+  }
+
+  def e10 = {
+    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-tsv/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1/part-00000-00001")
+
+    val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
+    val expected = (true, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
+
+    val result = ShreddedType.transformPath(key, Semver(0,16,0))
+    result must beRight(expected)
+  }
+
 }
+
+object ShreddedTypeSpec {
+
+  /**
+    * `Gen` instance for a vendor/name-like string
+    */
+  implicit val alphaNum: Gen[String] = for {
+    n <- Gen.chooseNum(1, 5)
+    d <- Gen.oneOf('_', '.', '-')
+    s <- Gen.listOf(Gen.alphaNumChar)
+      .map(_.mkString)
+      .suchThat(_.nonEmpty)
+    (a, b) = s.splitAt(n)
+    r <- Gen.const(s"$a$d$b")
+      .suchThat(x => !x.startsWith(d.toString))
+      .suchThat(x => !x.endsWith(d.toString))
+  } yield r
+
+  implicit val subpath: Gen[String] = for {
+    s <- Gen.listOf(Gen.listOf(Gen.alphaNumChar).map(_.mkString).suchThat(!_.isEmpty))
+    path = s.mkString("/")
+  } yield if (path.isEmpty) "" else path + "/"
+
+  /**
+    * Elements for shredded path
+    */
+  type ShreddedTypeElements = (String, String, String, String, Int, Int, Int)
+
+  /**
+    * Generator of `ShreddedTypeElements`
+    * This generator doesn't guarantee that all elements are valid
+    * (such as `name` without dots), it allows to test parse failures
+    */
+  val shreddedTypeElementsGen = for {
+    subpath <- subpath
+    vendor <- alphaNum
+    name <- alphaNum
+    format <- alphaNum
+    model <- Gen.chooseNum(0, 10)
+    revision <- Gen.chooseNum(0, 10)
+    addition <- Gen.chooseNum(0, 10)
+  } yield (subpath, vendor, name, format, model, revision, addition)
+
+
+}
+
