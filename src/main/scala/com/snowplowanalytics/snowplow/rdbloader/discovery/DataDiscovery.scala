@@ -254,6 +254,8 @@ object DataDiscovery {
           ShreddedDataKeyFinal(fullPath, ShreddedType.Json(info, jsonpath))
         }
         discoveryAction.value.map(_.toValidatedNel)
+      case Right(key @ ShreddedDataKeyTabular(_, _)) =>
+        Free.pure(key.toFinal.validNel[DiscoveryFailure])
       case Right(AtomicDataKey(fullPath, size)) =>
         val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
           Free.pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
@@ -278,8 +280,10 @@ object DataDiscovery {
       case Some(_) => AtomicDataKey(blobObject.key, blobObject.size).asRight
       case None =>
         ShreddedType.transformPath(blobObject.key, shredJob) match {
-          case Right(info) =>
+          case Right((false, info)) =>
             ShreddedDataKeyIntermediate(blobObject.key, info).asRight
+          case Right((true, info)) =>
+            ShreddedDataKeyTabular(blobObject.key, info).asRight
           case Left(e) => e.asLeft
         }
     }
@@ -414,6 +418,17 @@ object DataDiscovery {
    * It is intermediate because shredded type doesn't contain its JSONPath yet
    */
   private case class ShreddedDataKeyIntermediate(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate
+
+  /** Shredded key that doesn't need a JSONPath file and can be mapped to final */
+  private case class ShreddedDataKeyTabular(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate {
+    def base: S3.Folder = {
+      val atomicEvents = S3.Key.getParent(key)
+      S3.Folder.getParent(atomicEvents)
+    }
+
+    def toFinal: ShreddedDataKeyFinal =
+      ShreddedDataKeyFinal(key, ShreddedType.Tabular(info))
+  }
 
   /**
    * S3 key, representing intermediate shredded type file
