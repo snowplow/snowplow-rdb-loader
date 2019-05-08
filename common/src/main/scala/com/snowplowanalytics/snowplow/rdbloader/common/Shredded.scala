@@ -12,12 +12,14 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics.snowplow.storage.spark
+package com.snowplowanalytics.snowplow.rdbloader.common
 
-import cats.Id
-
+import cats.{Id, Monad}
+import cats.implicits._
+import cats.effect.Clock
 import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.snowplow.storage.spark.ShredJob.Hierarchy
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
+import com.snowplowanalytics.snowplow.rdbloader.common.Common.Hierarchy
 
 /** ADT, representing possible forms of data in blob storage */
 sealed trait Shredded {
@@ -49,14 +51,14 @@ object Shredded {
     * @param resolver Iglu resolver to request all necessary entities
     * @param hierarchy actual JSON hierarchy from an enriched event
     */
-  def fromHierarchy(jsonOnly: Boolean, resolver: => Resolver[Id])(hierarchy: Hierarchy): Shredded = {
+  def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](jsonOnly: Boolean, resolver: => Resolver[F])(hierarchy: Hierarchy): F[Shredded] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     val format = hierarchy.entity.schema.format
     if (jsonOnly)
-      Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson)
+      Monad[F].pure(Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson))
     else
-      EventUtils.flatten(resolver, hierarchy.entity).value match {
+      EventUtils.flatten(resolver, hierarchy.entity).value.map {
         case Right(columns) =>
           val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
           Tabular(vendor, name, format, hierarchy.entity.schema.version.model.toString, (meta ++ columns).mkString("\t"))

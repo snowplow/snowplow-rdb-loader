@@ -25,9 +25,40 @@ lazy val common = project.in(file("common"))
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
-      Dependencies.schemaDdl
+      Dependencies.schemaDdl,
+      Dependencies.analyticsSdk
     )
   )
+
+lazy val fs2shredder = project.in(file("fs2shredder"))
+  .settings(
+    name := "snowplow-fs2-shredder",
+    version := "0.1.0"
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.assemblySettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      Dependencies.decline,
+      Dependencies.igluClient,
+      Dependencies.igluCoreCirce,
+      Dependencies.scalaTracker,
+      Dependencies.scalaTrackerEmit,
+      Dependencies.catsFree,
+      Dependencies.circeGeneric,
+      Dependencies.circeGenericExtra,
+      Dependencies.circeLiteral,
+      Dependencies.fs2,
+      Dependencies.schemaDdl,
+      Dependencies.analyticsSdk,
+      "co.fs2" %% "fs2-io" % "1.0.4",
+
+      Dependencies.specs2,
+      Dependencies.specs2ScalaCheck,
+      Dependencies.scalaCheck
+    )
+  )
+  .dependsOn(common)
 
 lazy val loader = project.in(file("."))
   .settings(

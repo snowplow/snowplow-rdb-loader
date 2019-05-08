@@ -1,43 +1,28 @@
-/*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
- *
- * This program is licensed to you under the Apache License Version 2.0,
- * and you may not use this file except in compliance with the Apache License Version 2.0.
- * You may obtain a copy of the Apache License Version 2.0 at
- * http://www.apache.org/licenses/LICENSE-2.0.
- *
- * Unless required by applicable law or agreed to in writing,
- * software distributed under the Apache License Version 2.0 is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the Apache License Version 2.0 for the specific language governing permissions and
- * limitations there under.
- */
-package com.snowplowanalytics.snowplow.storage.spark
+package com.snowplowanalytics.snowplow.rdbloader.common
 
-import java.util.UUID
 import java.time.Instant
 import java.time.format.DateTimeParseException
-
-import io.circe.Json
+import java.util.UUID
 
 import cats.Monad
 import cats.data.EitherT
+import cats.effect.Clock
 import cats.syntax.either._
 import cats.syntax.show._
-import cats.effect.Clock
 
-import com.snowplowanalytics.iglu.core._
+import io.circe.Json
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
+import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
+
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
+import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-
-import com.snowplowanalytics.snowplow.rdbloader.common.Common.{ getOrdered, FlatteningError }
+import com.snowplowanalytics.snowplow.rdbloader.common.Common.{FlatteningError, getOrdered}
 
 object EventUtils {
   /**

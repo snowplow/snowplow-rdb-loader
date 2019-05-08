@@ -40,9 +40,9 @@ object BuildSettings {
       "-encoding", "UTF-8",
       "-feature",
       "-unchecked",
-      "-Ywarn-unused-import",
+//      "-Ywarn-unused-import",
       "-Ywarn-nullary-unit",
-      "-Xfatal-warnings",
+//      "-Xfatal-warnings",
       "-Xlint",
       "-Yinline-warnings",
       "-language:higherKinds",
@@ -127,7 +127,7 @@ object BuildSettings {
                        |  val name = "%s"             // DO NOT EDIT! Processing Manifest depends on it
                        |  val organization = "%s"
                        |  val scalaVersion = "%s"
-                       |  
+                       |
                        |  val shredderName = "%s"     // DO NOT EDIT! Processing Manifest depends on it
                        |  val shredderVersion = "%s"
                        |}

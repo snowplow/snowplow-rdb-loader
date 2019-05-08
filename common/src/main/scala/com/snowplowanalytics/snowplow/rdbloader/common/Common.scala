@@ -56,4 +56,38 @@ object Common {
       parsed <- Schema.parse(selfDescribing.schema).toRight(FlatteningError.Parsing(s"Cannot parse ${selfDescribing.self.schemaKey.toSchemaUri} payload as JSON Schema"))
     } yield SelfDescribingSchema(selfDescribing.self, parsed)
 
+
+  import java.util.UUID
+  import java.time.{Instant}
+  import io.circe.literal._
+  import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+
+
+  case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) {
+    def dumpJson: String = json"""
+      {
+        "schema": {
+          "vendor": ${entity.schema.vendor},
+          "name": ${entity.schema.name},
+          "format": ${entity.schema.format},
+          "version": ${entity.schema.version.asString}
+        },
+        "data": ${entity.data},
+        "hierarchy": {
+          "rootId": $eventId,
+          "rootTstamp": ${collectorTstamp.formatted},
+          "refRoot": "events",
+          "refTree": ["events", ${entity.schema.name}],
+          "refParent":"events"
+        }
+      }""".noSpaces
+  }
+
+  def getEntities(event: Event): List[SelfDescribingData[Json]] =
+    event.unstruct_event.data.toList ++
+      event.derived_contexts.data ++
+      event.contexts.data
+
+  def getShreddedEntities(event: Event): List[Hierarchy] =
+    getEntities(event).map(json => Hierarchy(event.event_id, event.collector_tstamp, json))
 }

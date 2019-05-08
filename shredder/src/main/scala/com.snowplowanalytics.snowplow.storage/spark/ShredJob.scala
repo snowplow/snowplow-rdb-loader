@@ -21,12 +21,12 @@ import cats.instances.list._
 import cats.syntax.show._
 import cats.syntax.either._
 import cats.syntax.foldable._
-
 import io.circe.Json
 import io.circe.literal._
-
 import java.util.UUID
 import java.time.Instant
+
+import com.snowplowanalytics.snowplow.rdbloader.common.EventUtils
 
 import scala.util.Try
 import scala.util.control.NonFatal
@@ -50,6 +50,8 @@ import com.snowplowanalytics.manifest.core.ProcessingManifest._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
 import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsManifestConfig }
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
+import com.snowplowanalytics.snowplow.rdbloader.common.Shredded
 
 // Snowplow
 import com.snowplowanalytics.iglu.core.SchemaVer
@@ -69,33 +71,6 @@ object ShredJob extends SparkJob {
 
   val AtomicSchema = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
-  case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) {
-    def dumpJson: String = json"""
-      {
-        "schema": {
-          "vendor": ${entity.schema.vendor},
-          "name": ${entity.schema.name},
-          "format": ${entity.schema.format},
-          "version": ${entity.schema.version.asString}
-        },
-        "data": ${entity.data},
-        "hierarchy": {
-          "rootId": $eventId,
-          "rootTstamp": ${collectorTstamp.formatted},
-          "refRoot": "events",
-          "refTree": ["events", ${entity.schema.name}],
-          "refParent":"events"
-        }
-      }""".noSpaces
-  }
-
-  def getEntities(event: Event): List[SelfDescribingData[Json]] =
-    event.unstruct_event.data.toList ++
-      event.derived_contexts.data ++
-      event.contexts.data
-
-  def getShreddedEntities(event: Event): List[Hierarchy] =
-    getEntities(event).map(json => Hierarchy(event.event_id, event.collector_tstamp, json))
 
   private[spark] val classesToRegister: Array[Class[_]] = Array(
     classOf[Array[String]],
@@ -206,7 +181,7 @@ object ShredJob extends SparkJob {
     } yield event
 
   def validateEntities(client: Client[Id, Json], event: Event): Either[BadRow, Unit] =
-    getEntities(event)
+    Common.getEntities(event)
       .traverse_(entity => client.check(entity).value.leftMap(x => (entity.schema, x)).toValidatedNel)
       .toEither
       .leftMap { errors => BadRow.ValidationError(event, errors.map(BadRow.SchemaError.tupled)) }
@@ -374,7 +349,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
 
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
     val shredded = goodWithSyntheticDupes
-      .flatMap(getShreddedEntities)
+      .flatMap(Common.getShreddedEntities)
       .map(Shredded.fromHierarchy(jsonOnly, singleton.IgluSingleton.get(shredConfig.igluConfig).resolver))
 
     if (jsonOnly) {
