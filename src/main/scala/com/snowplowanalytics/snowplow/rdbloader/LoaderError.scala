@@ -98,13 +98,15 @@ object LoaderError {
     def getMessage = error
   }
 
-  /**
-   * Invalid path for S3 key
-   */
+  /** Invalid path for S3 key */
   case class ShreddedTypeKeyFailure(path: S3.Key) extends DiscoveryFailure {
     def getMessage: String =
       s"Cannot extract contexts or self-describing events from file [$path]. " +
         s"Corrupted shredded/good state or unexpected Snowplow Shred job version"
+  }
+
+  case class IgluError(message: String) extends DiscoveryFailure {
+    def getMessage: String = message
   }
 
   /**

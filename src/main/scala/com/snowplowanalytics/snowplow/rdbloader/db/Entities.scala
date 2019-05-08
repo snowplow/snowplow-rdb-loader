@@ -12,7 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import java.sql.{ Timestamp => SqlTimestamp }
+import java.sql.{Timestamp => SqlTimestamp}
+
+import com.snowplowanalytics.iglu.core.SchemaKey
 
 /** Different entities that are queried from database using `Decoder`s */
 object Entities {
@@ -29,4 +31,8 @@ object Entities {
     def show: String =
       s"ETL timestamp $etlTstamp with $eventCount events and $shreddedCardinality shredded types, commited at $commitTstamp"
   }
+
+  case class Columns(names: List[String]) extends AnyVal
+
+  case class TableState(version: SchemaKey) extends AnyVal
 }

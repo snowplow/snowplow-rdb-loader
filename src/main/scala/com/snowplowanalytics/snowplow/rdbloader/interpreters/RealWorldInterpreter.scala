@@ -27,9 +27,9 @@ import io.circe.Json
 
 import com.amazonaws.services.s3.AmazonS3
 
-import com.snowplowanalytics.iglu.client.Client
-
 import org.joda.time.DateTime
+
+import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
@@ -45,6 +45,7 @@ import utils.Common
 import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.common.Common.getOrdered
 
 /**
  * Interpreter performs all actual side-effecting work,
@@ -52,11 +53,10 @@ import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
  * It contains and handles configuration, connections and mutable state,
  * all real-world interactions, except argument parsing
  */
-class RealWorldInterpreter private[interpreters](
-  cliConfig: CliConfig,
-  amazonS3: AmazonS3,
-  tracker: Option[Tracker[Id]],
-  resolver: Client[Id, Json]) extends Interpreter {
+class RealWorldInterpreter private[interpreters](cliConfig: CliConfig,
+                                                 amazonS3: AmazonS3,
+                                                 tracker: Option[Tracker[Id]],
+                                                 igluClient: Client[Id, Json]) extends Interpreter {
 
   private val interpreter = this
 
@@ -223,6 +223,12 @@ class RealWorldInterpreter private[interpreters](
 
         case GetEc2Property(name) =>
           SshInterpreter.getKey(name)
+
+        case GetSchemas(vendor, name, model) =>
+          getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
+            val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
+            LoaderError.DiscoveryError(LoaderError.IgluError(message))
+          }.value
       }
     }
   }

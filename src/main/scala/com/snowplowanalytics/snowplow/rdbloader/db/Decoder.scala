@@ -17,6 +17,8 @@ import java.sql.{ResultSet, SQLException}
 
 import cats.implicits._
 
+import com.snowplowanalytics.iglu.core.SchemaKey
+
 import Decoder._
 import Entities._
 
@@ -94,4 +96,60 @@ object Decoder {
         }
       }
     }
+
+  implicit val booleanDecoder: Decoder[Boolean] =
+    new Decoder[Boolean] {
+      final def decode(resultSet: ResultSet): Either[JdbcDecodeError, Boolean] = {
+        var buffer: Boolean = false
+        try {
+          if (resultSet.next()) {
+            val bool = resultSet.getBoolean(1)
+            buffer = bool
+            buffer.asRight[JdbcDecodeError]
+          } else false.asRight[JdbcDecodeError]
+        } catch {
+          case s: SQLException =>
+            JdbcDecodeError(s.getMessage).asLeft[Boolean]
+        } finally {
+          resultSet.close()
+        }
+      }
+    }
+
+  implicit val columnsDecoder: Decoder[Columns] =
+    new Decoder[Columns] {
+      final def decode(resultSet: ResultSet): Either[JdbcDecodeError, Columns] = {
+        val buffer = collection.mutable.ListBuffer.empty[String]
+        try {
+          while (resultSet.next()) {
+            val col = resultSet.getString("column")
+            buffer.append(col)
+          }
+          Columns(buffer.toList).asRight
+        } catch {
+          case s: SQLException =>
+            JdbcDecodeError(s.getMessage).asLeft[Columns]
+        } finally {
+          resultSet.close()
+        }
+      }
+    }
+
+  implicit val tableStateDecoder: Decoder[TableState] =
+    new Decoder[TableState] {
+      final def decode(resultSet: ResultSet): Either[JdbcDecodeError, TableState] = {
+        try {
+          if (resultSet.next()) {
+            val col = SchemaKey.fromUri(resultSet.getString(1))
+            col.map(x => TableState(x)).leftMap(e => JdbcDecodeError(s"Table comment is not valid SchemaKey, ${e.code}"))
+          } else JdbcDecodeError("Table description is not available").asLeft
+        } catch {
+          case s: SQLException =>
+            JdbcDecodeError(s.getMessage).asLeft[TableState]
+        } finally {
+          resultSet.close()
+        }
+      }
+    }
+
 }

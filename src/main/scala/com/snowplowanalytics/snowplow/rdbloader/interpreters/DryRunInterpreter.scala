@@ -42,6 +42,7 @@ import loaders.Common.SqlString
 import discovery.ManifestDiscovery
 import implementations.{S3Interpreter, TrackerInterpreter, ManifestInterpreter}
 import implementations.ManifestInterpreter.ManifestE
+import com.snowplowanalytics.snowplow.rdbloader.common.Common.getOrdered
 
 
 /**
@@ -50,11 +51,10 @@ import implementations.ManifestInterpreter.ManifestE
   * It contains and handles configuration, connections and mutable state,
   * all real-world interactions, except argument parsing
   */
-class DryRunInterpreter private[interpreters](
-    cliConfig: CliConfig,
-    amazonS3: AmazonS3,
-    tracker: Option[Tracker[Id]],
-    resolver: Client[Id, Json]) extends Interpreter {
+class DryRunInterpreter private[interpreters](cliConfig: CliConfig,
+                                              amazonS3: AmazonS3,
+                                              tracker: Option[Tracker[Id]],
+                                              igluClient: Client[Id, Json]) extends Interpreter {
 
   private val logQueries = ListBuffer.empty[SqlString]
   private val logCopyFiles = ListBuffer.empty[Path]
@@ -167,6 +167,11 @@ class DryRunInterpreter private[interpreters](
           logMessages.append(s"Fetched imaginary EC2 [$name] property")
           Right(name + " key")
 
+        case GetSchemas(vendor, name, model) =>
+          getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
+            val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
+            LoaderError.DiscoveryError(LoaderError.IgluError(message))
+          }.value
       }
     }
   }
