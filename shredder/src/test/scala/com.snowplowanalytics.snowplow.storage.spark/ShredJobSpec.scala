@@ -83,7 +83,12 @@ object ShredJobSpec {
   def readPartFile(root: File, relativePath: String): Option[(List[String], String)] = {
     val files = listFilesWithExclusions(new File(root, relativePath), List.empty)
       .filter(s => s.contains("part-"))
-    def read(f: String): List[String] = Source.fromFile(new File(f)).getLines.toList
+    def read(f: String): List[String] = {
+      val source = Source.fromFile(new File(f))
+      val lines = source.getLines.toList
+      source.close()
+      lines
+    }
     files.foldLeft[Option[(List[String], String)]](None) { (acc, f) =>
       val accValue = acc.getOrElse((List.empty, ""))
       val contents = accValue._1 ++ read(f)
@@ -322,7 +327,8 @@ trait ShredJobSpec extends SparkSpec {
       "--input-folder", input.toString(),
       "--output-folder", dirs.output.toString(),
       "--bad-folder", dirs.badRows.toString(),
-      "--iglu-config", igluConfigWithLocal
+      "--iglu-config", igluConfigWithLocal,
+      "--target", storageConfig
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -343,6 +349,34 @@ trait ShredJobSpec extends SparkSpec {
     deleteRecursively(input)
   }
 
+  val storageConfig = {
+    val encoder = new Base64(true)
+    new String(encoder.encode("""{
+        "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/4-0-0",
+        "data": {
+            "name": "AWS Redshift enriched events storage",
+            "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
+            "host": "192.168.1.12",
+            "database": "ADD HERE",
+            "port": 5439,
+            "jdbc": {},
+            "processingManifest": null,
+            "sshTunnel": null,
+            "username": "ADD HERE",
+            "password": {
+                "ec2ParameterStore": {
+                    "parameterName": "snowplow.rdbloader.redshift.password"
+                }
+            },
+            "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+            "schema": "atomic",
+            "maxError": 1,
+            "compRows": 20000,
+            "blacklistTabular": [],
+            "purpose": "ENRICHED_EVENTS"
+        }
+    } """.stripMargin.replaceAll("[\n\r]","").getBytes()))
+  }
 
   override def afterAll(): Unit = {
     super.afterAll()

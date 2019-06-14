@@ -34,15 +34,16 @@ import com.snowplowanalytics.snowplow.scalatracker.Tracker
 import com.snowplowanalytics.manifest.core.{ManifestError, ProcessingManifest, LockHandler}
 
 // This project
-import config.CliConfig
+import common._
+
 import LoaderA._
+import config.CliConfig
 import LoaderError.LoaderLocalError
 import Interpreter.runIO
 import loaders.Common.SqlString
 import discovery.{ ManifestDiscovery, DiscoveryFailure }
 import implementations.{S3Interpreter, TrackerInterpreter, ManifestInterpreter}
 import implementations.ManifestInterpreter.ManifestE
-import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.getOrdered
 
 
 /**
@@ -168,7 +169,7 @@ class DryRunInterpreter private[interpreters](cliConfig: CliConfig,
           Right(name + " key")
 
         case GetSchemas(vendor, name, model) =>
-          getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
+          Flattening.getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
             val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
             LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
           }.value
