@@ -19,17 +19,19 @@ import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.core.SchemaKey
+
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.storage.spark.ShredJob.Hierarchy
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.FlatteningError
 
 
-sealed trait BadRow {
+sealed trait BadRow extends Product with Serializable {
   def toCompactJson: String
 }
 
 object BadRow {
 
-
-  case class ShreddingError(original: String, errors: NonEmptyList[String]) extends BadRow {
+  final case class ShreddingError(original: String, errors: NonEmptyList[String]) extends BadRow {
     def toCompactJson: String =
       Json.obj(
         "original" := original.asJson,
@@ -37,7 +39,7 @@ object BadRow {
       ).noSpaces
   }
 
-  case class ValidationError(original: Event, errors: NonEmptyList[SchemaError]) extends BadRow {
+  final case class ValidationError(original: Event, errors: NonEmptyList[SchemaError]) extends BadRow {
     def toCompactJson: String =
       Json.obj(
         "original" := original.asJson,
@@ -45,14 +47,21 @@ object BadRow {
       ).noSpaces
   }
 
-  case class DeduplicationError(original: Event, error: String) extends BadRow {
+  final case class DeduplicationError(original: Event, error: String) extends BadRow {
     def toCompactJson: String = Json.obj(
       "original" := original.asJson,
       "error" := error.asJson
     ).noSpaces
   }
 
-  case class SchemaError(schema: SchemaKey, error: ClientError)
+  case class EntityShreddingError(original: Hierarchy, error: FlatteningError) extends BadRow {
+    override def toCompactJson: String = Json.obj(
+      "hierarchy" := original.asJson,
+      "error" := error.asJson
+    ).noSpaces
+  }
+
+  final case class SchemaError(schema: SchemaKey, error: ClientError)
 
   implicit val schemaErrorCirceJsonEncoder: Encoder[SchemaError] =
     Encoder.instance { case SchemaError(schema, error) =>

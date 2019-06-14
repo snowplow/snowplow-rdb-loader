@@ -26,7 +26,8 @@ lazy val common = project.in(file("common"))
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
-      Dependencies.schemaDdl
+      Dependencies.schemaDdl,
+      Dependencies.specs2
     )
   )
 

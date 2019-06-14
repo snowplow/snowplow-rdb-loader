@@ -20,12 +20,12 @@ import cats.Id
 import cats.data._
 import cats.implicits._
 
-import com.monovore.decline.{ Opts, Argument, Command }
-
+import com.monovore.decline.{Argument, Command, Opts}
 import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, StringEnum }
 
 import io.circe.Json
-import io.circe.parser.{ parse => parseJson }
+import io.circe.parser.{parse => parseJson}
 
 // This project
 import LoaderError._
@@ -115,9 +115,6 @@ object CliConfig {
     folder: Option[String],
     dryRun: Boolean)
 
-  // Always invalid initial parsing configuration
-  private[this] val rawCliConfig = RawConfig("", "", "", Nil, Nil, None, None, false)
-
   type Parsed[A] = ValidatedNel[ConfigError, A]
 
   /** Wrapper for any Base64-encoded entity */
@@ -138,7 +135,7 @@ object CliConfig {
   implicit def includeStepsArgumentInstance: Argument[Set[Step.IncludeStep]] =
     new Argument[Set[Step.IncludeStep]] {
       def read(string: String): ValidatedNel[String, Set[Step.IncludeStep]] =
-        string.split(",").toList.traverse(utils.Common.fromString[Step.IncludeStep](_).toValidatedNel).map(_.toSet)
+        string.split(",").toList.traverse(StringEnum.fromString[Step.IncludeStep](_).toValidatedNel).map(_.toSet)
 
       def defaultMetavar: String = "steps"
     }
@@ -146,7 +143,7 @@ object CliConfig {
   implicit def skipStepsArgumentInstance: Argument[Set[Step.SkipStep]] =
     new Argument[Set[Step.SkipStep]] {
       def read(string: String): ValidatedNel[String, Set[Step.SkipStep]] =
-        string.split(",").toList.traverse(utils.Common.fromString[Step.SkipStep](_).toValidatedNel).map(_.toSet)
+        string.split(",").toList.traverse(StringEnum.fromString[Step.SkipStep](_).toValidatedNel).map(_.toSet)
 
       def defaultMetavar: String = "steps"
     }
@@ -200,5 +197,5 @@ object CliConfig {
    *         or successfully decoded storage target
    */
   private def loadTarget(resolver: Client[Id, Json], targetConfigB64: String) =
-    base64decode(targetConfigB64).flatMap(StorageTarget.parseTarget(resolver, _))
+    base64decode(targetConfigB64).flatMap(StorageTarget.parseTarget(resolver, _).leftMap(e => LoaderError.ConfigError(e.message)))
 }

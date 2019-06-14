@@ -31,6 +31,7 @@ import com.snowplowanalytics.manifest.core.{Application, ManifestError}
 import com.snowplowanalytics.manifest.dynamodb.DynamoDbManifest
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
+import com.snowplowanalytics.snowplow.rdbloader.common._
 
 import scala.concurrent.duration.TimeUnit
 

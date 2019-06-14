@@ -19,18 +19,14 @@ import java.sql.{Connection, SQLException}
 import java.util.Properties
 
 import scala.util.control.NonFatal
-
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
-
 import cats.implicits._
-
 import org.postgresql.copy.CopyManager
 import org.postgresql.jdbc.PgConnection
 import org.postgresql.{Driver => PgDriver}
-
 import LoaderError.StorageTargetError
+import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget
 import db.Decoder
-import config.StorageTarget
 import loaders.Common.SqlString
 
 object JdbcInterpreter {
@@ -122,7 +118,7 @@ object JdbcInterpreter {
 
           for {
             _ <- r.jdbc.validation match {
-              case Left(error) => error.asLeft
+              case Left(error) => LoaderError.ConfigError(error.message).asLeft
               case Right(propertyUpdaters) =>
                 propertyUpdaters.foreach(f => f(props)).asRight
             }
