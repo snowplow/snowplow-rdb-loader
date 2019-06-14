@@ -15,8 +15,12 @@
 package com.snowplowanalytics.snowplow.storage.spark
 
 import cats.Id
+import cats.data.EitherT
+import cats.syntax.either._
 
 import com.snowplowanalytics.iglu.client.Resolver
+
+import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.storage.spark.ShredJob.Hierarchy
 
 /** ADT, representing possible forms of data in blob storage */
@@ -34,10 +38,10 @@ sealed trait Shredded {
 
 object Shredded {
 
-  /** Data will be present as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
+  /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
   case class Json(vendor: String, name: String, format: String, version: String, data: String) extends Shredded
 
-  /** Data will be present as TSV, with RDB Loader loading it directly */
+  /** Data will be represented as TSV, with RDB Loader loading it directly */
   case class Tabular(vendor: String, name: String, format: String, version: String, data: String) extends Shredded
 
   /**
@@ -45,23 +49,20 @@ object Shredded {
     * specifying how it should look like in destination: JSON or TSV
     * If flattening algorithm failed at any point - it will fallback to the JSON format
     *
-    * @param jsonOnly output can only be JSON. All downstream components should agree on that
+    * @param tabular whether data should be transformed into TSV format
     * @param resolver Iglu resolver to request all necessary entities
     * @param hierarchy actual JSON hierarchy from an enriched event
     */
-  def fromHierarchy(jsonOnly: Boolean, resolver: => Resolver[Id])(hierarchy: Hierarchy): Shredded = {
+  def fromHierarchy(tabular: Boolean, resolver: => Resolver[Id])(hierarchy: Hierarchy): Either[Flattening.FlatteningError, Shredded] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     val format = hierarchy.entity.schema.format
-    if (jsonOnly)
-      Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson)
-    else
-      EventUtils.flatten(resolver, hierarchy.entity).value match {
-        case Right(columns) =>
-          val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
-          Tabular(vendor, name, format, hierarchy.entity.schema.version.model.toString, (meta ++ columns).mkString("\t"))
-        case Left(_) =>
-          Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson)
-      }
+    val result: EitherT[Id, Flattening.FlatteningError, Shredded] =
+      if (tabular) EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
+        val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
+        Tabular(vendor, name, format, hierarchy.entity.schema.version.model.toString, (meta ++ columns).mkString("\t"))
+      } else EitherT.pure[Id, Flattening.FlatteningError](Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson))
+
+    result.value
   }
 }

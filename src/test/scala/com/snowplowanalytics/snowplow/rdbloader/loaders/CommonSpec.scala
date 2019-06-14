@@ -17,9 +17,11 @@ import cats._
 import org.specs2.Specification
 
 // This project
+import common.StorageTarget
+
 import S3.Folder
 import discovery.DataDiscovery
-import config.{ Step, StorageTarget }
+import config.Step
 
 class CommonSpec extends Specification { def is = s2"""
   Check that SSH tunnel gets open and closed if necessary $e1
@@ -54,6 +56,7 @@ class CommonSpec extends Specification { def is = s2"""
       100,
       1000L,
       Some(TunnelInput),
+      None,
       None)
 
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {

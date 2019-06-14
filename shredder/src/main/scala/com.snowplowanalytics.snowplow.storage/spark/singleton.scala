@@ -45,7 +45,7 @@ object singleton {
         synchronized {
           if (instance == null) {
             instance = getIgluClient(igluConfig)
-              .valueOr(e => throw FatalEtlError(e.toString))
+              .valueOr(e => throw ShredJob.FatalEtlError(e.toString))
           }
         }
       }
@@ -83,7 +83,7 @@ object singleton {
                   .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", region))
                   .build()
                 Some(new DynamoDbManifest(client, table))
-              case Some(config) => EventsManifest.initStorage(config).fold(e => throw FatalEtlError(e.toString), _.some)
+              case Some(config) => EventsManifest.initStorage(config).fold(e => throw ShredJob.FatalEtlError(e.toString), _.some)
               case None => None
             }
           }

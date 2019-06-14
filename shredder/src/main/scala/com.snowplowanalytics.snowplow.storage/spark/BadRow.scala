@@ -21,10 +21,12 @@ import io.circe.literal._
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.core.{ SchemaKey, SchemaVer, SelfDescribingData }
 import com.snowplowanalytics.iglu.core.circe.implicits._
+
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.FlatteningError
 
 
-sealed trait BadRow {
+sealed trait BadRow extends Product with Serializable {
   def toData: SelfDescribingData[Json]
 
   def toCompactJson: String =
@@ -37,22 +39,29 @@ object BadRow {
   val IgluErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "loader_iglu_error", "jsonschema", SchemaVer.Full(1, 0, 0))
   val RuntimeErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "loader_runtime_error", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  case class ShreddingError(payload: String, errors: NonEmptyList[String]) extends BadRow {
+  val ShreddingErrorSchema = SchemaKey("com.snowplowanalytics.snowplow.badrows", "shredding_error", "jsonschema", SchemaVer.Full(1, 0, 0))
+
+  final case class ShreddingError(payload: String, errors: NonEmptyList[String]) extends BadRow {
     def toData: SelfDescribingData[Json] =
       SelfDescribingData[Json](ParsingErrorSchema, json"""{"payload": $payload, "errors": $errors}""")
   }
 
-  case class ValidationError(original: Event, errors: NonEmptyList[SchemaError]) extends BadRow {
+  final case class ValidationError(original: Event, errors: NonEmptyList[SchemaError]) extends BadRow {
     def toData: SelfDescribingData[Json] =
       SelfDescribingData[Json](IgluErrorSchema, json"""{"event": $original, "errors": $errors}""")
   }
 
-  case class RuntimeError(original: Event, error: String) extends BadRow {
+  final case class RuntimeError(original: Event, error: String) extends BadRow {
     def toData: SelfDescribingData[Json] =
       SelfDescribingData[Json](RuntimeErrorSchema, json"""{"event": $original, "error": $error}""")
   }
 
-  case class SchemaError(schema: SchemaKey, error: ClientError)
+  final case class EntityShreddingError(original: Event, errors: NonEmptyList[FlatteningError]) extends BadRow { // TODO: won't compile - add schema
+    def toData: SelfDescribingData[Json] =
+      SelfDescribingData[Json](ShreddingErrorSchema, json"""{"event": $original, "errors": $errors}""")
+  }
+
+  final case class SchemaError(schema: SchemaKey, error: ClientError)
 
   implicit val schemaErrorCirceJsonEncoder: Encoder[SchemaError] =
     Encoder.instance { case SchemaError(schema, error) =>
