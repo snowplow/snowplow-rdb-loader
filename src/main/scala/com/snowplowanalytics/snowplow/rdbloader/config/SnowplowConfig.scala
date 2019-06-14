@@ -22,10 +22,11 @@ import io.circe.generic.extras.decoding.ConfiguredDecoder
 import io.circe.yaml.parser
 
 // This project
+import common.StringEnum
+
 import S3._
 import Semver._
 import LoaderError._
-import utils.Common._
 
 /**
  * FullDiscovery Snowplow `config.yml` runtime representation
@@ -123,10 +124,10 @@ object SnowplowConfig {
       Configuration.default.withSnakeCaseMemberNames
 
     implicit val decodeTrackerMethod: Decoder[TrackerMethod] =
-      decodeStringEnum[TrackerMethod]
+      StringEnum.decodeStringEnum[TrackerMethod]
 
     implicit val decodeLoggingLevel: Decoder[LoggingLevel] =
-      decodeStringEnum[LoggingLevel]
+      StringEnum.decodeStringEnum[LoggingLevel]
 
     implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
       ConfiguredDecoder.decodeCaseClass
@@ -135,7 +136,7 @@ object SnowplowConfig {
       ConfiguredDecoder.decodeCaseClass
 
     implicit val decodeOutputCompression: Decoder[OutputCompression] =
-      decodeStringEnum[OutputCompression]
+      StringEnum.decodeStringEnum[OutputCompression]
 
     implicit val enrichDecoder: Decoder[Enrich] =
       ConfiguredDecoder.decodeCaseClass

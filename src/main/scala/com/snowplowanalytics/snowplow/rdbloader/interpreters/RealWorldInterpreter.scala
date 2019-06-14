@@ -36,6 +36,7 @@ import com.snowplowanalytics.snowplow.scalatracker.Tracker
 import com.snowplowanalytics.manifest.core.ManifestError
 
 // This project
+import common._
 import LoaderA._
 import LoaderError.LoaderLocalError
 import Interpreter.runIO
@@ -45,7 +46,6 @@ import utils.Common
 import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.getOrdered
 
 /**
  * Interpreter performs all actual side-effecting work,
@@ -228,7 +228,7 @@ class RealWorldInterpreter private[interpreters](cliConfig: CliConfig,
           SshInterpreter.getKey(name)
 
         case GetSchemas(vendor, name, model) =>
-          getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
+          Flattening.getOrdered(igluClient.resolver, vendor, name, model).leftMap { resolutionError =>
             val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
             LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
           }.value
