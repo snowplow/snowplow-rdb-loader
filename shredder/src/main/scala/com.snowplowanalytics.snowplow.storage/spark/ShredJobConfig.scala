@@ -30,6 +30,7 @@ import org.apache.commons.codec.DecoderException
 import org.apache.commons.codec.binary.Base64
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
+import com.snowplowanalytics.snowplow.rdbloader.common._
 
 /**
  * Case class representing the configuration for the shred job.
@@ -37,7 +38,6 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
  * @param outFolder Output folder where the shredded events will be stored
  * @param badFolder Output folder where the malformed events will be stored
  * @param igluConfig JSON representing the Iglu configuration
- * @param jsonOnly don't try to produce TSV output
  */
 case class ShredJobConfig(inFolder: String,
                           outFolder: String,
@@ -46,7 +46,7 @@ case class ShredJobConfig(inFolder: String,
                           duplicateStorageConfig: Option[Json],
                           dynamodbManifestTable: Option[String],
                           itemId: Option[String],
-                          jsonOnly: Boolean) {
+                          storage: Option[StorageTarget]) {
 
   /** Get both manifest table and item id to process */
   def getManifestData: Option[(String, String)] =
@@ -94,15 +94,24 @@ object ShredJobConfig {
   val itemId = Opts.option[String]("item-id",
     "Unique folder identificator for processing manifest (e.g. S3 URL)",
     metavar = "<id>").orNone
-  val jsonOnly = Opts.flag("json-only", "Do not produce tabular output").orFalse
+  val storageTarget = Opts.option[String]("target",
+    "base64-encoded string with single storage target configuration JSON", "t", "target.json")
+    .mapValidated(Base64Json.decode).orNone
 
-  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, jsonOnly).mapN {
-    (input, output, bad, iglu, dupeStorage, manifest, itemId, jsonOnly) => ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, jsonOnly)
+  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, storageTarget).mapN {
+    (input, output, bad, iglu, dupeStorage, manifest, itemId, target) => (ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, None), target)
   }.validate("--item-id and --processing-manifest-table must be either both provided or both absent") {
-    case ShredJobConfig(_, _, _, _, _, manifest, i, _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
+    case (ShredJobConfig(_, _, _, _, _, manifest, i, _), _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
     case _ => false
+  }.mapValidated {
+    case (config, Some(target)) =>
+      val client = singleton.IgluSingleton.get(config.igluConfig)
+      StorageTarget.parseTarget(client, target.noSpaces)
+        .leftMap(_.message)
+        .map(storage => config.copy(storage = Some(storage)))
+        .toValidatedNel
+    case (config, None) => config.validNel
   }
-
 
   val command = Command(s"${ProjectMetadata.shredderName}-${ProjectMetadata.shredderVersion}",
     "Apache Spark job to prepare Snowplow enriched data to being loaded into Amazon Redshift warehouse")(shredJobConfig)

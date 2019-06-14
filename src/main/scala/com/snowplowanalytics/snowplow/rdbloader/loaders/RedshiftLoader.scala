@@ -16,11 +16,13 @@ package loaders
 import cats.implicits._
 
 // This project
+import common.StorageTarget
+
 import LoaderA._
 import RedshiftLoadStatements._
 import Common.{ SqlString, EventsTable, checkLoadManifest, AtomicEvents, TransitTable }
 import discovery.DataDiscovery
-import config.{ SnowplowConfig, Step, StorageTarget }
+import config.{ SnowplowConfig, Step }
 
 
 /**
