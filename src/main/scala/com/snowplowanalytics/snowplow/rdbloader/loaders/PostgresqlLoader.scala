@@ -15,10 +15,9 @@ package loaders
 
 import cats.implicits._
 
-// This project
+import common.StorageTarget.PostgresqlConfig
 import LoaderA._
 import config.Step
-import config.StorageTarget.PostgresqlConfig
 import discovery.DataDiscovery
 
 object PostgresqlLoader {
@@ -32,7 +31,8 @@ object PostgresqlLoader {
    * @param discovery discovered data to load
    */
   def run(target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]): LoaderAction[Unit] = {
-    val statements = PostgresqlLoadStatements.build(target.eventsTable, steps)
+    val eventsTable = Common.getEventsTable(target)
+    val statements = PostgresqlLoadStatements.build(eventsTable, steps)
 
     for {
       _ <- discovery.traverse(loadFolder(statements))

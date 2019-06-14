@@ -13,8 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package config
 
-// This project
-import utils.Common._
+import common.StringEnum
 
 /**
  * Step is part of loading process or result SQL-statement
@@ -52,7 +51,7 @@ object Step {
   case object Load extends DefaultStep
 
   /** Steps included into app by default */
-  val defaultSteps: Set[Step] = sealedDescendants[SkipStep] ++ Set.empty[Step]
+  val defaultSteps: Set[Step] = StringEnum.sealedDescendants[SkipStep] ++ Set.empty[Step]
 
   /**
    * Remove explicitly disabled steps and add optional steps

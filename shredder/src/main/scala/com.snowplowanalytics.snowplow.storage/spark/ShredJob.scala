@@ -18,11 +18,13 @@ package storage.spark
 
 import cats.Id
 import cats.instances.list._
+import cats.syntax.traverse._
 import cats.syntax.show._
 import cats.syntax.either._
 import cats.syntax.foldable._
 
-import io.circe.Json
+import io.circe.{ Json, Encoder }
+import io.circe.syntax._
 import io.circe.literal._
 
 import java.util.UUID
@@ -56,9 +58,7 @@ import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
 import com.snowplowanalytics.iglu.client.{ Client, ClientError }
 import DynamodbManifest.ShredderManifest
-
-case class FatalEtlError(msg: String) extends Error(msg)
-case class UnexpectedEtlException(msg: String) extends Error(msg)
+import rdbloader.common._
 
 /** Helpers method for the shred job */
 object ShredJob extends SparkJob {
@@ -69,39 +69,53 @@ object ShredJob extends SparkJob {
 
   val AtomicSchema = SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
-  case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) {
-    def dumpJson: String = json"""
-      {
-        "schema": {
-          "vendor": ${entity.schema.vendor},
-          "name": ${entity.schema.name},
-          "format": ${entity.schema.format},
-          "version": ${entity.schema.version.asString}
-        },
-        "data": ${entity.data},
-        "hierarchy": {
-          "rootId": $eventId,
-          "rootTstamp": ${collectorTstamp.formatted},
-          "refRoot": "events",
-          "refTree": ["events", ${entity.schema.name}],
-          "refParent":"events"
-        }
-      }""".noSpaces
+  /** Final stage of event. After this, it can be shredded into different folders */
+  case class FinalRow(atomic: Row, shredded: List[Shredded])
+
+  case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) { self =>
+    def dumpJson: String = self.asJson.noSpaces
   }
+
+  object Hierarchy {
+    implicit val hierarchyCirceEncoder: Encoder[Hierarchy] =
+      Encoder.instance { h =>
+        json"""{
+          "schema": {
+            "vendor": ${h.entity.schema.vendor},
+            "name": ${h.entity.schema.name},
+            "format": ${h.entity.schema.format},
+            "version": ${h.entity.schema.version.asString}
+          },
+          "data": ${h.entity.data},
+          "hierarchy": {
+            "rootId": ${h.eventId},
+            "rootTstamp": ${h.collectorTstamp.formatted},
+            "refRoot": "events",
+            "refTree": ["events", ${h.entity.schema.name}],
+            "refParent":"events"
+          }
+        }"""
+      }
+
+    def fromEvent(event: Event): List[Hierarchy] =
+      getEntities(event).map(json => Hierarchy(event.event_id, event.collector_tstamp, json))
+  }
+
+  case class FatalEtlError(msg: String) extends Error(msg)
+  case class UnexpectedEtlException(msg: String) extends Error(msg)
 
   def getEntities(event: Event): List[SelfDescribingData[Json]] =
     event.unstruct_event.data.toList ++
       event.derived_contexts.data ++
       event.contexts.data
 
-  def getShreddedEntities(event: Event): List[Hierarchy] =
-    getEntities(event).map(json => Hierarchy(event.event_id, event.collector_tstamp, json))
-
   private[spark] val classesToRegister: Array[Class[_]] = Array(
     classOf[Array[String]],
     classOf[SchemaKey],
     classOf[SelfDescribingData[_]],
     classOf[Event],
+    classOf[Hierarchy],
+    classOf[FinalRow],
     classOf[Instant],
     classOf[com.snowplowanalytics.iglu.core.SchemaVer$Full],
     classOf[io.circe.JsonObject$LinkedHashMapJsonObject],
@@ -149,7 +163,7 @@ object ShredJob extends SparkJob {
         ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
     }
 
-    val atomicLengths = singleton.ResolverSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema) match {   // TODO: retry
+    val atomicLengths = singleton.IgluSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema) match {   // TODO: retry
       case Right(schema) =>
         EventUtils.getAtomicLengths(schema).fold(e => throw new RuntimeException(e), identity)
       case Left(error) =>
@@ -282,6 +296,13 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     if (shredConfig.dynamodbManifestTable.isEmpty) ()
     else shreddedTypes.add(inventory.map(_.toSchemaUri))
 
+  /** Check if `shredType` should be transformed into TSV */
+  def isTabular(shredType: SchemaKey): Boolean =
+    shredConfig.storage.flatMap(_.blacklistTabular) match {
+      case Some(blacklist) => !blacklist.exists(criterion => criterion.matches(shredType))
+      case None => false
+    }
+
   /**
    * Runs the shred job by:
    *  - shredding the Snowplow enriched events
@@ -294,6 +315,23 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
           jsonOnly: Boolean): Unit = {
     import ShredJob._
 
+    def shred(event: Event): Either[BadRow, FinalRow] =
+      Hierarchy.fromEvent(event).traverse { hierarchy =>
+        val tabular = isTabular(hierarchy.entity.schema)
+        Shredded.fromHierarchy(tabular, singleton.IgluSingleton.get(shredConfig.igluConfig).resolver)(hierarchy).toValidatedNel
+      }.leftMap(errors => BadRow.EntityShreddingError(event, errors)).toEither.map { shredded =>
+        val row = Row(EventUtils.alterEnrichedEvent(event, atomicLengths))
+        FinalRow(row, shredded)
+      }
+
+    def writeShredded(data: RDD[(String, String, String, String, String)], json: Boolean): Unit =
+      data
+        .toDF("vendor", "name", "format", "version", "data")
+        .write
+        .partitionBy("vendor", "name", "format", "version")
+        .mode(SaveMode.Append)
+        .text(getShreddedTypesOutputPath(shredConfig.outFolder, json))
+
     val input = sc.textFile(shredConfig.inFolder)
 
     // Enriched TSV lines along with their shredded components
@@ -303,9 +341,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .cache()
 
     // Handling of malformed rows; drop good, turn malformed into `BadRow`
-    val bad = common
-      .flatMap { shredded => shredded.swap.toOption }
-      .map { badRow => Row(badRow.toCompactJson) }
+    val bad = common.flatMap { shredded => shredded.swap.toOption.map(bad => Row(bad.toCompactJson)) }
 
     // Handling of properly-formed rows; drop bad, turn proper events to `Event`
     // Pefrorm in-batch and cross-batch natural deduplications and writes found types to accumulator
@@ -348,25 +384,31 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .cache()
 
     val uniqueGood = identifiedSyntheticDupes.flatMap {
-      case (_, (shredded, None)) => Some(shredded)
+      case (_, (event, None)) => Some(event)
       case _ => None
     }.setName("uniqueGood")
 
     // Avoid recomputing UUID at all costs in order to not create orphan shredded entities
     val syntheticDupedGood = identifiedSyntheticDupes.flatMap {
-      case (_, (shredded, Some(_))) =>
+      case (_, (event, Some(_))) =>
         val newEventId = UUID.randomUUID()
-        val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${shredded.event_id}}""")
-        val updatedContexts = newContext :: shredded.derived_contexts.data
-        Some(shredded.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts)))
+        val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${event.event_id}}""")
+        val updatedContexts = newContext :: event.derived_contexts.data
+        Some(event.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts)))
       case _ =>
         None
     }.persist(StorageLevel.MEMORY_AND_DISK_SER).setName("syntheticDupedGood")
 
-    val goodWithSyntheticDupes = (uniqueGood ++ syntheticDupedGood).cache().setName("goodWithSyntheticDupes")
+    val withSyntheticDupes = (uniqueGood ++ syntheticDupedGood)
+      .map(shred).cache().setName("withSyntheticDupes")
+
+    val goodWithSyntheticDupes = withSyntheticDupes.flatMap(_.toOption)
 
     // Ready the events for database load
-    val events = goodWithSyntheticDupes.map(e => Row(EventUtils.alterEnrichedEvent(e, atomicLengths)))
+    val events = goodWithSyntheticDupes.map(_.atomic)
+
+    // Update the shredded JSONs with the new deduplicated event IDs and stringify
+    val shredded = goodWithSyntheticDupes.flatMap(_.shredded)
 
     // Write as strings to `atomic-events` directory
     spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
@@ -374,34 +416,19 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .mode(SaveMode.Overwrite)
       .text(getAlteredEnrichedOutputPath(shredConfig.outFolder))
 
-    // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shredded = goodWithSyntheticDupes
-      .flatMap(getShreddedEntities)
-      .map(Shredded.fromHierarchy(jsonOnly, singleton.IgluSingleton.get(shredConfig.igluConfig).resolver))
-
-    if (jsonOnly) {
-      val jsons = shredded.map(s => s.json.getOrElse(throw FatalEtlError(s"Inconsistent configuration. Can be shredded only into JSON. Got $s")))
-      writeShredded(jsons, true)
-    } else {    // Partition TSV and JSON
-      writeShredded(shredded.flatMap(_.json), true)
-      writeShredded(shredded.flatMap(_.tabular), false)
-    }
-
-    def writeShredded(data: RDD[(String, String, String, String, String)], json: Boolean): Unit =
-      data
-        .toDF("vendor", "name", "format", "version", "data")
-        .write
-        .partitionBy("vendor", "name", "format", "version")
-        .mode(SaveMode.Append)
-        .text(getShreddedTypesOutputPath(shredConfig.outFolder, json))
+    // Final output
+    writeShredded(shredded.flatMap(_.json), true)
+    writeShredded(shredded.flatMap(_.tabular), false)
 
     // Deduplication operation failed due to DynamoDB
     val dupeFailed = good.flatMap {
       case (_, Left(m)) => Some(Row(m.toCompactJson))
       case _ => None
     }
+    // Data that failed TSV transformation
+    val shreddedBad = withSyntheticDupes.flatMap(_.swap.toOption.map(bad => Row(bad.toCompactJson)))
 
-    spark.createDataFrame(bad ++ dupeFailed, StructType(StructField("_", StringType, true) :: Nil))
+    spark.createDataFrame(bad ++ dupeFailed ++ shreddedBad, StructType(StructField("_", StringType, true) :: Nil))
       .write
       .mode(SaveMode.Overwrite)
       .text(shredConfig.badFolder)
