@@ -27,7 +27,7 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.manifest.core.{Item, ManifestError, ProcessingManifest, Application}
 import com.snowplowanalytics.manifest.dynamodb.DynamoDbManifest
 
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.ProcessingManifestConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.ProcessingManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ManifestDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.interpreters.Interpreter
 

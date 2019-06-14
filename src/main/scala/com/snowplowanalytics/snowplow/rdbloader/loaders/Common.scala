@@ -21,8 +21,9 @@ import shapeless.tag
 import shapeless.tag._
 
 // This project
+import common.StorageTarget
+
 import config.{ CliConfig, Step }
-import config.StorageTarget.{ PostgresqlConfig, RedshiftConfig }
 import db.Entities._
 import discovery.DataDiscovery
 
@@ -51,27 +52,29 @@ object Common {
     def getDescriptor: String = getTable(schema, TransitEventsTable)
   }
 
-  def getTable(databaseSchema: String, tableName: String): String =
-    if (databaseSchema.isEmpty) tableName
-    else databaseSchema + "." + tableName
-
-  /**
-   * Correctly merge database schema and table name
-   */
-  def getEventsTable(databaseSchema: String): String =
-    getTable(databaseSchema, EventsTable)
-
-  /**
-   * Correctly merge database schema and table name
-   */
-  def getManifestTable(databaseSchema: String): String =
-    getTable(databaseSchema, ManifestTable)
-
   /**
    * Subpath to check `atomic-events` directory presence
    */
   val atomicSubpathPattern = "(.*)/(run=[0-9]{4}-[0-1][0-9]-[0-3][0-9]-[0-2][0-9]-[0-6][0-9]-[0-6][0-9]/atomic-events)/(.*)".r
   //                                    year     month      day        hour       minute     second
+
+  def getTable(databaseSchema: String, tableName: String): String =
+    if (databaseSchema.isEmpty) tableName
+    else databaseSchema + "." + tableName
+
+  /** Correctly merge database schema and table name */
+  def getEventsTable(databaseSchema: String): String =
+    getTable(databaseSchema, EventsTable)
+
+  def getEventsTable(storage: StorageTarget): String =
+    getEventsTable(storage.schema)
+
+  /** Correctly merge database schema and table name */
+  def getManifestTable(databaseSchema: String): String =
+    getTable(databaseSchema, ManifestTable)
+
+  def getManifestTable(storage: StorageTarget): String =
+    getManifestTable(storage.schema)
 
   /**
    * Process any valid storage target,
@@ -81,9 +84,9 @@ object Common {
    */
   def load(cliConfig: CliConfig, discovery: List[DataDiscovery]): LoaderAction[Unit] = {
     val loadDb = cliConfig.target match {
-      case postgresqlTarget: PostgresqlConfig =>
+      case postgresqlTarget: StorageTarget.PostgresqlConfig =>
         PostgresqlLoader.run(postgresqlTarget, cliConfig.steps, discovery)
-      case redshiftTarget: RedshiftConfig =>
+      case redshiftTarget: StorageTarget.RedshiftConfig =>
         RedshiftLoader.run(cliConfig.configYaml, redshiftTarget, cliConfig.steps, discovery)
     }
 
@@ -111,12 +114,12 @@ object Common {
     }
 
     cliConfig.target match {
-      case _: RedshiftConfig =>
+      case _: StorageTarget.RedshiftConfig =>
         val original = DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
         if (cliConfig.steps.contains(Step.ConsistencyCheck) && cliConfig.target.processingManifest.isEmpty)
           DataDiscovery.checkConsistency(original)
         else original
-      case _: PostgresqlConfig =>
+      case _: StorageTarget.PostgresqlConfig =>
         // Safe to skip consistency check as whole folder will be downloaded
         DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
     }
@@ -208,7 +211,7 @@ object Common {
   private[loaders] def getManifestItem(schema: String, etlTstamp: SqlTimestamp): LoaderAction[Option[LoadManifestItem]] = {
     val query =
       s"""SELECT *
-         | FROM ${Common.getManifestTable(schema)}
+         | FROM ${getManifestTable(schema)}
          | WHERE etl_tstamp = '$etlTstamp'
          | ORDER BY etl_tstamp DESC
          | LIMIT 1""".stripMargin

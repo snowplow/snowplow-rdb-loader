@@ -24,8 +24,10 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
+import common.StorageTarget
+
 import S3.Folder.{coerce => s3}
-import config.{ SnowplowConfig, Semver, StorageTarget }
+import config.{ SnowplowConfig, Semver }
 import config.Semver._
 import config.SnowplowConfig._
 import loaders.Common.SqlString
@@ -39,6 +41,10 @@ object SpecHelpers {
   val resolverConfig = fromInputStream(resolverStream).getLines.mkString("\n")
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
   val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
+
+//  val staticRegistryUri = "http://iglucentral-dev.com.s3-website-us-east-1.amazonaws.com/feature/rdb-blacklist"
+//  val staticRegistry = Registry.Http(Registry.Config("Test registry", 0, Nil), Registry.HttpConnection(java.net.URI.create(staticRegistryUri), None))
+//  val resolver = Resolver(List(staticRegistry), None)
 
   val targetStream = getClass.getResourceAsStream("/valid-redshift.json.base64")
   val target = fromInputStream(targetStream).getLines.mkString("\n")
@@ -71,7 +77,6 @@ object SpecHelpers {
       Monitoring(Map(),Logging(DebugLevel),Some(SnowplowMonitoring(Some(GetMethod),Some("batch-pipeline"),Some("snplow.acme.com")))))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
-  val enableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
 
   val validTarget = StorageTarget.RedshiftConfig(
     "e17c0ded-eee7-4845-a7e6-8fdc88d599d0",
@@ -86,6 +91,7 @@ object SpecHelpers {
     StorageTarget.PlainText("Supersecret1"),
     1,
     20000,
+    None,
     None,
     None)
 
@@ -104,7 +110,8 @@ object SpecHelpers {
     20000,
     None,
     Some(StorageTarget.ProcessingManifestConfig(
-      StorageTarget.ProcessingManifestConfig.AmazonDynamoDbConfig("some-manifest")))
+      StorageTarget.ProcessingManifestConfig.AmazonDynamoDbConfig("some-manifest"))),
+    None
   )
 
   /**

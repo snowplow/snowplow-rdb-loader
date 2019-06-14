@@ -12,7 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import io.circe.Json
+import io.circe.{ Json, Encoder }
+import io.circe.syntax._
+import io.circe.literal._
 
 import cats.Monad
 import cats.data.EitherT
@@ -24,10 +26,10 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.client.ClientError.ResolutionError
+import com.snowplowanalytics.iglu.client.ClientError
 
 import com.snowplowanalytics.iglu.schemaddl.IgluSchema
-import com.snowplowanalytics.iglu.schemaddl.migrations.Migration.OrderedSchemas
+import com.snowplowanalytics.iglu.schemaddl.migrations.{ SchemaList => DdlSchemaList }
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
@@ -37,27 +39,39 @@ object Flattening {
     * `SchemaList` is unavailable (in case no Iglu Server hosts this schemas)
     * Particular schema could not be fetched, thus whole flattening algorithm cannot be built
     */
-  sealed trait FlatteningError
+  sealed trait FlatteningError extends Product with Serializable
+
   object FlatteningError {
-    case class SchemaListResolution(error: ResolutionError) extends FlatteningError
-    case class SchemaResolution(error: ResolutionError) extends FlatteningError
-    case class Parsing(error: String) extends FlatteningError
+    final case class SchemaListResolution(resolutionError: ClientError.ResolutionError, criterion: SchemaCriterion) extends FlatteningError
+    final case class SchemaResolution(resolutionError: ClientError.ResolutionError, schema: SchemaKey) extends FlatteningError
+    final case class Parsing(parsingError: String) extends FlatteningError
+
+    implicit val flatteningErrorCirceEncoder: Encoder[FlatteningError] =
+      Encoder.instance {
+        case SchemaListResolution(error, criterion) =>
+          json"""{"resolutionError": ${error: ClientError}, "criterion": ${criterion.asString}, "type": "SchemaListResolution"}"""
+        case SchemaResolution(error, schema) =>
+          json"""{"resolutionError": ${error: ClientError}, "schema": ${schema.toSchemaUri}, "type": "SchemaResolution"}"""
+        case Parsing(error) =>
+          json"""{"parsingError": $error, "type": "Parsing"}"""
+      }
   }
 
-  // Cache = Map[SchemaKey, OrderedSchemas]
-
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey): EitherT[F, FlatteningError, OrderedSchemas] =
+  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey): EitherT[F, FlatteningError, DdlSchemaList] =
     getOrdered(resolver, key.vendor, key.name, key.version.model)
 
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FlatteningError, OrderedSchemas] =
+  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FlatteningError, DdlSchemaList] = {
+    val criterion = SchemaCriterion(vendor, name, "jsonschema", Some(model), None, None)
+    val schemaList = resolver.listSchemas(vendor, name, Some(model))
     for {
-      schemaList <- EitherT[F, ResolutionError, SchemaList](resolver.listSchemas(vendor, name, Some(model))).leftMap(FlatteningError.SchemaListResolution)
-      ordered <- OrderedSchemas.fromSchemaList(schemaList, fetch(resolver))
+      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FlatteningError.SchemaListResolution(error, criterion))
+      ordered <- DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
     } yield ordered
+  }
 
   def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FlatteningError, IgluSchema] =
     for {
-      json <- EitherT(resolver.lookupSchema(key, 2)).leftMap(FlatteningError.SchemaResolution)
+      json <- EitherT(resolver.lookupSchema(key)).leftMap(error => FlatteningError.SchemaResolution(error, key))
       schema <- EitherT.fromEither(parseSchema(json))
     } yield schema
 
