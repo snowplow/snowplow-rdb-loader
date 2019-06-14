@@ -43,7 +43,6 @@ object Dependencies {
     val scalaCheck       = "1.12.6"
   }
 
-
   val resolutionRepos = Seq(
     // Redshift native driver
     "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",

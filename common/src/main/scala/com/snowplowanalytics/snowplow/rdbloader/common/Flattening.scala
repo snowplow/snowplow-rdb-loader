@@ -12,7 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import io.circe.Json
+import io.circe.{ Json, Encoder }
+import io.circe.syntax._
 
 import cats.Monad
 import cats.data.EitherT
@@ -24,7 +25,7 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.client.ClientError.ResolutionError
+import com.snowplowanalytics.iglu.client.ClientError
 
 import com.snowplowanalytics.iglu.schemaddl.IgluSchema
 import com.snowplowanalytics.iglu.schemaddl.migrations.Migration.OrderedSchemas
@@ -38,10 +39,18 @@ object Flattening {
     * Particular schema could not be fetched, thus whole flattening algorithm cannot be built
     */
   sealed trait FlatteningError
+
   object FlatteningError {
-    case class SchemaListResolution(error: ResolutionError) extends FlatteningError
-    case class SchemaResolution(error: ResolutionError) extends FlatteningError
-    case class Parsing(error: String) extends FlatteningError
+    final case class SchemaListResolution(error: ClientError.ResolutionError) extends FlatteningError
+    final case class SchemaResolution(error: ClientError.ResolutionError) extends FlatteningError
+    final case class Parsing(error: String) extends FlatteningError
+
+    implicit val flatteningErrorCirceEncoder: Encoder[FlatteningError] =
+      Encoder.instance {
+        case SchemaListResolution(error: ClientError) => (error: ClientError).asJson
+        case SchemaResolution(error) => (error: ClientError).asJson
+        case Parsing(error) => error.asJson
+      }
   }
 
   // Cache = Map[SchemaKey, OrderedSchemas]
@@ -51,7 +60,7 @@ object Flattening {
 
   def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FlatteningError, OrderedSchemas] =
     for {
-      schemaList <- EitherT[F, ResolutionError, SchemaList](resolver.listSchemas(vendor, name, Some(model))).leftMap(FlatteningError.SchemaListResolution)
+      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](resolver.listSchemas(vendor, name, Some(model))).leftMap(FlatteningError.SchemaListResolution)
       ordered <- OrderedSchemas.fromSchemaList(schemaList, fetch(resolver))
     } yield ordered
 

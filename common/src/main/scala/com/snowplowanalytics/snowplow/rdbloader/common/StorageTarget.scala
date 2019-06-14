@@ -10,8 +10,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.util.Properties
 
@@ -19,19 +18,14 @@ import cats.Id
 import cats.data._
 import cats.implicits._
 
+import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.core.circe.instances._
+import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
+
 import io.circe._
-import io.circe.parser.parse
 import io.circe.Decoder._
 import io.circe.generic.auto._
-
-import com.snowplowanalytics.iglu.core.SelfDescribingData
-import com.snowplowanalytics.iglu.core.circe.instances._
-import com.snowplowanalytics.iglu.client.Client
-
-// This project
-import LoaderError._
-import utils.Common._
-
+import io.circe.parser.parse
 
 /**
  * Common configuration for JDBC target, such as Redshift and Postgres
@@ -49,25 +43,29 @@ sealed trait StorageTarget extends Product with Serializable {
 
   def processingManifest: Option[StorageTarget.ProcessingManifestConfig]
 
-  def eventsTable: String =
-    loaders.Common.getEventsTable(schema)
-
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
   def sshTunnel: Option[StorageTarget.TunnelConfig]
+
+  def blacklistTabular: Option[List[SchemaKey]]   // None means tabular is disabled?
 }
 
 object StorageTarget {
 
+  case class ParseError(message: String) extends AnyVal
+
   sealed trait SslMode extends StringEnum { def asProperty = asString.toLowerCase.replace('_', '-') }
-  case object Disable extends SslMode { def asString = "DISABLE" }
-  case object Require extends SslMode { def asString = "REQUIRE" }
-  case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
-  case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
 
   implicit val sslModeDecoder: Decoder[SslMode] =
-    decodeStringEnum[SslMode]
+    StringEnum.decodeStringEnum[SslMode]  // TODO: tests fail if it is in object
+
+  object SslMode {
+    case object Disable extends SslMode { def asString = "DISABLE" }
+    case object Require extends SslMode { def asString = "REQUIRE" }
+    case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
+    case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
+  }
 
   /**
     * Configuration to access Snowplow Processing Manifest
@@ -93,7 +91,8 @@ object StorageTarget {
                               username: String,
                               password: PasswordConfig,
                               sshTunnel: Option[TunnelConfig],
-                              processingManifest: Option[ProcessingManifestConfig])
+                              processingManifest: Option[ProcessingManifestConfig],
+                              blacklistTabular: Option[List[SchemaKey]])
     extends StorageTarget
 
   /**
@@ -113,7 +112,8 @@ object StorageTarget {
                             maxError: Int,
                             compRows: Long,
                             sshTunnel: Option[TunnelConfig],
-                            processingManifest: Option[ProcessingManifestConfig])
+                            processingManifest: Option[ProcessingManifestConfig],
+                            blacklistTabular: Option[List[SchemaKey]])
     extends StorageTarget
 
   /**
@@ -133,7 +133,7 @@ object StorageTarget {
                           tcpKeepAlive: Option[Boolean],
                           tcpKeepAliveMinutes: Option[Int]) {
     /** Either errors or list of mutators to update the `Properties` object */
-    val validation: Either[LoaderError, List[Properties => Unit]] = jdbcEncoder.encodeObject(this).toList.map {
+    val validation: Either[ParseError, List[Properties => Unit]] = jdbcEncoder.encodeObject(this).toList.map {
       case (property, value) => value.fold(
         ((_: Properties) => ()).asRight,
         b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
@@ -150,10 +150,10 @@ object StorageTarget {
         _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
       )
     } traverse(_.toValidatedNel) match {
-      case Validated.Valid(updaters) => updaters.asRight[LoaderError]
+      case Validated.Valid(updaters) => updaters.asRight[ParseError]
       case Validated.Invalid(errors) =>
         val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
-        val error: LoaderError = LoaderError.ConfigError(messages)
+        val error: ParseError = ParseError(messages)
         error.asLeft[List[Properties => Unit]]
     }
   }
@@ -226,11 +226,11 @@ object StorageTarget {
     * @param validJson JSON that is presumably self-describing storage target configuration
     * @return validated entity of `StorageTarget` ADT if success
     */
-  def decodeStorageTarget(validJson: SelfDescribingData[Json]): Either[ConfigError, StorageTarget] =
+  def decodeStorageTarget(validJson: SelfDescribingData[Json]): Either[ParseError, StorageTarget] =
     (validJson.schema.name, validJson.data) match {
-      case ("redshift_config", data) => data.as[RedshiftConfig].leftMap(e => ConfigError(e.show))
-      case ("postgresql_config", data) => data.as[PostgresqlConfig].leftMap(e => ConfigError(e.show))
-      case (name, _) => ConfigError(s"Unsupported storage target [$name]").asLeft
+      case ("redshift_config", data) => data.as[RedshiftConfig].leftMap(e => ParseError(e.show))
+      case ("postgresql_config", data) => data.as[PostgresqlConfig].leftMap(e => ParseError(e.show))
+      case (name, _) => ParseError(s"Unsupported storage target [$name]").asLeft
     }
 
   /**
@@ -241,10 +241,10 @@ object StorageTarget {
     * @return valid `StorageTarget` OR
     *         non-empty list of errors (such as validation or parse errors)
     */
-  def parseTarget(client: Client[Id, Json], target: String): Either[ConfigError, StorageTarget] =
+  def parseTarget(client: Client[Id, Json], target: String): Either[ParseError, StorageTarget] =
     parse(target)
-      .leftMap(e => ConfigError(e.show))
-      .flatMap(json => SelfDescribingData.parse(json).leftMap(e => ConfigError(s"Not a self-describing JSON, ${e.code}")))
+      .leftMap(e => ParseError(e.show))
+      .flatMap(json => SelfDescribingData.parse(json).leftMap(e => ParseError(s"Not a self-describing JSON, ${e.code}")))
       .flatMap(payload => validate(client)(payload))
       .flatMap(decodeStorageTarget)
 
@@ -255,7 +255,7 @@ object StorageTarget {
     * @param json json4s AST
     * @return circe AST
     */
-  private def validate(client: Client[Id, Json])(json: SelfDescribingData[Json]): Either[ConfigError, SelfDescribingData[Json]] = {
-    client.check(json).value.leftMap(e => ConfigError(e.show)).as(json)
+  private def validate(client: Client[Id, Json])(json: SelfDescribingData[Json]): Either[ParseError, SelfDescribingData[Json]] = {
+    client.check(json).value.leftMap(e => ParseError(e.show)).leftMap(error => ParseError(s"${json.schema.toSchemaUri} ${error.message}")).as(json)
   }
 }

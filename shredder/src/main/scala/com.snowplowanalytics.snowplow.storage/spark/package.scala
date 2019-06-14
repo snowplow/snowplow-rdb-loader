@@ -14,14 +14,10 @@
  */
 package com.snowplowanalytics.snowplow.storage
 
-import scala.concurrent.duration.TimeUnit
-
 import java.time.{Instant, ZoneOffset}
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit.{MILLISECONDS, NANOSECONDS}
 
 import cats.Id
-import cats.effect.Clock
 
 import io.circe.Json
 
@@ -47,11 +43,5 @@ package object spark {
     def formatted: String = {
       time.atOffset(ZoneOffset.UTC).format(Formatter)
     }
-  }
-
-
-  implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
-    def realTime(unit: TimeUnit): Id[Long] = unit.convert(System.currentTimeMillis(), MILLISECONDS)
-    def monotonic(unit: TimeUnit): Id[Long] = unit.convert(System.nanoTime(), NANOSECONDS)
   }
 }
