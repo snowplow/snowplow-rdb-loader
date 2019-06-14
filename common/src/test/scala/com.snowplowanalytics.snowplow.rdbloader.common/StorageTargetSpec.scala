@@ -9,8 +9,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.Id
 import io.circe.literal._
@@ -18,7 +17,8 @@ import io.circe.literal._
 // specs2
 import org.specs2.Specification
 
-// Iglu client
+// Iglu
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.iglu.client.Client
 
 class StorageTargetSpec extends Specification { def is = s2"""
@@ -29,7 +29,10 @@ class StorageTargetSpec extends Specification { def is = s2"""
   Fail to parse old Redshift storage target (3-0-0) with encrypted password $e5
   Parse Redshift storage target (3-0-0) with many JDBC options  $e6
   Fail to parse Redshift storage target (3-0-0) with wrong JDBC value $e7
+  Parse Redshift storage target (4-0-0) with tabular blacklist $e8
   """
+
+  private val IgluCentral = "http://iglucentral-dev.com.s3-website-us-east-1.amazonaws.com/feature/rdb-blacklist/"
 
   private val resolverConfig =
     json"""
@@ -44,7 +47,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
               "vendorPrefixes": [ "com.snowplowanalytics" ],
               "connection": {
                 "http": {
-                  "uri": "http://iglucentral.com"
+                  "uri": $IgluCentral
                 }
               }
             },
@@ -91,10 +94,11 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "mydatabase.host.acme.com",
       "ADD HERE",
       5432,
-      StorageTarget.Disable,
+      StorageTarget.SslMode.Disable,
       "atomic",
       "ADD HERE",
       StorageTarget.PlainText("ADD HERE"),
+      None,
       None,
       None)
 
@@ -131,13 +135,14 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "example.host",
       "ADD HERE",
       5439,
-      SpecHelpers.enableSsl,
+      StorageTargetSpec.enableSsl,
       "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
       StorageTarget.PlainText("ADD HERE"),
       1,
       20000,
+      None,
       None,
       None)
 
@@ -195,7 +200,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       "example.com",
       "ADD HERE",
       5439,
-      SpecHelpers.enableSsl,
+      StorageTargetSpec.enableSsl,
       "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
       "ADD HERE",
@@ -203,6 +208,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       1,
       20000,
       Some(tunnel),
+      None,
       None)
 
     parseWithDefaultResolver(config) must beRight(expected)
@@ -249,6 +255,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
       1,
       20000,
+      None,
       None,
       None)
 
@@ -345,6 +352,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
       1,
       20000,
       None,
+      None,
       None)
 
     parseWithDefaultResolver(config) must beRight(expected)
@@ -381,8 +389,67 @@ class StorageTargetSpec extends Specification { def is = s2"""
                  """.stripMargin
 
     parseWithDefaultResolver(config) must beLeft.like {
-      case LoaderError.ConfigError(message) => message must contain("$.jdbc.sslMode: does not have a value in the enumeration [verify-ca, verify-full]")
+      case StorageTarget.ParseError(message) => message must contain("$.jdbc.sslMode: does not have a value in the enumeration [verify-ca, verify-full]")
       case _ => ko("Not a DecodingError")
     }
   }
+
+  def e8 = {
+    val config = """
+                   |{
+                   |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/4-0-0",
+                   |    "data": {
+                   |        "name": "AWS Redshift enriched events storage",
+                   |        "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
+                   |        "host": "192.168.1.12",
+                   |        "database": "ADD HERE",
+                   |        "port": 5439,
+                   |        "jdbc": {},
+                   |        "processingManifest": null,
+                   |        "sshTunnel": null,
+                   |        "username": "ADD HERE",
+                   |        "password": {
+                   |            "ec2ParameterStore": {
+                   |                "parameterName": "snowplow.rdbloader.redshift.password"
+                   |            }
+                   |        },
+                   |        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+                   |        "schema": "atomic",
+                   |        "maxError": 1,
+                   |        "compRows": 20000,
+                   |        "blacklistTabular": [
+                   |          "iglu:com.acme/event/jsonschema/1-*-*",
+                   |          "iglu:com.acme/context/jsonschema/2-*-*"
+                   |        ],
+                   |        "purpose": "ENRICHED_EVENTS"
+                   |    }
+                   |}
+                 """.stripMargin
+
+    val expected = StorageTarget.RedshiftConfig(
+      "33334444-eee7-4845-a7e6-8fdc88d599d0",
+      "AWS Redshift enriched events storage",
+      "192.168.1.12",
+      "ADD HERE",
+      5439,
+      StorageTarget.RedshiftJdbc.empty,
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+      "atomic",
+      "ADD HERE",
+      StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
+      1,
+      20000,
+      None,
+      None,
+      Some(List(
+        SchemaCriterion("com.acme", "event", "jsonschema", Some(1), None, None),
+        SchemaCriterion("com.acme", "context", "jsonschema", Some(2), None, None)
+      )))
+
+    parseWithDefaultResolver(config) must beRight(expected)
+  }
+}
+
+object StorageTargetSpec {
+  val enableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
 }

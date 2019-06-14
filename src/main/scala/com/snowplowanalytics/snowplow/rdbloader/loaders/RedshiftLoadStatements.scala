@@ -16,9 +16,10 @@ package loaders
 import cats.implicits._
 
 // This project
+import common.StorageTarget.RedshiftConfig
+
 import Common._
 import config.{SnowplowConfig, Step}
-import config.StorageTarget.RedshiftConfig
 import config.SnowplowConfig.OutputCompression
 import discovery.{DataDiscovery, ShreddedType}
 
@@ -127,16 +128,17 @@ object RedshiftLoadStatements {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
     val manifestStatement = getManifestStatements(target.schema, shreddedStatements.size)
+    val eventsTable = Common.getEventsTable(target)
 
     // Vacuum all tables including events-table
     val vacuum = if (steps.contains(Step.Vacuum)) {
-      val statements = buildVacuumStatement(target.eventsTable) :: shreddedStatements.map(_.vacuum)
+      val statements = buildVacuumStatement(eventsTable) :: shreddedStatements.map(_.vacuum)
       Some(statements)
     } else None
 
     // Analyze all tables including events-table
     val analyze = if (steps.contains(Step.Analyze)) {
-      val statements = buildAnalyzeStatement(target.eventsTable) :: shreddedStatements.map(_.analyze)
+      val statements = buildAnalyzeStatement(eventsTable) :: shreddedStatements.map(_.analyze)
       Some(statements)
     } else None
 
@@ -155,6 +157,7 @@ object RedshiftLoadStatements {
    */
   def buildEventsCopy(config: SnowplowConfig, target: RedshiftConfig, s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
     val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
+    val eventsTable = Common.getEventsTable(target)
 
     if (transitCopy) {
       TransitCopy(SqlString.unsafeCoerce(
@@ -169,7 +172,7 @@ object RedshiftLoadStatements {
            | ACCEPTINVCHARS $compressionFormat""".stripMargin))
     } else {
       StraightCopy(SqlString.unsafeCoerce(
-        s"""COPY ${target.eventsTable} FROM '$s3path'
+        s"""COPY $eventsTable FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
            | DELIMITER '$EventFieldSeparator'
            | MAXERROR ${target.maxError}

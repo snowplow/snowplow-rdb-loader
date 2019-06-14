@@ -14,7 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader
 package interpreters.implementations
 
 import java.io.ByteArrayInputStream
-import java.util.UUID
 import java.nio.charset.StandardCharsets
 
 import scala.util.control.NonFatal
@@ -38,18 +37,13 @@ import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncBatchEmitter
 
 // This project
 import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
+import common._
 
 object TrackerInterpreter {
 
   val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
-
-  implicit val uuidProviderId: UUIDProvider[Id] =
-    new UUIDProvider[Id] {
-      def generateUUID: Id[UUID] =
-        UUID.randomUUID()
-    }
 
   /** Callback for failed  */
   private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {

@@ -16,7 +16,7 @@ import cats.Functor
 import cats.data.EitherT
 import cats.implicits._
 
-import config.StorageTarget.TunnelConfig
+import common.StorageTarget.TunnelConfig
 
 /** Functions working with identities and security layers */
 object Security {
