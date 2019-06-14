@@ -22,8 +22,6 @@ import cats.effect.Clock
 import rdbloader.discovery.DiscoveryFailure
 import rdbloader.interpreters.implementations.ManifestInterpreter.ManifestE
 
-import scala.concurrent.duration.{ TimeUnit, MILLISECONDS, NANOSECONDS }
-
 package object rdbloader {
 
   // RDB Loader's algebra defines hierarchy with three types common for all modules
@@ -120,12 +118,4 @@ package object rdbloader {
   }
 
   implicit val catsClockManifestInstance: Clock[ManifestE] = Clock.create[ManifestE]
-
-  implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
-    override def realTime(unit: TimeUnit): Id[Long] =
-      unit.convert(System.nanoTime(), NANOSECONDS)
-
-    override def monotonic(unit: TimeUnit): Id[Long] =
-      unit.convert(System.currentTimeMillis(), MILLISECONDS)
-  }
 }
