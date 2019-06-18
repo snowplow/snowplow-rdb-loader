@@ -230,7 +230,7 @@ object ShredJobSpec {
          |"vendorPrefixes": [ "com.snowplowanalytics" ],
          |"connection": {
          |"http": {
-         |"uri": "http://localhost:8083/api"
+         |"uri": "http://localhost:8080/api"
          |}
          |}
          |},
