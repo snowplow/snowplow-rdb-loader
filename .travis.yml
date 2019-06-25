@@ -1,8 +1,9 @@
 language: scala
+dist: xenial 
 scala:
 - 2.11.12
 jdk:
-- oraclejdk11
+- openjdk11
 before_deploy: pip install --user release-manager==0.4.1
 before_script: ./.travis/start_iglu.sh
 env:
