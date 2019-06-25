@@ -2,8 +2,10 @@ language: scala
 scala:
 - 2.11.12
 jdk:
-- oraclejdk11
-before_deploy: pip install --user release-manager==0.4.1
+- openjdk8
+before_deploy:
+  - sudo python -m easy_install --upgrade pyOpenSSL # https://stackoverflow.com/questions/43267157/python-attributeerror-module-object-has-no-attribute-ssl-st-init
+  - pip install --user release-manager==0.4.1
 env:
   global:
   - secure: my2pgROi/Xut3sVM47URmR+A/e29Z+pW3dtcHfqJHn3c6CP1NaSSKM+6e3PdM7BYNl9HgT0zUYfnw4lstIi9nCP0vumcA4zbx+zOd9brV10/jhpO/RtMsSQB1ycpGffJP5z+sc6AzK11ECkOoXlGHZNx48Lf9SaDTL79tMn5MQOiJphy+4OKYBiyZEdiPX6C45uvItG9zMN6RhlVpryHzRwdeiqykdFUCd/SeKAiXnAnNFPUyEYAlKz9P3setkZKVzp/yKBNVK41W1myePOWB0Is0MSisOapf1MD/k+tXovH9Ilo+K+HZId5hMpGQMo5tCvb2N2xr7j+VsNwcW3kjgROH/0QfJD9l5pB7P67iKv0JPrOjGpI2DgO7o4/YspAYUferWEeg3JboF+eytSJgXkDF6y4Ll5xQEhEXF5VDZfKamg2MOQBnRa13egn9oom5KcQ/7UrxyirRUFQI04fp3M8hGuYjxIy98t3/7Zw448ayj+oJd0miz449/3iz/YZfuaqlTFHxc22DL9BG9hX7ygOitDDoacGEeK0Z5iL7samU8GI+V5aJP23SaV+t1gvutCEU4NwRGa+ZTPmEt4RInEko0kF69gtGEHq026vjvBGW8uKFcyZcrq1ZJTcRHo3oj2L3Ub1KKuyTxs78Jd3dAI59DSG5ZSkACcuVt5gQdI=
