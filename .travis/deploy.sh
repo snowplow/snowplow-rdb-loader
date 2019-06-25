@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 project=$1
 tag=$2
 
