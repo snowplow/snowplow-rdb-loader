@@ -31,12 +31,13 @@ import org.joda.time.DateTime
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.scalatracker._
-import com.snowplowanalytics.snowplow.scalatracker.emitters.id._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncBatchEmitter, SyncEmitter}
 
 // This project
 import config.SnowplowConfig.{GetMethod, Monitoring, PostMethod}
+import common._
+
 
 object TrackerInterpreter {
 
