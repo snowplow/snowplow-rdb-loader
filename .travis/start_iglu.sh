@@ -7,6 +7,9 @@ IGLUCTL_URI="http://dl.bintray.com/snowplow/snowplow-generic/$IGLUCTL_ZIP"
 SCHEMAS_PATH="$TRAVIS_BUILD_DIR/iglu-central/schemas/"
 
 git clone https://github.com/snowplow/iglu-central.git
+cd iglu-central
+git checkout feature/rdb-blacklist
+cd ..
 
 docker run \
     -p 8080:8080 \
