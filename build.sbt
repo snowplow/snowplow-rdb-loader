@@ -80,7 +80,9 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.igluCoreCirce,
       Dependencies.manifest,
       // Scala (test only)
-      Dependencies.specs2
+      Dependencies.specs2,
+      Dependencies.specs2ScalaCheck,
+      Dependencies.scalaCheck
     ),
 
     dependencyOverrides ++= Seq(
