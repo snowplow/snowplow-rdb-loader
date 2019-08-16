@@ -21,8 +21,9 @@ import com.snowplowanalytics.iglu.core.{ SchemaKey, SchemaMap, SchemaVer }
 import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs._
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.FlatSchema
+import com.snowplowanalytics.iglu.schemaddl.migrations.{ Migration => DMigration }
 import com.snowplowanalytics.iglu.schemaddl.migrations.Migration.{ OrderedSchemas, buildMigrationMap }
+import com.snowplowanalytics.iglu.schemaddl.redshift.Ddl
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderA, LoaderAction, LoaderError }
@@ -77,19 +78,23 @@ object Migration {
   }
 
   def createTable(dbSchema: String, name: String, schemas: OrderedSchemas): LoaderAction[Unit] = {
-    val state = schemas.schemas.last
-    val schema = FlatSchema.build(state.schema)
-    val ddl = SqlString.unsafeCoerce(DdlGenerator.generateTableDdl(schema, name, Some(dbSchema), 4096, false).toDdl)
-    val comment = SqlString.unsafeCoerce(DdlGenerator.getTableComment(name, Some(dbSchema), state.self).toDdl)
+    val self = schemas.schemas.last.self
+    val subschemas = DMigration.buildOrderedSubSchemasMap(schemas.schemas).toList.lastOption.map(_._2).getOrElse {
+      throw new IllegalStateException(s"Empty schema list found: $schemas")
+    }
+    val ddl = DdlGenerator.generateTableDdl(subschemas, name, Some(dbSchema), 4096, false).toSql
+    val comment = DdlGenerator.getTableComment(name, Some(dbSchema), self).toSql
+
     LoaderA.executeUpdate(ddl).void *> LoaderA.executeUpdate(comment).void
   }
 
   /** Update existing table specified by `current` into a final version present in `state` */
   def updateTable(dbSchema: String, current: SchemaKey, columns: Columns, state: OrderedSchemas): LoaderAction[Unit] =
-    buildMigrationMap(state.schemas.toList)
+    buildMigrationMap(state.schemas)
+      .right
+      .getOrElse { throw new IllegalStateException(s"updateTable executed for a table with single schema\ncolumns: $columns\nstate: $state") }
       .get(SchemaMap(current))
-      .map(_.last)
-      .map(MigrationGenerator.generateMigration(_, 4096, Some(dbSchema))) match {
+      .map(migrations => MigrationGenerator.generateMigration(migrations.last, 4096, Some(dbSchema))) match {
       case Some(file) =>
         val ddl = SqlString.unsafeCoerce(file.render)
         LoaderAction.liftA(file.warnings.traverse_(LoaderA.print)) *>
@@ -117,4 +122,9 @@ object Migration {
       case other =>
         other
     }
+
+  private implicit class SqlDdl(ddl: Ddl) {
+    def toSql: SqlString =
+      SqlString.unsafeCoerce(ddl.toDdl)
+  }
 }
