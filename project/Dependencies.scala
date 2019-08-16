@@ -19,7 +19,7 @@ object Dependencies {
     val decline          = "0.6.2"
     val igluClient       = "0.6.2"
     val igluCore         = "0.5.1"
-    val badrows          = "0.1.0"
+    val badrows          = "0.1.0-M8"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
     val circe            = "0.11.1"
@@ -31,7 +31,7 @@ object Dependencies {
     // Scala (Shredder)
     val spark            = "2.3.2"
     val eventsManifest   = "0.2.0"
-    val schemaDdl        = "0.10.0"
+    val schemaDdl        = "0.10.0-M9"
 
     // Java (Loader)
     val postgres         = "42.0.0"
