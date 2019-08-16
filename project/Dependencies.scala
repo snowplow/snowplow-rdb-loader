@@ -31,7 +31,7 @@ object Dependencies {
     val analyticsSdk     = "0.4.2"
     val spark            = "2.3.2"
     val eventsManifest   = "0.2.0"
-    val schemaDdl        = "0.10.0"
+    val schemaDdl        = "0.10.0-M8"
 
     // Java (Loader)
     val postgres         = "42.0.0"
