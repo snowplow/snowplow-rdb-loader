@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val igluClient       = "0.6.1"
+    val igluClient       = "0.6.1-M1"
     val igluCore         = "0.5.1"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
@@ -31,7 +31,7 @@ object Dependencies {
     val analyticsSdk     = "0.4.2"
     val spark            = "2.3.2"
     val eventsManifest   = "0.2.0"
-    val schemaDdl        = "0.10.0"
+    val schemaDdl        = "0.10.0-M8"
 
     // Java (Loader)
     val postgres         = "42.0.0"
