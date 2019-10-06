@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.io.Source.fromInputStream
 
+import java.util.UUID
+
 import cats.Id
 import cats.implicits._
 
@@ -79,7 +81,7 @@ object SpecHelpers {
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
 
   val validTarget = StorageTarget.RedshiftConfig(
-    "e17c0ded-eee7-4845-a7e6-8fdc88d599d0",
+    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
     "AWS Redshift enriched events storage",
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
@@ -96,7 +98,7 @@ object SpecHelpers {
     None)
 
   val validTargetWithManifest = StorageTarget.RedshiftConfig(
-    "e17c0ded-eee7-4845-a7e6-8fdc88d599d0",
+    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
     "AWS Redshift enriched events storage",
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",

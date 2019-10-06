@@ -13,6 +13,8 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
+import java.util.UUID
+
 import cats.data.State
 import cats.{Id, ~>}
 import cats.syntax.either._
@@ -37,6 +39,8 @@ class DataDiscoverySpec extends Specification { def is = s2"""
   listGoodBucket ignores special files $e8
   show DataDiscovery with several shredded types $e9
   """
+
+  val id = UUID.fromString("8ad6fc06-ae5c-4dfc-a14d-f2ae86755179")
 
   def e1 = {
     def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
@@ -113,7 +117,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None)
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None)
     val endResult = result.value.foldMap(interpreter)
 
     endResult must beRight(expected)
@@ -231,7 +235,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val request = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None)
+    val request = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None)
     val result = DataDiscovery.checkConsistency(request)
     val (endState, endResult) = result.value.foldMap(interpreter).run(RealWorld(0, Nil)).value
 
@@ -257,7 +261,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = DiscoveryError(List(DiscoveryFailure.NoDataFailure(shreddedGood)))
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(shreddedGood)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None)
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None)
     val endResult = result.value.foldMap(interpreter)
 
     endResult must beLeft(expected)
@@ -281,7 +285,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     // The only difference with e3
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None)
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None)
     val endResult = result.value.foldMap(interpreter)
 
     endResult must beRight(expected)
@@ -341,7 +345,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None).value
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None).value
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)
@@ -401,7 +405,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None).value
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None).value
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)
@@ -476,7 +480,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val result = DataDiscovery.discoverFull(discoveryTarget, "test", Semver(0,11,0), "us-east-1", None).value
+    val result = DataDiscovery.discoverFull(discoveryTarget, id, Semver(0,11,0), "us-east-1", None).value
     val endResult = result.foldMap(interpreter)
 
     endResult must beRight(expected)

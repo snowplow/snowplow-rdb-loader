@@ -107,7 +107,7 @@ object ShredJobConfig {
     case (config, Some(target)) =>
       val client = singleton.IgluSingleton.get(config.igluConfig)
       StorageTarget.parseTarget(client, target.noSpaces)
-        .leftMap(_.message)
+        .leftMap { errors => errors.toList.mkString(", ") }
         .map(storage => config.copy(storage = Some(storage)))
         .toValidatedNel
     case (config, None) => config.validNel
