@@ -160,7 +160,7 @@ object CliConfig {
     val config: Parsed[SnowplowConfig] = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
     val logkey: Parsed[Option[S3.Key]] = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(ConfigError).toValidatedNel).sequence
     val client: Parsed[(Json, Client[Id, Json])] = loadResolver(rawConfig.resolver).toValidatedNel
-    val target: Parsed[StorageTarget] = client.andThen { case (_, r) => loadTarget(r, rawConfig.target).toValidatedNel }
+    val target: Parsed[StorageTarget] = client.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
     val folder: Parsed[Option[S3.Folder]] = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(ConfigError).toValidatedNel).sequence
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
 
@@ -196,6 +196,8 @@ object CliConfig {
    * @return either aggregated list of errors (from both resolver and target)
    *         or successfully decoded storage target
    */
-  private def loadTarget(resolver: Client[Id, Json], targetConfigB64: String) =
-    base64decode(targetConfigB64).flatMap(StorageTarget.parseTarget(resolver, _).leftMap(e => LoaderError.ConfigError(e.message)))
+  private def loadTarget(resolver: Client[Id, Json], targetConfigB64: String): Parsed[StorageTarget] =
+    base64decode(targetConfigB64).toValidatedNel.andThen(StorageTarget.parseTarget(resolver, _).toValidated.leftMap {
+      errors => errors.map { error => ConfigError(error.message) }
+    })
 }

@@ -44,6 +44,8 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
   Return failure if manifest contains FAILED step $e6
   """
 
+  val targetId = UUID.fromString("8ad6fc06-ae5c-4dfc-a14d-f2ae86755179")
+
   val shredderApp13 = Application(Agent("snowplow-rdb-shredder", "0.13.0"), None)
   val loaderApp13 = Application(Agent("snowplow-rdb-loader", "0.13.0"), None)
   def newId = UUID.randomUUID()
@@ -52,7 +54,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
   val time20 = time.plusSeconds(20)
 
   def e1 = {
-    val action = ManifestDiscovery.discover("test-storage", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(Nil))
     result must beRight(List.empty[Item])
   }
@@ -69,7 +71,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
     )
     val item = Item(NonEmptyList.fromListUnsafe(records))
 
-    val action = ManifestDiscovery.discover("test-storage", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beRight(List(
       DataDiscovery(base, None, None, Nil, specificFolder = false, Some(item))
@@ -87,7 +89,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
       Record("invalidFolder", shredderApp13, newId, Some(id2), State.Processed, time20, author, payload.some)
     )
 
-    val action = ManifestDiscovery.discover("test-storage", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beLeft.like {
       case DiscoveryError(List(DiscoveryFailure.ManifestFailure(Corrupted(Corruption.ParseError(error))))) =>
@@ -120,7 +122,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
 
     val item = Item(NonEmptyList.fromListUnsafe(records.slice(5, 8)))
 
-    val action = ManifestDiscovery.discover("id", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beRight(List(
       DataDiscovery(base2, None, None, List(
@@ -181,7 +183,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
       ), specificFolder = false, Some(item3))
     )
 
-    val action = ManifestDiscovery.discover("id", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beRight.like {
       case list => list must containTheSameElementsAs(expected)
@@ -200,7 +202,7 @@ class ManifestDiscoverySpec extends Specification { def is = s2"""
       Record(base1, shredderApp13, newId, Some(id2), State.Failed, time.plusSeconds(20), author, payload1.some))
     val item1 = Item(NonEmptyList.fromListUnsafe(records.slice(0, 3)))
 
-    val action = ManifestDiscovery.discover("id", "us-east-1", None)
+    val action = ManifestDiscovery.discover(targetId, "us-east-1", None)
     val result = action.value.foldMap(ManifestDiscoverySpec.interpreter(records))
     result must beLeft.like {
       case DiscoveryError(List(DiscoveryFailure.ManifestFailure(Locked(_, None)))) => ok

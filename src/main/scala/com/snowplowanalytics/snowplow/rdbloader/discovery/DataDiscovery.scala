@@ -13,6 +13,8 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
+import java.util.UUID
+
 import cats._
 import cats.data._
 import cats.free.Free
@@ -114,7 +116,7 @@ object DataDiscovery {
    *         (atomic events and shredded types)
    */
   def discoverFull(target: DiscoveryTarget,
-                   id: String,
+                   id: UUID,
                    shredJob: Semver,
                    region: String,
                    assets: Option[S3.Folder]): LoaderAction[Discovered] = {
