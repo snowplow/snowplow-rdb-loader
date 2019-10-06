@@ -13,19 +13,22 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
+import java.util.UUID
+
 import cats._
 import org.specs2.Specification
 
 // This project
 import common.StorageTarget
-
-import S3.Folder
-import discovery.DataDiscovery
 import config.Step
+import discovery.DataDiscovery
+import S3.Folder
 
 class CommonSpec extends Specification { def is = s2"""
   Check that SSH tunnel gets open and closed if necessary $e1
   """
+
+  val targetId = UUID.fromString("8ad6fc06-ae5c-4dfc-a14d-f2ae86755179")
 
   def e1 = {
     val expected = List(
@@ -43,7 +46,7 @@ class CommonSpec extends Specification { def is = s2"""
       15151,
       StorageTarget.DestinationConfig("10.0.0.17", 5433))
     val target = StorageTarget.RedshiftConfig(
-      "test",
+      targetId,
       "test-redsfhit-target",
       "localhost",
       "snowplowdb",

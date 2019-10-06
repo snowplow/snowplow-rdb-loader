@@ -81,9 +81,15 @@ class CliConfigSpec extends Specification { def is = s2"""
 
     result must be like {
       case Validated.Invalid(nel) =>
-        val validationError = nel.toList must contain(ConfigError("DecodingFailure at .id: Attempt to decode value on failed cursor"))
-        val decodingError = nel.toList must contain(ConfigError("DecodingFailure at .aws.s3.buckets.jsonpath_assets: Bucket name must start with s3:// prefix"))
-        validationError.and(decodingError)
+        val errors = nel.toList
+        val idDecoding = errors must contain(ConfigError("DecodingFailure at .id: Attempt to decode value on failed cursor"))
+        val bucketDecoding = errors must contain(ConfigError("DecodingFailure at .aws.s3.buckets.jsonpath_assets: Bucket name must start with s3:// prefix"))
+        val validation = errors must contain(beLike[ConfigError] {
+          case ConfigError(message) =>
+            message must startWith("iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/1-0-0 Instance is not valid against its schema")
+        })
+
+        idDecoding.and(bucketDecoding).and(validation)
     }
   }
 

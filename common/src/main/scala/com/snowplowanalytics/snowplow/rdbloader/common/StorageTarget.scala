@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
+import java.util.UUID
 import java.util.Properties
 
 import cats.Id
@@ -32,7 +33,7 @@ import io.circe.parser.parse
  * Any of those can be safely coerced
  */
 sealed trait StorageTarget extends Product with Serializable {
-  def id: String
+  def id: UUID
   def name: String
   def host: String
   def database: String
@@ -84,7 +85,7 @@ object StorageTarget {
    * PostgreSQL config
    * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-1-0`
    */
-  case class PostgresqlConfig(id: String,
+  case class PostgresqlConfig(id: UUID,
                               name: String,
                               host: String,
                               database: String,
@@ -102,7 +103,7 @@ object StorageTarget {
    * Redshift config
    * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0`
    */
-  case class RedshiftConfig(id: String,
+  case class RedshiftConfig(id: UUID,
                             name: String,
                             host: String,
                             database: String,
@@ -243,12 +244,12 @@ object StorageTarget {
     * @return valid `StorageTarget` OR
     *         non-empty list of errors (such as validation or parse errors)
     */
-  def parseTarget(client: Client[Id, Json], target: String): Either[ParseError, StorageTarget] =
+  def parseTarget(client: Client[Id, Json], target: String): EitherNel[ParseError, StorageTarget] =
     parse(target)
       .leftMap(e => ParseError(e.show))
-      .flatMap(json => SelfDescribingData.parse(json).leftMap(e => ParseError(s"Not a self-describing JSON, ${e.code}")))
-      .flatMap(payload => validate(client)(payload))
-      .flatMap(decodeStorageTarget)
+      .flatMap { json => SelfDescribingData.parse(json).leftMap(e => ParseError(s"Not a self-describing JSON, ${e.code}")) }
+      .toEitherNel
+      .flatMap { json => (decodeStorageTarget(json).toEitherNel, validate(client)(json).toEitherNel).parMapN { case (config, _) => config } }
 
   implicit val postgresqlConfigDecoder: Decoder[PostgresqlConfig] =
     deriveDecoder[PostgresqlConfig]
