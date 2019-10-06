@@ -13,6 +13,8 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
+import java.util.UUID
+
 import cats.data.{ State => _, _ }
 import cats.implicits._
 
@@ -60,8 +62,8 @@ object ManifestDiscovery {
   val ShredderName: String = ProjectMetadata.shredderName
   val ShredderApp = Application(Agent(ShredderName, ProjectMetadata.shredderVersion), None)
 
-  def getLoaderApp(id: String): Application =
-    Application(Agent(ProjectMetadata.name, ProjectMetadata.version), Some(id))
+  def getLoaderApp(id: UUID): Application =
+    Application(Agent(ProjectMetadata.name, ProjectMetadata.version), Some(id.toString))
 
   /**
     * Get list of unprocessed items (as `DataDiscovery`) from processing manifest
@@ -74,7 +76,7 @@ object ManifestDiscovery {
     * @return list of data discoveries (always with shredded types) or error
     *         if any error occurred
     */
-  def discover(id: String, region: String, jsonpathAssets: Option[S3.Folder]): LoaderAction[List[DataDiscovery]] = {
+  def discover(id: UUID, region: String, jsonpathAssets: Option[S3.Folder]): LoaderAction[List[DataDiscovery]] = {
     val itemsA = LoaderA.manifestDiscover(getLoaderApp(id), ShredderApp, None)
 
     for {
@@ -100,7 +102,7 @@ object ManifestDiscovery {
     *         if any error occurred
     */
   def discoverFolder(folder: S3.Folder,
-                     id: String,
+                     id: UUID,
                      region: String,
                      jsonpathAssets: Option[S3.Folder]): LoaderAction[DataDiscovery] = {
     val itemA: ActionE[Item] = LoaderA.manifestDiscover(getLoaderApp(id), ShredderApp, (folderPredicate(id, folder)(_)).some).map {
@@ -117,7 +119,7 @@ object ManifestDiscovery {
   }
 
   /** Secondary predicate, deciding if `Item` is the one we're looking for */
-  def folderPredicate(id: String, folder: S3.Folder)(item: Item): Boolean =
+  def folderPredicate(id: UUID, folder: S3.Folder)(item: Item): Boolean =
     item.id === folder
 
   /** Get only shredder-"consumed" items */
