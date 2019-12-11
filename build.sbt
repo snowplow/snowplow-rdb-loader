@@ -19,8 +19,8 @@ lazy val common = project.in(file("common"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.badrows,
       Dependencies.igluClient,
-      Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.circeGeneric,
@@ -45,9 +45,6 @@ lazy val loader = project.in(file("."))
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.decline,
-      Dependencies.igluClient,
-      Dependencies.igluCore,
-      Dependencies.igluCoreCirce,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.catsFree,
@@ -92,14 +89,12 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.dynamodb,
       // Scala
       Dependencies.decline,
-      Dependencies.analyticsSdk,
       Dependencies.eventsManifest,
       Dependencies.circeJawn,
       Dependencies.circeLiteral,
       Dependencies.schemaDdl,
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
-      Dependencies.igluClient,
       Dependencies.igluCoreCirce,
       Dependencies.manifest,
       // Scala (test only)

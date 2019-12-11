@@ -16,12 +16,12 @@ package com.snowplowanalytics.snowplow.storage.spark
 
 import cats.Id
 import cats.data.EitherT
-import cats.syntax.either._
 
 import com.snowplowanalytics.iglu.client.Resolver
 
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.storage.spark.ShredJob.Hierarchy
+import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
 /** ADT, representing possible forms of data in blob storage */
 sealed trait Shredded {
@@ -53,15 +53,15 @@ object Shredded {
     * @param resolver Iglu resolver to request all necessary entities
     * @param hierarchy actual JSON hierarchy from an enriched event
     */
-  def fromHierarchy(tabular: Boolean, resolver: => Resolver[Id])(hierarchy: Hierarchy): Either[Flattening.FlatteningError, Shredded] = {
+  def fromHierarchy(tabular: Boolean, resolver: => Resolver[Id])(hierarchy: Hierarchy): Either[FailureDetails.LoaderIgluError, Shredded] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     val format = hierarchy.entity.schema.format
-    val result: EitherT[Id, Flattening.FlatteningError, Shredded] =
+    val result: EitherT[Id, FailureDetails.LoaderIgluError, Shredded] =
       if (tabular) EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
         val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
         Tabular(vendor, name, format, hierarchy.entity.schema.version.model.toString, (meta ++ columns).mkString("\t"))
-      } else EitherT.pure[Id, Flattening.FlatteningError](Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson))
+      } else EitherT.pure[Id, FailureDetails.LoaderIgluError](Json(vendor, name, format, hierarchy.entity.schema.version.asString, hierarchy.dumpJson))
 
     result.value
   }
