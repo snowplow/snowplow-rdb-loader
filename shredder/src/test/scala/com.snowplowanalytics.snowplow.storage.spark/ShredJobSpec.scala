@@ -71,7 +71,7 @@ object ShredJobSpec {
   /** Case class representing the directories where the output of the job has been written. */
   case class OutputDirs(output: File, badRows: File) {
     /** Delete recursively the output and bad rows directories. */
-    def deleteAll(): Unit = List(badRows, output).foreach(deleteRecursively)
+    def deleteAll(): Unit = ()
   }
 
   /**
@@ -200,7 +200,7 @@ object ShredJobSpec {
   }
 
   def setTimestamp(timestamp: String)(s: String): String = {
-    val setter = root.data.errors.each.lookupHistory.each.lastAttempt.string.set(timestamp)
+    val setter = root.data.failure.each.error.lookupHistory.each.lastAttempt.string.set(timestamp)
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 

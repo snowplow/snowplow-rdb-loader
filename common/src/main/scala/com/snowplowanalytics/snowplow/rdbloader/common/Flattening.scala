@@ -12,9 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import io.circe.{ Json, Encoder }
-import io.circe.syntax._
-import io.circe.literal._
+import io.circe.Json
 
 import cats.Monad
 import cats.data.EitherT
@@ -33,53 +31,44 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{ SchemaList => DdlSchema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
+import com.snowplowanalytics.snowplow.badrows.FailureDetails
+
 object Flattening {
-  /**
-    * Error specific to shredding JSON instance into tabular format
-    * `SchemaList` is unavailable (in case no Iglu Server hosts this schemas)
-    * Particular schema could not be fetched, thus whole flattening algorithm cannot be built
-    */
-  sealed trait FlatteningError extends Product with Serializable
 
-  object FlatteningError {
-    final case class SchemaListResolution(resolutionError: ClientError.ResolutionError, criterion: SchemaCriterion) extends FlatteningError
-    final case class SchemaResolution(resolutionError: ClientError.ResolutionError, schema: SchemaKey) extends FlatteningError
-    final case class Parsing(parsingError: String) extends FlatteningError
+  val MetaSchema = SchemaKey("com.snowplowanalyics.self-desc", "schema", "jsonschema", SchemaVer.Full(1,0,0))
 
-    implicit val flatteningErrorCirceEncoder: Encoder[FlatteningError] =
-      Encoder.instance {
-        case SchemaListResolution(error, criterion) =>
-          json"""{"resolutionError": ${error: ClientError}, "criterion": ${criterion.asString}, "type": "SchemaListResolution"}"""
-        case SchemaResolution(error, schema) =>
-          json"""{"resolutionError": ${error: ClientError}, "schema": ${schema.toSchemaUri}, "type": "SchemaResolution"}"""
-        case Parsing(error) =>
-          json"""{"parsingError": $error, "type": "Parsing"}"""
-      }
-  }
-
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey): EitherT[F, FlatteningError, DdlSchemaList] =
+  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] =
     getOrdered(resolver, key.vendor, key.name, key.version.model)
 
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FlatteningError, DdlSchemaList] = {
+  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] = {
     val criterion = SchemaCriterion(vendor, name, "jsonschema", Some(model), None, None)
     val schemaList = resolver.listSchemas(vendor, name, Some(model))
     for {
-      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FlatteningError.SchemaListResolution(error, criterion))
+      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
       ordered <- DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
     } yield ordered
   }
 
-  def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FlatteningError, IgluSchema] =
+  def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, IgluSchema] =
     for {
-      json <- EitherT(resolver.lookupSchema(key)).leftMap(error => FlatteningError.SchemaResolution(error, key))
+      json <- EitherT(resolver.lookupSchema(key)).leftMap(error => FailureDetails.LoaderIgluError.IgluError(key, error))
       schema <- EitherT.fromEither(parseSchema(json))
     } yield schema
 
   /** Parse JSON into self-describing schema, or return `FlatteningError` */
-  private def parseSchema(json: Json): Either[FlatteningError, IgluSchema] =
+  private def parseSchema(json: Json): Either[FailureDetails.LoaderIgluError, IgluSchema] =
     for {
-      selfDescribing <- SelfDescribingSchema.parse(json).leftMap(code => FlatteningError.Parsing(s"Cannot parse ${json.noSpaces} payload as self-describing schema, ${code.code}"))
-      parsed <- Schema.parse(selfDescribing.schema).toRight(FlatteningError.Parsing(s"Cannot parse ${selfDescribing.self.schemaKey.toSchemaUri} payload as JSON Schema"))
+      selfDescribing <- SelfDescribingSchema.parse(json).leftMap(invalidSchema(json))
+      parsed <- Schema.parse(selfDescribing.schema).toRight(invalidSchema(selfDescribing))
     } yield SelfDescribingSchema(selfDescribing.self, parsed)
 
+  private def invalidSchema(json: Json)(code: ParseError): FailureDetails.LoaderIgluError = {
+    val error = s"Cannot parse ${json.noSpaces} as self-describing schema, ${code.code}"
+    FailureDetails.LoaderIgluError.InvalidSchema(MetaSchema, error)
+  }
+
+  private def invalidSchema(schema: SelfDescribingSchema[_]): FailureDetails.LoaderIgluError = {
+    val error = s"Cannot be parsed as JSON Schema AST"
+    FailureDetails.LoaderIgluError.InvalidSchema(schema.self.schemaKey, error)
+  }
 }

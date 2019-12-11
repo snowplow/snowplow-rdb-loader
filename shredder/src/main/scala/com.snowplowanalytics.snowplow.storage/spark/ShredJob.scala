@@ -17,6 +17,7 @@ package snowplow
 package storage.spark
 
 import cats.Id
+import cats.data.NonEmptyList
 import cats.instances.list._
 import cats.syntax.traverse._
 import cats.syntax.show._
@@ -49,8 +50,9 @@ import com.snowplowanalytics.manifest.core.ManifestError
 import com.snowplowanalytics.manifest.core.ManifestError._
 import com.snowplowanalytics.manifest.core.ProcessingManifest._
 
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.analytics.scalasdk.{ Event, ParsingError }
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
+import com.snowplowanalytics.snowplow.badrows.{ BadRow, Processor, Payload, Failure, FailureDetails }
 import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsManifestConfig }
 
 // Snowplow
@@ -59,11 +61,14 @@ import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
 import com.snowplowanalytics.iglu.client.{ Client, ClientError }
 import DynamodbManifest.ShredderManifest
 import rdbloader.common._
+import rdbloader.generated.ProjectMetadata
 
 /** Helpers method for the shred job */
 object ShredJob extends SparkJob {
 
   private val StartTime = Instant.now()
+
+  val processor = Processor(ProjectMetadata.name, ProjectMetadata.version)
 
   val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1,0,0))
 
@@ -217,7 +222,7 @@ object ShredJob extends SparkJob {
     */
   def loadAndShred(client: Client[Id, Json], line: String): Either[BadRow, Event] =
     for {
-      event <- Event.parse(line).toEither.leftMap(errors => BadRow.ShreddingError(line, errors))
+      event <- Event.parse(line).toEither.leftMap(parsingBadRow(line))
       _     <- validateEntities(client, event)
     } yield event
 
@@ -225,7 +230,16 @@ object ShredJob extends SparkJob {
     getEntities(event)
       .traverse_(entity => client.check(entity).value.leftMap(x => (entity.schema, x)).toValidatedNel)
       .toEither
-      .leftMap { errors => BadRow.ValidationError(event, errors.map(BadRow.SchemaError.tupled)) }
+      .leftMap(validationBadRow(event))
+
+  def validationBadRow(event: Event)(errors: NonEmptyList[(SchemaKey, ClientError)]) = {
+    val failureInfo = errors.map(FailureDetails.LoaderIgluError.IgluError.tupled)
+    val failure = Failure.LoaderIgluErrors(failureInfo)
+    val payload = Payload.LoaderPayload(event)
+    BadRow.LoaderIgluError(processor, failure, payload)
+  }
+
+
   /**
    * The path at which to store the altered enriched events.
    * @param outFolder shredded/good/run=xxx
@@ -236,6 +250,9 @@ object ShredJob extends SparkJob {
     s"$outFolder${if (outFolder.endsWith("/")) "" else "/"}$alteredEnrichedEventSubdirectory"
   }
 
+  private def parsingBadRow(line: String)(error: ParsingError) =
+    BadRow.LoaderParsingError(processor, error, Payload.RawPayload(line))
+
   /**
    * The path at which to store the shredded types.
    * @param outFolder shredded/good/run=xxx
@@ -243,7 +260,7 @@ object ShredJob extends SparkJob {
    * @return The shredded types output path
    */
   def getShreddedTypesOutputPath(outFolder: String, json: Boolean): String = {
-    val shreddedTypesSubdirectory = if (json) "shredded-types" else "shredded-tsv"   // TODO: change to shredded-json
+    val shreddedTypesSubdirectory = if (json) "shredded-types" else "shredded-tsv"
     s"$outFolder${if (outFolder.endsWith("/")) "" else "/"}$shreddedTypesSubdirectory"
   }
 
@@ -269,7 +286,8 @@ object ShredJob extends SparkJob {
           case e: ProvisionedThroughputExceededException =>
             throw UnexpectedEtlException(e.toString)
           case NonFatal(e) =>
-            Left(BadRow.RuntimeError(event, Option(e.getMessage).getOrElse(e.toString)))
+            val payload = Payload.LoaderPayload(event)
+            Left(BadRow.LoaderRuntimeError(processor, Option(e.getMessage).getOrElse(e.toString), payload))
         }
       case _ => Right(true)
     }
@@ -303,6 +321,12 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       case None => false
     }
 
+  def shreddingBadRow(event: Event)(errors: NonEmptyList[FailureDetails.LoaderIgluError]) = {
+    val failure = Failure.LoaderIgluErrors(errors)
+    val payload = Payload.LoaderPayload(event)
+    BadRow.LoaderIgluError(ShredJob.processor, failure, payload)
+  }
+
   /**
    * Runs the shred job by:
    *  - shredding the Snowplow enriched events
@@ -319,7 +343,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       Hierarchy.fromEvent(event).traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
         Shredded.fromHierarchy(tabular, singleton.IgluSingleton.get(shredConfig.igluConfig).resolver)(hierarchy).toValidatedNel
-      }.leftMap(errors => BadRow.EntityShreddingError(event, errors)).toEither.map { shredded =>
+      }.leftMap(shreddingBadRow(event)).toEither.map { shredded =>
         val row = Row(EventUtils.alterEnrichedEvent(event, atomicLengths))
         FinalRow(row, shredded)
       }
@@ -341,7 +365,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .cache()
 
     // Handling of malformed rows; drop good, turn malformed into `BadRow`
-    val bad = common.flatMap { shredded => shredded.swap.toOption.map(bad => Row(bad.toCompactJson)) }
+    val bad = common.flatMap { shredded => shredded.swap.toOption.map(bad => Row(bad.compact)) }
 
     // Handling of properly-formed rows; drop bad, turn proper events to `Event`
     // Pefrorm in-batch and cross-batch natural deduplications and writes found types to accumulator
@@ -425,11 +449,11 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
 
     // Deduplication operation failed due to DynamoDB
     val dupeFailed = good.flatMap {
-      case (_, Left(m)) => Some(Row(m.toCompactJson))
+      case (_, Left(m)) => Some(Row(m.compact))
       case _ => None
     }
     // Data that failed TSV transformation
-    val shreddedBad = withSyntheticDupes.flatMap(_.swap.toOption.map(bad => Row(bad.toCompactJson)))
+    val shreddedBad = withSyntheticDupes.flatMap(_.swap.toOption.map(bad => Row(bad.compact)))
 
     spark.createDataFrame(bad ++ dupeFailed ++ shreddedBad, StructType(StructField("_", StringType, true) :: Nil))
       .write

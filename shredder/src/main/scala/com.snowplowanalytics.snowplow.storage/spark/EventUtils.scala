@@ -36,8 +36,9 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.{ getOrdered, FlatteningError }
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.getOrdered
 
 object EventUtils {
   /**
@@ -88,7 +89,7 @@ object EventUtils {
     * @param instance self-describing JSON that needs to be transformed
     * @return list of columns or flattening error
     */
-  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FlatteningError, List[String]] =
+  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
     getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, Some(escape)) }
 
   /** Prevents data with newlines and tabs from breaking the loading process */
