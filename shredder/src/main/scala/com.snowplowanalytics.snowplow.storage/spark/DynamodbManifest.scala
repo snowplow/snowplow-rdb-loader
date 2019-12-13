@@ -47,7 +47,7 @@ object DynamodbManifest {
   implicit val manifestFailureLookup: RegistryLookup[ManifestFailure] = new RegistryLookup[ManifestFailure] {
     def lookup(repositoryRef: Registry, schemaKey: SchemaKey): ManifestFailure[Either[RegistryError, Json]] =
       RegistryLookup[Id].lookup(repositoryRef, schemaKey).asRight
-    def list(registry: Registry, vendor: String, name: String, model: Option[Int]): ManifestFailure[Either[RegistryError, SchemaList]] =
+    def list(registry: Registry, vendor: String, name: String, model: Int): ManifestFailure[Either[RegistryError, SchemaList]] =
       RegistryLookup[Id].list(registry, vendor, name, model).asRight[ManifestError]
   }
 

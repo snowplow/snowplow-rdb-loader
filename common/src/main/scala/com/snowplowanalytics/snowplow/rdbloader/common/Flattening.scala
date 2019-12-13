@@ -42,7 +42,7 @@ object Flattening {
 
   def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] = {
     val criterion = SchemaCriterion(vendor, name, "jsonschema", Some(model), None, None)
-    val schemaList = resolver.listSchemas(vendor, name, Some(model))
+    val schemaList = resolver.listSchemas(vendor, name, model)
     for {
       schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
       ordered <- DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
