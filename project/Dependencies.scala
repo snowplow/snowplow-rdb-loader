@@ -35,7 +35,7 @@ object Dependencies {
 
     // Java (Loader)
     val postgres         = "42.0.0"
-    val redshift         = "1.2.8.1005"
+    val redshift         = "1.2.36.1060"
     val aws              = "1.11.319"
     val jSch             = "0.1.54"
 
