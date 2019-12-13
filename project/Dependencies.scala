@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val igluClient       = "0.6.0"
+    val igluClient       = "0.6.2"
     val igluCore         = "0.5.1"
     val badrows          = "0.1.0"
     val scalaTracker     = "0.6.1"
