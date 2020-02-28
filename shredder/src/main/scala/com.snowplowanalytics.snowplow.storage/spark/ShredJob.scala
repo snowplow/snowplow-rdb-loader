@@ -314,7 +314,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .flatMap { shredded => shredded.toOption }
       .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
       .map { case (_, s) =>
-        val first = s.head
+        val first = s.minBy(_.etl_tstamp)
         val absent = dedupeCrossBatch(first, DuplicateStorageSingleton.get(eventsManifest))
         (first, absent)
       }
