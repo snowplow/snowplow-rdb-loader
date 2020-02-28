@@ -1,3 +1,18 @@
+Release 32 (2020-03-06)
+-----------------------
+Common: remove VERSION file (#164)
+Common: force storage target ids to be valid UUID (#168)
+Common: bump iglu-scala-client to 0.6.2 (#167)
+Common: add Local Iglu Server to CI/CD process (#157)
+Common: allow tabular blacklisting (#156)
+RDB Shredder: use snowplow-badrows (#169)
+RDB Shredder: fix false positive cross-batch deduplication for RT pipelines (#173)
+RDB Shredder: add tabular data output (#151)
+RDB Shredder: bump to 0.16.0 (#154)
+RDB Loader: bump redshift-jdbc to 1.2.36 (#61)
+RDB Loader: add tabular output loading (#152)
+RDB Loader: bump to 0.17.0 (#153)
+
 Release 31 (2019-08-14)
 -----------------------
 Common: add Snowplow Maven resolver (#147)
