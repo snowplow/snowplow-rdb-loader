@@ -51,20 +51,20 @@ limitations under the License.
 [techdocs-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/techdocs.png
 [setup-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/setup.png
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
-[setup]: https://github.com/snowplow/snowplow/wiki/6-Configuring-shredding
-[techdocs]: https://github.com/snowplow/snowplow/wiki/Relational-Database-Loader
+[setup]: https://docs.snowplowanalytics.com/docs/getting-started-on-snowplow-open-source/setup-snowplow-on-aws/setup-destinations/setup-redshift/
+[techdocs]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/
 
 [spark]: http://spark.apache.org/
 [emr-etl-runner]: https://github.com/snowplow/emr-etl-runner
 [enrich]: https://github.com/snowplow/snowplow/enrich
 
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
-[shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred
+[shred]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/rdb-shredder/
 
 [build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
 [build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
 
-[release-image]: https://img.shields.io/badge/release-r32-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-r33-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
