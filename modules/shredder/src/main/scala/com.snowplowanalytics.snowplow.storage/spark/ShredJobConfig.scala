@@ -113,7 +113,7 @@ object ShredJobConfig {
     case (config, None) => config.validNel
   }
 
-  val command = Command(s"${ProjectMetadata.shredderName}-${ProjectMetadata.shredderVersion}",
+  val command = Command(s"${ProjectMetadata.shredderName}-${ProjectMetadata.version}",
     "Apache Spark job to prepare Snowplow enriched data to being loaded into Amazon Redshift warehouse")(shredJobConfig)
 
   /**

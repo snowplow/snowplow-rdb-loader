@@ -30,7 +30,7 @@ object InvalidJsonsSpec {
   val expected = json"""{
     "schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0",
     "data":{
-      "processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc1"},
+      "processor":{"artifact":"snowplow-rdb-shredder","version":$Version},
       "failure":{
         "type":"RowDecodingError",
         "errors":[
