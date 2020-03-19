@@ -244,8 +244,9 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
       val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
       expectedFiles += f
       val eventIds = lines.map(_.split("\t").apply(6))
-      eventIds mustEqual
+      eventIds must containTheSameElementsAs(
         Seq(CrossBatchDeduplicationSpec.uniqueUuid, CrossBatchDeduplicationSpec.inbatchDupeUuid).map(_.toString)
+      )
     }
     "shred additional contexts into their appropriate path" in {
       val Some((contexts, f)) = readPartFile(dirs.output,
