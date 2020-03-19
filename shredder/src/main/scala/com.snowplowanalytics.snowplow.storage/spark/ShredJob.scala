@@ -388,66 +388,54 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     val good = common
       .flatMap { shredded => shredded.toOption }
       .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
-      .map { case (_, s) =>
+      .flatMap { case (_, s) =>
         val first = s.minBy(_.etl_tstamp)
-        val absent = dedupeCrossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest))
-        (first, absent)
+        recordPayload(first.inventory.map(_.schemaKey))
+        dedupeCrossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
+          case Right(unique) if unique => Some(Right(first))
+          case Right(_) => None
+          case Left(badRow) => Some(Left(badRow))
+        }
       }
       .setName("good")
-
-    // Deduplication operation succeeded
-    val dupeSucceeded = good
-      .filter {
-        case (_, Right(r)) => r
-        case (_, Left(_)) => false
-      }
-      .map { case (event, _) =>
-        recordPayload(event.inventory.map(_.schemaKey))
-        event
-      }
+      .cache()
 
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
-    val syntheticDupes = dupeSucceeded
-      .groupBy(_.event_id)
+    val syntheticDupes = good
       .flatMap {
-        case (eventId, vs) if vs.size > 1 => Some((eventId, ()))
+        case Right(e) => Some((e.event_id, 1L))
+        case Left(_) => None
+      }
+      .reduceByKey(_ + _)
+      .flatMap {
+        case (id, count) if count > 1 => Some(id)
         case _ => None
       }
 
+    val syntheticDupesBroadcasted = sc.broadcast(syntheticDupes.collect().toSet)
+
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val identifiedSyntheticDupes = dupeSucceeded
-      .map(event => event.event_id -> event)
-      .leftOuterJoin(syntheticDupes)
-      .setName("identifiedSyntheticDupes")
-      .cache()
+    val shredded = good.map { e =>
+      e.flatMap { event =>
+        val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
+        val updated = if (isSyntheticDupe) {
+          val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${event.event_id}}""")
+          val updatedContexts = newContext :: event.derived_contexts.data
+          val newEventId = UUID.randomUUID()
+          event.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts))
+        } else event
+        shred(updated)
+      }
+    }.cache()
 
-    val uniqueGood = identifiedSyntheticDupes.flatMap {
-      case (_, (event, None)) => Some(event)
-      case _ => None
-    }.setName("uniqueGood")
-
-    // Avoid recomputing UUID at all costs in order to not create orphan shredded entities
-    val syntheticDupedGood = identifiedSyntheticDupes.flatMap {
-      case (_, (event, Some(_))) =>
-        val newEventId = UUID.randomUUID()
-        val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${event.event_id}}""")
-        val updatedContexts = newContext :: event.derived_contexts.data
-        Some(event.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts)))
-      case _ =>
-        None
-    }.persist(StorageLevel.MEMORY_AND_DISK_SER).setName("syntheticDupedGood")
-
-    val withSyntheticDupes = (uniqueGood ++ syntheticDupedGood)
-      .map(shred).cache().setName("withSyntheticDupes")
-
-    val goodWithSyntheticDupes = withSyntheticDupes.flatMap(_.toOption)
+    val shreddedGood = shredded.flatMap(_.toOption)
 
     // Ready the events for database load
-    val events = goodWithSyntheticDupes.map(_.atomic)
+    val events = shreddedGood.map(_.atomic)
 
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shredded = goodWithSyntheticDupes.flatMap(_.shredded)
+    val shreddedData = shreddedGood.flatMap(_.shredded)
 
     // Write as strings to `atomic-events` directory
     spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
@@ -457,20 +445,15 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
 
     // Final output
     shredConfig.storage.flatMap(_.blacklistTabular).map(_.nonEmpty) match {
-      case Some(true) | None => writeShredded(shredded.flatMap(_.json), true)
+      case Some(true) | None => writeShredded(shreddedData.flatMap(_.json), true)
       case Some(false) => ()
     }
-    writeShredded(shredded.flatMap(_.tabular), false)
+    writeShredded(shreddedData.flatMap(_.tabular), false)
 
-    // Deduplication operation failed due to DynamoDB
-    val dupeFailed = good.flatMap {
-      case (_, Left(m)) => Some(Row(m.compact))
-      case _ => None
-    }
     // Data that failed TSV transformation
-    val shreddedBad = withSyntheticDupes.flatMap(_.swap.toOption.map(bad => Row(bad.compact)))
+    val shreddedBad = shredded.flatMap(_.swap.toOption.map(bad => Row(bad.compact)))
 
-    spark.createDataFrame(bad ++ dupeFailed ++ shreddedBad, StructType(StructField("_", StringType, true) :: Nil))
+    spark.createDataFrame(bad ++ shreddedBad, StructType(StructField("_", StringType, true) :: Nil))
       .write
       .mode(SaveMode.Overwrite)
       .text(shredConfig.badFolder)
