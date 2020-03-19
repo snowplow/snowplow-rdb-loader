@@ -116,12 +116,14 @@ object ShredJob extends SparkJob {
 
   private[spark] val classesToRegister: Array[Class[_]] = Array(
     classOf[Array[String]],
+    classOf[Array[UUID]],
     classOf[SchemaKey],
     classOf[SelfDescribingData[_]],
     classOf[Event],
     classOf[Hierarchy],
     classOf[FinalRow],
     classOf[Instant],
+    classOf[UUID],
     classOf[com.snowplowanalytics.iglu.core.SchemaVer$Full],
     classOf[io.circe.JsonObject$LinkedHashMapJsonObject],
     classOf[io.circe.Json$JObject],
@@ -142,7 +144,9 @@ object ShredJob extends SparkJob {
     classOf[scala.collection.immutable.Map$EmptyMap$],
     classOf[scala.collection.immutable.Set$EmptySet$],
     classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
+    classOf[scala.math.Ordering$$anon$4],
     classOf[org.apache.spark.sql.catalyst.InternalRow],
+    Class.forName("com.snowplowanalytics.snowplow.storage.spark.ShredJob$$anon$1"),
     classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
     classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats]
