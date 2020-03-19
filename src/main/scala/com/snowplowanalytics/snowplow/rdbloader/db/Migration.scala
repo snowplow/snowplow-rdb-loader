@@ -54,9 +54,18 @@ object Migration {
 
   /** Find the latest schema version in the table and confirm that it is the latest in `schemas` */
   def getVersion(dbSchema: String, tableName: String, latest: DSchemaList): LoaderAction[TableState] = {
-    val query = SqlString.unsafeCoerce(s"SELECT obj_description(oid) FROM pg_class WHERE relname = '$tableName'")
-    LoaderA.executeUpdate(SqlString.unsafeCoerce(s"SET SEARCH_PATH TO $dbSchema")) *>
-      LoaderA.executeQuery[TableState](query).leftMap(annotateError(dbSchema, tableName))
+    val query = SqlString.unsafeCoerce(
+      s"""
+         |SELECT obj_description(oid)
+         |FROM pg_class
+         |WHERE relnamespace = (
+         |   SELECT oid
+         |   FROM pg_catalog.pg_namespace
+         |   WHERE nspname = '$dbSchema') 
+         |AND relname = '$tableName'
+      """.stripMargin)
+
+    LoaderA.executeQuery[TableState](query).leftMap(annotateError(dbSchema, tableName))
   }
 
   /** Check if table exists in `dbSchema` */
