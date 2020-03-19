@@ -37,7 +37,7 @@ object Dependencies {
     val postgres         = "42.0.0"
     val redshift         = "1.2.36.1060"
     val aws              = "1.11.319"
-    val jSch             = "0.1.54"
+    val jSch             = "0.1.55"
 
     // Scala (test only)
     val specs2           = "4.0.4"
