@@ -30,7 +30,7 @@ object SchemaValidationFailedSpec {
   val expected = json"""{
     "schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_iglu_error/jsonschema/2-0-0",
     "data":{
-      "processor":{"artifact":"snowplow-rdb-shredder","version":"0.16.0"},
+      "processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc1"},
       "failure":[
         {"schemaKey":"iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-0","error":{"error":"ValidationError","dataReports":[{"message":"$$.targetUrl: is missing but it is required","path":"$$","keyword":"required","targets":["targetUrl"]}]}}
       ],
