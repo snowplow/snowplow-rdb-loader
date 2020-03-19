@@ -30,9 +30,9 @@ object NotEnrichedEventsSpec {
   )
 
   val expected = List(
-    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc1"},"failure":{"type":"NotTSV"},"payload":""}}""",
-    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc1"},"failure":{"type":"NotTSV"},"payload":"NOT AN ENRICHED EVENT"}}""",
-    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc1"},"failure":{"type":"NotTSV"},"payload":"2012-05-21  07:14:47  FRA2  3343  83.4.209.35 GET d3t05xllj8hhgj.cloudfront.net"}}"""
+    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc4"},"failure":{"type":"NotTSV"},"payload":""}}""",
+    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc4"},"failure":{"type":"NotTSV"},"payload":"NOT AN ENRICHED EVENT"}}""",
+    json"""{"schema":"iglu:com.snowplowanalytics.snowplow.badrows/loader_parsing_error/jsonschema/2-0-0","data":{"processor":{"artifact":"snowplow-rdb-shredder","version":"0.18.0-rc4"},"failure":{"type":"NotTSV"},"payload":"2012-05-21  07:14:47  FRA2  3343  83.4.209.35 GET d3t05xllj8hhgj.cloudfront.net"}}"""
   ).map(_.noSpaces)
 }
 
