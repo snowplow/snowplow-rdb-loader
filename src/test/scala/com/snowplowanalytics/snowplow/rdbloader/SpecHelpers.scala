@@ -44,10 +44,6 @@ object SpecHelpers {
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
   val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
 
-//  val staticRegistryUri = "http://iglucentral-dev.com.s3-website-us-east-1.amazonaws.com/feature/rdb-blacklist"
-//  val staticRegistry = Registry.Http(Registry.Config("Test registry", 0, Nil), Registry.HttpConnection(java.net.URI.create(staticRegistryUri), None))
-//  val resolver = Resolver(List(staticRegistry), None)
-
   val targetStream = getClass.getResourceAsStream("/valid-redshift.json.base64")
   val target = fromInputStream(targetStream).getLines.mkString("\n")
 
