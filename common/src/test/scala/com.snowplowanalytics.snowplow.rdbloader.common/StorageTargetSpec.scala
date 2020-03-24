@@ -147,7 +147,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
       1,
       20000,
       None,
-      None,
       None)
 
     parseWithDefaultResolver(config) must beRight(expected)
@@ -212,7 +211,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
       1,
       20000,
       Some(tunnel),
-      None,
       None)
 
     parseWithDefaultResolver(config) must beRight(expected)
@@ -259,7 +257,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
       StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
       1,
       20000,
-      None,
       None,
       None)
 
@@ -356,7 +353,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
       1,
       20000,
       None,
-      None,
       None)
 
     parseWithDefaultResolver(config) must beRight(expected)
@@ -443,7 +439,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
       StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))),
       1,
       20000,
-      None,
       None,
       Some(List(
         SchemaCriterion("com.acme", "event", "jsonschema", Some(1), None, None),

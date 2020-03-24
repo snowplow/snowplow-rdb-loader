@@ -78,10 +78,7 @@ object RedshiftLoader {
       _ <- LoaderA.print(s"Loading ${statements.base}").liftA
 
       _ <- executeUpdate(Common.BeginTransaction)
-      _ <- statements.discovery.item match {
-        case Some(item) => LoaderA.manifestProcess(item, loadTransaction)
-        case None => loadTransaction
-      }
+      _ <- loadTransaction
       _ <- executeUpdate(Common.CommitTransaction)
       _ <- LoaderA.print(s"Loading finished for ${statements.base}").liftA
       _ <- vacuum(statements)

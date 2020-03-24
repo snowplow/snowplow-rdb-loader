@@ -18,8 +18,6 @@ import cats.free.Free
 import cats.data.EitherT
 import cats.implicits._
 
-import com.snowplowanalytics.manifest.core.{ Item, Application }
-
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 
 // This library
@@ -39,10 +37,6 @@ object LoaderA {
   case class ListS3(bucket: S3.Folder) extends LoaderA[Either[LoaderError, List[S3.BlobObject]]]
   case class KeyExists(key: S3.Key) extends LoaderA[Boolean]
   case class DownloadData(path: S3.Folder, dest: Path) extends LoaderA[Either[LoaderError, List[Path]]]
-
-  // Processing Manifest ops
-  case class ManifestDiscover(loader: Application, shredder: Application, predicate: Option[Item => Boolean]) extends LoaderA[Either[LoaderError, List[Item]]]
-  case class ManifestProcess(item: Item, load: LoaderAction[Unit]) extends LoaderA[Either[LoaderError, Unit]]
 
   // Loading ops
   case class ExecuteUpdate(sql: SqlString) extends LoaderA[Either[LoaderError, Long]]
@@ -87,14 +81,6 @@ object LoaderA {
   /** Download S3 key into local path */
   def downloadData(source: S3.Folder, dest: Path): LoaderAction[List[Path]] =
     EitherT(Free.liftF[LoaderA, Either[LoaderError, List[Path]]](DownloadData(source, dest)))
-
-  /** Discover data from manifest */
-  def manifestDiscover(loader: Application, shredder: Application, predicate: Option[Item => Boolean]): Action[Either[LoaderError, List[Item]]] =
-    Free.liftF[LoaderA, Either[LoaderError, List[Item]]](ManifestDiscover(loader, shredder, predicate))
-
-  /** Add Processing manifest records due loading */
-  def manifestProcess(item: Item, load: LoaderAction[Unit]): LoaderAction[Unit] =
-    EitherT(Free.liftF[LoaderA, Either[LoaderError, Unit]](ManifestProcess(item, load)))
 
   /** Execute single SQL statement (against target in interpreter) */
   def executeUpdate(sql: SqlString): LoaderAction[Long] =

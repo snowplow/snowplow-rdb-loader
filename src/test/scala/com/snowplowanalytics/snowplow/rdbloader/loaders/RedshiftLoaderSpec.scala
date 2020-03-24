@@ -18,20 +18,14 @@ import java.time.Instant
 import java.sql.Timestamp
 
 import cats.{Id, ~>}
-import cats.implicits._
-import cats.data.{ State => _, _ }
-import cats.effect._
 
 import org.specs2.Specification
 
-import com.snowplowanalytics.manifest.core._
-
 // This project
 import Common.SqlString.{unsafeCoerce => sql}
-import interpreters.implementations.ManifestInterpreter.ManifestE
 import S3.{ Folder, Key }
 import config.{ CliConfig, Step, Semver }
-import discovery.{ DataDiscovery, ShreddedType, ManifestDiscovery }
+import discovery.{ DataDiscovery, ShreddedType }
 
 
 class RedshiftLoaderSpec extends Specification { def is = s2"""
@@ -42,13 +36,11 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   Perform manifest-insertion and load within same transaction $e5
   Load Manifest check does not allow items with same etlTstamp $e6
   Transit copy creates and deletes a temporary table $e7
-  Perform load with discovery through processing manifest $e8
-  Write an application_error failure for failed redshift load $e9
   """
 
   import SpecHelpers._
 
-  val noDiscovery = DataDiscovery(Folder.coerce("s3://noop"), None, None, Nil, false, None)
+  val noDiscovery = DataDiscovery(Folder.coerce("s3://noop"), None, None, Nil, false)
   def newId = UUID.randomUUID()
   val time = Instant.now()
 
@@ -74,7 +66,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val expected =
-      List(DataDiscovery(S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(1), Some(1L), Nil, specificFolder = false, None))
+      List(DataDiscovery(S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(1), Some(1L), Nil, specificFolder = false))
 
     val action = Common.discover(CliConfig(validConfig, validTarget, Set.empty, None, None, false, SpecHelpers.resolverJson))
     val result = action.value.foldMap(interpreter)
@@ -95,7 +87,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0)),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )
-      ), specificFolder = false, None
+      ), specificFolder = false
     )
     val result = RedshiftLoadStatements.buildQueue(validConfig, validTarget, steps)(List(discovery))
 
@@ -217,7 +209,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
           ShreddedType.Info(Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0, 12, 0, Some(Semver.ReleaseCandidate(4)))),
           Key.coerce("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json")
         )
-      ), specificFolder = false, None
+      ), specificFolder = false
     ))
 
     result must beRight(expected)
@@ -395,195 +387,6 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     val transactionsExpectation = queries.toList must beEqualTo(expected)
     val resultExpectation = result must beRight(())
     transactionsExpectation.and(resultExpectation)
-  }
-
-  def e8 = {
-    val expected = List(
-      "BEGIN", "ACQUIRED",
-      "COPY atomic.events", "SELECT etl_tstamp", "SELECT manifest",
-      "COPY atomic.com_acme_context_1", "COPY atomic.com_acme_event_2", "COPY atomic.com_snowplowanalytics_snowplow_geolocation_context_1",
-      "INSERT INTO atomic.manifest", "RELEASED",
-      "COMMIT",
-
-      "BEGIN",
-      "ANALYZE atomic.events",
-      "ANALYZE atomic.com_acme_context_1",
-      "ANALYZE atomic.com_acme_event_2",
-      "ANALYZE atomic.com_snowplowanalytics_snowplow_geolocation_context_1",
-      "COMMIT"
-    )
-
-    val queries = collection.mutable.ListBuffer.empty[String]
-
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      val lockHandler = LockHandler[ManifestE](
-        (_, _, _) => {
-          queries.append(s"ACQUIRED")
-          EitherT.pure[IO, ManifestError]((UUID.randomUUID(), Instant.now()))
-        },
-        (_, _, _, _) => {
-          queries.append(s"RELEASED")
-          EitherT.pure[IO, ManifestError]((UUID.randomUUID(), Instant.now()))
-        },
-        (_, _, id, _) => {
-          queries.append(s"FAILED $id")
-          EitherT.pure[IO, ManifestError]((UUID.randomUUID(), Instant.now()))
-        }
-      )
-
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("COPY") =>
-            queries.append(query.split(" ").take(2).mkString(" ").trim)
-            Right(1L)
-
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("INSERT INTO atomic.manifest") =>
-            queries.append("INSERT INTO atomic.manifest")
-            Right(1L)
-
-          case LoaderA.ExecuteUpdate(query) =>
-            queries.append(query)
-            Right(1L)
-
-          case LoaderA.Print(_) =>
-            ()
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
-            queries.append("SELECT manifest")
-            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
-            Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("SELECT etl_tstamp") =>
-            queries.append("SELECT etl_tstamp")
-            val time = Timestamp.from(Instant.ofEpochMilli(1520164735L))
-            Right(Some(db.Entities.Timestamp(time)))
-
-          case LoaderA.Get(key) =>
-            val result = "s3://snowplow-acme-storage/" ++ key
-            Some(Some(Key.coerce(result)))
-
-          case LoaderA.ManifestProcess(i, action) =>
-            val proccess: ProcessingManifest.Process = (_: Item) => { action.value.foldMap(this) match {
-              case Right(_) => scala.util.Success(None)
-              case Left(e) => scala.util.Failure(LoaderError.LoaderThrowable(e))
-            } }
-            ProcessingManifest.processItemWithHandler[ManifestE](lockHandler)(Application("rdb-test", "0.1.0"), None, proccess)(i)
-              .leftMap(LoaderError.fromManifestError)
-              .value
-              .unsafeRunSync()
-              .void
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
-
-    val application = Application("snowplow-rdb-shredder", "0.14.0")
-    val author = Author(application.agent, "0.1.0")
-    val id1 = UUID.fromString("7c96c841-fc38-437d-bfec-4c1cd9b00001")
-    val payload = getPayload("""["iglu:com.acme/context/jsonschema/1-0-0", "iglu:com.acme/event/jsonschema/2-0-0", "iglu:com.snowplowanalytics.snowplow/geolocation_context/jsonschema/1-1-0"]""")
-    val base = Folder.coerce("s3://snowplow-archive/shredded/run=2018-03-08-23-30-00/")
-    val item = Item(NonEmptyList(
-      Record(base, application, newId, None, State.New, time, author, None),
-      List(
-        Record(base, application, id1, None, State.Processing, time.plusSeconds(10), author, None),
-        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload.some)
-      )))
-
-    val dataDiscovery = for {
-      info <- LoaderAction.liftE(ManifestDiscovery.parseItemPayload(item))
-      data <- ManifestDiscovery.itemToDiscovery("us-east-1", None, item, info)
-    } yield data
-
-    val getStatements = RedshiftLoadStatements.getStatements(SpecHelpers.validConfig, SpecHelpers.validTargetWithManifest, Step.defaultSteps) _
-    val statements = dataDiscovery.map(getStatements).value.foldMap(interpreter).right.toOption.get
-
-    val state = RedshiftLoader.loadFolder(Step.defaultSteps)(statements)
-    val result = state.value.foldMap(interpreter)
-
-    val transactionsExpectation = queries.toList must beEqualTo(expected)
-    val resultExpectation = result must beRight(())
-    transactionsExpectation.and(resultExpectation)
-  }
-
-  def e9 = {
-    val application = Application("snowplow-rdb-shredder", "0.14.0")
-    val author = Author(application.agent, "0.1.0")
-    val id1 = UUID.fromString("7c96c841-fc38-437d-bfec-4c1cd9b00001")
-    val id2 = UUID.fromString("bdd54563-e419-431d-9695-19e738bf7735")
-    val payload = getPayload("""["iglu:com.acme/context/jsonschema/1-0-0", "iglu:com.acme/event/jsonschema/2-0-0", "iglu:com.snowplowanalytics.snowplow/geolocation_context/jsonschema/1-1-0"]""")
-    val base = Folder.coerce("s3://snowplow-archive/shredded/run=2018-03-08-23-30-00/")
-    val item = Item(NonEmptyList(
-      Record(base, application, newId, None, State.New, time, author, None),
-      List(
-        Record(base, application, id1, None, State.Processing, time.plusSeconds(10), author, None),
-        Record(base, application, newId, Some(id1), State.Processed, time.plusSeconds(20), author, payload.some)
-      )))
-    val discovery = DataDiscovery(base, Some(1), None, Nil, false, Some(item))
-    val statements = RedshiftLoadStatements(
-      "schem",
-      RedshiftLoadStatements.StraightCopy("COPY to events table".sql),
-      List("COPY to shredded1 table".sql),
-      Some(List("VACUUM all tables".sql)),
-      None,
-      "COPY into manifest".sql,
-      discovery
-    )
-    val result = RedshiftLoader.loadFolder(Step.defaultSteps)(statements)
-
-    val queries = collection.mutable.ListBuffer.empty[String]
-
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      val lockHandler = LockHandler[ManifestE](
-        (_, _, _) => {
-          queries.append(s"ACQUIRED")
-          EitherT.pure[IO, ManifestError]((id2, Instant.now()))
-        },
-        (_, _, _, _) => {
-          queries.append(s"RELEASED")
-          EitherT.pure[IO, ManifestError]((UUID.randomUUID(), Instant.now()))
-        },
-        (_, _, id, _) => {
-          queries.append(s"FAILED $id")
-          EitherT.pure[IO, ManifestError]((UUID.randomUUID(), Instant.now()))
-        }
-      )
-
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("BEGIN") =>
-            queries.append(query)
-            Right(1L)
-
-          case LoaderA.ExecuteUpdate(query) if query.startsWith("COPY") =>
-            Left(LoaderError.StorageTargetError("Test failure"))
-
-          case LoaderA.Print(m) =>
-            ()
-
-          case LoaderA.ManifestProcess(i, action) =>
-            val proccess: ProcessingManifest.Process = (_: Item) => { action.value.foldMap(this) match {
-              case Right(_) => throw new RuntimeException("Processing finished successfully")
-              case Left(e) => scala.util.Failure(LoaderError.LoaderThrowable(e))
-            } }
-            ProcessingManifest.processItemWithHandler[ManifestE](lockHandler)(Application("rdb-test", "0.1.0"), None, proccess)(i)
-              .leftMap(LoaderError.fromManifestError)
-              .value
-              .unsafeRunSync()
-              .void
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
-
-    val resultExpectation = result.value.foldMap(interpreter) must beLeft
-    val actionsExpectation = queries.toList must beEqualTo(List("BEGIN", "ACQUIRED", "FAILED bdd54563-e419-431d-9695-19e738bf7735"))
-
-    resultExpectation and actionsExpectation
   }
 }
 

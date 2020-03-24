@@ -42,8 +42,6 @@ sealed trait StorageTarget extends Product with Serializable {
   def username: String
   def password: StorageTarget.PasswordConfig
 
-  def processingManifest: Option[StorageTarget.ProcessingManifestConfig]
-
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
@@ -66,19 +64,6 @@ object StorageTarget {
     case object Require extends SslMode { def asString = "REQUIRE" }
     case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
     case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
-  }
-
-  /**
-    * Configuration to access Snowplow Processing Manifest
-    * @param amazonDynamoDb Amazon DynamoDB table, the single available implementation
-    */
-  case class ProcessingManifestConfig(amazonDynamoDb: ProcessingManifestConfig.AmazonDynamoDbConfig)
-
-  object ProcessingManifestConfig {
-    case class AmazonDynamoDbConfig(tableName: String)
-
-    implicit val amazonDynamoDbConfigDecoder: Decoder[AmazonDynamoDbConfig] =
-      deriveDecoder[AmazonDynamoDbConfig]
   }
 
   /**
@@ -116,7 +101,6 @@ object StorageTarget {
                             maxError: Int,
                             compRows: Long,
                             sshTunnel: Option[TunnelConfig],
-                            processingManifest: Option[ProcessingManifestConfig],
                             blacklistTabular: Option[List[SchemaCriterion]])
     extends StorageTarget
 
@@ -274,9 +258,6 @@ object StorageTarget {
 
   implicit val passwordConfigDecoder: Decoder[PasswordConfig] =
     deriveDecoder[PasswordConfig]
-
-  implicit val processingManifestConfigDecoder: Decoder[ProcessingManifestConfig] =
-    deriveDecoder[ProcessingManifestConfig]
 
   implicit val schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
     Decoder.decodeString.emap {
