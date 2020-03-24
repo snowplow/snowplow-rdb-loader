@@ -20,7 +20,6 @@ import cats.implicits._
 import cats.effect.Clock
 
 import rdbloader.discovery.DiscoveryFailure
-import rdbloader.interpreters.implementations.ManifestInterpreter.ManifestE
 
 package object rdbloader {
 
@@ -116,6 +115,4 @@ package object rdbloader {
     def aggregatedErrors: ValidatedNel[A, List[B]] =
       eithers.map(_.toValidatedNel).sequence
   }
-
-  implicit val catsClockManifestInstance: Clock[ManifestE] = Clock.create[ManifestE]
 }

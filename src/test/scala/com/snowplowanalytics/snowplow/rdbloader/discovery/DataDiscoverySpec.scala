@@ -98,8 +98,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
-        specificFolder = false,
-        None
+        specificFolder = false
       ),
 
       DataDiscovery(
@@ -111,8 +110,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/add_to_cart_1.json"))
         ),
-        specificFolder = false,
-        None
+        specificFolder = false
       )
     )
 
@@ -210,8 +208,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
-        specificFolder = false,
-        None
+        specificFolder = false
       ),
 
       DataDiscovery(
@@ -229,8 +226,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","custom_context",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/custom_context_1.json"))
         ),
-        specificFolder = false,
-        None
+        specificFolder = false
       )
     )
 
@@ -339,8 +335,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
-        specificFolder = false,
-        None
+        specificFolder = false
       )
     )
 
@@ -399,8 +394,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
-        specificFolder = true,
-        None
+        specificFolder = true
       )
     )
 
@@ -466,16 +460,14 @@ class DataDiscoverySpec extends Specification { def is = s2"""
             Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
             s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
         ),
-        specificFolder = true,
-        None
+        specificFolder = true
       ),
       DataDiscovery(
         dir("s3://runfolder-test/shredded/good/run=2018-10-12-10-20-00/"),
         Some(2L),
         Some(2L),
         List(),
-        specificFolder = true,
-        None
+        specificFolder = true
       )
     )
 
@@ -516,7 +508,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
       ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
     )
 
-    val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), Some(8), Some(1024), shreddedTypes, false, None)
+    val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), Some(8), Some(1024), shreddedTypes, false)
     discovery.show must beEqualTo(
       """|my-path with 8 atomic files (0 Mb) and with following shredded types:
          |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)

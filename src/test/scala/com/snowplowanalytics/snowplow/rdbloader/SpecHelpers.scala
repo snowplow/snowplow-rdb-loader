@@ -90,7 +90,6 @@ object SpecHelpers {
     1,
     20000,
     None,
-    None,
     None)
 
   val validTargetWithManifest = StorageTarget.RedshiftConfig(
@@ -107,8 +106,6 @@ object SpecHelpers {
     1,
     20000,
     None,
-    Some(StorageTarget.ProcessingManifestConfig(
-      StorageTarget.ProcessingManifestConfig.AmazonDynamoDbConfig("some-manifest"))),
     None
   )
 

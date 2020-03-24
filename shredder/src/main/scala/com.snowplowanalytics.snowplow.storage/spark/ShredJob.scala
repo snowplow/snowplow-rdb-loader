@@ -31,7 +31,6 @@ import io.circe.literal._
 import java.util.UUID
 import java.time.Instant
 
-import scala.util.Try
 import scala.util.control.NonFatal
 
 // Spark
@@ -40,15 +39,9 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
-import org.apache.spark.storage.StorageLevel
 
 // AWS SDK
 import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException
-
-// Manifest
-import com.snowplowanalytics.manifest.core.ManifestError
-import com.snowplowanalytics.manifest.core.ManifestError._
-import com.snowplowanalytics.manifest.core.ProcessingManifest._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{ Event, ParsingError }
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
@@ -59,7 +52,6 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsMan
 import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
 import com.snowplowanalytics.iglu.client.{ Client, ClientError }
-import DynamodbManifest.ShredderManifest
 import rdbloader.common._
 import rdbloader.generated.ProjectMetadata
 
@@ -166,13 +158,6 @@ object ShredJob extends SparkJob {
 
     val job = new ShredJob(spark, shredConfig)
 
-    // Processing manifest, existing only on a driver. Iglu Resolver without cache
-    val manifest = shredConfig.getManifestData.map {
-      case (m, i) =>
-        val resolver = singleton.IgluSingleton.get(shredConfig.igluConfig)
-        ShredderManifest(DynamodbManifest.initialize(m, resolver.cacheless), i)
-    }
-
     val atomicLengths = singleton.IgluSingleton.get(shredConfig.igluConfig).resolver.lookupSchema(AtomicSchema) match {   // TODO: retry
       case Right(schema) =>
         EventUtils.getAtomicLengths(schema).fold(e => throw new RuntimeException(e), identity)
@@ -188,34 +173,7 @@ object ShredJob extends SparkJob {
       config
     }
 
-    runJob(manifest, eventsManifest, atomicLengths, job, true).get
-  }
-
-  /** Start a job, if necessary recording process to manifest */
-  def runJob(manifest: Option[ShredderManifest],
-             eventsManifest: Option[EventsManifestConfig],
-             lengths: Map[String, Int],
-             job: ShredJob,
-             jsonOnly: Boolean): Try[Unit] = {
-    manifest match {
-      case None =>      // Manifest is not enabled, simply run a job
-        Try(job.run(lengths, eventsManifest, jsonOnly)).map(_ => None)
-      case Some(ShredderManifest(manifest, itemId)) =>   // Manifest is enabled.
-        // Envelope job into function to pass to `Manifest.processItem` later
-        val process: ProcessNew = () => Try {
-          job.run(lengths, eventsManifest, jsonOnly)
-          val shreddedTypes = job.shreddedTypes.value.toSet
-          DynamodbManifest.processedPayload(shreddedTypes)
-        }
-
-        // Execute job in manifest transaction
-        val id = DynamodbManifest.normalizeItemId(itemId)
-        manifest.processNewItem(id, DynamodbManifest.ShredJobApplication, None, process) match {
-          case Right(_) => util.Success(())
-          case Left(ManifestError.ApplicationError(t, _, _)) => util.Failure(t)   // Usual Spark exception
-          case Left(error) => util.Failure(FatalEtlError(error.show))         // Manifest-related exception
-        }
-    }
+    job.run(atomicLengths, eventsManifest, true)
   }
 
   /**
@@ -243,7 +201,6 @@ object ShredJob extends SparkJob {
     val payload = Payload.LoaderPayload(event)
     BadRow.LoaderIgluError(processor, failure, payload)
   }
-
 
   /**
    * The path at which to store the altered enriched events.

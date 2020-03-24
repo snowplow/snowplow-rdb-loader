@@ -15,8 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import cats.data.NonEmptyList
 import cats.syntax.show._
 
-import com.snowplowanalytics.manifest.core.ManifestError
-
 import com.snowplowanalytics.snowplow.rdbloader.{S3, LoaderError}
 
 /**
@@ -82,11 +80,6 @@ object DiscoveryFailure {
     def getMessage: String =
       s"No data discovered in [$path], while RDB Loader was explicitly pointed to it by '--folder' option. " +
         s"Possible reasons: S3 eventual consistency or folder does not contain any files"
-
-    // Message for enabled manifest
-    def getManifestMessage: String =
-      s"Processing manifest does not have unprocessed item [$path]. It can be there, but " +
-        "already loaded by RDB Loader or unprocessed by RDB Shredder"
   }
 
   /**
@@ -95,11 +88,6 @@ object DiscoveryFailure {
   case class ShreddedTypeDiscoveryFailure(path: S3.Folder, invalidKeyCount: Int, example: S3.Key) extends DiscoveryFailure {
     def getMessage: String =
       s"Cannot extract contexts or self-describing events from directory [$path].\nInvalid key example: $example. Total $invalidKeyCount invalid keys.\nCorrupted shredded/good state or unexpected Snowplow Shred job version"
-  }
-
-  case class ManifestFailure(manifestError: ManifestError) extends DiscoveryFailure {
-    def getMessage: String = manifestError.show
-    override def toString: String = getMessage
   }
 
   /** Aggregate some failures into more compact error-list to not pollute end-error */
