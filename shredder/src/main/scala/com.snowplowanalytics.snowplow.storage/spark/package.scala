@@ -17,27 +17,9 @@ package com.snowplowanalytics.snowplow.storage
 import java.time.{Instant, ZoneOffset}
 import java.time.format.DateTimeFormatter
 
-import cats.Id
-
-import io.circe.Json
-
-import com.snowplowanalytics.iglu.client.{Client, Resolver}
-
-import com.snowplowanalytics.snowplow.storage.spark.DynamodbManifest.ManifestFailure
-
 package object spark {
 
   private val Formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
-
-  implicit class ResolverOps(resolver: Resolver[Id]) {
-    def cacheless: Resolver[ManifestFailure] =
-      Resolver(resolver.repos, None)
-  }
-
-  implicit class ClientOps(client: Client[Id, Json]) {
-    def cacheless: Client[ManifestFailure, Json] =
-      Client(client.resolver.cacheless, client.validator)
-  }
 
   implicit class InstantOps(time: Instant) {
     def formatted: String = {

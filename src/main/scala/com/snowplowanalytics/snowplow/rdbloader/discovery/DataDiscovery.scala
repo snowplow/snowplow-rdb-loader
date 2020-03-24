@@ -20,8 +20,6 @@ import cats.data._
 import cats.free.Free
 import cats.implicits._
 
-import com.snowplowanalytics.manifest.core.Item
-
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 
@@ -32,15 +30,13 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
   * @param shreddedTypes list of shredded types in this directory
   * @param specificFolder if specific target loader was provided by `--folder`
   *                       (remains default `false` until `setSpecificFolder`)
-  * @param item Processing Manifest records if it was discovered through manifest
   */
 case class DataDiscovery(
     base: S3.Folder,
     atomicCardinality: Option[Long],
     atomicSize: Option[Long],
     shreddedTypes: List[ShreddedType],
-    specificFolder: Boolean,
-    item: Option[Item]) {
+    specificFolder: Boolean) {
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -97,7 +93,6 @@ object DataDiscovery {
   sealed trait DiscoveryTarget extends Product with Serializable
   case class Global(folder: S3.Folder) extends DiscoveryTarget
   case class InSpecificFolder(folder: S3.Folder) extends DiscoveryTarget
-  case class ViaManifest(folder: Option[S3.Folder]) extends DiscoveryTarget
 
   /**
    * Discover list of shred run folders, each containing
@@ -145,10 +140,6 @@ object DataDiscovery {
             LoaderAction.liftA(LoaderA.print("More than one folder discovered with `--folder` option"))
           } else LoaderAction.unit
         } yield discoveries
-      case ViaManifest(None) =>
-        ManifestDiscovery.discover(id, region, assets)
-      case ViaManifest(Some(folder)) =>
-        ManifestDiscovery.discoverFolder(folder, id, region, assets).map(_.pure[List])
     }
 
     setSpecificFolder(target, result)
@@ -160,8 +151,6 @@ object DataDiscovery {
     F.map(discovery) { d =>
       target match {
         case InSpecificFolder(_) => d.copy(specificFolder = true)
-        case ViaManifest(Some(_)) => d.copy(specificFolder = true)
-        case ViaManifest(None) => d.copy(specificFolder = false)
         case Global(_) => d.copy(specificFolder = false)
       }
     }
@@ -216,7 +205,7 @@ object DataDiscovery {
     if (atomicKeys.nonEmpty) {
       val shreddedData = shreddedKeys.map(_.info).distinct
       val size = Some(atomicKeys.foldMap(_.size))
-      DataDiscovery(base, Some(atomicKeys.length), size, shreddedData, false, None).validNel
+      DataDiscovery(base, Some(atomicKeys.length), size, shreddedData, false).validNel
     } else {
       DiscoveryFailure.AtomicDiscoveryFailure(base).invalidNel
     }
@@ -242,7 +231,7 @@ object DataDiscovery {
    * @param dataKey either successful or failed data key
    * @param region AWS region for S3 buckets
    * @param assets optional JSONPath assets S3 bucket
-   * @return `Action` conaining `Validation` - as on next step we can aggregate errors
+   * @return `Action` containing `Validation` - as on next step we can aggregate errors
    */
   private def transformDataKey(
       dataKey: DiscoveryStep[DataKeyIntermediate],

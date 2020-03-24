@@ -44,7 +44,7 @@ class MigrationSpec extends Specification { def is = s2"""
           Semver(0, 17, 0)
         ), S3.Key.coerce("s3://shredded/jsonpaths"))
       )
-    val input = List(DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), None, None, types, true, None))
+    val input = List(DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), None, None, types, true))
 
     val expected = List(
       "Fetch iglu:com.acme/some_context/jsonschema/2-0-0",

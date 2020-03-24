@@ -18,17 +18,12 @@ import cats.implicits._
 
 import io.circe._
 
-import com.snowplowanalytics.manifest.core.Common.{ EmbeddedRegistry => ManifestRegistry }
-
-import com.snowplowanalytics.iglu.client.{ Resolver, Client }
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
-import com.snowplowanalytics.iglu.client.validator.CirceValidator
 
 // This project
 import LoaderError._
 import discovery.DiscoveryFailure
 import config.CliConfig
-import interpreters.implementations.ManifestInterpreter.ManifestE
 
 /**
  * Various common utility functions
@@ -57,13 +52,7 @@ object Common {
   def interpret(config: CliConfig, result: Either[LoaderError, Unit]): Log = {
     result match {
       case Right(_) => Log.LoadingSucceeded
-      case Left(e @ DiscoveryError(failures)) =>
-        val manifestError = failures.collect {
-          case e: DiscoveryFailure.NoDataFailure if config.target.processingManifest.nonEmpty => e.getManifestMessage
-        }
-        Log.LoadingFailed((e: LoaderError).show ++ s"\n${manifestError.mkString("\n")}")
-      case Left(error) =>
-        Log.LoadingFailed(error.show)
+      case Left(error) => Log.LoadingFailed(error.show)
     }
   }
 
@@ -87,10 +76,6 @@ object Common {
   /** Registry embedded into RDB Loader jar */
   private val loaderRefConf = Registry.Config("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
   val LoaderRegistry = Registry.Embedded(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
-
-  /** Iglu Resolver containing all schemas processing manifest uses */
-  val DefaultClient: Client[ManifestE, Json] =
-    Client(Resolver(List(ManifestRegistry, LoaderRegistry), None), CirceValidator)
 
   /**
    * Syntax extension to transform `Either` with string as failure
