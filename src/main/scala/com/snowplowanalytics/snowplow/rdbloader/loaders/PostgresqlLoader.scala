@@ -10,15 +10,16 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package loaders
+package com.snowplowanalytics.snowplow.rdbloader.loaders
 
+import cats.Monad
 import cats.implicits._
 
-import common.StorageTarget.PostgresqlConfig
-import LoaderA._
-import config.Step
-import discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{FS, AWS, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.PostgresqlConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.Step
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 
 object PostgresqlLoader {
 
@@ -30,14 +31,14 @@ object PostgresqlLoader {
    * @param steps SQL steps
    * @param discovery discovered data to load
    */
-  def run(target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]): LoaderAction[Unit] = {
+  def run[F[_]: Monad: FS: AWS: JDBC](target: PostgresqlConfig, steps: Set[Step], discovery: List[DataDiscovery]): LoaderAction[F, Unit] = {
     val eventsTable = Common.getEventsTable(target)
     val statements = PostgresqlLoadStatements.build(eventsTable, steps)
 
     for {
-      _ <- discovery.traverse(loadFolder(statements))
-      _ <- analyze(statements)
-      _ <- vacuum(statements)
+      _ <- discovery.traverse(loadFolder[F](statements))
+      _ <- analyze[F](statements)
+      _ <- vacuum[F](statements)
     } yield ()
   }
 
@@ -48,12 +49,12 @@ object PostgresqlLoader {
    * @param discovery discovered run folder
    * @return changed app state
    */
-  def loadFolder(statement: PostgresqlLoadStatements)(discovery: DataDiscovery): LoaderAction[Long] = {
+  def loadFolder[F[_]: Monad: FS: AWS: JDBC](statement: PostgresqlLoadStatements)(discovery: DataDiscovery): LoaderAction[F, Long] = {
     for {
-      tmpdir <- createTmpDir
-      files  <- downloadData(discovery.atomicEvents, tmpdir)
-      count  <- copyViaStdin(files, statement.events)
-      _      <- deleteDir(tmpdir)
+      tmpdir <- FS[F].createTmpDir
+      files  <- AWS[F].downloadData(discovery.atomicEvents, tmpdir)
+      count  <- JDBC[F].copyViaStdin(files, statement.events)
+      _      <- FS[F].deleteDir(tmpdir)
     } yield count
   }
 
@@ -61,10 +62,10 @@ object PostgresqlLoader {
    * Return action executing VACUUM statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def analyze(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
+  def analyze[F[_]: Monad: JDBC](statements: PostgresqlLoadStatements): LoaderAction[F, Unit] = {
     statements.analyze match {
-      case Some(analyze) => executeUpdates(List(analyze)).void
-      case None => LoaderAction.unit
+      case Some(analyze) => JDBC[F].executeUpdates(List(analyze)).void
+      case None => LoaderAction.unit[F]
     }
   }
 
@@ -72,10 +73,10 @@ object PostgresqlLoader {
    * Return action executing ANALYZE statements if there's any vacuum statements,
    * or noop if no vacuum statements were generated
    */
-  def vacuum(statements: PostgresqlLoadStatements): LoaderAction[Unit] = {
+  def vacuum[F[_]: Monad: JDBC](statements: PostgresqlLoadStatements): LoaderAction[F, Unit] = {
     statements.vacuum match {
-      case Some(vacuum) => executeUpdates(List(vacuum)).void
-      case None => LoaderAction.unit
+      case Some(vacuum) => JDBC[F].executeUpdates(List(vacuum)).void
+      case None => LoaderAction.unit[F]
     }
   }
 }

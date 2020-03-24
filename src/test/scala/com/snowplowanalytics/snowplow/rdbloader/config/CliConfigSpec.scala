@@ -18,8 +18,8 @@ import cats.data.{ Validated, NonEmptyList }
 // specs2
 import org.specs2.Specification
 
-import S3.Key.{coerce => s3}
-import S3.Folder.{coerce => dir}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Key.{coerce => s3}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => dir}
 import LoaderError.ConfigError
 
 class CliConfigSpec extends Specification { def is = s2"""

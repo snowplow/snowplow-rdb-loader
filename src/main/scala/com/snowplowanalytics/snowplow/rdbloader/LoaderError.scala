@@ -13,13 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
-import cats.implicits._
 import cats.data.ValidatedNel
 
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 /** Root error type */
-sealed trait LoaderError
+sealed trait LoaderError extends Product with Serializable
 
 object LoaderError {
 
@@ -63,7 +62,9 @@ object LoaderError {
     validated.leftMap(errors => DiscoveryError(errors.toList): LoaderError).toEither
 
   /** Other errors */
-  case class LoaderLocalError(message: String) extends LoaderError
+  case class LoaderLocalError(message: String) extends Throwable with LoaderError {
+    override def getMessage: String = message
+  }
 
   /** Error happened during DDL-statements execution. Critical */
   case class MigrationError(message: String) extends LoaderError

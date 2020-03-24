@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
 import cats.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import org.scalacheck.Gen
 import org.specs2.{ScalaCheck, Specification}
 

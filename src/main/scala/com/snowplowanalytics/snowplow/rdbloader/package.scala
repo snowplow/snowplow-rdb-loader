@@ -14,68 +14,44 @@ package com.snowplowanalytics.snowplow
 
 import cats._
 import cats.data._
-import cats.free.Free
 import cats.implicits._
-
-import cats.effect.Clock
 
 import rdbloader.discovery.DiscoveryFailure
 
 package object rdbloader {
 
-  // RDB Loader's algebra defines hierarchy with three types common for all modules
-  // * Action[A]       - IO substitution, end-of-the-world type
-  // * LoaderAction[A] - Validated and short-circuiting version of Action, equal to exception
-  // * ActionE[A]      - Non-short-circuiting version of LoaderAction for results that can be recovered
-
-  /**
-   * Main RDB Loader type. Represents all IO happening
-   * during discovering, loading and monitoring.
-   * End of the world type, that must be unwrapped and executed
-   * using one of interpreters
-   */
-  type Action[A] = Free[LoaderA, A]
-
-  object Action {
-    def lift[A](value: A): Action[A] =
-      Free.pure[LoaderA, A](value)
-  }
-
-  /**
-    * Loading effect, producing value of type `A` with possible `LoaderError`
-    *
-    * @tparam A value of computation
-    */
-  type LoaderAction[A] = EitherT[Action, LoaderError, A]
+  /** Loading effect, producing value of type `A` with possible `LoaderError` */
+  type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]
 
   /** Lift value into  */
   object LoaderAction {
-    def unit: LoaderAction[Unit] =
-      EitherT.liftF(Free.pure(()))
+    def unit[F[_]: Applicative]: LoaderAction[F, Unit] =
+      EitherT.liftF(Applicative[F].unit)
 
-    def lift[A](value: A): LoaderAction[A] =
-      EitherT.liftF(Free.pure(value))
+    def rightT[F[_]: Applicative, A](value: A): LoaderAction[F, A] =
+      EitherT.rightT[F, LoaderError](value)
 
-    def liftE[A](either: Either[LoaderError, A]): LoaderAction[A] =
-      EitherT(Free.pure(either))
+    def liftE[F[_]: Applicative, A](either: Either[LoaderError, A]): LoaderAction[F, A] =
+      EitherT.fromEither[F](either)
 
-    def liftA[A](action: Action[A]): LoaderAction[A] =
-      EitherT(action.map(_.asRight[LoaderError]))
+    def liftF[F[_]: Applicative, A](action: F[A]): LoaderAction[F, A] =
+      EitherT.liftF[F, LoaderError, A](action)
 
-    def apply[A](actionE: ActionE[A]): LoaderAction[A] =
-      EitherT[Action, LoaderError, A](actionE)
+    def apply[F[_], A](actionE: ActionE[F, A]): LoaderAction[F, A] =
+      EitherT[F, LoaderError, A](actionE)
   }
 
-  implicit class ActionOps[A](a: Action[A]) {
-    def liftA: LoaderAction[A] = LoaderAction.liftA(a)
+  implicit class ActionOps[F[_], A](a: F[A]) {
+    def liftA(implicit F: Applicative[F]): LoaderAction[F, A] =
+      LoaderAction.liftF(a)
   }
 
   /** Non-short-circuiting version of `TargetLoading` */
-  type ActionE[A] = Free[LoaderA, Either[LoaderError, A]]
+  type ActionE[F[_], A] = F[Either[LoaderError, A]]
 
   object ActionE {
-    def liftError(error: LoaderError): ActionE[Nothing] =
-      Free.pure(error.asLeft)
+    def liftError[F[_]: Applicative](error: LoaderError): ActionE[F, Nothing] =
+      Applicative[F].pure(error.asLeft)
   }
 
   /**
@@ -96,20 +72,11 @@ package object rdbloader {
                   J[_], A](f: F[G[H[A]]], ff: H[G[A]] => J[G[A]]): F[J[G[A]]] =
     f.map(x => ff(x.sequence))
 
-  /**
-   * IO-free result validation
-   */
+  /** IO-free result validation */
   type DiscoveryStep[A] = Either[DiscoveryFailure, A]
 
-
   /** Single discovery step */
-  type DiscoveryAction[A] = Action[DiscoveryStep[A]]
-
-  /**
-   * Composed functor of IO and discovery step
-   */
-  private[rdbloader] val DiscoveryAction =
-    Functor[Action].compose[DiscoveryStep]
+  type DiscoveryAction[F[_], A] = F[DiscoveryStep[A]]
 
   implicit class AggregateErrors[A, B](eithers: List[Either[A, B]]) {
     def aggregatedErrors: ValidatedNel[A, List[B]] =

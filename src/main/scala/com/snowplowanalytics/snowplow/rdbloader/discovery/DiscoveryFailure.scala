@@ -13,9 +13,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats.data.NonEmptyList
-import cats.syntax.show._
-
-import com.snowplowanalytics.snowplow.rdbloader.{S3, LoaderError}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 /**
   * Discovery failure. Represents failure of single step.

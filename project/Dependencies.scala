@@ -60,7 +60,6 @@ object Dependencies {
   val badrows           = "com.snowplowanalytics" %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"         %% "cats"                              % V.cats
-  val catsFree          = "org.typelevel"         %% "cats-free"                         % V.cats
   val circeCore         = "io.circe"              %% "circe-core"                        % V.circe
   val circeGeneric      = "io.circe"              %% "circe-generic"                     % V.circe
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe

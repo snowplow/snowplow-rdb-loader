@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 package loaders
 
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 // This project
 import common.StorageTarget.RedshiftConfig

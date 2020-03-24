@@ -19,11 +19,10 @@ import java.nio.charset.StandardCharsets
 import cats.Id
 import cats.data._
 import cats.implicits._
-
 import com.monovore.decline.{Argument, Command, Opts}
 import com.snowplowanalytics.iglu.client.Client
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, StringEnum }
-
+import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, StringEnum}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import io.circe.Json
 import io.circe.parser.{parse => parseJson}
 

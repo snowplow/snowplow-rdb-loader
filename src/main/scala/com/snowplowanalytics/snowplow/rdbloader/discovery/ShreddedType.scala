@@ -13,14 +13,14 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
+import cats.Monad
 import cats.data._
-import cats.free.Free
 import cats.implicits._
-
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SchemaCriterion}
-
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 sealed trait ShreddedType {
   /** raw metadata extracted from S3 Key */
@@ -132,33 +132,29 @@ object ShreddedType {
    * @param shreddedType some shredded type (self-describing event or context)
    * @return full valid s3 path (with `s3://` prefix)
    */
-  def discoverJsonPath(region: String, jsonpathAssets: Option[S3.Folder], shreddedType: Info): DiscoveryAction[S3.Key] = {
+  def discoverJsonPath[F[_]: Monad: Cache: AWS](region: String, jsonpathAssets: Option[S3.Folder], shreddedType: Info): DiscoveryAction[F, S3.Key] = {
     val filename = s"""${toSnakeCase(shreddedType.name)}_${shreddedType.model}.json"""
     val key = s"${shreddedType.vendor}/$filename"
 
-    LoaderA.getCache(key).flatMap { (value: Option[Option[S3.Key]]) =>
-      value match {
-        case Some(Some(jsonPath)) =>
-          Free.pure(jsonPath.asRight)
-        case Some(None) =>
-          Free.pure(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
-        case None =>
-          jsonpathAssets match {
-            case Some(assets) =>
-              val path = S3.Folder.append(assets, shreddedType.vendor)
-              val s3Key = S3.Key.coerce(path + filename)
-              LoaderA.keyExists(s3Key).flatMap {
-                case true =>
-                  for {
-                    _ <- LoaderA.putCache(key, Some(s3Key))
-                  } yield s3Key.asRight
-                case false =>
-                  getSnowplowJsonPath(region, key)
-              }
-            case None =>
-              getSnowplowJsonPath(region, key)
-          }
-      }
+    Cache[F].getCache(key).flatMap {
+      case Some(Some(jsonPath)) =>
+        Monad[F].pure(jsonPath.asRight)
+      case Some(None) =>
+        Monad[F].pure(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
+      case None =>
+        jsonpathAssets match {
+          case Some(assets) =>
+            val path = S3.Folder.append(assets, shreddedType.vendor)
+            val s3Key = S3.Key.coerce(path + filename)
+            AWS[F].keyExists(s3Key).flatMap {
+              case true =>
+                Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight)
+              case false =>
+                getSnowplowJsonPath[F](region, key)
+            }
+          case None =>
+            getSnowplowJsonPath[F](region, key)
+        }
     }
   }
 
@@ -178,30 +174,31 @@ object ShreddedType {
    * @param key vendor dir and filename, e.g. `com.acme/event_1`
    * @return full S3 key if file exists, discovery error otherwise
    */
-  def getSnowplowJsonPath(s3Region: String, key: String): DiscoveryAction[S3.Key] = {
+  def getSnowplowJsonPath[F[_]: Monad: AWS: Cache](s3Region: String,
+                                                   key: String): DiscoveryAction[F, S3.Key] = {
     val hostedAssetsBucket = getHostedAssetsBucket(s3Region)
     val fullDir = S3.Folder.append(hostedAssetsBucket, JsonpathsPath)
     val s3Key = S3.Key.coerce(fullDir + key)
-    LoaderA.keyExists(s3Key).flatMap {
+    AWS[F].keyExists(s3Key).flatMap {
       case true =>
-        LoaderA.putCache(key, Some(s3Key)).as(s3Key.asRight)
+        Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight)
       case false =>
-        LoaderA.putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
+        Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
     }
   }
 
   /** Discover multiple JSONPaths for shredded types at once and turn into `LoaderAction` */
-  def discoverBatch(region: String,
-                    jsonpathAssets: Option[S3.Folder],
-                    raw: List[ShreddedType.Info]): LoaderAction[List[ShreddedType]] = {
+  def discoverBatch[F[_]: Monad: Cache: AWS](region: String,
+                                             jsonpathAssets: Option[S3.Folder],
+                                             raw: List[ShreddedType.Info]): LoaderAction[F, List[ShreddedType]] = {
     // Discover data for single item
-    def discover(info: ShreddedType.Info): Action[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
-      val jsonpaths = ShreddedType.discoverJsonPath(region, jsonpathAssets, info)
+    def discover(info: ShreddedType.Info): F[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
+      val jsonpaths: F[DiscoveryStep[S3.Key]] = ShreddedType.discoverJsonPath[F](region, jsonpathAssets, info)
       val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType.Json(info, s3key)))
       shreddedType.map(_.toValidatedNel)
     }
 
-    val action: Action[Either[LoaderError, List[ShreddedType]]] =
+    val action: F[Either[LoaderError, List[ShreddedType]]] =
       sequenceInF(raw.traverse(discover), LoaderError.flattenValidated[List[ShreddedType]])
 
     LoaderAction(action)
