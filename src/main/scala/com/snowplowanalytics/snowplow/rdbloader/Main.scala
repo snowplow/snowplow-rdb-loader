@@ -12,71 +12,69 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.syntax.flatMap._
+import cats.Monad
 import cats.data.Validated._
+import cats.implicits._
+import cats.effect.{ExitCode, IO, IOApp }
 
-// This project
-import interpreters.Interpreter
-import config.CliConfig
-import loaders.Common.{ load, discover }
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, JDBC, Logging, RealWorld}
+import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{discover, load}
+import com.snowplowanalytics.snowplow.rdbloader.utils.{S3, SSH}
 
-/**
- * Application entry point
- */
-object Main {
+object Main extends IOApp {
   /**
    * If arguments or config is invalid exit with 1
    * and print errors to EMR stdout
    * If arguments and config are valid, but loading failed
    * print message to `track` bucket
    */
-  def main(argv: Array[String]): Unit = {
+  def run(argv: List[String]): IO[ExitCode] =
     CliConfig.parse(argv) match {
       case Valid(config) =>
-        val status = run(config)
-        sys.exit(status)
+        RealWorld.initialize[IO](config).flatMap { dsls =>
+          import dsls._
+
+          val result = for {
+            discovery <- discover[IO](config)
+            jdbc = SSH.resource[IO](config.target.sshTunnel) *>
+              JDBC.interpreter[IO](config.target, config.dryRun)
+            _ <- LoaderAction(jdbc.use { implicit conn => load[IO](config, discovery).value })
+          } yield ()
+
+          result
+            .value
+            .attempt
+            .map {      // TODO: write shorter; and figure out if unit test is possible
+              case Left(e) =>
+                e.printStackTrace(System.out)
+                (LoaderError.LoaderLocalError(e.getMessage): LoaderError).asLeft
+              case Right(e) => e
+            }
+            .flatMap(res => close[IO](config.logKey, res))
+        }
       case Invalid(errors) =>
-        println("Configuration error")
-        errors.toList.foreach(error => println(error.message))
-        sys.exit(1)
+        IO.delay(println("Configuration error")) *>
+          errors.traverse_(message => IO.delay(println(message))).as(ExitCode.Error)
     }
-  }
-
-  /**
-   * Initialize interpreter from parsed configuration and
-   * run all IO actions through it. Should never throw exceptions
-   *
-   * @param config parsed configuration
-   * @return exit code status. 0 for success, 1 if anything went wrong
-   */
-  def run(config: CliConfig): Int = {
-    val interpreter = Interpreter.initialize(config)
-
-    val actions: Action[Int] = for {
-      data       <- discover(config).flatTap(db.Migration.perform(config.target.schema)).value
-      result     <- data match {
-        case Right(discovery) => load(config, discovery).value
-        case Left(LoaderError.StorageTargetError(message)) =>
-          val upadtedMessage = s"$message\n${interpreter.getLastCopyStatements}"
-          ActionE.liftError(LoaderError.StorageTargetError(upadtedMessage))
-        case Left(error) => ActionE.liftError(error)
-      }
-      message     = utils.Common.interpret(config, result)
-      _          <- LoaderA.track(message)
-      status     <- close(config.logKey, message)
-    } yield status
-
-    actions.foldMap(interpreter.run)
-  }
 
   /** Get exit status based on all previous steps */
-  private def close(logKey: Option[S3.Key], message: Log) = {
-    logKey match {
-      case Some(key) => for {
-        dumpResult <- LoaderA.dump(key)
-        status     <- LoaderA.exit(message, Some(dumpResult))
-      } yield status
-      case None => LoaderA.exit(message, None)
+  private def close[F[_]: Monad: Logging: AWS](logKey: Option[S3.Key], result: Either[LoaderError, Unit]): F[ExitCode] = {
+    val dumping = logKey.traverse(Logging[F].dump).flatMap { dumpResult =>
+      (result, dumpResult) match {
+        case (Right(_), None) =>
+          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Success)
+        case (Left(_), None) =>
+          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Error)
+        case (Right(_), Some(Right(key))) =>
+          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Success)
+        case (Left(_), Some(Right(key))) =>
+          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Error)
+        case (_, Some(Left(error))) =>
+          Logging[F].print(s"ERROR: Log-dumping failed: [$error]").as(ExitCode.Error)
+      }
     }
+
+    Logging[F].track(result) *> dumping
   }
 }

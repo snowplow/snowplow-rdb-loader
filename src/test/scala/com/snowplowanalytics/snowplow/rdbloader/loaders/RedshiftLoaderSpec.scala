@@ -10,22 +10,29 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package loaders
+package com.snowplowanalytics.snowplow.rdbloader.loaders
 
-import java.util.UUID
-import java.time.Instant
+import scala.concurrent.duration.FiniteDuration
 import java.sql.Timestamp
 
-import cats.{Id, ~>}
-
+import cats.data.State
+import cats.effect.{Clock, Timer}
+import cats.syntax.either._
 import org.specs2.Specification
 
 // This project
-import Common.SqlString.{unsafeCoerce => sql}
-import S3.{ Folder, Key }
-import config.{ CliConfig, Step, Semver }
-import discovery.{ DataDiscovery, ShreddedType }
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, TestInterpreter, SpecHelpers, LoaderAction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3.{ Folder, Key }
+import com.snowplowanalytics.snowplow.rdbloader.config.{ CliConfig, Step, Semver }
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Decoder, Entities }
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{ DataDiscovery, ShreddedType }
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString.{unsafeCoerce => sql}
+
+import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{AWSResults, JDBCResults, ControlResults, TestState, Test}
 
 
 class RedshiftLoaderSpec extends Specification { def is = s2"""
@@ -38,38 +45,28 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   Transit copy creates and deletes a temporary table $e7
   """
 
-  import SpecHelpers._
-
   val noDiscovery = DataDiscovery(Folder.coerce("s3://noop"), None, None, Nil, false)
-  def newId = UUID.randomUUID()
-  val time = Instant.now()
+
 
   def e1 = {
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ListS3(bucket) =>
-            Right(List(
-              // This should succeed for "atomicDiscovery"
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57_$folder$"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/_SUCCESS"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/$folder$"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-02")
-            ).map(k => S3.BlobObject(k, 1L)))
+    def listBucket(bucket: Folder): Either[LoaderError, List[S3.BlobObject]] =
+      List(
+        // This should succeed for "atomicDiscovery"
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57_$folder$"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/_SUCCESS"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/$folder$"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-02")
+      ).map(k => S3.BlobObject(k, 1L)).asRight
 
-          case LoaderA.Sleep(_) => ()
+    implicit val timer: Timer[Test] = TestInterpreter.stateTimerInterpreter
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
+    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listBucket)))
+    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
 
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
+    val (_, result) = Common.discover[Test](CliConfig(validConfig, validTarget, Set.empty, None, None, false, SpecHelpers.resolverJson)).value.run(TestState.init).value
 
     val expected =
       List(DataDiscovery(S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"), Some(1), Some(1L), Nil, specificFolder = false))
-
-    val action = Common.discover(CliConfig(validConfig, validTarget, Set.empty, None, None, false, SpecHelpers.resolverJson))
-    val result = action.value.foldMap(interpreter)
 
     result must beRight(expected)
   }
@@ -135,70 +132,41 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   }
 
   def e3 = {
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ListS3(_) => Right(Nil)
-
-          case LoaderA.KeyExists(_) => false
-
-          case LoaderA.Sleep(_) => ()
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
+    implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init)
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val action = RedshiftLoader.run(validConfig, validTarget, steps, Nil)
-    val result = action.value.foldMap(interpreter)
+    val (state, result) = RedshiftLoader.run[Test](validConfig, validTarget, steps, Nil).value.run(TestState.init).value
 
     result must beRight
   }
 
   def e4 = {
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
+    def keyExists(k: Key): Boolean =
+      k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json"
 
-      private val cache = collection.mutable.HashMap.empty[String, Option[S3.Key]]
+    def listBucket(bucket: Folder): Either[LoaderError, List[S3.BlobObject]] =
+      List(
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00001-dbb35260-7b12-494b-be87-e7a4b1f59906.txt"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00002-cba3a610-0b90-494b-be87-e7a4b1f59906.txt"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00003-fba35670-9b83-494b-be87-e7a4b1f59906.txt"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
+        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
+      ).map(k => S3.BlobObject(k, 2L)).asRight
 
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ListS3(bucket) =>
-            Right(List(
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-00001"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00001-dbb35260-7b12-494b-be87-e7a4b1f59906.txt"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00002-cba3a610-0b90-494b-be87-e7a4b1f59906.txt"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00003-fba35670-9b83-494b-be87-e7a4b1f59906.txt"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00004-fba3866a-8b90-494b-be87-e7a4b1fa9906.txt"),
-              S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00005-aba3568f-7b96-494b-be87-e7a4b1fa9906.txt")
-            ).map(k => S3.BlobObject(k, 2L)))
-
-          case LoaderA.Get(key: String) =>
-            cache.get(key)
-          case LoaderA.Put(key: String, value: Option[S3.Key]) =>
-            val _ = cache.put(key, value)
-            ()
-
-          case LoaderA.KeyExists(k) =>
-            if (k == "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/submit_form_1.json") {
-              true
-            } else false
-
-          case LoaderA.Sleep(time) =>
-            throw new RuntimeException(s"Data-discovery should not sleep with skipped consistency check. Sleep called for [$time]")
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
+    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listBucket), keyExists = keyExists))
+    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
+    implicit val timer: Timer[Test] = new Timer[Test] {
+      def clock: Clock[Test] = TestInterpreter.testClock
+      def sleep(duration: FiniteDuration): Test[Unit] = throw new RuntimeException("TODO")
     }
 
     val steps: Set[Step] = (Step.defaultSteps - Step.ConsistencyCheck) ++ Set(Step.Vacuum)
-    val action = Common.discover(CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value
-    val result: Either[LoaderError, List[DataDiscovery]] = action.foldMap(interpreter)
+    val (state, result) = Common.discover[Test](CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value.run(TestState.init).value
 
     val expected = List(DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"),
@@ -216,6 +184,21 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   }
 
   def e5 = {
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init.copy(print = ControlResults.noop))
+    implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init)
+
+    val input = RedshiftLoadStatements(
+      "atomic",
+      RedshiftLoadStatements.StraightCopy(sql("LOAD INTO atomic MOCK")),
+      List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
+      Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1
+      Some(List(sql("ANALYZE MOCK"))),
+      sql("MANIFEST INSERT MOCK"),
+      noDiscovery
+    )
+
+    val (state, result) = RedshiftLoader.loadFolder[Test](Step.defaultSteps - Step.LoadManifestCheck)(input).value.run(TestState.init).value
+
     val expected = List(
       "BEGIN",
       "LOAD INTO atomic MOCK",
@@ -231,82 +214,27 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       "COMMIT"
     )
 
-    val queries = collection.mutable.ListBuffer.empty[String]
-
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ExecuteUpdate(query) =>
-            queries.append(query)
-            Right(1L)
-
-          case LoaderA.Print(_) =>
-            ()
-
-          case LoaderA.ExecuteQuery(_, _) =>
-            Right(None)
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
-
-    val input = RedshiftLoadStatements(
-      "atomic",
-      RedshiftLoadStatements.StraightCopy(sql("LOAD INTO atomic MOCK")),
-      List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
-      Some(List(sql("VACUUM MOCK"))),   // Must be shred cardinality + 1
-      Some(List(sql("ANALYZE MOCK"))),
-      sql("MANIFEST INSERT MOCK"),
-      noDiscovery
-    )
-
-    val state = RedshiftLoader.loadFolder(Step.defaultSteps - Step.LoadManifestCheck)(input)
-    val action = state.value
-    val result = action.foldMap(interpreter)
-
-    val transactionsExpectation = queries.toList must beEqualTo(expected)
+    val transactionsExpectation = state.getLog must beEqualTo(expected)
     val resultExpectation = result must beRight
     transactionsExpectation.and(resultExpectation)
   }
 
   def e6 = {
-    val expected = List(
-      "BEGIN",
-      "LOAD INTO atomic.events MOCK",
-      "SELECT events",
-      "SELECT manifest"
-    )
+    val latestTimestamp = Timestamp.valueOf("2018-02-27 00:00:00.01")
+    def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Test, A] = {
+      val result: Option[Any] = if (query.contains("FROM atomic.events")) {
+        Some(Entities.Timestamp(latestTimestamp))
+      } else if (query.contains("FROM atomic.manifest")) {
+        val commitTime = Timestamp.valueOf("2018-02-28 00:00:00.01")
+        Some(Entities.LoadManifestItem(latestTimestamp, commitTime, 1000, 5))
+      } else throw new RuntimeException("TODO")
 
-    val queries = collection.mutable.ListBuffer.empty[String]
-
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ExecuteUpdate(query) =>
-            queries.append(query)
-            Right(1L)
-
-          case LoaderA.Print(_) =>
-            ()
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.events") =>
-            queries.append("SELECT events")
-            val time = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            Right(Some(db.Entities.Timestamp(time)))
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
-            queries.append("SELECT manifest")
-            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
-            Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
+      val state = State { log: TestState => (log.log(query), result.asInstanceOf[A].asRight[LoaderError]) }
+      state.toAction
     }
+
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init.copy(print = ControlResults.noop))
+    implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init.copy(executeQuery = q => e => executeQuery(q)(e)))
 
     val shouldNot = "SHOULD NOT BE EXECUTED"
 
@@ -320,55 +248,49 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       noDiscovery
     )
 
-    val state = RedshiftLoader.loadFolder(Step.defaultSteps)(input)
-    val action = state.value
-    val result = action.foldMap(interpreter)
+    val (state, result) = RedshiftLoader.loadFolder[Test](Step.defaultSteps)(input).value.run(TestState.init).value
 
-    val transactionsExpectation = queries.toList must beEqualTo(expected)
+    val expected = List(
+      "BEGIN",
+      "LOAD INTO atomic.events MOCK",
+      "SELECT etl_tstamp FROM atomic.events WHERE etl_tstamp IS NOT null ORDER BY etl_tstamp DESC LIMIT 1",
+      s"SELECT * FROM atomic.manifest WHERE etl_tstamp = '${latestTimestamp.toString}' ORDER BY etl_tstamp DESC LIMIT 1"
+    )
+
+    val transactionsExpectation = state.getLog must beEqualTo(expected)
     val resultExpectation = result must beLeft
     transactionsExpectation and resultExpectation
   }
 
   def e7 = {
+    val latestTimestamp = Timestamp.valueOf("2018-02-26 00:00:01.000")
+    def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Test, A] = {
+      val result = if (query.contains("SELECT etl_tstamp")) {
+        Some(Entities.Timestamp(latestTimestamp))
+      } else if (query.contains("FROM atomic.manifest")) {
+        val manifestEtlTime = Timestamp.valueOf("2018-02-27 00:00:01.00")
+        val commitTime = Timestamp.valueOf("2018-02-28 00:00:01.000")
+        Some(Entities.LoadManifestItem(manifestEtlTime, commitTime, 1000, 5))
+      } else throw new RuntimeException("TODO")
+
+      val state = State { log: TestState => (log.log(query), result.asInstanceOf[A].asRight[LoaderError]) }
+      state.toAction
+    }
+
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init.copy(print = ControlResults.noop))
+    implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init.copy(executeQuery = q => e => executeQuery(q)(e)))
+
     val expected = List(
       "BEGIN",
       "CREATE TABLE atomic.temp_transit_events ( LIKE atomic.events )",
-      "SELECT etl_tstamp", "SELECT manifest",
+      "SELECT etl_tstamp FROM atomic.temp_transit_events WHERE etl_tstamp IS NOT null ORDER BY etl_tstamp DESC LIMIT 1",
+      s"SELECT * FROM atomic.manifest WHERE etl_tstamp = '${latestTimestamp.toString}' ORDER BY etl_tstamp DESC LIMIT 1",
       "COPY",
       "DROP TABLE atomic.temp_transit_events",
 
       "LOAD INTO SHRED 1 MOCK", "LOAD INTO SHRED 2 MOCK", "LOAD INTO SHRED 3 MOCK", "MANIFEST INSERT MOCK", "COMMIT", "END",
       "VACUUM MOCK", "BEGIN", "ANALYZE MOCK", "COMMIT"
     )
-
-    val queries = collection.mutable.ListBuffer.empty[String]
-
-    def interpreter: LoaderA ~> Id = new (LoaderA ~> Id) {
-      def apply[A](effect: LoaderA[A]): Id[A] = {
-        effect match {
-          case LoaderA.ExecuteUpdate(query) =>
-            queries.append(query)
-            Right(1L)
-
-          case LoaderA.Print(_) =>
-            ()
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("FROM atomic.manifest") =>
-            queries.append("SELECT manifest")
-            val etlTime = Timestamp.from(Instant.ofEpochMilli(1519757441133L))
-            val commitTime = Timestamp.from(Instant.ofEpochMilli(1519777441133L))
-            Right(Some(db.Entities.LoadManifestItem(etlTime, commitTime, 1000, 5)))
-
-          case LoaderA.ExecuteQuery(query, _) if query.contains("SELECT etl_tstamp") =>
-            queries.append("SELECT etl_tstamp")
-            val time = Timestamp.from(Instant.ofEpochMilli(1520164735L))
-            Right(Some(db.Entities.Timestamp(time)))
-
-          case action =>
-            throw new RuntimeException(s"Unexpected Action [$action]")
-        }
-      }
-    }
 
     val input = RedshiftLoadStatements(
       "atomic",
@@ -380,11 +302,9 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       noDiscovery
     )
 
-    val state = RedshiftLoader.loadFolder(Step.defaultSteps)(input)
-    val action = state.value
-    val result = action.foldMap(interpreter)
+    val (state, result) = RedshiftLoader.loadFolder[Test](Step.defaultSteps)(input).value.run(TestState.init).value
 
-    val transactionsExpectation = queries.toList must beEqualTo(expected)
+    val transactionsExpectation = state.getLog must beEqualTo(expected)
     val resultExpectation = result must beRight(())
     transactionsExpectation.and(resultExpectation)
   }
