@@ -53,7 +53,6 @@ lazy val loader = project.in(file("."))
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
-      Dependencies.manifest,
       Dependencies.fs2,
       Dependencies.schemaDdl,
 
@@ -97,7 +96,6 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
       Dependencies.igluCoreCirce,
-      Dependencies.manifest,
       // Scala (test only)
       Dependencies.circeOptics,
       Dependencies.specs2,

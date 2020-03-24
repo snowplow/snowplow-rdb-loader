@@ -104,20 +104,20 @@ object Common {
     val region = cliConfig.configYaml.aws.s3.region
     val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
 
-    val target = (cliConfig.target.processingManifest, cliConfig.folder) match {
-      case (None, Some(f)) =>
+    val target = cliConfig.folder match {
+      case Some(f) =>
         DataDiscovery.InSpecificFolder(f)
-      case (Some(_), f) =>
-        DataDiscovery.ViaManifest(f)
-      case (None, None) =>
+      case None =>
         DataDiscovery.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
     }
 
     cliConfig.target match {
       case _: StorageTarget.RedshiftConfig =>
-        val original = DataDiscovery.discoverFull(target, cliConfig.target.id, shredJob, region, assets)
-        if (cliConfig.steps.contains(Step.ConsistencyCheck) && cliConfig.target.processingManifest.isEmpty)
+        if (cliConfig.steps.contains(Step.ConsistencyCheck))
           DataDiscovery.checkConsistency(original)
+        val original = DataDiscovery.discover[F](target, shredJob, region, assets)
+        if (cliConfig.steps.contains(Step.ConsistencyCheck))
+          DataDiscovery.checkConsistency[F](original)
         else original
       case _: StorageTarget.PostgresqlConfig =>
         // Safe to skip consistency check as whole folder will be downloaded
