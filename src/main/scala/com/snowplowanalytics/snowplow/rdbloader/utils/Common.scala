@@ -10,20 +10,13 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package utils
+package com.snowplowanalytics.snowplow.rdbloader.utils
 
 import cats.data._
-import cats.implicits._
 
 import io.circe._
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
-
-// This project
-import LoaderError._
-import discovery.DiscoveryFailure
-import config.CliConfig
 
 /**
  * Various common utility functions
@@ -42,19 +35,6 @@ object Common {
     stopWords.foldLeft(message) { (result, secret) =>
       result.replace(secret, "x" * secret.length)
     }
-
-  /**
-   * Generate result for end-of-the-world log message using loading result
-   *
-   * @param result loading process state
-   * @return log entry, which can be interpreted accordingly
-   */
-  def interpret(config: CliConfig, result: Either[LoaderError, Unit]): Log = {
-    result match {
-      case Right(_) => Log.LoadingSucceeded
-      case Left(error) => Log.LoadingFailed(error.show)
-    }
-  }
 
   /**
    * Transforms CamelCase string into snake_case
