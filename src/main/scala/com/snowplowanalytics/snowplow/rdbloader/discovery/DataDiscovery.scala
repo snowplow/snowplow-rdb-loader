@@ -13,15 +13,15 @@
 package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
-import java.util.UUID
-
+import scala.concurrent.duration._
 import cats._
 import cats.data._
-import cats.free.Free
 import cats.implicits._
-
+import cats.effect.Timer
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 /**
   * Result of data discovery in shredded.good folder
@@ -103,42 +103,40 @@ object DataDiscovery {
    * + files with unknown path were found in *any* shred run folder
    *
    * @param target either shredded good or specific run folder
-   * @param id storage target id to avoid "re-discovering" target when using manifest
    * @param shredJob shred job version to check path pattern
    * @param region AWS region for S3 buckets
    * @param assets optional JSONPath assets S3 bucket
    * @return list (probably empty, but usually with single element) of discover results
    *         (atomic events and shredded types)
    */
-  def discoverFull(target: DiscoveryTarget,
-                   id: UUID,
-                   shredJob: Semver,
-                   region: String,
-                   assets: Option[S3.Folder]): LoaderAction[Discovered] = {
-    def group(validatedDataKeys: LoaderAction[ValidatedDataKeys]): LoaderAction[Discovered] =
+  def discover[F[_]: Monad: Cache: Logging: AWS](target: DiscoveryTarget,
+                                                 shredJob: Semver,
+                                                 region: String,
+                                                 assets: Option[S3.Folder]): LoaderAction[F, Discovered] = {
+    def group(validatedDataKeys: LoaderAction[F, ValidatedDataKeys[F]]): LoaderAction[F, Discovered] =
       for {
         keys <- validatedDataKeys
-        discovery <- groupKeysFull(keys)
+        discovery <- groupKeysFull[F](keys)
       } yield discovery
 
     val result = target match {
       case Global(folder) =>
-        val keys: LoaderAction[ValidatedDataKeys] =
-          listGoodBucket(folder).map(transformKeys(shredJob, region, assets))
+        val keys: LoaderAction[F, ValidatedDataKeys[F]] =
+          listGoodBucket[F](folder).map(transformKeys[F](shredJob, region, assets))
         group(keys)
       case InSpecificFolder(folder) =>
-        val keys: LoaderAction[ValidatedDataKeys] =
-          listGoodBucket(folder).map { keys =>
+        val keys: LoaderAction[F, ValidatedDataKeys[F]] =
+          listGoodBucket[F](folder).map { keys =>
             if (keys.isEmpty) {
               val failure = Validated.Invalid(NonEmptyList(DiscoveryFailure.NoDataFailure(folder), Nil))
-              Free.pure(failure)
-            } else transformKeys(shredJob, region, assets)(keys)
+              Monad[F].pure(failure)
+            } else transformKeys[F](shredJob, region, assets)(keys)
           }
         for {
           discoveries <- group(keys)
           _ <- if (discoveries.lengthCompare(1) > 0) {
-            LoaderAction.liftA(LoaderA.print("More than one folder discovered with `--folder` option"))
-          } else LoaderAction.unit
+            LoaderAction.liftF[F, Unit](Logging[F].print("More than one folder discovered with `--folder` option"))
+          } else LoaderAction.unit[F]
         } yield discoveries
     }
 
@@ -146,21 +144,21 @@ object DataDiscovery {
   }
 
   /** Properly set `specificFolder` flag */
-  def setSpecificFolder(target: DiscoveryTarget, discovery: LoaderAction[Discovered]): LoaderAction[Discovered] = {
-    val F = Functor[LoaderAction].compose[List]
-    F.map(discovery) { d =>
-      target match {
-        case InSpecificFolder(_) => d.copy(specificFolder = true)
-        case Global(_) => d.copy(specificFolder = false)
+  def setSpecificFolder[F[_]: Functor](target: DiscoveryTarget, discovery: LoaderAction[F, Discovered]): LoaderAction[F, Discovered] =
+    discovery.map { list =>
+      list.map { d =>
+        target match {
+          case InSpecificFolder(_) => d.copy(specificFolder = true)
+          case Global(_) => d.copy(specificFolder = false)
+        }
       }
     }
-  }
 
   /**
    * List whole directory excluding special files
    */
-  def listGoodBucket(folder: S3.Folder): LoaderAction[List[S3.BlobObject]] =
-    EitherT(LoaderA.listS3(folder)).map(_.filterNot(k => isSpecial(k.key)))
+  def listGoodBucket[F[_]: Functor: AWS](folder: S3.Folder): LoaderAction[F, List[S3.BlobObject]] =
+    EitherT(AWS[F].listS3(folder)).map(_.filterNot(k => isSpecial(k.key)))
 
   // Full discovery
 
@@ -170,12 +168,12 @@ object DataDiscovery {
    * @param validatedDataKeys IO-action producing validated list of `FinalDataKey`
    * @return IO-action producing list of
    */
-  def groupKeysFull(validatedDataKeys: ValidatedDataKeys): LoaderAction[Discovered] = {
+  def groupKeysFull[F[_]: Applicative](validatedDataKeys: ValidatedDataKeys[F]): LoaderAction[F, Discovered] = {
     def group(dataKeys: List[DataKeyFinal]): ValidatedNel[DiscoveryFailure, Discovered] =
       dataKeys.groupBy(_.base).toList.reverse.traverse(validateFolderFull)
 
     // Transform into Either with non-empty list of errors
-    val result: Action[Either[LoaderError, Discovered]] =
+    val result: F[Either[LoaderError, Discovered]] =
       validatedDataKeys.map { keys =>
         keys.andThen(group) match {
           case Validated.Valid(discovery) =>
@@ -214,11 +212,14 @@ object DataDiscovery {
   /**
    * Transform list of S3 keys into list of `DataKeyFinal` for `DataDiscovery`
    */
-  private def transformKeys(shredJob: Semver, region: String, assets: Option[S3.Folder])(keys: List[S3.BlobObject]): ValidatedDataKeys = {
+  private def transformKeys[F[_]: Monad: Cache: AWS](shredJob: Semver,
+                                                     region: String,
+                                                     assets: Option[S3.Folder])
+                                                    (keys: List[S3.BlobObject]): ValidatedDataKeys[F] = {
     // Intermediate keys are keys that passed one check and not yet passed another
     val intermediateDataKeys = keys.map(parseDataKey(shredJob, _))
     // Final keys passed all checks, e.g. JSONPaths for shredded data were fetched
-    val finalDataKeys = intermediateDataKeys.traverse(transformDataKey(_, region, assets))
+    val finalDataKeys = intermediateDataKeys.traverse(transformDataKey[F](_, region, assets))
     sequenceInF(finalDataKeys, identity[ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]])
   }
 
@@ -233,28 +234,25 @@ object DataDiscovery {
    * @param assets optional JSONPath assets S3 bucket
    * @return `Action` containing `Validation` - as on next step we can aggregate errors
    */
-  private def transformDataKey(
+  private def transformDataKey[F[_]: Monad: Cache: AWS](
       dataKey: DiscoveryStep[DataKeyIntermediate],
       region: String,
       assets: Option[S3.Folder]
-  ): Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] = {
+  ): F[ValidatedNel[DiscoveryFailure, DataKeyFinal]] = {
     dataKey match {
       case Right(ShreddedDataKeyIntermediate(fullPath, info)) =>
-        val jsonpathAction = EitherT(ShreddedType.discoverJsonPath(region, assets, info))
+        val jsonpathAction: EitherT[F, DiscoveryFailure, S3.Key] =
+          EitherT(ShreddedType.discoverJsonPath[F](region, assets, info))
         val discoveryAction = jsonpathAction.map { jsonpath =>
           ShreddedDataKeyFinal(fullPath, ShreddedType.Json(info, jsonpath))
         }
         discoveryAction.value.map(_.toValidatedNel)
       case Right(key @ ShreddedDataKeyTabular(_, _)) =>
-        Free.pure(key.toFinal.validNel[DiscoveryFailure])
+        Monad[F].pure(key.toFinal.validNel[DiscoveryFailure])
       case Right(AtomicDataKey(fullPath, size)) =>
-        val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
-          Free.pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
-        pure
+          Monad[F].pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
       case Left(failure) =>
-        val pure: Action[ValidatedNel[DiscoveryFailure, DataKeyFinal]] =
-          Free.pure(failure.invalidNel)
-        pure
+          Monad[F].pure(failure.invalidNel)
     }
   }
 
@@ -300,31 +298,31 @@ object DataDiscovery {
    * @param originalAction data-discovery action
    * @return result of same request, but with more guarantees to be consistent
    */
-  def checkConsistency(originalAction: LoaderAction[Discovered]): LoaderAction[Discovered] = {
-    def check(checkAttempt: Int, last: Option[Either[LoaderError, Discovered]]): ActionE[Discovered] = {
-      val action = last.map(Free.pure[LoaderA, Either[LoaderError, Discovered]]).getOrElse(originalAction.value)
+  def checkConsistency[F[_]: Monad: Timer: Logging](originalAction: LoaderAction[F, Discovered]): LoaderAction[F, Discovered] = {
+    def check(checkAttempt: Int, last: Option[Either[LoaderError, Discovered]]): F[Either[LoaderError, Discovered]] = {
+      val action = last.map(Monad[F].pure).getOrElse(originalAction.value)
 
       for {
         original <- action
-        _        <- sleepConsistency(original)
+        _        <- sleepConsistency[F](original)
         control  <- originalAction.value
         result   <- retry(original, control, checkAttempt + 1)
       } yield result
     }
 
-    def retry(original: Either[LoaderError, Discovered], control: Either[LoaderError, Discovered], attempt: Int): ActionE[Discovered] = {
+    def retry(original: Either[LoaderError, Discovered], control: Either[LoaderError, Discovered], attempt: Int): F[Either[LoaderError, Discovered]] = {
       (original, control) match {
         case _ if attempt >= ConsistencyChecks =>
           for {
-            _ <- LoaderA.print(s"Consistency check did not pass after $ConsistencyChecks attempts")
-            discovered <- Free.pure(control.orElse(original))
+            _ <- Logging[F].print(s"Consistency check did not pass after $ConsistencyChecks attempts")
+            discovered <- Monad[F].pure(control.orElse(original))
           } yield discovered
         case (Right(o), Right(c)) if o.sortBy(_.base.toString) == c.sortBy(_.base.toString) =>
           val found = o.map(x => s"+ ${x.show}").mkString("\n")
           val message = if (found.isEmpty) "No run ids discovered" else s"Following run ids found:\n$found"
           for {
-            _ <- LoaderA.print(s"Consistency check passed after ${attempt - 1} attempt. " ++ message)
-            discovered <- Free.pure(original)
+            _ <- Logging[F].print(s"Consistency check passed after ${attempt - 1} attempt. " ++ message)
+            discovered <- Monad[F].pure(original)
           } yield discovered
         case (Right(o), Right(c)) =>
           val message = if (attempt == ConsistencyChecks - 1)
@@ -332,18 +330,18 @@ object DataDiscovery {
           else ""
 
           for {
-            _ <- LoaderA.print(s"Consistency check failed. $message")
+            _ <- Logging[F].print(s"Consistency check failed. $message")
             next <- check(attempt, Some(control))
           } yield next
         case _ =>
           for {
-            _ <- LoaderA.print(s"Consistency check failed. Making another attempt")
+            _ <- Logging[F].print(s"Consistency check failed. Making another attempt")
             next <- check(attempt, None)
           } yield next
       }
     }
 
-    EitherT[Action, LoaderError, Discovered](check(1, None))
+    EitherT[F, LoaderError, Discovered](check(1, None))
   }
 
   def discoveryDiff(original: Discovered, control: Discovered): List[String] = {
@@ -365,14 +363,14 @@ object DataDiscovery {
   /**
    * Aggregates wait time for all discovered folders or wait 10 sec in case action failed
    */
-  private def sleepConsistency(result: Either[LoaderError, Discovered]): Action[Unit] = {
+  private def sleepConsistency[F[_]: Timer](result: Either[LoaderError, Discovered]): F[Unit] = {
     val timeoutMs = result match {
       case Right(list) =>
         list.map(_.consistencyTimeout).foldLeft(10000L)(_ + _)
       case Left(_) => 10000L
     }
 
-    LoaderA.sleep(timeoutMs)
+    Timer[F].sleep(timeoutMs.millis)
   }
 
 
@@ -430,5 +428,5 @@ object DataDiscovery {
     def base: S3.Folder = info.info.base
   }
 
-  private type ValidatedDataKeys = Action[ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]]
+  private type ValidatedDataKeys[F[_]] = F[ValidatedNel[DiscoveryFailure, List[DataKeyFinal]]]
 }

@@ -13,23 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.io.Source.fromInputStream
-
 import java.util.UUID
 
 import cats.Id
 import cats.implicits._
-
 import io.circe.jawn.parse
-
 import com.snowplowanalytics.iglu.client.Resolver
-
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import common.StorageTarget
-
-import S3.Folder.{coerce => s3}
-import config.{ SnowplowConfig, Semver }
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => s3}
+import config.{Semver, SnowplowConfig}
 import config.Semver._
 import config.SnowplowConfig._
 import loaders.Common.SqlString

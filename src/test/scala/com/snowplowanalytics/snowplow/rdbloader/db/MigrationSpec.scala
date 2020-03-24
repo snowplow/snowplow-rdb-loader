@@ -12,15 +12,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import cats.~>
-
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderA, S3}
+import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter
+import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{ControlResults, JDBCResults, Test, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import org.specs2.Specification
-
-import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter
 
 class MigrationSpec extends Specification { def is = s2"""
   Perform migration only for ShreddedType.Tabular $e1
@@ -55,35 +53,11 @@ class MigrationSpec extends Specification { def is = s2"""
       "Table created"
     )
 
-    val action = Migration.perform("public")(input)
-    val (state, result) = action.value.foldMap(MigrationSpec.interpreter).run(Nil).value
-    (state.reverse must beEqualTo(expected)).and(result must beRight)
+    implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init)
+    implicit val iglu: Iglu[Test] = TestInterpreter.stateIgluInterpreter
+    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
+
+    val (state, result) = Migration.perform[Test]("public")(input).value.run(TestState.init).value
+    (state.getLog must beEqualTo(expected)).and(result must beRight)
   }
-}
-
-object MigrationSpec {
-
-  import TestInterpreter.Test
-
-  def interpreter: LoaderA ~> Test = new (LoaderA ~> Test) {
-    def apply[A](effect: LoaderA[A]): Test[A] = {
-      effect match {
-        case LoaderA.Print(message) =>
-          TestInterpreter.print(message)
-
-        case LoaderA.ExecuteUpdate(query) =>
-          TestInterpreter.executeUpdate(query)
-
-        case LoaderA.ExecuteQuery(query, decoder) =>
-          TestInterpreter.executeQuery(query, decoder)
-
-        case LoaderA.GetSchemas(vendor, name, model) =>
-          TestInterpreter.getSchemas(vendor, name, model)
-
-        case action =>
-          throw new RuntimeException(s"Unexpected Action [$action]")
-      }
-    }
-  }
-
 }

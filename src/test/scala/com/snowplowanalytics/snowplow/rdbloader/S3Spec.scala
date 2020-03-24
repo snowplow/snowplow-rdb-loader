@@ -12,11 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
-
 import org.scalacheck.Gen
-
 import org.specs2.{ScalaCheck, Specification}
 
 

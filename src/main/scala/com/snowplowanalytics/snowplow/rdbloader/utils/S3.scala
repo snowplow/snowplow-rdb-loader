@@ -10,16 +10,14 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-
-import com.amazonaws.services.s3.model.S3ObjectSummary
+package com.snowplowanalytics.snowplow.rdbloader.utils
 
 import cats.syntax.either._
-
+import com.amazonaws.services.s3.model.S3ObjectSummary
+import com.snowplowanalytics.snowplow.rdbloader.loaders
+import io.circe.Decoder
 import shapeless.tag
 import shapeless.tag._
-
-import io.circe.Decoder
 
 /**
  * Common types and functions for Snowplow S3 clients

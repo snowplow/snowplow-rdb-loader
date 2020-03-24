@@ -24,7 +24,7 @@ import io.circe.yaml.parser
 // This project
 import common.StringEnum
 
-import S3._
+import com.snowplowanalytics.snowplow.rdbloader.utils.S3._
 import Semver._
 import LoaderError._
 
