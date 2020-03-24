@@ -16,8 +16,6 @@ import cats.Show
 import cats.implicits._
 import cats.data.ValidatedNel
 
-import com.snowplowanalytics.manifest.core.ManifestError
-
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 /** Root error type */
@@ -63,14 +61,6 @@ object LoaderError {
   /** Turn non-empty list of discovery failures into top-level `LoaderError` */
   def flattenValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
     validated.leftMap(errors => DiscoveryError(errors.toList): LoaderError).toEither
-
-  def fromManifestError(manifestError: ManifestError): LoaderError =
-    DiscoveryFailure.ManifestFailure(manifestError).toLoaderError
-
-  /** Exception wrapper to pass to processing manifest */
-  case class LoaderThrowable(origin: LoaderError) extends Throwable {
-    override def getMessage: String = origin.show
-  }
 
   /** Other errors */
   case class LoaderLocalError(message: String) extends LoaderError

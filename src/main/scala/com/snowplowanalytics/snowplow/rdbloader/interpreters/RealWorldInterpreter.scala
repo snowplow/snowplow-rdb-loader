@@ -33,15 +33,13 @@ import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.scalatracker.Tracker
 
-import com.snowplowanalytics.manifest.core.ManifestError
 
 // This project
 import common._
 import LoaderA._
 import LoaderError.LoaderLocalError
-import Interpreter.runIO
 import config.CliConfig
-import discovery.{ ManifestDiscovery, DiscoveryFailure }
+import discovery.DiscoveryFailure
 import utils.Common
 import implementations._
 import com.snowplowanalytics.snowplow.rdbloader.{ Log => ExitLog }
@@ -82,13 +80,6 @@ class RealWorldInterpreter private[interpreters](cliConfig: CliConfig,
     dbConnection
   }
 
-  private lazy val manifest =
-    ManifestInterpreter.initialize(cliConfig.target.processingManifest, cliConfig.configYaml.aws.s3.region, utils.Common.DefaultClient) match {
-      case Right(Some(m)) => m.asRight
-      case Right(None) => LoaderLocalError("Processing Manifest is not configured").asLeft
-      case Left(error) => error.asLeft
-    }
-
   // General messages that should be printed both to output and final log
   private val messages = collection.mutable.ListBuffer.empty[String]
 
@@ -125,35 +116,6 @@ class RealWorldInterpreter private[interpreters](cliConfig: CliConfig,
         case DownloadData(source, dest) =>
           S3Interpreter.downloadData(amazonS3, source, dest)
 
-
-        case ManifestDiscover(loader, shredder, predicate) =>
-          for {
-            manifestClient <- manifest
-            result <- ManifestInterpreter.getUnprocessed(manifestClient, loader, shredder, predicate) match {
-              case Right(result) if result.isEmpty =>
-                log(s"No new items discovered in processing manifest")
-                result.asRight
-              case Right(h :: Nil) =>
-                log(s"Single ${h.id} item discovered")
-                List(h).asRight
-              case Right(result) =>
-                log(s"Multiple (${result.length}) items discovered")
-                result.asRight
-              case other => other
-            }
-          } yield result
-        case ManifestProcess(item, load) =>
-          for {
-            manifestClient <- manifest
-            process = ManifestInterpreter.process(interpreter, load)
-            app = ManifestDiscovery.getLoaderApp(cliConfig.target.id)
-            _ <- runIO(manifestClient.processItem(app, None, process)(item).leftMap {
-              case ManifestError.ApplicationError(e, _, _) =>
-                val message = Option(e.getMessage).getOrElse(e.toString)
-                LoaderError.StorageTargetError(message)
-              case e => LoaderError.fromManifestError(e)
-            }.value)
-          } yield ()
 
         case ExecuteUpdate(query) =>
           if (query.startsWith("COPY ")) { logCopy(query.split(" ").take(2).mkString(" ")) }

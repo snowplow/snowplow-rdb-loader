@@ -104,12 +104,10 @@ object Common {
     val region = cliConfig.configYaml.aws.s3.region
     val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
 
-    val target = (cliConfig.target.processingManifest, cliConfig.folder) match {
-      case (None, Some(f)) =>
+    val target = cliConfig.folder match {
+      case Some(f) =>
         DataDiscovery.InSpecificFolder(f)
-      case (Some(_), f) =>
-        DataDiscovery.ViaManifest(f)
-      case (None, None) =>
+      case None =>
         DataDiscovery.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
     }
 
