@@ -43,11 +43,11 @@ lazy val loader = project.in(file("."))
   .settings(BuildSettings.assemblySettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     libraryDependencies ++= Seq(
       Dependencies.decline,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
-      Dependencies.catsFree,
       Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
