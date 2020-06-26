@@ -125,12 +125,11 @@ object BuildSettings {
       IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
                        |object ProjectMetadata {
                        |  val version = "%s"
-                       |  val name = "%s"             // DO NOT EDIT! Processing Manifest depends on it
+                       |  val name = "%s"
                        |  val organization = "%s"
                        |  val scalaVersion = "%s"
                        |
-                       |  val shredderName = "%s"     // DO NOT EDIT! Processing Manifest depends on it
-                       |  val shredderVersion = "%s"
+                       |  val shredderName = "%s"
                        |}
                        |""".stripMargin.format(
         version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))

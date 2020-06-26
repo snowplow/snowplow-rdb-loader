@@ -12,14 +12,13 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics
-package snowplow.storage.spark
+package com.snowplowanalytics.snowplow.storage.spark
 
-import java.io.{BufferedWriter, File, FileWriter, IOException}
+import java.io.{BufferedWriter, FileWriter, File, IOException}
 
 import org.apache.commons.io.filefilter.IOFileFilter
-
 import scala.collection.JavaConverters._
+
 import scala.io.Source
 import scala.util.Random
 
@@ -43,7 +42,10 @@ import org.json4s.jackson.JsonMethods.{compact, parse}
 
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
+
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
+
+import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
 
 // Specs2
 import org.specs2.matcher.Matcher
@@ -51,6 +53,9 @@ import org.specs2.matcher.Matchers._
 
 
 object ShredJobSpec {
+
+  val Version = ProjectMetadata.version
+
   /** Case class representing the input lines written in a file. */
   case class Lines(l: String*) {
     val lines = l.toList
