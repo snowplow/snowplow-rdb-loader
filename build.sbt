@@ -11,7 +11,10 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val common = project.in(file("common"))
+lazy val root = project.in(file("."))
+  .aggregate(common, loader, shredder)
+
+lazy val common = project.in(file("modules/common"))
   .settings(Seq(
     name := "snowplow-rdb-loader-common"
   ))
@@ -31,7 +34,7 @@ lazy val common = project.in(file("common"))
     )
   )
 
-lazy val loader = project.in(file("."))
+lazy val loader = project.in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
     version := "0.18.0-rc1",
@@ -71,7 +74,7 @@ lazy val loader = project.in(file("."))
   )
   .dependsOn(common)
 
-lazy val shredder = project.in(file("shredder"))
+lazy val shredder = project.in(file("modules/shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
     version     := "0.18.0-rc1",
