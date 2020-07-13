@@ -67,6 +67,7 @@ object BuildSettings {
 
   lazy val assemblySettings = Seq(
     jarName,
+    test in assembly := {},
 
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename(
