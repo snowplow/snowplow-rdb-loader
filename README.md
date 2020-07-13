@@ -1,6 +1,6 @@
 # Relational Database Loader
 
-[![Build Status][travis-image]][travis]
+[![Build Status][build-image]][build]
 [![Release][release-image]][releases]
 [![License][license-image]][license]
 
@@ -59,11 +59,11 @@ limitations under the License.
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
 [shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred
 
-[travis-image]: https://travis-ci.org/snowplow/snowplow-rdb-loader.png?branch=master
-[travis]: http://travis-ci.org/snowplow/snowplow-rdb-loader
+[build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
+[build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test+and+deploy%22
 
-[release-image]: http://img.shields.io/badge/release-r32-blue.svg?style=flat
-[releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
+[release-image]: https://img.shields.io/badge/release-r32-blue.svg?style=flat
+[releases]: httpss://github.com/snowplow/snowplow-rdb-loader/releases
 
-[license-image]: http://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
-[license]: http://www.apache.org/licenses/LICENSE-2.0
+[license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
+[license]: https://www.apache.org/licenses/LICENSE-2.0

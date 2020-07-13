@@ -255,6 +255,16 @@ object ShredJobSpec {
          |"uri": "http://iglucentral.com"
          |}
          |}
+         |},
+         |{
+         |"name": "Iglu Central Mirror",
+         |"priority": 0,
+         |"vendorPrefixes": [ "com.snowplowanalytics" ],
+         |"connection": {
+         |"http": {
+         |"uri": "https://com-iglucentral-eu1-prod.iglu.snplow.net/api"
+         |}
+         |}
          |}
          |]
          |}
