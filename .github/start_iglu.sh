@@ -4,13 +4,13 @@ set -e
 
 IGLUCTL_ZIP="igluctl_0.6.0.zip"
 IGLUCTL_URI="http://dl.bintray.com/snowplow/snowplow-generic/$IGLUCTL_ZIP"
-SCHEMAS_PATH="$TRAVIS_BUILD_DIR/iglu-central/schemas/"
+SCHEMAS_PATH="$pwd/iglu-central/schemas/"
 
 git clone https://github.com/snowplow/iglu-central.git
 
 docker run \
     -p 8080:8080 \
-    -v $TRAVIS_BUILD_DIR/.travis:/iglu \
+    -v $pwd/.github:/iglu \
     --rm -d \
     snowplow-docker-registry.bintray.io/snowplow/iglu-server:0.6.0-rc16 \
     --config /iglu/server.conf

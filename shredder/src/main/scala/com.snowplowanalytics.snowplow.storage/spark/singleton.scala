@@ -22,8 +22,10 @@ import cats.syntax.option._
 
 import io.circe.Json
 
+import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
+
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsManifest, EventsManifestConfig}
 
@@ -81,6 +83,7 @@ object singleton {
                 val client = AmazonDynamoDBClientBuilder
                   .standard()
                   .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", region))
+                  .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("local", "local")))
                   .build()
                 Some(new DynamoDbManifest(client, table))
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw ShredJob.FatalEtlError(e.toString), _.some)

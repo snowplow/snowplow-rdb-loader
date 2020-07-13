@@ -16,23 +16,21 @@ package good
 import java.time.Instant
 import java.util.UUID
 
-import cats.syntax.either._
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
-import com.snowplowanalytics.snowplow.eventsmanifest.DynamoDbManifest
-
 import scala.collection.JavaConverters._
 
+import cats.syntax.either._
+
+import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifestConfig, EventsManifest, DynamoDbManifest }
+
 // AWS SDK
+import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.amazonaws.services.dynamodbv2.document.Table
 import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanRequest}
 
 // Specs2
 import org.specs2.mutable.Specification
-
-import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifestConfig, EventsManifest, DynamoDbManifest => DynamoDbEventsManifest }
-
-import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig.DynamoDb.Credentials
 
 object CrossBatchDeduplicationSpec {
   import ShredJobSpec._
@@ -143,6 +141,7 @@ object CrossBatchDeduplicationSpec {
     private val client = AmazonDynamoDBClientBuilder
       .standard()
       .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", dynamodbDuplicateStorageRegion))
+      .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("local", "local")))
       .build()
 
     /** Helper container class to hold components stored in DuplicationStorage */
@@ -185,15 +184,13 @@ object CrossBatchDeduplicationSpec {
             println("The table didn't exist, skipping")
         }
 
-        val config = EventsManifestConfig.DynamoDb(
+        EventsManifestConfig.DynamoDb(
           None,
-          name = "Duplicate Storage Integration Test",
-          auth = Some(Credentials("fake", "fake")),
+          name = "local",
+          None,
           awsRegion = dynamodbDuplicateStorageRegion,
           dynamodbTable = dynamodbDuplicateStorageTable
         )
-
-        config
       }
 
       val config = build()
@@ -201,7 +198,7 @@ object CrossBatchDeduplicationSpec {
       EventsManifest.initStorage(config) match {
         case Right(t) => t.asRight[Throwable]
         case Left(_) =>
-          DynamoDbEventsManifest.createTable(client, config.dynamodbTable, None, None)
+          DynamoDbManifest.createTable(client, config.dynamodbTable, None, None)
           println("Table has been created")
           val table = DynamoDbManifest.checkTable(client, dynamodbDuplicateStorageTable)
           new DynamoDbManifest(client, table).asRight

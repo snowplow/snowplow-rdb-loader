@@ -1,6 +1,6 @@
 # Relational Database Loader
 
-[![Build Status][travis-image]][travis]
+[![Build Status][build-image]][build]
 [![Release][release-image]][releases]
 [![License][license-image]][license]
 
@@ -18,7 +18,7 @@ RDB Shredder is a [Spark][spark] job which:
 4. Adds metadata to these JSONs to track their origins
 5. Writes these JSONs out to nested folders dependent on their schema
 
-It is designed to be run by the [EmrEtlRunner][emr-etl-runner] immediately after the [Spark Enrich][spark-enrich] job.
+It is designed to be run by the [EmrEtlRunner][emr-etl-runner] immediately after the [Enrich][enrich] job.
 
 ### RDB Loader
 
@@ -53,17 +53,17 @@ limitations under the License.
 [techdocs]: https://github.com/snowplow/snowplow/wiki/Relational-Database-Loader
 
 [spark]: http://spark.apache.org/
-[emr-etl-runner]: https://github.com/snowplow/snowplow/tree/master/3-enrich/emr-etl-runner
-[spark-enrich]: https://github.com/snowplow/snowplow/tree/master/3-enrich/spark-enrich
+[emr-etl-runner]: https://github.com/snowplow/emr-etl-runner
+[enrich]: https://github.com/snowplow/snowplow/enrich
 
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
 [shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred
 
-[travis-image]: https://travis-ci.org/snowplow/snowplow-rdb-loader.png?branch=master
-[travis]: http://travis-ci.org/snowplow/snowplow-rdb-loader
+[build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
+[build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
 
-[release-image]: http://img.shields.io/badge/release-r32-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-r32-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
-[license-image]: http://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
-[license]: http://www.apache.org/licenses/LICENSE-2.0
+[license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
+[license]: https://www.apache.org/licenses/LICENSE-2.0
