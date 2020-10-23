@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.io.FileReader
-import java.nio.file.Path
 import java.sql.{Connection, SQLException}
 import java.util.Properties
 
@@ -24,10 +22,6 @@ import cats.Monad
 import cats.data.EitherT
 import cats.implicits._
 import cats.effect.{ Sync, Timer, Resource }
-
-import org.postgresql.copy.CopyManager
-import org.postgresql.jdbc.PgConnection
-import org.postgresql.{Driver => PgDriver}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 
@@ -48,9 +42,6 @@ trait JDBC[F[_]] {
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A]
-
-  /** Perform PostgreSQL COPY table FROM STDIN (against target in interpreter) */
-  def copyViaStdin(files: List[Path], query: SqlString): LoaderAction[F, Long]
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] = {
@@ -78,7 +69,7 @@ object JDBC {
 
   /**
    * Acquire JDBC connection. In case of failure - sleep 1 minute and retry again
-   * @param target storage target configuration, either Redshift or Postgres
+   * @param target Redshift storage target configuration
    * @tparam F effect type with `S3I` DSL to get encrypted password
    * @return JDBC connection type
    */
@@ -117,20 +108,9 @@ object JDBC {
                 }
               } yield connection
           }
-        case p: StorageTarget.PostgresqlConfig =>
-          val url = s"jdbc:postgresql://${p.host}:${p.port}/${p.database}"
-          for {
-            _ <- Sync[F].delay(props.setProperty("sslmode", p.sslMode.asProperty))
-            pgConnection <- Sync[F].delay(new PgDriver().connect(url, props))
-          } yield pgConnection
       }
     } yield jdbcConnection
   }
-
-  def copyIn[F[_]: Sync](copyManager: CopyManager, copyStatement: String)(file: Path): LoaderAction[F, Long] =
-    Sync[F]
-      .delay(copyManager.copyIn(copyStatement, new FileReader(file.toFile)))
-      .attemptA(err => StorageTargetError(err.getMessage))
 
   def setAutocommit[F[_]: Sync](conn: Connection, autoCommit: Boolean): LoaderAction[F, Unit] =
     Sync[F]
@@ -188,24 +168,6 @@ object JDBC {
 
       LoaderAction(query)
     }
-
-    def copyViaStdin(files: List[Path], copyStatement: SqlString): LoaderAction[F, Long] = {
-      val copyManager: LoaderAction[F, CopyManager] = Sync[F]
-        .delay(new CopyManager(conn.asInstanceOf[PgConnection]))
-        .attemptA(err => StorageTargetError(err.getMessage))
-
-      for {
-        manager <- copyManager
-        _ <- setAutocommit[F](conn, false)
-        result = files.traverse(copyIn[F](manager, copyStatement)(_)).map(_.combineAll).value.flatMap[Either[LoaderError, Long]] {
-          case e @ Right(_) => Sync[F].delay(conn.commit()).as(e)
-          case e @ Left(_) => Sync[F].delay(conn.rollback()).as(e)
-        }
-        endResult <- LoaderAction(result)
-        _ <- setAutocommit[F](conn, true)
-      } yield endResult
-    }
-
   }
 
   /** Dry run interpreter, not performing any *destructive* statements */
@@ -229,9 +191,6 @@ object JDBC {
 
       LoaderAction.liftE(result)
     }
-
-    def copyViaStdin(files: List[Path], copyStatement: SqlString): LoaderAction[F, Long] =
-      LoaderAction.liftF(Sync[F].delay(println(copyStatement)).as(1L))
   }
 
   implicit class SyncOps[F[_]: Sync, A](fa: F[A]) {
