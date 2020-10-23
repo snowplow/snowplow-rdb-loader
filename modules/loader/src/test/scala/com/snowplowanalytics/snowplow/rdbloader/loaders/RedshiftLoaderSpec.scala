@@ -136,7 +136,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     implicit val jdbc: JDBC[Test] = TestInterpreter.stateJdbcInterpreter(JDBCResults.init)
 
     val steps: Set[Step] = Step.defaultSteps ++ Set(Step.Vacuum)
-    val (state, result) = RedshiftLoader.run[Test](validConfig, validTarget, steps, Nil).value.run(TestState.init).value
+    val (_, result) = RedshiftLoader.run[Test](validConfig, validTarget, steps, Nil).value.run(TestState.init).value
 
     result must beRight
   }
@@ -166,7 +166,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
     }
 
     val steps: Set[Step] = (Step.defaultSteps - Step.ConsistencyCheck) ++ Set(Step.Vacuum)
-    val (state, result) = Common.discover[Test](CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value.run(TestState.init).value
+    val (_, result) = Common.discover[Test](CliConfig(validConfig, validTarget, steps, None, None, false, SpecHelpers.resolverJson)).value.run(TestState.init).value
 
     val expected = List(DataDiscovery(
       S3.Folder.coerce("s3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/"),
@@ -222,6 +222,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   def e6 = {
     val latestTimestamp = Timestamp.valueOf("2018-02-27 00:00:00.01")
     def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Test, A] = {
+      val _ = ev
       val result: Option[Any] = if (query.contains("FROM atomic.events")) {
         Some(Entities.Timestamp(latestTimestamp))
       } else if (query.contains("FROM atomic.manifest")) {
@@ -265,6 +266,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
   def e7 = {
     val latestTimestamp = Timestamp.valueOf("2018-02-26 00:00:01.000")
     def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Test, A] = {
+      val _ = ev
       val result = if (query.contains("SELECT etl_tstamp")) {
         Some(Entities.Timestamp(latestTimestamp))
       } else if (query.contains("FROM atomic.manifest")) {
