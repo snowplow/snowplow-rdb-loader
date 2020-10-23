@@ -24,14 +24,13 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.iglu.client.Client
 
 class StorageTargetSpec extends Specification { def is = s2"""
-  Parse Postgres storage target configuration $e1
-  Parse Redshift storage target configuration $e2
-  Parse Redshift storage target (3-0-0) with tunnel $e3
-  Parse Redshift storage target (3-0-0) with encrypted password $e4
-  Fail to parse old Redshift storage target (3-0-0) with encrypted password $e5
-  Parse Redshift storage target (3-0-0) with many JDBC options  $e6
-  Fail to parse Redshift storage target (3-0-0) with wrong JDBC value $e7
-  Parse Redshift storage target (4-0-0) with tabular blacklist $e8
+  Parse Redshift storage target configuration $e1
+  Parse Redshift storage target (3-0-0) with tunnel $e2
+  Parse Redshift storage target (3-0-0) with encrypted password $e3
+  Fail to parse old Redshift storage target (3-0-0) with encrypted password $e4
+  Parse Redshift storage target (3-0-0) with many JDBC options  $e5
+  Fail to parse Redshift storage target (3-0-0) with wrong JDBC value $e6
+  Parse Redshift storage target (4-0-0) with tabular blacklist $e7
   """
 
   private val targetId = UUID.fromString("11112233-dddd-4845-a7e6-8fdc88d599d0")
@@ -76,42 +75,6 @@ class StorageTargetSpec extends Specification { def is = s2"""
   def e1 = {
     val config = """
       |{
-      |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-0-1",
-      |    "data": {
-      |        "name": "PostgreSQL enriched events storage",
-      |        "id": "11112233-dddd-4845-a7e6-8fdc88d599d0",
-      |        "host": "mydatabase.host.acme.com",
-      |        "database": "ADD HERE",
-      |        "port": 5432,
-      |        "sslMode": "DISABLE",
-      |        "username": "ADD HERE",
-      |        "password": "ADD HERE",
-      |        "schema": "atomic",
-      |        "purpose": "ENRICHED_EVENTS"
-      |    }
-      |}
-    """.stripMargin
-
-    val expected = StorageTarget.PostgresqlConfig(
-      targetId,
-      "PostgreSQL enriched events storage",
-      "mydatabase.host.acme.com",
-      "ADD HERE",
-      5432,
-      StorageTarget.SslMode.Disable,
-      "atomic",
-      "ADD HERE",
-      StorageTarget.PlainText("ADD HERE"),
-      None,
-      None,
-      None)
-
-    parseWithDefaultResolver(config) must beRight(expected)
-  }
-
-  def e2 = {
-    val config = """
-      |{
       |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
       |    "data": {
       |        "name": "AWS Redshift enriched events storage",
@@ -152,7 +115,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     parseWithDefaultResolver(config) must beRight(expected)
   }
 
-  def e3 = {
+  def e2 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
@@ -216,7 +179,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     parseWithDefaultResolver(config) must beRight(expected)
   }
 
-  def e4 = {
+  def e3 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
@@ -263,7 +226,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     parseWithDefaultResolver(config) must beRight(expected)
   }
 
-  def e5 = {
+  def e4 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
@@ -291,7 +254,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     parseWithDefaultResolver(config) must beLeft
   }
 
-  def e6 = {
+  def e5 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
@@ -358,7 +321,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     parseWithDefaultResolver(config) must beRight(expected)
   }
 
-  def e7 = {
+  def e6 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0",
@@ -394,7 +357,7 @@ class StorageTargetSpec extends Specification { def is = s2"""
     }
   }
 
-  def e8 = {
+  def e7 = {
     val config = """
                    |{
                    |    "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/4-0-0",

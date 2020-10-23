@@ -29,7 +29,7 @@ import io.circe.generic.semiauto._
 import io.circe.parser.parse
 
 /**
- * Common configuration for JDBC target, such as Redshift and Postgres
+ * Common configuration for JDBC target, such as Redshift
  * Any of those can be safely coerced
  */
 sealed trait StorageTarget extends Product with Serializable {
@@ -66,23 +66,6 @@ object StorageTarget {
     case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
   }
 
-  /**
-   * PostgreSQL config
-   * `com.snowplowanalytics.snowplow.storage/postgresql_config/jsonschema/1-1-0`
-   */
-  case class PostgresqlConfig(id: UUID,
-                              name: String,
-                              host: String,
-                              database: String,
-                              port: Int,
-                              sslMode: SslMode,
-                              schema: String,
-                              username: String,
-                              password: PasswordConfig,
-                              sshTunnel: Option[TunnelConfig],
-                              processingManifest: Option[ProcessingManifestConfig],
-                              blacklistTabular: Option[List[SchemaCriterion]])
-    extends StorageTarget
 
   /**
    * Redshift config
@@ -216,7 +199,6 @@ object StorageTarget {
   def decodeStorageTarget(validJson: SelfDescribingData[Json]): Either[ParseError, StorageTarget] =
     (validJson.schema.name, validJson.data) match {
       case ("redshift_config", data) => data.as[RedshiftConfig].leftMap(e => ParseError(e.show))
-      case ("postgresql_config", data) => data.as[PostgresqlConfig].leftMap(e => ParseError(e.show))
       case (name, _) => ParseError(s"Unsupported storage target [$name]").asLeft
     }
 
@@ -234,9 +216,6 @@ object StorageTarget {
       .flatMap { json => SelfDescribingData.parse(json).leftMap(e => ParseError(s"Not a self-describing JSON, ${e.code}")) }
       .toEitherNel
       .flatMap { json => (decodeStorageTarget(json).toEitherNel, validate(client)(json).toEitherNel).parMapN { case (config, _) => config } }
-
-  implicit val postgresqlConfigDecoder: Decoder[PostgresqlConfig] =
-    deriveDecoder[PostgresqlConfig]
 
   implicit val redsfhitConfigDecoder: Decoder[RedshiftConfig] =
     deriveDecoder[RedshiftConfig]

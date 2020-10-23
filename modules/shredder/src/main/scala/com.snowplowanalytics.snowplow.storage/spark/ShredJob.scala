@@ -173,7 +173,7 @@ object ShredJob extends SparkJob {
       config
     }
 
-    job.run(atomicLengths, eventsManifest, true)
+    job.run(atomicLengths, eventsManifest)
   }
 
   /**
@@ -298,8 +298,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
   def run(atomicLengths: Map[String, Int],
-          eventsManifest: Option[EventsManifestConfig],
-          jsonOnly: Boolean): Unit = {
+          eventsManifest: Option[EventsManifestConfig]): Unit = {
     import ShredJob._
 
     def shred(event: Event): Either[BadRow, FinalRow] =
