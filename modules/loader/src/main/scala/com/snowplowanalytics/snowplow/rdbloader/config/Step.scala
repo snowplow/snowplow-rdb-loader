@@ -46,7 +46,6 @@ object Step {
    */
   sealed trait DefaultStep extends Step
   case object Delete extends DefaultStep
-  case object Download extends DefaultStep
   case object Discover extends DefaultStep
   case object Load extends DefaultStep
 

@@ -34,7 +34,6 @@ object Dependencies {
     val schemaDdl        = "0.10.0"
 
     // Java (Loader)
-    val postgres         = "42.0.0"
     val slf4j            = "1.7.30"
     val redshift         = "1.2.36.1060"
     val aws              = "1.11.319"
@@ -76,7 +75,6 @@ object Dependencies {
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % "provided"
 
   // Java (Loader)
-  val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws

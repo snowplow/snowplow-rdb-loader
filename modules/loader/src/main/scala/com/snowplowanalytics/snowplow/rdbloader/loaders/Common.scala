@@ -89,8 +89,6 @@ object Common {
   def load[F[_]: Monad: Logging: FS: AWS: Iglu: JDBC](config: CliConfig,
                                                       discovery: List[DataDiscovery]): LoaderAction[F, Unit] =
     config.target match {
-      case db: StorageTarget.PostgresqlConfig =>
-        PostgresqlLoader.run[F](db, config.steps, discovery)
       case db: StorageTarget.RedshiftConfig =>
         Migration.perform[F](config.target.schema)(discovery) *>
           RedshiftLoader.run[F](config.configYaml, db, config.steps, discovery)
@@ -120,9 +118,6 @@ object Common {
         if (cliConfig.steps.contains(Step.ConsistencyCheck))
           DataDiscovery.checkConsistency[F](original)
         else original
-      case _: StorageTarget.PostgresqlConfig =>
-        // Safe to skip consistency check as whole folder will be downloaded
-        DataDiscovery.discover[F](target, shredJob, region, assets)
     }
   }
 
