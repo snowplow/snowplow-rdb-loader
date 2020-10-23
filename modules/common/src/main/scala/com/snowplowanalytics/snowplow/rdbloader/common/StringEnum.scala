@@ -3,8 +3,6 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import scala.reflect.runtime.universe._
 import scala.reflect.runtime.{universe => ru}
 
-import cats.implicits._
-
 import io.circe._
 
 /**
