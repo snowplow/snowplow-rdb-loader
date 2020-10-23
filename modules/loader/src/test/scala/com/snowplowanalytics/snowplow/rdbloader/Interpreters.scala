@@ -27,13 +27,6 @@ object Interpreters {
         .as("".asInstanceOf[A].asRight[LoaderError])
       LoaderAction[IO, A](action)
     }
-
-    def copyViaStdin(files: List[Path], query: SqlString): LoaderAction[IO, Long] = {
-      val action = queries
-        .update(qs => query.split(" ").headOption.toList.map(_.trim) ++ qs)
-        .as(1L.asRight[LoaderError])
-      LoaderAction[IO, Long](action)
-    }
   }
 }
 
