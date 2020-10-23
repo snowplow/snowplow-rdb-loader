@@ -33,21 +33,7 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.11.12",
-
-    scalacOptions ++= Seq(
-      "-deprecation",
-      "-encoding", "UTF-8",
-      "-feature",
-      "-unchecked",
-      "-Ywarn-unused-import",
-      "-Ywarn-nullary-unit",
-      "-Xlint",
-      "-Yinline-warnings",
-      "-language:higherKinds",
-      "-Ypartial-unification",
-      "-Xfuture"
-    ),
+    scalaVersion := "2.12.12",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
