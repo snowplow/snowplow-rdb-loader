@@ -69,7 +69,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/")
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     val expected = List(
       DataDiscovery(
@@ -114,7 +114,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     val expected = LoaderError.DiscoveryError(List(DiscoveryFailure.NoDataFailure(shreddedGood)))
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(shreddedGood)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     result must beLeft(expected)
   }
@@ -130,7 +130,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     // The only difference with e3
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     result must beRight(expected)
   }
@@ -175,7 +175,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/")
     val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     result must beRight(expected)
   }
@@ -221,7 +221,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     result must beRight(expected)
   }
@@ -278,7 +278,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     )
 
     val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val (state, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
 
     result must beRight(expected)
   }
@@ -296,7 +296,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
 
     val prefix = S3.Folder.coerce("s3://sp-com-acme-123987939231-10-batch-archive/main/shredded/good/run=2018-07-05-00-55-16/atomic-events/")
 
-    val (state, result) = DataDiscovery.listGoodBucket[Test](prefix).value.run(TestState.init).value
+    val (_, result) = DataDiscovery.listGoodBucket[Test](prefix).value.run(TestState.init).value
 
     result.map(_.length) must beRight(3)
   }

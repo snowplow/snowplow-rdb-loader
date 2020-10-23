@@ -108,8 +108,10 @@ object TestInterpreter {
     def print(message: String): Test[Unit] =
       State.modify[TestState](_.log(message))
 
-    def noop(message: String): Test[Unit] =
+    def noop(message: String): Test[Unit] = {
+      val _ = message
       State.modify[TestState](identity).void
+    }
 
     def init: ControlResults = ControlResults(print)
   }

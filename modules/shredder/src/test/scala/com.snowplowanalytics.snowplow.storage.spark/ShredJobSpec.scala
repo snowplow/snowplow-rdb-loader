@@ -337,7 +337,7 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig, true)
+    job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
   }
 
@@ -365,7 +365,7 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig, false)
+    job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
   }
 

@@ -98,8 +98,8 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
         val eitherMatch = legacyResult.void.leftMap(_ => ()) must beEqualTo(modernResult.void.leftMap(_ => ()))
         val valueMatch = (legacyResult, modernResult) match {
           case (l: Right[_, _], m: Right[_, _]) =>
-            val legacy = l.b._2.copy(shredJob = Semver(0,0,0))   // Erase Shred job versions
-            val modern = m.b._2.copy(shredJob = Semver(0,0,0))
+            val legacy = l.value._2.copy(shredJob = Semver(0,0,0))   // Erase Shred job versions
+            val modern = m.value._2.copy(shredJob = Semver(0,0,0))
             legacy must beEqualTo(modern)
           case (Left(_), Left(_)) => ok
           case _ => ko

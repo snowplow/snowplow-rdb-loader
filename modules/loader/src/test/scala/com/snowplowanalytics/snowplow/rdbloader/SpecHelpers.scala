@@ -16,7 +16,6 @@ import scala.io.Source.fromInputStream
 import java.util.UUID
 
 import cats.Id
-import cats.implicits._
 import io.circe.jawn.parse
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.core.SelfDescribingData
