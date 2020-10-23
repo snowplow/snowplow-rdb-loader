@@ -99,11 +99,6 @@ object TestInterpreter {
 
     def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Test, A] =
       results.executeQuery.asInstanceOf[SqlString => Decoder[A] => LoaderAction[Test, A]](query)(ev)
-
-    def copyViaStdin(files: List[Path], query: SqlString): LoaderAction[Test, Long] = {
-      val action = State { log: TestState => (log.log(query), 1L.asRight[LoaderError]) }
-      LoaderAction(action)
-    }
   }
 
 
