@@ -153,6 +153,7 @@ object Logging {
 
   /** Callback for failed  */
   private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {
+    val _ = request
     def toMsg(rsp: CollectorResponse, includeHeader: Boolean): String = rsp match {
       case CollectorFailure(code) =>
         val header = if (includeHeader) { s"Snowplow Tracker [${DateTime.now()}]: " } else ""

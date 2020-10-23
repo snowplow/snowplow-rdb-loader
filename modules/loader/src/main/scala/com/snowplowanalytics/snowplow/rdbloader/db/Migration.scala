@@ -43,7 +43,7 @@ object Migration {
           _         <- for {
             exists  <- tableExists[F](dbSchema, tableName)
             _       <- if (exists) for {
-              description <- getVersion[F](dbSchema, tableName, schemas)
+              description <- getVersion[F](dbSchema, tableName)
               matches      = schemas.latest.schemaKey == description.version
               columns     <- getColumns[F](dbSchema, tableName)
               _           <- if (matches) LoaderAction.unit[F] else updateTable[F](dbSchema, description.version, columns, schemas)
@@ -54,7 +54,7 @@ object Migration {
     }
 
   /** Find the latest schema version in the table and confirm that it is the latest in `schemas` */
-  def getVersion[F[_]: Monad: JDBC](dbSchema: String, tableName: String, latest: DSchemaList): LoaderAction[F, TableState] = {
+  def getVersion[F[_]: Monad: JDBC](dbSchema: String, tableName: String): LoaderAction[F, TableState] = {
     val query = SqlString.unsafeCoerce(
       s"""
          |SELECT obj_description(oid)

@@ -1,7 +1,5 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
-import java.nio.file.Path
-
 import cats.effect.IO
 import cats.syntax.all._
 import cats.effect.concurrent.Ref
@@ -11,8 +9,6 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.JDBC
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
 
 object Interpreters {
-
-
   def ioTestJdbcInterpreter(queries: Ref[IO, List[String]]): JDBC[IO] = new JDBC[IO] {
     def executeUpdate(sql: SqlString): LoaderAction[IO, Long] = {
       val action = queries

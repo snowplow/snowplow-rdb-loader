@@ -16,7 +16,7 @@ import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 
-import scala.collection.convert.wrapAsScala._
+import scala.collection.JavaConverters._
 
 import cats.data.Validated
 import cats.implicits._
@@ -69,7 +69,7 @@ object AWS {
 
     def putObject(key: S3.Key, data: String): LoaderAction[F, Unit] = {
       val meta = new ObjectMetadata()
-      meta.setContentLength(data.length)
+      meta.setContentLength(data.length.toLong)
       meta.setContentEncoding("text/plain")
       val (bucket, prefix) = S3.splitS3Key(key)
       val is = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))
@@ -96,9 +96,9 @@ object AWS {
         if (result.isTruncated) {
           val loaded = result.getObjectSummaries()
           req.setContinuationToken(result.getNextContinuationToken)
-          loaded.toStream #::: keyUnfold(client.listObjectsV2(req))
+          loaded.asScala.toStream #::: keyUnfold(client.listObjectsV2(req))
         } else {
-          result.getObjectSummaries().toStream
+          result.getObjectSummaries().asScala.toStream
         }
       }
 

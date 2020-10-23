@@ -38,10 +38,11 @@ trait SparkSpec extends BeforeAfterAll {
       .config(conf)
       .getOrCreate()
 
-  override def beforeAll(): Unit =
-    SparkSession.builder()
+  override def beforeAll(): Unit = {
+    val _ = SparkSession.builder()
       .config(conf)
       .getOrCreate()
+  }
 
   override def afterAll(): Unit = {
     if (spark != null) spark.stop()
