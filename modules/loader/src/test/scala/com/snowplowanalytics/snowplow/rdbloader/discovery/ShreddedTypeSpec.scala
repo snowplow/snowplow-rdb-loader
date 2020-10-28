@@ -23,53 +23,29 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 
 class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
-  Transform correct S3 path $e1
-  Fail to transform path without valid vendor $e2
-  Fail to transform path without file $e3
-  Transform correct S3 path without base $e4
-  Transform correct S3 path for Shred job > 0.12.0 format $e5
-  Transform correct S3 path without root folder $e6
-  Modern and legacy transformation always give same result $e7
-  Transform full modern shredded key $e8
-  extractedSchemaKey parsed a path for tabular output $e9
-  Transform correct tabular S3 path $e10
+  Fail to transform path without valid vendor $e1
+  Fail to transform path without file $e2
+  Transform correct S3 path for Shred job $e3
+  Transform full modern shredded key $e4
+  extractedSchemaKey parsed a path for tabular output $e5
+  Transform correct tabular S3 path $e6
   """
 
-  import ShreddedTypeSpec._
-
   def e1 = {
-    val path = "cross-batch-test/shredded-archive/run=2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0/part-00000-00001"
-    val expectedPrefix = S3.Folder.coerce("s3://rdb-test/cross-batch-test/shredded-archive/run=2017-04-27-14-39-42")
-    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0)))
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-
-    val result = ShreddedType.transformPath(key, Semver(0,10,0))
-    result must beRight(expected)
-  }
-
-  def e2 = {
     val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/submit_form/jsonschema/1-0-0/part-00000-00001"
     val key = S3.Key.coerce(s"s3://rdb-test/$path")
     val result = ShreddedType.transformPath(key, Semver(0,10,0))
     result must beLeft
   }
 
-  def e3 = {
+  def e2 = {
     val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0"
     val key = S3.Key.coerce(s"s3://rdb-test/$path")
     val result = ShreddedType.transformPath(key, Semver(0,12,0))
     result must beLeft
   }
 
-  def e4 = {
-    val path = "com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0/part-00000-00001"
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-    val result = ShreddedType.transformPath(key, Semver(0,10,0))
-    val expected = (false, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,10,0)))
-    result must beRight(expected)
-  }
-
-  def e5 = {
+  def e3 = {
     val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001"
     val key = S3.Key.coerce(s"s3://rdb-test/shredded-types/$path")
     val result = ShreddedType.transformPath(key, Semver(0,13,0))
@@ -77,39 +53,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     result must beRight(expected)
   }
 
-  def e6 = {
-    val path = "run%3D2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0/part-00000-00001"
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-
-    val expectedPrefix = S3.Folder.coerce("s3://rdb-test/run%3D2017-04-27-14-39-42")
-    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,11,0)))
-
-    val result = ShreddedType.transformPath(key, Semver(0,11,0))
-    result must beRight(expected)
-  }
-
-  def e7 = {
-    prop { (elements: ShreddedTypeElements) => elements match {
-      case (subpath, vendor, name, format, model, revision, addition) =>
-        val legacy = s"s3://some-bucket/$subpath$vendor/$name/$format/$model-$revision-$addition/part-1"
-        val modern = s"s3://some-bucket/${subpath}shredded-types/vendor=$vendor/name=$name/format=$format/version=$model-$revision-$addition/part-2"
-        val legacyResult = ShreddedType.transformPath(S3.Key.coerce(legacy), Semver(0,11,0))
-        val modernResult = ShreddedType.transformPath(S3.Key.coerce(modern), Semver(0,12,0))
-        val eitherMatch = legacyResult.void.leftMap(_ => ()) must beEqualTo(modernResult.void.leftMap(_ => ()))
-        val valueMatch = (legacyResult, modernResult) match {
-          case (l: Right[_, _], m: Right[_, _]) =>
-            val legacy = l.value._2.copy(shredJob = Semver(0,0,0))   // Erase Shred job versions
-            val modern = m.value._2.copy(shredJob = Semver(0,0,0))
-            legacy must beEqualTo(modern)
-          case (Left(_), Left(_)) => ok
-          case _ => ko
-        }
-        eitherMatch.and(valueMatch)
-
-    } }.setGen(shreddedTypeElementsGen)
-  }
-
-  def e8 = {
+  def e4 = {
     val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001")
 
     val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
@@ -119,12 +63,12 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     result must beRight(expected)
   }
 
-  def e9 = {
+  def e5 = {
     val input = "shredded-tsv/vendor=com.snowplow/name=event/format=jsonschema/version=1"
     ShreddedType.extractSchemaKey(input, Semver(0,18,0)) must beSome(Extracted.Tabular("com.snowplow", "event", "jsonschema", 1))
   }
 
-  def e10 = {
+  def e6 = {
     val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-tsv/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1/part-00000-00001")
 
     val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
@@ -177,7 +121,4 @@ object ShreddedTypeSpec {
     revision <- Gen.chooseNum(0, 10)
     addition <- Gen.chooseNum(0, 10)
   } yield (subpath, vendor, name, format, model, revision, addition)
-
-
 }
-
