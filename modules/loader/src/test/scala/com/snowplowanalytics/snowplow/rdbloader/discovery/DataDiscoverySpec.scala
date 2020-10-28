@@ -15,95 +15,26 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import java.util.UUID
 
 import cats.syntax.either._
-import org.specs2.Specification
+
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, TestInterpreter}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => dir}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Key.{coerce => s3key}
 import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{AWSResults, ControlResults, Test, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
+import org.specs2.Specification
+
 
 class DataDiscoverySpec extends Specification { def is = s2"""
-  Successfully discover two run folders at once $e1
-  Fail to proceed with empty target folder $e3
-  Do not fail to proceed with empty shredded good folder $e4
-  Successfully discover data in run folder $e5
-  Successfully discover data in specific folder $e6
-  Successfully discover several folders using `InSpecificFolder` (decide if desired) $e7
-  listGoodBucket ignores special files $e8
-  show DataDiscovery with several shredded types $e9
+  Fail to proceed with empty target folder $e1
+  Do not fail to proceed with empty shredded good folder $e2
+  listGoodBucket ignores special files $e3
+  show DataDiscovery with several shredded types $e4
   """
 
   val id = UUID.fromString("8ad6fc06-ae5c-4dfc-a14d-f2ae86755179")
 
   def e1 = {
-    def listS3(bucket: S3.Folder) =
-      List(
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-0001"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001"),
-
-        S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/atomic-events/part-0001"),
-        S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00000"),
-        S3.Key.coerce(bucket + "run=2017-05-22-16-00-57/com.snowplowanalytics.snowplow/add_to_cart/jsonschema/1-0-0/part-00001")
-      ).map(k => S3.BlobObject(k, 1L)).asRight[LoaderError]
-
-    def keyExists(k: S3.Key): Boolean = {
-      k.toString match {
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" => true
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json" => true
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/add_to_cart_1.json" => true
-        case _ => false
-      }
-    }
-
-    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
-    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listS3), keyExists = keyExists))
-    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-
-    val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/")
-    val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
-
-    val expected = List(
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        Some(2L),
-        Some(2L),
-        List(
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
-        ),
-        specificFolder = false
-      ),
-
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"),
-        Some(2L),
-        Some(2L),
-        List(
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-16-00-57/"), "com.snowplowanalytics.snowplow","add_to_cart",1,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.snowplowanalytics.snowplow/add_to_cart_1.json"))
-        ),
-        specificFolder = false
-      )
-    )
-
-    result must beRight(expected)
-  }
-
-  def e3 = {
 
     implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
     implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
@@ -119,7 +50,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     result must beLeft(expected)
   }
 
-  def e4 = {
+  def e2 = {
     implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
     implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
     implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init)
@@ -135,155 +66,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     result must beRight(expected)
   }
 
-  def e5 = {
-    def listS3(bucket: S3.Folder) =
-      List(
-        S3.Key.coerce(bucket + "atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "atomic-events/part-0001"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
-      ).map(k => S3.BlobObject(k, 1L)).asRight[LoaderError]
-
-    def keyExists(k: S3.Key): Boolean =
-      k.toString match {
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" => true
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json" => true
-        case _ => false
-      }
-
-    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
-    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listS3), keyExists = keyExists))
-    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-
-    val expected = List(
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        Some(2L),
-        Some(2L),
-        List(
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
-        ),
-        specificFolder = false
-      )
-    )
-
-    val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/")
-    val discoveryTarget = DataDiscovery.Global(shreddedGood)
-    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
-
-    result must beRight(expected)
-  }
-
-  def e6 = {
-    def listS3(bucket: S3.Folder) =
-      List(
-        S3.Key.coerce(bucket + "atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "atomic-events/part-0001"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
-        S3.Key.coerce(bucket + "com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001")
-      ).map(k => S3.BlobObject(k, 1L)).asRight[LoaderError]
-
-    def keyExists(k: S3.Key): Boolean =
-      k.toString match {
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" => true
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json" => true
-        case _ => false
-      }
-
-    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
-    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listS3), keyExists = keyExists))
-    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-
-    val targetFolder = S3.Folder.coerce("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/")
-
-    val expected = List(
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        Some(2L),
-        Some(2L),
-        List(
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
-        ),
-        specificFolder = true
-      )
-    )
-
-    val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
-
-    result must beRight(expected)
-  }
-
-  def e7 = {
-    def listS3(bucket: S3.Folder) =
-      List(
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/atomic-events/part-0001"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/1-0-0/part-00001"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/1-0-0/part-00002"),
-        S3.Key.coerce(bucket + "run=2017-05-22-12-20-57/com.mailchimp/email_address_change/jsonschema/2-0-0/part-00001"),
-        // Another folder
-        S3.Key.coerce(bucket + "run=2018-10-12-10-20-00/atomic-events/part-0000"),
-        S3.Key.coerce(bucket + "run=2018-10-12-10-20-00/atomic-events/part-0001")
-    ).map(k => S3.BlobObject(k, 1L)).asRight[LoaderError]
-
-    def keyExists(k: S3.Key): Boolean =
-      k.toString match {
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json" => true
-        case "s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json" => true
-        case _ => false
-      }
-
-
-    implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
-    implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listS3), keyExists = keyExists))
-    implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-
-    val targetFolder = S3.Folder.coerce("s3://runfolder-test/shredded/good/")
-
-    val expected = List(
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),
-        Some(2L),
-        Some(2L),
-        List(
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",2,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_2.json")),
-          ShreddedType.Json(
-            Info(dir("s3://runfolder-test/shredded/good/run=2017-05-22-12-20-57/"),"com.mailchimp","email_address_change",1,Semver(0,11,0,None)),
-            s3key("s3://snowplow-hosted-assets-us-east-1/4-storage/redshift-storage/jsonpaths/com.mailchimp/email_address_change_1.json"))
-        ),
-        specificFolder = true
-      ),
-      DataDiscovery(
-        dir("s3://runfolder-test/shredded/good/run=2018-10-12-10-20-00/"),
-        Some(2L),
-        Some(2L),
-        List(),
-        specificFolder = true
-      )
-    )
-
-    val discoveryTarget = DataDiscovery.InSpecificFolder(targetFolder)
-    val (_, result) = DataDiscovery.discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None).value.run(TestState.init).value
-
-    result must beRight(expected)
-  }
-
-  def e8 = {
+  def e3 = {
     def listS3(bucket: S3.Folder) =
       List(
         S3.BlobObject(S3.Key.join(bucket, "_SUCCESS"), 0L),
@@ -301,7 +84,7 @@ class DataDiscoverySpec extends Specification { def is = s2"""
     result.map(_.length) must beRight(3)
   }
 
-  def e9 = {
+  def e4 = {
     val shreddedTypes = List(
       ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
       ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
