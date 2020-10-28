@@ -20,7 +20,7 @@ import cats.data._
 import cats.implicits._
 
 import com.snowplowanalytics.iglu.client.Client
-import com.snowplowanalytics.iglu.core.circe.instances._
+import com.snowplowanalytics.iglu.core.circe.implicits.{ schemaCriterionDecoder => _, _ }
 import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaCriterion}
 
 import io.circe._
@@ -104,7 +104,7 @@ object StorageTarget {
                           tcpKeepAlive: Option[Boolean],
                           tcpKeepAliveMinutes: Option[Int]) {
     /** Either errors or list of mutators to update the `Properties` object */
-    val validation: Either[ParseError, List[Properties => Unit]] = jdbcEncoder.encodeObject(this).toList.map {
+    val validation: Either[ParseError, List[Properties => Unit]] = RedshiftJdbc.jdbcEncoder.encodeObject(this).toList.map {
       case (property, value) => value.fold(
         ((_: Properties) => ()).asRight,
         b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
@@ -131,20 +131,20 @@ object StorageTarget {
 
   object RedshiftJdbc {
     val empty = RedshiftJdbc(None, None, None, None, None, None, None, None, None, None, None, None)
+
+    implicit val jdbcDecoder: Decoder[RedshiftJdbc] =
+      Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+        "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+        "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
+
+    implicit val jdbcEncoder: Encoder.AsObject[RedshiftJdbc] =
+      Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
+        "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
+        "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
+        (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
+          j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
+          j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
   }
-
-  implicit val jdbcDecoder: Decoder[RedshiftJdbc] =
-    Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
-      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
-      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
-
-  implicit val jdbcEncoder: ObjectEncoder[RedshiftJdbc] =
-    Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
-      "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
-      "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
-      (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
-        j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
-        j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
   case class ParameterStoreConfig(parameterName: String)
@@ -238,7 +238,7 @@ object StorageTarget {
   implicit val passwordConfigDecoder: Decoder[PasswordConfig] =
     deriveDecoder[PasswordConfig]
 
-  implicit val schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
+  implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
     Decoder.decodeString.emap {
       s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
