@@ -14,10 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
 import scala.concurrent.duration._
+
 import cats._
 import cats.data._
 import cats.implicits._
 import cats.effect.Timer
+
 import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
@@ -411,11 +413,6 @@ object DataDiscovery {
 
   /** Shredded key that doesn't need a JSONPath file and can be mapped to final */
   private case class ShreddedDataKeyTabular(key: S3.Key, info: ShreddedType.Info) extends DataKeyIntermediate {
-    def base: S3.Folder = {
-      val atomicEvents = S3.Key.getParent(key)
-      S3.Folder.getParent(atomicEvents)
-    }
-
     def toFinal: ShreddedDataKeyFinal =
       ShreddedDataKeyFinal(key, ShreddedType.Tabular(info))
   }
