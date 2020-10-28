@@ -35,6 +35,9 @@ import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
 object Flattening {
 
+  /** Redshift default NULL string */
+  val NullCharacter: String = "\\N"
+
   val MetaSchema = SchemaKey("com.snowplowanalyics.self-desc", "schema", "jsonschema", SchemaVer.Full(1,0,0))
 
   def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], key: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] =
