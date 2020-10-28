@@ -90,10 +90,11 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
 
     val atomic =
       s"""COPY atomic.events FROM 's3://snowplow-acme-storage/shredded/good/run=2017-05-22-12-20-57/atomic-events/'
-         | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1'
-         | DELIMITER '$separator'
+         | CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole'
+         | REGION AS 'us-east-1'
          | MAXERROR 1
          | TIMEFORMAT 'auto'
+         | DELIMITER '$separator'
          | EMPTYASNULL
          | FILLRECORD
          | TRUNCATECOLUMNS
