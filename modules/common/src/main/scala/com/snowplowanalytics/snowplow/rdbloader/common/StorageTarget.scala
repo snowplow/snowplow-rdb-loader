@@ -132,12 +132,12 @@ object StorageTarget {
   object RedshiftJdbc {
     val empty = RedshiftJdbc(None, None, None, None, None, None, None, None, None, None, None, None)
 
-    implicit val jdbcDecoder: Decoder[RedshiftJdbc] =
+    implicit def jdbcDecoder: Decoder[RedshiftJdbc] =
       Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
         "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
         "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
 
-    implicit val jdbcEncoder: Encoder.AsObject[RedshiftJdbc] =
+    implicit def jdbcEncoder: Encoder.AsObject[RedshiftJdbc] =
       Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
         "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
         "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
@@ -217,25 +217,25 @@ object StorageTarget {
       .toEitherNel
       .flatMap { json => (decodeStorageTarget(json).toEitherNel, validate(client)(json).toEitherNel).parMapN { case (config, _) => config } }
 
-  implicit val redsfhitConfigDecoder: Decoder[RedshiftConfig] =
+  implicit def redsfhitConfigDecoder: Decoder[RedshiftConfig] =
     deriveDecoder[RedshiftConfig]
 
-  implicit val encryptedConfigDecoder: Decoder[EncryptedConfig] =
+  implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     deriveDecoder[EncryptedConfig]
 
-  implicit val tunnerConfigDecoder: Decoder[TunnelConfig] =
+  implicit def tunnerConfigDecoder: Decoder[TunnelConfig] =
     deriveDecoder[TunnelConfig]
 
-  implicit val bastionConfigDecoder: Decoder[BastionConfig] =
+  implicit def bastionConfigDecoder: Decoder[BastionConfig] =
     deriveDecoder[BastionConfig]
 
-  implicit val destinationConfigDecoder: Decoder[DestinationConfig] =
+  implicit def destinationConfigDecoder: Decoder[DestinationConfig] =
     deriveDecoder[DestinationConfig]
 
-  implicit val parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
+  implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
 
-  implicit val passwordConfigDecoder: Decoder[PasswordConfig] =
+  implicit def passwordConfigDecoder: Decoder[PasswordConfig] =
     deriveDecoder[PasswordConfig]
 
   implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
