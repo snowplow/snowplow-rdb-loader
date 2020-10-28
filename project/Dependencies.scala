@@ -39,8 +39,8 @@ object Dependencies {
     val jSch             = "0.1.55"
 
     // Scala (test only)
-    val specs2           = "4.0.4"
-    val scalaCheck       = "1.12.6"
+    val specs2           = "4.10.5"
+    val scalaCheck       = "1.14.0"
   }
 
   val resolutionRepos = Seq(
