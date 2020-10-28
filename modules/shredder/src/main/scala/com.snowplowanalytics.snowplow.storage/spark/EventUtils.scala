@@ -90,7 +90,7 @@ object EventUtils {
     * @return list of columns or flattening error
     */
   def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
-    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, Some(escape)) }
+    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, FlatData.getString(Some(escape)), "") }
 
   /** Prevents data with newlines and tabs from breaking the loading process */
   private def escape(s: String): String =
