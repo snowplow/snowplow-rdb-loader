@@ -163,10 +163,11 @@ object RedshiftLoadStatements {
     if (transitCopy) {
       TransitCopy(SqlString.unsafeCoerce(
         s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
-           | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
-           | DELIMITER '$EventFieldSeparator'
+           | CREDENTIALS 'aws_iam_role=${target.roleArn}'
+           | REGION AS '${config.aws.s3.region}'
            | MAXERROR ${target.maxError}
            | TIMEFORMAT 'auto'
+           | DELIMITER '$EventFieldSeparator'
            | EMPTYASNULL
            | FILLRECORD
            | TRUNCATECOLUMNS
@@ -174,10 +175,11 @@ object RedshiftLoadStatements {
     } else {
       StraightCopy(SqlString.unsafeCoerce(
         s"""COPY $eventsTable FROM '$s3path'
-           | CREDENTIALS 'aws_iam_role=${target.roleArn}' REGION AS '${config.aws.s3.region}'
-           | DELIMITER '$EventFieldSeparator'
+           | CREDENTIALS 'aws_iam_role=${target.roleArn}'
+           | REGION AS '${config.aws.s3.region}'
            | MAXERROR ${target.maxError}
            | TIMEFORMAT 'auto'
+           | DELIMITER '$EventFieldSeparator'
            | EMPTYASNULL
            | FILLRECORD
            | TRUNCATECOLUMNS
@@ -234,8 +236,9 @@ object RedshiftLoadStatements {
              | TIMEFORMAT 'auto'
              | DELIMITER '$EventFieldSeparator'
              | TRUNCATECOLUMNS
+             | ACCEPTINVCHARS $compressionFormat
              | EMPTYASNULL
-             | ACCEPTINVCHARS $compressionFormat""".stripMargin)
+             | REMOVEQUOTES""".stripMargin)
     }
   }
 
