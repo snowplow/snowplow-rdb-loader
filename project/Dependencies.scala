@@ -17,16 +17,16 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val igluClient       = "0.6.2"
-    val igluCore         = "0.5.1"
-    val badrows          = "0.1.0"
+    val igluClient       = "1.0.2"
+    val igluCore         = "1.0.0"
+    val badrows          = "2.1.0"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
-    val circe            = "0.11.1"
-    val circeOptics      = "0.11.0"
-    val cats             = "1.6.1"
+    val circe            = "0.13.0"
+    val circeOptics      = "0.13.0"
+    val cats             = "2.2.0"
     val manifest         = "0.2.0"
-    val fs2              = "1.0.4"
+    val fs2              = "2.4.4"
 
     // Scala (Shredder)
     val spark            = "3.0.1"

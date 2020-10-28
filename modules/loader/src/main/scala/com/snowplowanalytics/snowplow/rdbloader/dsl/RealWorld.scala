@@ -13,9 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
-import cats.effect.{Clock, Sync}
+
+import cats.effect.{Sync, Clock, Async}
 import cats.effect.concurrent.Ref
+
 import com.snowplowanalytics.iglu.client.Client
+
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
@@ -31,7 +34,7 @@ class RealWorld[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: 
 }
 
 object RealWorld {
-  def initialize[F[_] : Sync : Clock](config: CliConfig): F[RealWorld[F]] =
+  def initialize[F[_] : Async: Clock](config: CliConfig): F[RealWorld[F]] =
     for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       messages <- Ref.of[F, List[String]](List.empty[String])
