@@ -152,7 +152,7 @@ object ShredJob extends SparkJob {
     // Job configuration
     val shredConfig = ShredJobConfig
       .loadConfigFrom(args)
-      .valueOr(e => throw FatalEtlError(e.toString))
+      .valueOr(e => throw FatalEtlError(e))
 
     val job = new ShredJob(spark, shredConfig)
 
