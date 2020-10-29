@@ -31,7 +31,7 @@ object MissingJsonSchemaSpec {
    "data":{
       "processor":{
          "artifact":"snowplow-rdb-shredder",
-         "version":"0.18.0-rc1"
+         "version":"0.18.0-rc2"
       },
       "failure":[
          {
