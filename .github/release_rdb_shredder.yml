@@ -1,4 +1,7 @@
 ---
+local:
+  root_dir : <%= ENV['GITHUB_WORKSPACE'] %>
+
 # Required: deployment targets
 targets:
   - type              : "awss3"
