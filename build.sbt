@@ -19,6 +19,7 @@ lazy val common = project.in(file("common"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.slf4j,
       Dependencies.badrows,
       Dependencies.igluClient,
       Dependencies.scalaTracker,
