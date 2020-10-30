@@ -5,7 +5,7 @@ set -e
 project=$1
 tag=$2
 
-export RDB_LOADER_VERSION=$tag
+export RDB_LOADER_VERSION=${tag##*/}
 
 ./.github/is_release_tag.sh $project $tag
 
