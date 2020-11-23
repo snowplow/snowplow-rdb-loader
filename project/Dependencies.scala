@@ -20,6 +20,7 @@ object Dependencies {
     val igluClient       = "1.0.2"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
+    val analyticsSdk     = "2.1.0"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
     val circe            = "0.13.0"
@@ -64,6 +65,7 @@ object Dependencies {
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe
   val circeYaml         = "io.circe"              %% "circe-yaml"                        % V.circeYaml
   val fs2               = "co.fs2"                %% "fs2-core"                          % V.fs2
+  val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
