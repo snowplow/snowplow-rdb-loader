@@ -53,7 +53,6 @@ object BuildSettings {
 
   lazy val assemblySettings = Seq(
     jarName,
-    test in assembly := {},
 
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename(
@@ -63,11 +62,12 @@ object BuildSettings {
     ),
 
     assembly / assemblyMergeStrategy := {
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("META-INF", _ @ _*) => MergeStrategy.discard
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
       case _ => MergeStrategy.first
     }
-  )
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
@@ -100,7 +100,7 @@ object BuildSettings {
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     }
-  )
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
   /**
    * Makes package (build) metadata available withing source code
