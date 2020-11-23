@@ -25,6 +25,7 @@ lazy val common = project.in(file("modules/common"))
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.slf4j,
+      Dependencies.analyticsSdk,
       Dependencies.badrows,
       Dependencies.igluClient,
       Dependencies.scalaTracker,
