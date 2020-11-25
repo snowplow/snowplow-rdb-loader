@@ -14,11 +14,16 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import java.util.UUID
 
+import scala.concurrent.duration.{TimeUnit, MILLISECONDS, NANOSECONDS}
+
 import io.circe._
+
 import cats.Id
 import cats.effect.Clock
 
-import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
+import com.snowplowanalytics.iglu.client.ClientError
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
+
 import com.snowplowanalytics.snowplow.scalatracker.UUIDProvider
 
 package object common {
@@ -45,4 +50,19 @@ package object common {
       case Left(message) => Left(DecodingFailure(message, hCursor.history))
     }
   }
+
+  def isInputError(clientError: ClientError): Boolean =
+    clientError match {
+      case ClientError.ValidationError(_) =>
+        false
+      case ClientError.ResolutionError(map) =>
+        map.values.toList.flatMap(_.errors.toList).exists {
+          case RegistryError.RepoFailure(message) =>
+            message.contains("exhausted input")
+          case RegistryError.ClientFailure(message) =>
+            message.contains("exhausted input")
+          case RegistryError.NotFound =>
+            false
+        }
+    }
 }
