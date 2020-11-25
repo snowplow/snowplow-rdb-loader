@@ -19,9 +19,10 @@ import cats.Id
 import cats.data._
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.circe.implicits.{ schemaCriterionDecoder => _, _ }
 import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaCriterion}
+
+import com.snowplowanalytics.iglu.client.Client
 
 import io.circe._
 import io.circe.Decoder._
@@ -251,6 +252,11 @@ object StorageTarget {
     * @return circe AST
     */
   private def validate(client: Client[Id, Json])(json: SelfDescribingData[Json]): Either[ParseError, SelfDescribingData[Json]] = {
-    client.check(json).value.leftMap(e => ParseError(e.show)).leftMap(error => ParseError(s"${json.schema.toSchemaUri} ${error.message}")).as(json)
+    def attempt = client.check(json)
+    attempt
+      .recoverWith { case error if isInputError(error) => attempt }
+      .value
+      .leftMap(error => ParseError(s"${json.schema.toSchemaUri} ${error.show}"))
+      .as(json)
   }
 }
