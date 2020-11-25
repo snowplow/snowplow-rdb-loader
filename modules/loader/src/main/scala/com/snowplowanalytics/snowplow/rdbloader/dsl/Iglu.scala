@@ -12,12 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.effect.{ Sync, Clock }
+import cats.effect.{Sync, Clock}
 
 import io.circe.Json
 
 import com.snowplowanalytics.iglu.client.Client
+
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
+
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common._
@@ -32,10 +35,18 @@ object Iglu {
   def apply[F[_]](implicit ev: Iglu[F]): Iglu[F] = ev
 
   def igluInterpreter[F[_]: Sync: Clock](client: Client[F, Json]): Iglu[F] = new Iglu[F] {
-    def getSchemas(vendor: String, name: String, model: Int): F[Either[LoaderError, SchemaList]] =
-      Flattening.getOrdered(client.resolver, vendor, name, model).leftMap { resolutionError =>
-        val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
-        LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
-      }.value
+    def getSchemas(vendor: String, name: String, model: Int): F[Either[LoaderError, SchemaList]] = {
+      val attempt = Flattening.getOrdered(client.resolver, vendor, name, model)
+      attempt
+        .recoverWith {
+          case LoaderIgluError.SchemaListNotFound(_, error) if isInputError(error) =>
+            attempt
+        }
+        .leftMap { resolutionError =>
+          val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
+          LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
+        }
+        .value
+    }
   }
 }
