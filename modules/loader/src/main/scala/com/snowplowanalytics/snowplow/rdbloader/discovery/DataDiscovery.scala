@@ -77,7 +77,9 @@ object DataDiscovery {
               message.ack.as(none[Message[F, DataDiscovery]])
         }
 
-        state.update(_.incrementMessages) *> action
+        state.updateAndGet(_.incrementMessages).flatMap { state =>
+          Logging[F].info(s"Received new message. ${state.show}")
+        } *> action
       }
 
   /**
@@ -96,7 +98,7 @@ object DataDiscovery {
       .value
       .flatMap[Option[Message[F, DataDiscovery]]] {
         case Right(message) =>
-          Monad[F].pure(Some(message))
+          Logging[F].info(s"New data discovery at ${message.data.show}").as(Some(message))
         case Left(error) =>
           Logging[F].error(error.show) *>
             message.ack.as(none[Message[F, DataDiscovery]])

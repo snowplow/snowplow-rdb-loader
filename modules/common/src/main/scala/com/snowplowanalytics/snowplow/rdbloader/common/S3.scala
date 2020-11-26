@@ -33,7 +33,7 @@ object S3 {
   object Folder extends tag.Tagger[S3FolderTag] {
 
     def parse(s: String): Either[String, Folder] = s match {
-      case _ if !correctlyPrefixed(s) => "Bucket name must start with s3:// prefix".asLeft
+      case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// or s3n:// prefix".asLeft
       case _ if s.length > 1024       => "Key length cannot be more than 1024 symbols".asLeft
       case _                          => coerce(s).asRight
     }

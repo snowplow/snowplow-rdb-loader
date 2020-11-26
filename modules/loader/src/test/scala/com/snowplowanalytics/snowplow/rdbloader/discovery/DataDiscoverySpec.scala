@@ -95,7 +95,11 @@ class DataDiscoverySpec extends Specification {
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
 
       result.map(_.map(_.data)) must beRight(Some(expected))
-      state.getLog must beEqualTo(List("GET com.acme/event_a_1.json", "GET com.acme/event_b_1.json"))
+      state.getLog must beEqualTo(List(
+        "GET com.acme/event_a_1.json",
+        "GET com.acme/event_b_1.json",
+        "New data discovery at folder with following shredded types: * iglu:com.acme/event-a/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json) * iglu:com.acme/event-b/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)"
+      ))
     }
   }
 }
