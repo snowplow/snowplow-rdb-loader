@@ -92,6 +92,7 @@ lazy val shredder = project.in(file("modules/shredder"))
     libraryDependencies ++= Seq(
       // Java
       Dependencies.dynamodb,
+      Dependencies.sqs,
       // Scala
       Dependencies.decline,
       Dependencies.eventsManifest,

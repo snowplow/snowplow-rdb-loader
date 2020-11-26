@@ -95,6 +95,12 @@ object BuildSettings {
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
       case x if x.endsWith("package-info.class") => MergeStrategy.first
+      case x if x.endsWith("customization.config") => MergeStrategy.first
+      case x if x.endsWith("examples-1.json") => MergeStrategy.first
+      case x if x.endsWith("paginators-1.json") => MergeStrategy.first
+      case x if x.endsWith("service-2.json") => MergeStrategy.first
+      case x if x.endsWith("waiters-2.json") => MergeStrategy.first
+      case x if x.endsWith("mime.types") => MergeStrategy.first
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first

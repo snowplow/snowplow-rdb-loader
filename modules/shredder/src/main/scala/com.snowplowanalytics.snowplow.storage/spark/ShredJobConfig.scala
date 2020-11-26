@@ -46,7 +46,8 @@ case class ShredJobConfig(inFolder: String,
                           duplicateStorageConfig: Option[Json],
                           dynamodbManifestTable: Option[String],
                           itemId: Option[String],
-                          storage: Option[StorageTarget]) {
+                          storage: Option[StorageTarget],
+                          sqsQueue: String) {
 
   /** Get both manifest table and item id to process */
   def getManifestData: Option[(String, String)] =
@@ -98,10 +99,14 @@ object ShredJobConfig {
     "base64-encoded string with single storage target configuration JSON", "t", "target.json")
     .mapValidated(Base64Json.decode).orNone
 
-  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, storageTarget).mapN {
-    (input, output, bad, iglu, dupeStorage, manifest, itemId, target) => (ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, None), target)
+  val sqsQueue = Opts.option[String]("sqs-queue",
+    "Name of the SQS queue where to write shredded info for shredder",
+    metavar = "SQS queue")
+
+  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, storageTarget, sqsQueue).mapN {
+    (input, output, bad, iglu, dupeStorage, manifest, itemId, target, queue) => (ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, None, queue), target)
   }.validate("--item-id and --processing-manifest-table must be either both provided or both absent") {
-    case (ShredJobConfig(_, _, _, _, _, manifest, i, _), _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
+    case (ShredJobConfig(_, _, _, _, _, manifest, i, _, _), _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
     case _ => false
   }.mapValidated {
     case (config, Some(target)) =>
