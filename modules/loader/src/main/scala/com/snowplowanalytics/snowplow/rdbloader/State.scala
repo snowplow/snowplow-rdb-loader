@@ -42,6 +42,9 @@ case class State[F[_]](attempts: Int,
     this.copy(messages = messages + 1)
   def incrementLoaded: State[F] =
     this.copy(loaded = loaded + 1)
+
+  def show: String =
+    s"Total $messages messages received, $loaded loaded, $attempts attempts has been made to load current folder"
 }
 
 object State {

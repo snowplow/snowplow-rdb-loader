@@ -14,13 +14,14 @@
  */
 package com.snowplowanalytics.snowplow.storage.spark
 
-import java.io.{BufferedWriter, FileWriter, File, IOException}
+import java.io.{FileWriter, IOException, File, BufferedWriter}
 
 import org.apache.commons.io.filefilter.IOFileFilter
 import scala.collection.JavaConverters._
-
 import scala.io.Source
 import scala.util.Random
+
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 // Commons
 import org.apache.commons.codec.binary.Base64
@@ -46,6 +47,7 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddedType
 
 // Specs2
 import org.specs2.matcher.Matcher
@@ -209,9 +211,10 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(tsv: Boolean) = {
+  private def storageConfig(tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
     val encoder = new Base64(true)
     val format = if (tsv) "TSV" else "JSON"
+    val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
     val configPlain = s"""|{
     |name = "Acme Redshift"
     |id = "123e4567-e89b-12d3-a456-426655440000"
@@ -234,7 +237,7 @@ object ShredJobSpec {
     | "sshTunnel": null
     |},
     |monitoring = {"snowplow": null, "sentry": null},
-    |formats = { "default": "$format", "json": [ ], "tsv": [ ], "skip": [ ] },
+    |formats = { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] },
     |steps = []
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
@@ -321,14 +324,14 @@ trait ShredJobSpec extends SparkSpec {
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false, tsv: Boolean = false): Unit = {
+  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false, tsv: Boolean = false, jsonSchemas: List[SchemaCriterion] = Nil): Set[ShreddedType]  = {
     val input = mkTmpFile("input", createParents = true, containing = lines.some)
     val config = Array(
       "--input-folder", input.toString(),
       "--output-folder", dirs.output.toString(),
       "--bad-folder", dirs.badRows.toString(),
       "--iglu-config", igluConfigWithLocal,
-      "--config", storageConfig(tsv)
+      "--config", storageConfig(tsv, jsonSchemas)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -345,8 +348,9 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig)
+    val result = job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
+    result
   }
 
   override def afterAll(): Unit = {
