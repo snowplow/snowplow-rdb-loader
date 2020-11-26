@@ -39,7 +39,7 @@ sealed trait LoaderMessage {
 object LoaderMessage {
 
   val ShreddingCompleteKey: SchemaKey =
-    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
+    SchemaKey("com.snowplowanalytics.snowplow.storage", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
 
   /** Data format for shredded data */
   sealed trait Format extends Product with Serializable
