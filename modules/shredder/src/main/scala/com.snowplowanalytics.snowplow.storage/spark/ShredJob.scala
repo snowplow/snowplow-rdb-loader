@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -49,8 +49,7 @@ import com.snowplowanalytics.snowplow.badrows.{ BadRow, Processor, Payload, Fail
 import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifest, EventsManifestConfig }
 
 // Snowplow
-import com.snowplowanalytics.iglu.core.SchemaVer
-import com.snowplowanalytics.iglu.core.{ SchemaKey, SelfDescribingData }
+import com.snowplowanalytics.iglu.core.{ SchemaKey, SchemaVer, SelfDescribingData }
 import com.snowplowanalytics.iglu.client.{ Client, ClientError }
 import rdbloader.common._
 import rdbloader.generated.ProjectMetadata
@@ -172,6 +171,8 @@ object ShredJob extends SparkJob {
     }
 
     job.run(atomicLengths, eventsManifest)
+    // TODO: send shredded types to SQS
+    ()
   }
 
   /**
@@ -270,10 +271,44 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
   val shreddedTypes = new StringSetAccumulator
   sc.register(shreddedTypes)
 
+  // Accumulator to track shredded types
+  val shreddedTypesSqs = new ShreddedTypesAccumulator
+  sc.register(shreddedTypesSqs)
+
   /** Save set of found shredded types into accumulator if processing manifest is enabled */
   def recordPayload(inventory: Set[SchemaKey]): Unit =
     if (shredConfig.dynamodbManifestTable.isEmpty) ()
     else shreddedTypes.add(inventory.map(_.toSchemaUri))
+
+  /** Save set of shredded types into accumulator, for master to send to SQS */
+  def recordShreddedType(inventory: Set[SchemaKey]): Unit = {
+    def getFullPath(root: String, schema: SchemaKey) =
+      List(
+        root,
+        "/vendor=",
+        schema.vendor,
+        "/name=",
+        schema.name,
+        "/format=",
+        schema.format,
+        "/version=",
+        schema.version.model.toString
+      ).mkString
+
+    val withPathAndFormat: Set[ShreddedType] =
+      inventory
+        .map { schemaKey =>
+          shredConfig.storage.flatMap(_.blacklistTabular).map(c => c.exists(_.matches(schemaKey))) match {
+            case Some(true) =>
+              val path = getFullPath(ShredJob.getShreddedTypesOutputPath(shredConfig.outFolder, true), schemaKey)
+              ShreddedType(schemaKey, path, ShreddedFormat.Json)
+            case _ =>
+              val path = getFullPath(ShredJob.getShreddedTypesOutputPath(shredConfig.outFolder, false), schemaKey)
+              ShreddedType(schemaKey, path, ShreddedFormat.Tsv)
+          }
+        }
+    shreddedTypesSqs.add(withPathAndFormat)
+  }
 
   /** Check if `shredType` should be transformed into TSV */
   def isTabular(shredType: SchemaKey): Boolean =
@@ -296,7 +331,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
   def run(atomicLengths: Map[String, Int],
-          eventsManifest: Option[EventsManifestConfig]): Unit = {
+          eventsManifest: Option[EventsManifestConfig]): Set[ShreddedType] = {
     import ShredJob._
 
     def shred(event: Event): Either[BadRow, FinalRow] =
@@ -349,6 +384,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .flatMap { case (_, s) =>
         val first = s.minBy(_.etl_tstamp)
         recordPayload(first.inventory.map(_.schemaKey))
+        recordShreddedType(first.inventory.map(_.schemaKey))
         dedupeCrossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
           case Right(unique) if unique => Some(Right(first))
           case Right(_) => None
@@ -415,5 +451,12 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .write
       .mode(SaveMode.Overwrite)
       .text(shredConfig.badFolder)
+
+    if (shreddedTypesSqs.value.nonEmpty) {
+      val atomicPath = getAlteredEnrichedOutputPath(shredConfig.outFolder)
+      val shreddedAtomic = ShreddedType(AtomicSchema, atomicPath, ShreddedFormat.Tsv)
+      (shreddedTypesSqs.value + shreddedAtomic).toSet
+    } else
+      shreddedTypesSqs.value.toSet
   }
 }

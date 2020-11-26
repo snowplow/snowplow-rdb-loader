@@ -42,6 +42,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse}
 
 import com.snowplowanalytics.iglu.core.SelfDescribingData
+import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
@@ -309,7 +310,7 @@ trait ShredJobSpec extends SparkSpec {
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false): Unit = {
+  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false): (String, Set[ShreddedType]) = {
     val input = mkTmpFile("input", createParents = true, containing = lines.some)
     val config = Array(
       "--input-folder", input.toString(),
@@ -332,18 +333,19 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig)
+    val result = job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
+    (dirs.output.toString, result)
   }
 
-  def runShredJobTabular(lines: Lines, crossBatchDedupe: Boolean = false): Unit = {
+  def runShredJobTabular(lines: Lines, crossBatchDedupe: Boolean = false, tabularBlacklist: List[SchemaKey] = Nil): (String, Set[ShreddedType]) = {
     val input = mkTmpFile("input", createParents = true, containing = lines.some)
     val config = Array(
       "--input-folder", input.toString(),
       "--output-folder", dirs.output.toString(),
       "--bad-folder", dirs.badRows.toString(),
       "--iglu-config", igluConfigWithLocal,
-      "--target", storageConfig
+      "--target", storageConfig(tabularBlacklist)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -360,13 +362,18 @@ trait ShredJobSpec extends SparkSpec {
       .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
 
     val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig)
+    val result = job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
+    (dirs.output.toString, result)
   }
 
-  val storageConfig = {
+  def storageConfig(tabularBlacklist: List[SchemaKey]) = {
     val encoder = new Base64(true)
-    new String(encoder.encode("""{
+    val blacklist =
+      tabularBlacklist
+        .map(s => s""""${s.toSchemaUri}"""")
+        .mkString(",")
+    new String(encoder.encode(s"""{
         "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/4-0-0",
         "data": {
             "name": "AWS Redshift enriched events storage",
@@ -387,7 +394,7 @@ trait ShredJobSpec extends SparkSpec {
             "schema": "atomic",
             "maxError": 1,
             "compRows": 20000,
-            "blacklistTabular": [],
+            "blacklistTabular": [ $blacklist ],
             "purpose": "ENRICHED_EVENTS"
         }
     } """.stripMargin.replaceAll("[\n\r]","").getBytes()))

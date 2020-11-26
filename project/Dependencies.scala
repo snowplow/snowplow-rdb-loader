@@ -82,6 +82,7 @@ object Dependencies {
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
+  val sqs               = "com.amazonaws"         % "aws-java-sdk-sqs"          % V.aws
 
   // Scala (test only)
   val specs2            = "org.specs2"            %% "specs2-core"             % V.specs2         % "test"
