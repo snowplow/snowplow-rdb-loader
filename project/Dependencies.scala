@@ -24,7 +24,7 @@ object Dependencies {
     val circeYaml        = "0.9.0"
     val circe            = "0.11.1"
     val circeOptics      = "0.11.0"
-    val cats             = "1.6.1"
+    val cats             = "2.0.0"
     val manifest         = "0.2.0"
     val fs2              = "1.0.4"
 
