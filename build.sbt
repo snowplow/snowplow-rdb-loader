@@ -20,6 +20,7 @@ lazy val common = project.in(file("modules/common"))
   .settings(Seq(
     name := "snowplow-rdb-loader-common"
   ))
+  .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
