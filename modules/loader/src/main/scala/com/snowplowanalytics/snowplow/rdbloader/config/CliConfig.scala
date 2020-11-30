@@ -19,10 +19,11 @@ import java.nio.charset.StandardCharsets
 import cats.Id
 import cats.data._
 import cats.implicits._
-import com.monovore.decline.{Argument, Command, Opts}
+
+import com.monovore.decline.{Opts, Command, Argument}
 import com.snowplowanalytics.iglu.client.Client
-import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, StringEnum}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{StringEnum, StorageTarget, S3}
 import io.circe.Json
 import io.circe.parser.{parse => parseJson}
 
@@ -37,7 +38,6 @@ import generated.ProjectMetadata
  * @param target decoded target to load
  * @param steps collected steps
  * @param logKey file on S3 to dump logs
- * @param folder specific run-folder to load (skipping discovery)
  * @param dryRun if RDB Loader should just discover data and print SQL
  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
@@ -47,7 +47,6 @@ case class CliConfig(
   target: StorageTarget,
   steps: Set[Step],
   logKey: Option[S3.Key],
-  folder: Option[S3.Folder],
   dryRun: Boolean,
   resolverConfig: Json)
 
@@ -65,12 +64,10 @@ object CliConfig {
     "include optional work steps", "i").withDefault(Set.empty[Step.IncludeStep])
   val skip = Opts.option[Set[Step.SkipStep]]("skip",
     "skip default steps", "s").withDefault(Set.empty[Step.SkipStep])
-  val folder = Opts.option[String]("folder",
-    "exact run folder to load", metavar = "s3-folder").orNone
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
-  val rawConfig = (config, target, resolver, logkey, include, skip, folder, dryRun).mapN {
-    case (cfg, storage, iglu, log, i, s, fld, dry) => RawConfig(cfg, storage, iglu, i.toSeq, s.toSeq, log, fld, dry)
+  val rawConfig = (config, target, resolver, logkey, include, skip, dryRun).mapN {
+    case (cfg, storage, iglu, log, i, s, dry) => RawConfig(cfg, storage, iglu, i.toSeq, s.toSeq, log, dry)
   }
 
   val parser = Command[RawConfig](ProjectMetadata.name, ProjectMetadata.version)(rawConfig)
@@ -111,7 +108,6 @@ object CliConfig {
     include: Seq[Step.IncludeStep],
     skip: Seq[Step.SkipStep],
     logkey: Option[String],
-    folder: Option[String],
     dryRun: Boolean)
 
   type Parsed[A] = ValidatedNel[ConfigError, A]
@@ -160,11 +156,10 @@ object CliConfig {
     val logkey: Parsed[Option[S3.Key]] = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(ConfigError).toValidatedNel).sequence
     val client: Parsed[(Json, Client[Id, Json])] = loadResolver(rawConfig.resolver).toValidatedNel
     val target: Parsed[StorageTarget] = client.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
-    val folder: Parsed[Option[S3.Folder]] = rawConfig.folder.map(f => S3.Folder.parse(f).leftMap(ConfigError).toValidatedNel).sequence
     val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
 
-    (target, config, logkey, folder, client).mapN {
-      case (t, c, l, f, (j, _)) => CliConfig(c, t, steps, l, f, rawConfig.dryRun, j)
+    (target, config, logkey, client).mapN {
+      case (t, c, l, (j, _)) => CliConfig(c, t, steps, l, rawConfig.dryRun, j)
     }
   }
 

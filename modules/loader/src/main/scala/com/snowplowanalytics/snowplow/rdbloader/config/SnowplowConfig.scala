@@ -10,23 +10,23 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.config
 
 import cats.implicits._
 
-import io.circe.{Decoder, Error, Json => Yaml}
+import io.circe.{Error, Decoder, Json => Yaml}
 import io.circe.generic.auto._
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.decoding.ConfiguredDecoder
 import io.circe.yaml.parser
 
-// This project
-import common.StringEnum
+import com.snowplowanalytics.snowplow.rdbloader.common.Semver
 
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3._
-import Semver._
-import LoaderError._
+// This project
+import com.snowplowanalytics.snowplow.rdbloader.common.StringEnum
+
+import com.snowplowanalytics.snowplow.rdbloader.common.S3._
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 
 /**
  * FullDiscovery Snowplow `config.yml` runtime representation
@@ -59,11 +59,9 @@ object SnowplowConfig {
 
   case class SnowplowS3(region: String, buckets: SnowplowBuckets)
 
-  case class SnowplowBuckets(
-      assets: Folder,
-      jsonpathAssets: Option[Folder],
-      log: Folder,
-      shredded: ShreddedBucket)
+  case class SnowplowBuckets(jsonpathAssets: Option[Folder],
+                             log: Folder,
+                             shredded: ShreddedBucket)
 
   case class ShreddedBucket(good: Folder)
 
@@ -72,27 +70,20 @@ object SnowplowConfig {
   case class Enrich(outputCompression: OutputCompression)
 
   sealed trait OutputCompression extends StringEnum
-  case object NoneCompression extends OutputCompression { val asString = "NONE" }
-  case object GzipCompression extends OutputCompression { val asString = "GZIP" }
+  object OutputCompression {
+    case object None extends OutputCompression { val asString = "NONE" }
+    case object Gzip extends OutputCompression { val asString = "GZIP" }
+  }
 
   // storage section
 
   case class Storage(versions: StorageVersions)
 
-  case class StorageVersions(rdbShredder: Semver, hadoopElasticsearch: Semver)
+  case class StorageVersions(rdbShredder: Semver)
 
   // monitoring section
 
-  case class Monitoring(
-      tags: Map[String, String],
-      logging: Logging,
-      snowplow: Option[SnowplowMonitoring])
-
-  case class Logging(level: LoggingLevel)
-
-  sealed trait LoggingLevel extends StringEnum
-  case object DebugLevel extends LoggingLevel { val asString = "DEBUG" }
-  case object InfoLevel extends LoggingLevel { val asString = "INFO" }
+  case class Monitoring(snowplow: Option[SnowplowMonitoring])
 
   case class SnowplowMonitoring(
       method: Option[TrackerMethod],
@@ -100,8 +91,10 @@ object SnowplowConfig {
       collector: Option[String])
 
   sealed trait TrackerMethod extends StringEnum
-  case object GetMethod extends TrackerMethod { val asString = "get" }
-  case object PostMethod extends TrackerMethod { val asString = "post" }
+  object TrackerMethod {
+    case object Get extends TrackerMethod { val asString = "get" }
+    case object Post extends TrackerMethod { val asString = "post" }
+  }
 
   object Lens {
     import shapeless._
@@ -125,9 +118,6 @@ object SnowplowConfig {
 
     implicit val decodeTrackerMethod: Decoder[TrackerMethod] =
       StringEnum.decodeStringEnum[TrackerMethod]
-
-    implicit val decodeLoggingLevel: Decoder[LoggingLevel] =
-      StringEnum.decodeStringEnum[LoggingLevel]
 
     implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
       ConfiguredDecoder.decodeCaseClass

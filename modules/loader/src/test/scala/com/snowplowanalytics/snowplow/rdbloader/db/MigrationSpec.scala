@@ -13,11 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter
-import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{ControlResults, JDBCResults, Test, TestState}
-import com.snowplowanalytics.snowplow.rdbloader.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{JDBCResults, TestState, ControlResults, Test}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Logging, Iglu}
+
 import org.specs2.Specification
 
 class MigrationSpec extends Specification { def is = s2"""
@@ -42,7 +42,7 @@ class MigrationSpec extends Specification { def is = s2"""
           Semver(0, 17, 0)
         ), S3.Key.coerce("s3://shredded/jsonpaths"))
       )
-    val input = List(DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), None, None, types, true))
+    val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), None, None, types)
 
     val expected = List(
       "Fetch iglu:com.acme/some_context/jsonschema/2-0-0",

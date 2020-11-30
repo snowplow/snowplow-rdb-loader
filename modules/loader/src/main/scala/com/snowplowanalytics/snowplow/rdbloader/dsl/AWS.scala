@@ -14,13 +14,20 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path, Paths}
+
+import javax.jms.MessageListener
 
 import scala.collection.JavaConverters._
 
-import cats.data.Validated
 import cats.implicits._
-import cats.effect.Sync
+
+import cats.effect.{Sync, ConcurrentEffect}
+
+import fs2.{Stream => FStream}
+import fs2.aws.sqsStream
+import fs2.aws.sqs.{SqsConfig, SQSConsumerBuilder, ConsumerBuilder}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{ S3, Message }
 
 import com.amazonaws.AmazonServiceException
 import com.amazonaws.services.s3.model._
@@ -28,11 +35,12 @@ import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder
 import com.amazonaws.services.simplesystemsmanagement.model.{AWSSimpleSystemsManagementException, GetParameterRequest}
 
+import eu.timepit.refined.types.all.TrimmedString
+
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.SnowplowAws
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.{S3Failure, DownloadFailure}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 
 trait AWS[F[_]] {
@@ -43,14 +51,14 @@ trait AWS[F[_]] {
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): F[Boolean]
 
-  /** Download S3 key into local path */
-  def downloadData(source: S3.Folder, dest: Path): LoaderAction[F, List[Path]]
-
   /** Upload text file */
   def putObject(key: S3.Key, data: String): LoaderAction[F, Unit]
 
   /** Retrieve decrypted property from EC2 Parameter Store */
   def getEc2Property(name: String): F[Array[Byte]]
+
+  /** Read text payloads from SQS string */
+  def readSqs(name: String): FStream[F, Message[F, String]]
 }
 
 object AWS {
@@ -65,7 +73,7 @@ object AWS {
   def getClient[F[_]: Sync](awsConfig: SnowplowAws): F[AmazonS3] =
     Sync[F].delay(AmazonS3ClientBuilder.standard().withRegion(awsConfig.s3.region).build())
 
-  def s3Interpreter[F[_]: Sync](client: AmazonS3): AWS[F] = new AWS[F] {
+  def s3Interpreter[F[_]: ConcurrentEffect](client: AmazonS3): AWS[F] = new AWS[F] {
 
     def putObject(key: S3.Key, data: String): LoaderAction[F, Unit] = {
       val meta = new ObjectMetadata()
@@ -104,11 +112,17 @@ object AWS {
 
       Sync[F].delay(keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList)
         .attemptT
-        .leftMap(e => LoaderError.DiscoveryError(List(S3Failure(e.toString))): LoaderError)
+        .leftMap(e => LoaderError.DiscoveryError(List(DiscoveryFailure.S3Failure(e.toString))): LoaderError)
     }
 
+
+    /** * Transform S3 object summary into valid S3 key string */
+    def getKey(s3ObjectSummary: S3ObjectSummary): S3.BlobObject = {
+      val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
+      S3.BlobObject(key, s3ObjectSummary.getSize)
+    }
     def listS3(bucket: S3.Folder): F[Either[LoaderError, List[S3.BlobObject]]] =
-      list(bucket).map(summaries => summaries.map(S3.getKey)).value
+      list(bucket).map(summaries => summaries.map(getKey)).value
 
     /**
      * Check if some `file` exists in S3 `path`
@@ -123,48 +137,6 @@ object AWS {
         case _: AmazonServiceException => false
       }
     }
-
-    /**
-     * Download contents of S3 folder into `destination`
-     *
-     * @param source AWS S3 folder
-     * @param dest optional local path, tmp dir will be used if not specified
-     * @return list of downloaded filenames
-     */
-    def downloadData(source: S3.Folder, dest: Path): LoaderAction[F, List[Path]] =
-      list(source).flatMap { summaries =>
-        val downloads = summaries.traverse { summary =>
-          val bucket = summary.getBucketName
-          val key = summary.getKey
-
-          val download = for {
-            s3Object <- Sync[F].delay(client.getObject(new GetObjectRequest(bucket, key)))
-            destinationFile <- Sync[F].delay(Paths.get(dest.toString, key))
-            result <- Sync[F].ifM(Sync[F].delay(Files.exists(destinationFile)))(
-              Sync[F].pure(DownloadFailure(S3.Key.coerce(s"s3://$bucket/$key"), "File already exist").asLeft[Path]),
-              for {
-                _ <- Sync[F].delay(Files.createDirectories(destinationFile.getParent))
-                _ <- Sync[F].delay(Files.copy(s3Object.getObjectContent, destinationFile))
-              } yield destinationFile.asRight[DownloadFailure]
-            )
-          } yield result
-
-          download
-            .attempt
-            .map {
-              case Left(e) => DownloadFailure(S3.Key.coerce(s"s3://$bucket/$key"), e.toString).asLeft
-              case Right(e) => e
-            }
-
-        }
-
-        val result = downloads.map { d => d.map(_.toValidatedNel).sequence match {
-          case Validated.Valid(paths) => paths.asRight
-          case Validated.Invalid(failures) => (LoaderError.DiscoveryError(failures.toList): LoaderError).asLeft
-        } }
-
-        LoaderAction[F, List[Path]](result)
-      }
 
     /**
      * Get value from AWS EC2 Parameter Store
@@ -182,6 +154,13 @@ object AWS {
         case e: AWSSimpleSystemsManagementException =>
           Sync[F].raiseError(LoaderError.LoaderLocalError(s"Cannot get $name EC2 property: ${e.getMessage}"))
       }
+    }
+
+    def readSqs(name: String): FStream[F, Message[F, String]] = {
+      val builder: (SqsConfig, MessageListener) => ConsumerBuilder[F] =
+        (config, listener) => SQSConsumerBuilder[F](config, listener)
+
+      sqsStream[F, Message[F, String]](SqsConfig(TrimmedString.trim(name)), builder)
     }
   }
 }

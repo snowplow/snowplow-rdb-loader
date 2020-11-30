@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.utils
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
+
 import org.specs2.Specification
 
 class CommonSpec extends Specification { def is = s2"""

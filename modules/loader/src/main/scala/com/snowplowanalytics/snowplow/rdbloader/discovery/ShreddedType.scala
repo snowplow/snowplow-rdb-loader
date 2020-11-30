@@ -10,17 +10,18 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package discovery
+package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats.Monad
 import cats.data._
 import cats.implicits._
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.rdbloader.config.Semver
+
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaCriterion, SchemaVer}
+
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, sequenceInF, LoaderError, LoaderAction, DiscoveryAction}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
-import com.snowplowanalytics.snowplow.rdbloader.utils.Common.toSnakeCase
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 
 sealed trait ShreddedType {
   /** raw metadata extracted from S3 Key */
@@ -75,6 +76,28 @@ object ShreddedType {
   case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
   }
+
+  /**
+   * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail,
+   * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
+   */
+  def fromCommon[F[_]: Monad: Cache: AWS](base: S3.Folder,
+                                          shredJob: Semver,
+                                          region: String,
+                                          jsonpathAssets: Option[S3.Folder],
+                                          commonType: LoaderMessage.ShreddedType): DiscoveryAction[F, ShreddedType] =
+    commonType match {
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+        Monad[F].pure(Tabular(info).asRight[DiscoveryFailure])
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+        Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info)) { either =>
+          either.map { jsonPath =>
+            Json(info, jsonPath)
+          }
+        }
+    }
 
   /**
    * Basis for Snowplow hosted assets bucket.

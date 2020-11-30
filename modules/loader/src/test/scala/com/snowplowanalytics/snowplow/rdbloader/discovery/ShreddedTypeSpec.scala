@@ -14,12 +14,13 @@ package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver}
+
 import org.scalacheck.Gen
-import org.specs2.{ScalaCheck, Specification}
+import org.specs2.{Specification, ScalaCheck}
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
 
 class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""

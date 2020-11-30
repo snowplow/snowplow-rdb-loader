@@ -15,18 +15,22 @@ package com.snowplowanalytics.snowplow.rdbloader.loaders
 import java.sql.{Timestamp => SqlTimestamp}
 
 import scala.concurrent.duration._
+
 import cats.Monad
 import cats.implicits._
+
 import cats.effect.Timer
+
+import fs2.Stream
 
 import shapeless.tag
 import shapeless.tag._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging, FS, AWS, JDBC, Iglu}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging, AWS, JDBC, Iglu}
 import com.snowplowanalytics.snowplow.rdbloader.config.{ CliConfig, Step }
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, LoaderMessage }
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities._
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
@@ -56,12 +60,6 @@ object Common {
     def getDescriptor: String = getTable(schema, TransitEventsTable)
   }
 
-  /**
-   * Subpath to check `atomic-events` directory presence
-   */
-  val atomicSubpathPattern = "(.*)/(run=[0-9]{4}-[0-1][0-9]-[0-3][0-9]-[0-2][0-9]-[0-6][0-9]-[0-6][0-9]/atomic-events)/(.*)".r
-  //                                    year     month      day        hour       minute     second
-
   def getTable(databaseSchema: String, tableName: String): String =
     if (databaseSchema.isEmpty) tableName
     else databaseSchema + "." + tableName
@@ -86,8 +84,7 @@ object Common {
    *
    * @param config RDB Loader app configuration
    */
-  def load[F[_]: Monad: Logging: FS: AWS: Iglu: JDBC](config: CliConfig,
-                                                      discovery: List[DataDiscovery]): LoaderAction[F, Unit] =
+  def load[F[_]: Monad: Logging: AWS: Iglu: JDBC](config: CliConfig, discovery: DataDiscovery): LoaderAction[F, Unit] =
     config.target match {
       case db: StorageTarget.RedshiftConfig =>
         Migration.perform[F](config.target.schema)(discovery) *>
@@ -99,25 +96,34 @@ object Common {
     *
     * @param cliConfig RDB Loader app configuration
     */
-  def discover[F[_]: Monad: Timer: Cache: Logging: AWS](cliConfig: CliConfig): LoaderAction[F, List[DataDiscovery]] = {
+  def discover[F[_]: Monad: Timer: Cache: Logging: AWS](cliConfig: CliConfig): DiscoveryStream[F] = {
     // Shortcuts
     val shredJob = cliConfig.configYaml.storage.versions.rdbShredder
     val region = cliConfig.configYaml.aws.s3.region
     val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
 
-    val target = cliConfig.folder match {
-      case Some(f) =>
-        DataDiscovery.InSpecificFolder(f)
+    cliConfig.target.messageQueue match {
+      case Some(name) =>
+        AWS[F]
+          .readSqs(name)
+          .translate(LoaderAction.fromFK[F])
+          .evalMap { s =>
+            LoaderMessage.fromString(s.data) match {
+              case Right(message: LoaderMessage.ShreddingComplete) =>
+                DataDiscovery.fromLoaderMessage[F](region, assets, message).map { discovery => (discovery, s.ack) }
+              case Left(error) =>
+                LoaderAction.liftE[F, DataDiscovery](LoaderError.LoaderLocalError(error).asLeft[DataDiscovery]).map { discovery => (discovery, s.ack) }
+            }
+          }
       case None =>
-        DataDiscovery.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
-    }
+        val target = DataDiscovery.DiscoveryTarget.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
 
-    cliConfig.target match {
-      case _: StorageTarget.RedshiftConfig =>
         val original = DataDiscovery.discover[F](target, shredJob, region, assets)
-        if (cliConfig.steps.contains(Step.ConsistencyCheck))
+        val result = if (cliConfig.steps.contains(Step.ConsistencyCheck))
           DataDiscovery.checkConsistency[F](original)
         else original
+
+        Stream.eval(result).flatMap(Stream.emits).map(x => (x, Monad[F].unit))
     }
   }
 
@@ -179,14 +185,14 @@ object Common {
           empty <- item match {
             case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp && possiblyEmpty =>
               val message = s"Load manifest: record for ${manifest.etlTstamp} already exists, but atomic folder is empty"
-              for { _ <- Logging[F].print(message).liftA} yield true
+              Logging[F].print(message).liftA.as(true)
             case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp =>
               val message = getLoadManifestMessage(manifest)
               LoaderAction.liftE[F, Boolean](LoaderError.LoadManifestError(message).asLeft)
             case Some(record) =>
-              for { _ <- Logging[F].print(s"Load manifest: latest record ${record.show}").liftA} yield false
+              Logging[F].print(s"Load manifest: latest record ${record.show}").liftA.as(false)
             case None =>
-              for { _ <- Logging[F].print(s"Load manifest: no records found").liftA} yield false
+              Logging[F].print(s"Load manifest: no records found").liftA.as(false)
           }
         } yield empty
         case None => LoaderAction.rightT[F, Boolean](false)

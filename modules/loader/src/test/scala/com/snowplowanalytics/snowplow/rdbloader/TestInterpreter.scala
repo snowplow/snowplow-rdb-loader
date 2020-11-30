@@ -12,24 +12,28 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import java.nio.file.Path
+import scala.concurrent.duration.{TimeUnit, FiniteDuration}
 
-import scala.concurrent.duration.{FiniteDuration, TimeUnit}
-import cats.data.{EitherT, State}
-import cats.effect.{Clock, Timer}
+import cats.data.{State, EitherT}
+
+import cats.effect.{Timer, Clock}
 import cats.implicits._
+
 import io.circe.literal._
+
 import com.snowplowanalytics.iglu.core._
+
 import com.snowplowanalytics.iglu.schemaddl.IgluSchema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.{Folder, Key}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.{Key, Folder}
 import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.{Columns, TableState}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Iglu, JDBC, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Iglu, Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 
 object TestInterpreter {
@@ -157,14 +161,14 @@ object TestInterpreter {
     def keyExists(key: Key): Test[Boolean] =
       State.pure(results.keyExists(key))
 
-    def downloadData(source: Folder, dest: Path): LoaderAction[Test, List[Path]] =
-      LoaderAction.liftF(Test.pure(List.empty[Path]))
-
     def putObject(key: Key, data: String): LoaderAction[Test, Unit] =
       LoaderAction.liftF(Test.pure(()))
 
     def getEc2Property(name: String): Test[Array[Byte]] =
       Test.pure(Array.empty[Byte])
+
+    def readSqs(name: String): fs2.Stream[Test, Message[Test, String]] =
+      fs2.Stream.empty
   }
 
   def stateCacheInterpreter: Cache[Test] = new Cache[Test] {

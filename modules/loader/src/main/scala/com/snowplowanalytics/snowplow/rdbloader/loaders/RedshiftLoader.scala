@@ -48,8 +48,8 @@ object RedshiftLoader {
   def run[F[_]: Monad: Logging: JDBC](config: SnowplowConfig,
                                       target: StorageTarget.RedshiftConfig,
                                       steps: Set[Step],
-                                      discovery: List[DataDiscovery]) =
-    buildQueue(config, target, steps)(discovery).traverse_(loadFolder[F](steps))
+                                      discovery: DataDiscovery) =
+    loadFolder[F](steps, getStatements(config, target, steps, discovery))
 
   /**
    * Perform data-loading for a single run folder.
@@ -57,11 +57,11 @@ object RedshiftLoader {
    * @param statements prepared load statements
    * @return application state
    */
-  def loadFolder[F[_]: Monad: Logging: JDBC](steps: Set[Step])(statements: RedshiftLoadStatements): LoaderAction[F, Unit] = {
+  def loadFolder[F[_]: Monad: Logging: JDBC](steps: Set[Step], statements: RedshiftLoadStatements): LoaderAction[F, Unit] = {
     val checkManifest = steps.contains(Step.LoadManifestCheck)
     val loadManifest = steps.contains(Step.LoadManifest)
 
-    def loadTransaction = for {
+    val loadTransaction: LoaderAction[F, Unit] = for {
       empty <- getLoad[F](checkManifest, statements.dbSchema, statements.atomicCopy, statements.discovery.possiblyEmpty)
       _ <- JDBC[F].executeUpdates(statements.shredded)
       _ <- if (loadManifest && !empty) JDBC[F].executeUpdate(statements.manifest) *> Logging[F].print("Load manifest: added new record").liftA
@@ -90,11 +90,11 @@ object RedshiftLoader {
       if (checkManifest) checkLoadManifest(dbSchema, eventsTable, empty) else LoaderAction.rightT(false)
 
     copy match {
-      case StraightCopy(copyStatement) => for {
+      case AtomicCopy.Straight(copyStatement) => for {
         _ <- JDBC[F].executeUpdate(copyStatement)
         emptyLoad <- check(AtomicEvents(dbSchema))
       } yield emptyLoad
-      case TransitCopy(copyStatement) =>
+      case AtomicCopy.Transit(copyStatement) =>
         val create = RedshiftLoadStatements.createTransitTable(dbSchema)
         val destroy = RedshiftLoadStatements.destroyTransitTable(dbSchema)
         for {

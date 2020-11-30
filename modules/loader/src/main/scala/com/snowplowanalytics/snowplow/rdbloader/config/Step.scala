@@ -45,7 +45,6 @@ object Step {
    * Step that cannot be skipped nor included
    */
   sealed trait DefaultStep extends Step
-  case object Delete extends DefaultStep
   case object Discover extends DefaultStep
   case object Load extends DefaultStep
 
