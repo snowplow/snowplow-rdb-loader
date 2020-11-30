@@ -13,4 +13,12 @@ jobs:
       with:
         java-version: 1.8
     - name: Run tests
-      run: sbt test
+      run: sbt coverage test coverageReport
+    - name: Aggregate coverage data
+      if: ${{ always() }}
+      run: sbt coverageAggregate
+    - name: Submit coveralls data
+      if: ${{ always() }}
+      run: sbt coveralls
+      env:
+        COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}

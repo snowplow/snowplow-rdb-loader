@@ -19,6 +19,8 @@ import Keys._
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
 
+import scoverage.ScoverageKeys._
+
 // DynamoDB Local
 import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
@@ -101,6 +103,14 @@ object BuildSettings {
         oldStrategy(x)
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+
+  lazy val scoverageSettings = Seq(
+    coverageMinimum := 50,
+    coverageFailOnMinimum := false,
+    (test in Test) := {
+      (coverageReport dependsOn (test in Test)).value
+    }
+  )
 
   /**
    * Makes package (build) metadata available withing source code
