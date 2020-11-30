@@ -59,7 +59,7 @@ object BuildSettings {
       "-target", "1.8"
     ),
 
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.6" cross CrossVersion.binary)
+    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
   )
 
   // sbt-assembly settings
