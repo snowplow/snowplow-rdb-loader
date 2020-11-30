@@ -36,7 +36,7 @@ object Dependencies {
     // Java (Loader)
     val postgres         = "42.0.0"
     val redshift         = "1.2.36.1060"
-    val aws              = "1.11.319"
+    val aws              = "1.11.908"
     val jSch             = "0.1.54"
 
     // Scala (test only)
