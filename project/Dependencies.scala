@@ -22,7 +22,7 @@ object Dependencies {
     val badrows          = "0.1.0"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
-    val circe            = "0.11.1"
+    val circe            = "0.11.2"
     val circeOptics      = "0.11.0"
     val cats             = "1.6.1"
     val manifest         = "0.2.0"
