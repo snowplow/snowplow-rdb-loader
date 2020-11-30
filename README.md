@@ -3,6 +3,7 @@
 [![Build Status][build-image]][build]
 [![Release][release-image]][releases]
 [![License][license-image]][license]
+[![Scala Steward][scala-steward-image]][scala-steward]
 
 ## Introduction
 
@@ -67,3 +68,6 @@ limitations under the License.
 
 [license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
 [license]: https://www.apache.org/licenses/LICENSE-2.0
+
+[scala-steward-image]: https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=
+[scala-steward]: https://scala-steward.org
