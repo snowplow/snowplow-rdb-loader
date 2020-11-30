@@ -70,9 +70,9 @@ object EmptySchemaSpec {
 
   object expected {
     val contexAContents =
-      "'com.snowplowanalytics.iglu'\t'anything-a'\t'jsonschema'\t'1-0-0'\t'2b1b25a4-c0df-4859-8201-cf21492ad61b'\t'2014-05-29 18:16:35.000'\t'events'\t'[\"events\",\"anything-a\"]'\t'events'"
+      "com.snowplowanalytics.iglu\tanything-a\tjsonschema\t1-0-0\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"anything-a\"]\tevents"
     val contexBContents =
-      "'com.snowplowanalytics.iglu'\t'anything-b'\t'jsonschema'\t'1-0-0'\t'2b1b25a4-c0df-4859-8201-cf21492ad61b'\t'2014-05-29 18:16:35.000'\t'events'\t'[\"events\",\"anything-b\"]'\t'events'"
+      "com.snowplowanalytics.iglu\tanything-b\tjsonschema\t1-0-0\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"anything-b\"]\tevents"
 
     val contextAPath = s"shredded-tsv/vendor=com.snowplowanalytics.iglu/name=anything-a/format=jsonschema/version=1"
     val contextBPath = s"shredded-tsv/vendor=com.snowplowanalytics.iglu/name=anything-b/format=jsonschema/version=1"

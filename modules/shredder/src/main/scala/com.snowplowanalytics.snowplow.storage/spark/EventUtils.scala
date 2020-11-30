@@ -38,9 +38,11 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
-import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.getOrdered
+import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.{ getOrdered, NullCharacter }
 
 object EventUtils {
+
+
   /**
     * Ready the enriched event for database load by removing a few JSON fields and truncating field
     * lengths based on Postgres' column types.
@@ -83,7 +85,6 @@ object EventUtils {
   def buildMetadata(rootId: UUID, rootTstamp: Instant, schema: SchemaKey): List[String] =
     List(schema.vendor, schema.name, schema.format, schema.version.asString,
       rootId.toString, rootTstamp.formatted, "events", s"""["events","${schema.name}"]""", "events")
-      .map { c => s"'$c'"}
 
   /**
     * Transform a self-desribing entity into tabular format, using its known schemas to get a correct order of columns
@@ -92,10 +93,10 @@ object EventUtils {
     * @return list of columns or flattening error
     */
   def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
-    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, getString, "") }
+    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, getString, NullCharacter) }
 
   def getString(json: Json): String =
-    json.fold("",
+    json.fold(NullCharacter,
       transformBool,
       _ => json.show,
       escape,
@@ -104,7 +105,7 @@ object EventUtils {
 
   /** Prevents data with newlines and tabs from breaking the loading process */
   private def escape(s: String): String =
-    s"""'$s'"""
+    if (s == NullCharacter) "\\\\N" else s
 
   /** Get maximum length for a string value */
   private def getLength(schema: Schema): Option[Int] =

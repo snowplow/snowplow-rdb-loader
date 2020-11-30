@@ -236,8 +236,7 @@ object RedshiftLoadStatements {
              | TIMEFORMAT 'auto'
              | DELIMITER '$EventFieldSeparator'
              | TRUNCATECOLUMNS
-             | ACCEPTINVCHARS $compressionFormat
-             | REMOVEQUOTES""".stripMargin)
+             | ACCEPTINVCHARS $compressionFormat""".stripMargin)
     }
   }
 
