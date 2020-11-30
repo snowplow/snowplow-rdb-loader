@@ -21,7 +21,7 @@ object Dependencies {
     val igluCore         = "0.5.1"
     val badrows          = "0.1.0"
     val scalaTracker     = "0.6.1"
-    val circeYaml        = "0.9.0"
+    val circeYaml        = "0.10.1"
     val circe            = "0.11.1"
     val circeOptics      = "0.11.0"
     val cats             = "1.6.1"
