@@ -25,6 +25,7 @@ lazy val common = project.in(file("modules/common"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.fs2Aws,
       Dependencies.slf4j,
       Dependencies.analyticsSdk,
       Dependencies.badrows,

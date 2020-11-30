@@ -13,8 +13,9 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats.data.NonEmptyList
+
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 /**
   * Discovery failure. Represents failure of single step.
@@ -42,14 +43,6 @@ object DiscoveryFailure {
   case class AtomicDiscoveryFailure(path: String) extends DiscoveryFailure {
     def getMessage: String =
       s"Folder with atomic-events was not found in [$path]"
-  }
-
-  /**
-    * Cannot download file from S3
-    */
-  case class DownloadFailure(key: S3.Key, message: String) extends DiscoveryFailure {
-    def getMessage: String =
-      s"Cannot download S3 object [$key].\n$message"
   }
 
   /**

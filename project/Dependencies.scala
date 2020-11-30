@@ -28,6 +28,7 @@ object Dependencies {
     val cats             = "2.2.0"
     val manifest         = "0.2.0"
     val fs2              = "2.4.4"
+    val fs2Aws           = "2.29.0"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
@@ -65,6 +66,7 @@ object Dependencies {
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe
   val circeYaml         = "io.circe"              %% "circe-yaml"                        % V.circeYaml
   val fs2               = "co.fs2"                %% "fs2-core"                          % V.fs2
+  val fs2Aws            = "io.laserdisc"          %% "fs2-aws"                           % V.fs2Aws
   val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
 
   // Scala (Shredder)

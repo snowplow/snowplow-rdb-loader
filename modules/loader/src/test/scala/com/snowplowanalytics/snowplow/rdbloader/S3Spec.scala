@@ -12,11 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+
 import org.joda.time.DateTime
 import org.joda.time.format.DateTimeFormat
 import org.scalacheck.Gen
-import org.specs2.{ScalaCheck, Specification}
+import org.specs2.{Specification, ScalaCheck}
 
 
 class S3Spec extends Specification with ScalaCheck { def is = s2"""

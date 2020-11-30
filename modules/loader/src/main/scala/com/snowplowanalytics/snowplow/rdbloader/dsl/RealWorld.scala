@@ -14,27 +14,26 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
 
-import cats.effect.{Sync, Clock, Async}
+import cats.effect.{Sync, Clock, ConcurrentEffect}
 import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.iglu.client.Client
 
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class RealWorld[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], fs: FS[F]) {
+class RealWorld[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
-  implicit val fsF: FS[F] = fs
 }
 
 object RealWorld {
-  def initialize[F[_] : Async: Clock](config: CliConfig): F[RealWorld[F]] =
+  def initialize[F[_] : ConcurrentEffect: Clock](config: CliConfig): F[RealWorld[F]] =
     for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       messages <- Ref.of[F, List[String]](List.empty[String])
@@ -50,6 +49,5 @@ object RealWorld {
       logging = Logging.controlInterpreter[F](config.target, messages, tracker)
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
-      fs = FS.fileSystemInterpreter[F]
-    } yield new RealWorld[F](cache, logging, iglu, aws, fs)
+    } yield new RealWorld[F](cache, logging, iglu, aws)
 }

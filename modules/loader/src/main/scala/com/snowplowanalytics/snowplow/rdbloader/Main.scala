@@ -15,12 +15,16 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.Monad
 import cats.data.Validated._
 import cats.implicits._
-import cats.effect.{ExitCode, IO, IOApp }
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, JDBC, Logging, RealWorld}
+import cats.effect.{ExitCode, IO, IOApp}
+
+import fs2.Stream
+
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, RealWorld, Logging, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{discover, load}
-import com.snowplowanalytics.snowplow.rdbloader.utils.{S3, SSH}
+import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
 object Main extends IOApp {
   /**
@@ -34,18 +38,12 @@ object Main extends IOApp {
       case Valid(config) =>
         RealWorld.initialize[IO](config).flatMap { dsls =>
           import dsls._
-
-          val result = for {
-            discovery <- discover[IO](config)
-            jdbc = SSH.resource[IO](config.target.sshTunnel) *>
-              JDBC.interpreter[IO](config.target, config.dryRun)
-            _ <- LoaderAction(jdbc.use { implicit conn => load[IO](config, discovery).value })
-          } yield ()
-
-          result
+          workStream(config, dsls)
+            .compile
+            .drain
             .value
             .attempt
-            .map {      // TODO: write shorter; and figure out if unit test is possible
+            .map {
               case Left(e) =>
                 e.printStackTrace(System.out)
                 (LoaderError.LoaderLocalError(e.getMessage): LoaderError).asLeft
@@ -57,6 +55,17 @@ object Main extends IOApp {
         IO.delay(println("Configuration error")) *>
           errors.traverse_(message => IO.delay(println(message))).as(ExitCode.Error)
     }
+
+  def workStream(config: CliConfig, dsls: RealWorld[IO]): Stream[LoaderAction[IO, ?], Unit] = {
+    import dsls._
+
+    discover[IO](config).evalMap { case (discovery, _) =>
+      val jdbc = SSH.resource[IO](config.target.sshTunnel) *>
+        JDBC.interpreter[IO](config.target, config.dryRun)
+
+      LoaderAction(jdbc.use { implicit conn => load[IO](config, discovery).value })
+    }
+  }
 
   /** Get exit status based on all previous steps */
   private def close[F[_]: Monad: Logging: AWS](logKey: Option[S3.Key], result: Either[LoaderError, Unit]): F[ExitCode] = {

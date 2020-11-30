@@ -12,12 +12,11 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{ Instant, ZoneId }
+import java.time.{Instant, ZoneId}
 import java.time.format.DateTimeFormatter
 
 import org.joda.time.DateTime
-
-import cats.{Id, Monad}
+import cats.{Monad, Id}
 import cats.data.NonEmptyList
 import cats.syntax.option._
 import cats.syntax.apply._
@@ -37,12 +36,9 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
 import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncBatchEmitter, SyncEmitter}
-
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common._
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.{GetMethod, PostMethod}
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.Monitoring
-import com.snowplowanalytics.snowplow.rdbloader.utils.{Common, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.{Common, _}
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.{ Monitoring, TrackerMethod }
 
 
 trait Logging[F[_]] {
@@ -135,9 +131,9 @@ object Logging {
       case Some(Collector((host, port))) =>
         Sync[F].delay {
           val emitter: Emitter[Id] = monitoring.snowplow.flatMap(_.method) match {
-            case Some(GetMethod) =>
+            case Some(TrackerMethod.Get) =>
               SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
-            case Some(PostMethod) =>
+            case Some(TrackerMethod.Post) =>
               SyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 2)
             case None =>
               SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))

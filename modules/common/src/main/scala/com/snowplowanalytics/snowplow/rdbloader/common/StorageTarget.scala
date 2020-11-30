@@ -49,6 +49,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def blacklistTabular: Option[List[SchemaCriterion]]   // None means tabular is disabled
+  def messageQueue: Option[String]
 }
 
 object StorageTarget {
@@ -74,6 +75,7 @@ object StorageTarget {
    */
   case class RedshiftConfig(id: UUID,
                             name: String,
+
                             host: String,
                             database: String,
                             port: Int,
@@ -85,7 +87,9 @@ object StorageTarget {
                             maxError: Int,
                             compRows: Long,
                             sshTunnel: Option[TunnelConfig],
-                            blacklistTabular: Option[List[SchemaCriterion]])
+
+                            blacklistTabular: Option[List[SchemaCriterion]],
+                            messageQueue: Option[String])
     extends StorageTarget
 
   /**

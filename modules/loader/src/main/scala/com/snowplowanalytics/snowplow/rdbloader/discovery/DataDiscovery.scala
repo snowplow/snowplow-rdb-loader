@@ -10,35 +10,35 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package discovery
+package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.concurrent.duration._
 
 import cats._
 import cats.data._
 import cats.implicits._
+
 import cats.effect.Timer
 
-import com.snowplowanalytics.snowplow.rdbloader.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, LoaderAction, LoaderError, sequenceInF}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddingComplete
+import com.snowplowanalytics.snowplow.rdbloader.common.{AtomicSubpathPattern, Semver, S3}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 
 /**
   * Result of data discovery in shredded.good folder
+  * It still exists mostly to fulfill legacy batch-discovery behavior,
+  * once Loader entirely switched to RT architecture we can replace it with
+  * `ShreddingComplete` message
   * @param base shred run folder full path
   * @param atomicCardinality amount of keys in atomic-events directory if known
   * @param shreddedTypes list of shredded types in this directory
-  * @param specificFolder if specific target loader was provided by `--folder`
-  *                       (remains default `false` until `setSpecificFolder`)
   */
 case class DataDiscovery(
     base: S3.Folder,
     atomicCardinality: Option[Long],
     atomicSize: Option[Long],
-    shreddedTypes: List[ShreddedType],
-    specificFolder: Boolean) {
+    shreddedTypes: List[ShreddedType]) {
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -87,14 +87,33 @@ object DataDiscovery {
   /** Amount of times consistency check will be performed */
   val ConsistencyChecks = 5
 
-  /**
-   * ADT indicating whether shredded.good or arbitrary folder
-   * `InSpecificFolder` results on discovery error on empty folder
-   * `InShreddedGood` results in noop on empty folder
-   */
+  /** Legacy */
   sealed trait DiscoveryTarget extends Product with Serializable
-  case class Global(folder: S3.Folder) extends DiscoveryTarget
-  case class InSpecificFolder(folder: S3.Folder) extends DiscoveryTarget
+  object DiscoveryTarget {
+    final case class Global(folder: S3.Folder) extends DiscoveryTarget
+  }
+
+  /**
+   * Convert `ShreddingComplete` message coming from shredder into
+   * actionable `DataDiscovery`
+   * @param region AWS region to discover JSONPaths
+   * @param jsonpathAssets optional bucket with custo mJSONPaths
+   * @param message payload coming from shredder
+   * @tparam F effect type to perform AWS interactions
+   */
+  def fromLoaderMessage[F[_]: Monad: Cache: AWS](region: String,
+                                                 jsonpathAssets: Option[S3.Folder],
+                                                 message: ShreddingComplete): LoaderAction[F, DataDiscovery] = {
+    val types = message
+      .types
+      .traverse[F, DiscoveryStep[ShreddedType]] { shreddedType =>
+        ShreddedType.fromCommon[F](message.base, message.processor.version, region, jsonpathAssets, shreddedType)
+      }
+      .map { steps => LoaderError.flattenValidated(steps.traverse(_.toValidatedNel)) }
+    LoaderAction[F, List[ShreddedType]](types).map { types =>
+      DataDiscovery(message.base, None, None, types)
+    }
+  }
 
   /**
    * Discover list of shred run folders, each containing
@@ -121,40 +140,13 @@ object DataDiscovery {
         discovery <- groupKeysFull[F](keys)
       } yield discovery
 
-    val result = target match {
-      case Global(folder) =>
+    target match {
+      case DiscoveryTarget.Global(folder) =>
         val keys: LoaderAction[F, ValidatedDataKeys[F]] =
           listGoodBucket[F](folder).map(transformKeys[F](shredJob, region, assets))
         group(keys)
-      case InSpecificFolder(folder) =>
-        val keys: LoaderAction[F, ValidatedDataKeys[F]] =
-          listGoodBucket[F](folder).map { keys =>
-            if (keys.isEmpty) {
-              val failure = Validated.Invalid(NonEmptyList(DiscoveryFailure.NoDataFailure(folder), Nil))
-              Monad[F].pure(failure)
-            } else transformKeys[F](shredJob, region, assets)(keys)
-          }
-        for {
-          discoveries <- group(keys)
-          _ <- if (discoveries.lengthCompare(1) > 0) {
-            LoaderAction.liftF[F, Unit](Logging[F].print("More than one folder discovered with `--folder` option"))
-          } else LoaderAction.unit[F]
-        } yield discoveries
     }
-
-    setSpecificFolder(target, result)
   }
-
-  /** Properly set `specificFolder` flag */
-  def setSpecificFolder[F[_]: Functor](target: DiscoveryTarget, discovery: LoaderAction[F, Discovered]): LoaderAction[F, Discovered] =
-    discovery.map { list =>
-      list.map { d =>
-        target match {
-          case InSpecificFolder(_) => d.copy(specificFolder = true)
-          case Global(_) => d.copy(specificFolder = false)
-        }
-      }
-    }
 
   /**
    * List whole directory excluding special files
@@ -182,7 +174,7 @@ object DataDiscovery {
             discovery.asRight
           case Validated.Invalid(failures) =>
             val aggregated = DiscoveryFailure.aggregateDiscoveryFailures(failures).distinct
-            DiscoveryError(aggregated).asLeft
+            LoaderError.DiscoveryError(aggregated).asLeft
         }
       }
     EitherT(result)
@@ -205,7 +197,7 @@ object DataDiscovery {
     if (atomicKeys.nonEmpty) {
       val shreddedData = shreddedKeys.map(_.info).distinct
       val size = Some(atomicKeys.foldMap(_.size))
-      DataDiscovery(base, Some(atomicKeys.length.toLong), size, shreddedData, false).validNel
+      DataDiscovery(base, Some(atomicKeys.length.toLong), size, shreddedData).validNel
     } else {
       DiscoveryFailure.AtomicDiscoveryFailure(base).invalidNel
     }
@@ -283,7 +275,7 @@ object DataDiscovery {
   // Common
 
   def isAtomic(key: S3.Key): Boolean = key match {
-    case loaders.Common.atomicSubpathPattern(_, _, _) => true
+    case AtomicSubpathPattern(_, _, _) => true
     case _ => false
   }
 

@@ -9,18 +9,18 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.config
 
 import org.specs2.Specification
-
 import cats.syntax.either._
 
 import io.circe._
 import io.circe.yaml.parser
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Semver
+
 // This project
-import SnowplowConfig.Codecs._
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.Codecs._
 
 class SnowplowConfigSpec extends Specification { def is = s2"""
   Parse storage without folder, but with comment, using auto decoder $e1
@@ -43,7 +43,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
 
     val ast: Either[Error, Json] = parser.parse(storageYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.Storage])
-    storage must beRight(SnowplowConfig.Storage(SnowplowConfig.StorageVersions(Semver(1,8,0), Semver(0,1,0))))
+    storage must beRight(SnowplowConfig.Storage(SnowplowConfig.StorageVersions(Semver(1,8,0))))
   }
 
   def e2 = {
@@ -56,15 +56,12 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
 
     val ast: Either[Error, Json] = parser.parse(monitoringYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.SnowplowMonitoring])
-    storage must beRight(SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.GetMethod), Some("ADD HERE"), Some("ADD HERE")))
+    storage must beRight(SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.TrackerMethod.Get), Some("ADD HERE"), Some("ADD HERE")))
   }
 
   def e3 = {
     val monitoringYaml =
       """
-        |tags: {fromString: bar} # Name-value pairs describing this job
-        |logging:
-        |  level: DEBUG # You can optionally switch to INFO for production
         |snowplow:
         |  method: get
         |  app_id: ADD HERE # e.g. snowplow
@@ -74,9 +71,8 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
     val ast: Either[Error, Json] = parser.parse(monitoringYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.Monitoring])
 
-    val snowplow = SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.GetMethod), Some("ADD HERE"), Some("ADD HERE"))
-    val logging = SnowplowConfig.Logging(SnowplowConfig.DebugLevel)
-    val expected = SnowplowConfig.Monitoring(Map("fromString" -> "bar"), logging, Some(snowplow))
+    val snowplow = SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.TrackerMethod.Get), Some("ADD HERE"), Some("ADD HERE"))
+    val expected = SnowplowConfig.Monitoring(Some(snowplow))
 
     storage must beRight(expected)
   }
@@ -93,7 +89,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
     val ast: Either[Error, Json] = parser.parse(enrichYaml)
     val storage = ast.flatMap(_.as[SnowplowConfig.Enrich])
 
-    val expected = SnowplowConfig.Enrich(SnowplowConfig.NoneCompression)
+    val expected = SnowplowConfig.Enrich(SnowplowConfig.OutputCompression.None)
 
     storage must beRight(expected)
   }
@@ -118,9 +114,6 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
         |    archive: s3://path/to/archive  # Where to archive enriched events to, e.g. s3://my-archive-bucket/enriched
         |  shredded:
         |    good: s3://shredded       # e.g. s3://my-out-bucket/shredded/good
-        |    bad: s3://shredded/bad    # e.g. s3://my-out-bucket/shredded/bad
-        |    errors: s3://errors     # Leave blank unless :continue_on_unexpected_error: set to true below
-        |    archive: s3://archive   # Where to archive shredded events to, e.g. s3://my-archive-bucket/shredded
       """.stripMargin
 
     val ast: Either[Error, Json] = parser.parse(s3Yaml)

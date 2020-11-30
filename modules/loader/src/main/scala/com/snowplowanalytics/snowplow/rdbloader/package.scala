@@ -13,12 +13,17 @@
 package com.snowplowanalytics.snowplow
 
 import cats._
+import cats.arrow.FunctionK
 import cats.data._
 import cats.implicits._
 
-import rdbloader.discovery.DiscoveryFailure
+import fs2.Stream
+
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
 package object rdbloader {
+
+  type DiscoveryStream[F[_]] = Stream[LoaderAction[F, ?], (DataDiscovery, F[Unit])]
 
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]
@@ -34,11 +39,17 @@ package object rdbloader {
     def liftE[F[_]: Applicative, A](either: Either[LoaderError, A]): LoaderAction[F, A] =
       EitherT.fromEither[F](either)
 
-    def liftF[F[_]: Applicative, A](action: F[A]): LoaderAction[F, A] =
+    def liftF[F[_]: Functor, A](action: F[A]): LoaderAction[F, A] =
       EitherT.liftF[F, LoaderError, A](action)
 
     def apply[F[_], A](actionE: ActionE[F, A]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)
+
+    def fromFK[F[_]: Applicative]: FunctionK[F, LoaderAction[F, ?]] =
+      new FunctionK[F, LoaderAction[F, ?]] {
+        def apply[A](fa: F[A]): LoaderAction[F, A] =
+          LoaderAction.liftF(fa)
+      }
   }
 
   implicit class ActionOps[F[_], A](a: F[A]) {

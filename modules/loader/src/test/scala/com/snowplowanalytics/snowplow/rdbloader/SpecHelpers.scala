@@ -16,17 +16,18 @@ import scala.io.Source.fromInputStream
 import java.util.UUID
 
 import cats.Id
+
 import io.circe.jawn.parse
+
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
-import common.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => s3}
-import config.{Semver, SnowplowConfig}
-import config.Semver._
-import config.SnowplowConfig._
-import loaders.Common.SqlString
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, S3, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder.{coerce => s3}
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig._
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
 
 object SpecHelpers {
 
@@ -55,7 +56,6 @@ object SpecHelpers {
         SnowplowS3(
           "us-east-1",
           SnowplowBuckets(
-            s3("s3://snowplow-acme-storage/"),
             None,
             s3("s3://snowplow-acme-storage/logs"),
             ShreddedBucket(
@@ -64,9 +64,9 @@ object SpecHelpers {
           )
         )
       ),
-      Enrich(NoneCompression),
-      Storage(StorageVersions(Semver(0,12,0,Some(ReleaseCandidate(4))),Semver(0,1,0,None))),
-      Monitoring(Map(),Logging(DebugLevel),Some(SnowplowMonitoring(Some(GetMethod),Some("batch-pipeline"),Some("snplow.acme.com")))))
+      Enrich(OutputCompression.None),
+      Storage(StorageVersions(Semver(0,12,0,Some(Semver.Prerelease.ReleaseCandidate(4))))),
+      Monitoring(Some(SnowplowMonitoring(Some(TrackerMethod.Get),Some("batch-pipeline"),Some("snplow.acme.com")))))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
 
@@ -84,6 +84,7 @@ object SpecHelpers {
     1,
     20000,
     None,
+    None,
     None)
 
   val validTargetWithManifest = StorageTarget.RedshiftConfig(
@@ -99,6 +100,7 @@ object SpecHelpers {
     StorageTarget.PlainText("Supersecret1"),
     1,
     20000,
+    None,
     None,
     None
   )

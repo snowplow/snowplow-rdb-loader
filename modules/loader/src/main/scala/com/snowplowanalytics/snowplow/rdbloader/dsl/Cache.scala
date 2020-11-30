@@ -13,9 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
+
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 trait Cache[F[_]] {
   /** Put value into cache (stored in interpreter) */

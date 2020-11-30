@@ -10,21 +10,16 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package loaders
-
-import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+package com.snowplowanalytics.snowplow.rdbloader.loaders
 
 // This project
-import common.StorageTarget.RedshiftConfig
-
-import Common._
-import config.{SnowplowConfig, Step}
-import config.SnowplowConfig.OutputCompression
-import discovery.{DataDiscovery, ShreddedType}
-
-import RedshiftLoadStatements._
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.RedshiftConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.{SnowplowConfig, Step}
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.OutputCompression
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{AtomicEvents, SqlString, TransitTable}
 
 
 /**
@@ -54,8 +49,10 @@ object RedshiftLoadStatements {
   val EventFieldSeparator = "\t"
 
   sealed trait AtomicCopy
-  case class StraightCopy(copy: SqlString) extends AtomicCopy
-  case class TransitCopy(copy: SqlString) extends AtomicCopy
+  object AtomicCopy {
+    final case class Straight(copy: SqlString) extends AtomicCopy
+    final case class Transit(copy: SqlString) extends AtomicCopy
+  }
 
   /** Next version of Statements-generator (not yet used anywhere) */
   case class Helper(
@@ -70,38 +67,12 @@ object RedshiftLoadStatements {
       discovery: DataDiscovery)
 
   /**
-   * Properly sorted lift of Redshift statements
-   * `ANALYZE` and `VACUUM` are always in last group
-   */
-  type LoadQueue = List[RedshiftLoadStatements]
-
-  /**
-   * Creates queue of Redshift load statements for each discovered run folder
-   * If there's more than one run folder, only last group of statements
-   * will contain ANALYZE and VACUUM
-   * May return empty queue if no data was discovered
-   */
-  def buildQueue(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step])(discoveries: List[DataDiscovery]): LoadQueue = {
-    if (discoveries.isEmpty) Nil
-    else {
-      val init = discoveries.map(getStatements(config, target, steps)).reverse
-      val vacuum: Option[List[SqlString]] =
-        init.map(_.vacuum).sequence.map(uniqStatements)
-      val analyze: Option[List[SqlString]] =
-        init.map(_.analyze).sequence.map(uniqStatements)
-      val cleaned = init.map { statements => statements.copy(vacuum = None, analyze = None) }
-      val result = cleaned.head.copy(vacuum = vacuum, analyze = analyze) :: cleaned.tail
-      result.reverse
-    }
-  }
-
-  /**
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
-  private[loaders] def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step])(discovery: DataDiscovery): RedshiftLoadStatements = {
+  private[loaders] def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], discovery: DataDiscovery): RedshiftLoadStatements = {
     val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
-    val transitCopy = discovery.specificFolder && steps.contains(Step.TransitCopy)
+    val transitCopy = target.messageQueue.isDefined && steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
     val atomic = buildEventsCopy(config, target, discovery.atomicEvents, transitCopy)
     buildLoadStatements(target, steps, atomic, shreddedStatements, discovery)
   }
@@ -161,7 +132,7 @@ object RedshiftLoadStatements {
     val eventsTable = Common.getEventsTable(target)
 
     if (transitCopy) {
-      TransitCopy(SqlString.unsafeCoerce(
+      AtomicCopy.Transit(SqlString.unsafeCoerce(
         s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${target.roleArn}'
            | REGION AS '${config.aws.s3.region}'
@@ -173,7 +144,7 @@ object RedshiftLoadStatements {
            | TRUNCATECOLUMNS
            | ACCEPTINVCHARS $compressionFormat""".stripMargin))
     } else {
-      StraightCopy(SqlString.unsafeCoerce(
+      AtomicCopy.Straight(SqlString.unsafeCoerce(
         s"""COPY $eventsTable FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${target.roleArn}'
            | REGION AS '${config.aws.s3.region}'
@@ -274,9 +245,6 @@ object RedshiftLoadStatements {
   def destroyTransitTable(schema: String): SqlString = SqlString.unsafeCoerce(
     s"DROP TABLE ${TransitTable(schema).getDescriptor}")
 
-  private def uniqStatements[A](lists: List[List[A]]): List[A] =
-    lists.flatten.distinct
-
   /**
    * SQL statements for particular shredded type, grouped by their purpose
    *
@@ -306,7 +274,7 @@ object RedshiftLoadStatements {
    * Stringify output codec to use in SQL statement
    */
   private def getCompressionFormat(outputCodec: SnowplowConfig.OutputCompression): String = outputCodec match {
-    case SnowplowConfig.NoneCompression => ""
-    case SnowplowConfig.GzipCompression => "GZIP"
+    case SnowplowConfig.OutputCompression.None => ""
+    case SnowplowConfig.OutputCompression.Gzip => "GZIP"
   }
 }

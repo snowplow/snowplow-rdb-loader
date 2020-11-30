@@ -28,6 +28,10 @@ import com.snowplowanalytics.snowplow.scalatracker.UUIDProvider
 
 package object common {
 
+  /** * Subpath to check `atomic-events` directory presence */
+  val AtomicSubpathPattern = "(.*)/(run=[0-9]{4}-[0-1][0-9]-[0-3][0-9]-[0-2][0-9]-[0-6][0-9]-[0-6][0-9]/atomic-events)/(.*)".r
+  //                                    year     month      day        hour       minute     second
+
   implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
     override def realTime(unit: TimeUnit): Id[Long] =
       unit.convert(System.currentTimeMillis(), MILLISECONDS)

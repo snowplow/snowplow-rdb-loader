@@ -34,8 +34,8 @@ object Migration {
     * latest state on the Iglu Server. Create or update tables in that case.
     * Do nothing in case there's only legacy JSON data
     */
-  def perform[F[_]: Monad: Logging: Iglu: JDBC](dbSchema: String)(discoveries: List[DataDiscovery]): LoaderAction[F, Unit] =
-    discoveries.flatMap(_.shreddedTypes).traverse_ {
+  def perform[F[_]: Monad: Logging: Iglu: JDBC](dbSchema: String)(discovery: DataDiscovery): LoaderAction[F, Unit] =
+    discovery.shreddedTypes.traverse_ {
       case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
         for {
           schemas   <- EitherT(Iglu[F].getSchemas(vendor, name, model))

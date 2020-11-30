@@ -341,7 +341,7 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
     val bad = common.flatMap { shredded => shredded.swap.toOption.map(bad => Row(bad.compact)) }
 
     // Handling of properly-formed rows; drop bad, turn proper events to `Event`
-    // Pefrorm in-batch and cross-batch natural deduplications and writes found types to accumulator
+    // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
     // only one event from an event id and event fingerprint combination is kept
     val good = common
       .flatMap { shredded => shredded.toOption }

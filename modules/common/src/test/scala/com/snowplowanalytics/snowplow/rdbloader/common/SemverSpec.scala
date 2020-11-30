@@ -10,8 +10,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.implicits._
 
@@ -29,11 +28,11 @@ class SemverSpec extends Specification { def is = s2"""
   def e1 = {
     val semverList = List("0.1.0-M1", "1.12.1-rc1", "0.0.1", "1.2.0", "10.10.10-rc8")
     val expected: List[Either[String, Semver]] = List(
-      Semver(0,1,0, Some(Milestone(1))),
-      Semver(1,12,1, Some(ReleaseCandidate(1))),
+      Semver(0,1,0, Some(Prerelease.Milestone(1))),
+      Semver(1,12,1, Some(Prerelease.ReleaseCandidate(1))),
       Semver(0,0,1),
       Semver(1,2,0),
-      Semver(10,10,10, Some(ReleaseCandidate(8)))
+      Semver(10,10,10, Some(Prerelease.ReleaseCandidate(8)))
     ).map(Right.apply)
 
     val result = semverList.map(Semver.decodeSemver)
@@ -52,13 +51,13 @@ class SemverSpec extends Specification { def is = s2"""
       Semver(0,1,0) < Semver(0,2,0),
       Semver(0,2,1) < Semver(0,2,2),
       Semver(1,2,1) > Semver(1,2,0),
-      Semver(1,2,1, Some(ReleaseCandidate(1))) < Semver(1,2,1),
-      Semver(1,2,1, Some(Milestone(1))) < Semver(1,2,1),
-      Semver(1,2,1, Some(Unknown(""))) < Semver(1,2,1),
-      Semver(1,2,1, Some(Unknown("bar"))) != Semver(1,2,1, Some(Unknown("foo"))),
-      Semver(1,2,1, Some(Unknown("bar"))) == Semver(1,2,1, Some(Unknown("bar")))
+      Semver(1,2,1, Some(Prerelease.ReleaseCandidate(1))) < Semver(1,2,1),
+      Semver(1,2,1, Some(Prerelease.Milestone(1))) < Semver(1,2,1),
+      Semver(1,2,1, Some(Prerelease.Unknown(""))) < Semver(1,2,1),
+      Semver(1,2,1, Some(Prerelease.Unknown("bar"))) != Semver(1,2,1, Some(Prerelease.Unknown("foo"))),
+      Semver(1,2,1, Some(Prerelease.Unknown("bar"))) == Semver(1,2,1, Some(Prerelease.Unknown("bar")))
     )
 
-    orders must contain((b: Boolean) => b == true).forall
+    orders must contain(true).forall
   }
 }

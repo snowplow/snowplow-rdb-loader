@@ -10,12 +10,12 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.utils
+package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.syntax.either._
-import com.amazonaws.services.s3.model.S3ObjectSummary
-import com.snowplowanalytics.snowplow.rdbloader.loaders
-import io.circe.Decoder
+
+import io.circe.{Decoder, Encoder, Json}
+
 import shapeless.tag
 import shapeless.tag._
 
@@ -52,11 +52,6 @@ object S3 {
       coerce(string)
     }
 
-    private def correctlyPrefixed(s: String): Boolean =
-      supportedPrefixes.foldLeft(false) { (result, prefix) =>
-        result || s.startsWith(s"$prefix://")
-      }
-
     private def appendTrailingSlash(s: String): String =
       if (s.endsWith("/")) s
       else s + "/"
@@ -86,7 +81,7 @@ object S3 {
    */
   def getAtomicPath(s: Key): Option[Folder] =
     s match {
-      case loaders.Common.atomicSubpathPattern(prefix, subpath, _) =>
+      case AtomicSubpathPattern(prefix, subpath, _) =>
         Some(Folder.coerce(prefix + "/" + subpath))
       case _ => None
     }
@@ -118,14 +113,6 @@ object S3 {
     }
   }
 
-  /**
-   * Transform S3 object summary into valid S3 key string
-   */
-  def getKey(s3ObjectSummary: S3ObjectSummary): S3.BlobObject = {
-    val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
-    S3.BlobObject(key, s3ObjectSummary.getSize)
-  }
-
   // Tags for refined types
   sealed trait S3FolderTag
   sealed trait S3KeyTag
@@ -133,6 +120,8 @@ object S3 {
 
   implicit val s3FolderDecoder: Decoder[Folder] =
     Decoder.decodeString.emap(Folder.parse)
+  implicit val s3FolderEncoder: Encoder[Folder] =
+    Encoder.instance(Json.fromString)
 
   /**
    * Split S3 path into bucket name and folder path
