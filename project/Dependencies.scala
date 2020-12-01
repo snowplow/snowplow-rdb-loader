@@ -17,36 +17,37 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "0.6.2"
-    val igluClient       = "0.6.2"
-    val igluCore         = "0.5.1"
-    val badrows          = "0.1.0"
+    val igluClient       = "1.0.2"
+    val igluCore         = "1.0.0"
+    val badrows          = "2.1.0"
+    val analyticsSdk     = "2.1.0"
     val scalaTracker     = "0.6.1"
     val circeYaml        = "0.9.0"
-    val circe            = "0.11.1"
-    val circeOptics      = "0.11.0"
-    val cats             = "1.6.1"
+    val circe            = "0.13.0"
+    val circeOptics      = "0.13.0"
+    val cats             = "2.2.0"
     val manifest         = "0.2.0"
-    val fs2              = "1.0.4"
+    val fs2              = "2.4.4"
 
     // Scala (Shredder)
-    val spark            = "2.3.2"
+    val spark            = "3.0.1"
     val eventsManifest   = "0.2.0"
-    val schemaDdl        = "0.10.0"
+    val schemaDdl        = "0.12.0"
 
     // Java (Loader)
-    val postgres         = "42.0.0"
-    val redshift         = "1.2.51.1078"
+    val slf4j            = "1.7.30"
+    val redshift         = "1.2.36.1060"
     val aws              = "1.11.319"
-    val jSch             = "0.1.54"
+    val jSch             = "0.1.55"
 
     // Scala (test only)
-    val specs2           = "4.0.4"
-    val scalaCheck       = "1.12.6"
+    val specs2           = "4.10.5"
+    val scalaCheck       = "1.14.0"
   }
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    "redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release",
+    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
     // Speed-up build
     "snowplow" at "https://snowplow.bintray.com/snowplow-maven"
   )
@@ -56,16 +57,15 @@ object Dependencies {
   val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"                 % V.igluClient
   val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker-core"       % V.scalaTracker
   val scalaTrackerEmit  = "com.snowplowanalytics" %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
-  val manifest          = "com.snowplowanalytics" %% "snowplow-processing-manifest"      % V.manifest
   val badrows           = "com.snowplowanalytics" %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"         %% "cats"                              % V.cats
-  val catsFree          = "org.typelevel"         %% "cats-free"                         % V.cats
   val circeCore         = "io.circe"              %% "circe-core"                        % V.circe
   val circeGeneric      = "io.circe"              %% "circe-generic"                     % V.circe
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe
   val circeYaml         = "io.circe"              %% "circe-yaml"                        % V.circeYaml
   val fs2               = "co.fs2"                %% "fs2-core"                          % V.fs2
+  val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
@@ -77,7 +77,7 @@ object Dependencies {
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % "provided"
 
   // Java (Loader)
-  val postgres          = "org.postgresql"        % "postgresql"                % V.postgres
+  val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val s3                = "com.amazonaws"         % "aws-java-sdk-s3"           % V.aws
