@@ -27,7 +27,7 @@ object Dependencies {
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.2.0"
-    val fs2              = "2.4.4"
+    val fs2              = "2.4.6"
     val fs2Aws           = "2.29.0"
 
     // Scala (Shredder)
