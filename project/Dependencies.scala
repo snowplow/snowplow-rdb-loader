@@ -26,12 +26,12 @@ object Dependencies {
     val circe            = "0.13.0"
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
-    val manifest         = "0.2.0"
+    val manifest         = "0.3.0"
     val fs2              = "2.4.4"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
-    val eventsManifest   = "0.2.0"
+    val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.12.0"
 
     // Java (Loader)
