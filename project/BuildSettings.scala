@@ -19,6 +19,8 @@ import Keys._
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
 
+import scoverage.ScoverageKeys._
+
 // DynamoDB Local
 import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
@@ -33,21 +35,7 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.11.12",
-
-    scalacOptions ++= Seq(
-      "-deprecation",
-      "-encoding", "UTF-8",
-      "-feature",
-      "-unchecked",
-      "-Ywarn-unused-import",
-      "-Ywarn-nullary-unit",
-      "-Xlint",
-      "-Yinline-warnings",
-      "-language:higherKinds",
-      "-Ypartial-unification",
-      "-Xfuture"
-    ),
+    scalaVersion := "2.12.12",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
@@ -76,11 +64,12 @@ object BuildSettings {
     ),
 
     assembly / assemblyMergeStrategy := {
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("META-INF", _ @ _*) => MergeStrategy.discard
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
       case _ => MergeStrategy.first
     }
-  )
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
@@ -106,11 +95,20 @@ object BuildSettings {
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
       case x if x.endsWith("package-info.class") => MergeStrategy.first
+      case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
+    }
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+
+  lazy val scoverageSettings = Seq(
+    coverageMinimum := 50,
+    coverageFailOnMinimum := false,
+    (test in Test) := {
+      (coverageReport dependsOn (test in Test)).value
     }
   )
 
@@ -123,12 +121,11 @@ object BuildSettings {
       IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
                        |object ProjectMetadata {
                        |  val version = "%s"
-                       |  val name = "%s"             // DO NOT EDIT! Processing Manifest depends on it
+                       |  val name = "%s"
                        |  val organization = "%s"
                        |  val scalaVersion = "%s"
                        |
-                       |  val shredderName = "%s"     // DO NOT EDIT! Processing Manifest depends on it
-                       |  val shredderVersion = "%s"
+                       |  val shredderName = "%s"
                        |}
                        |""".stripMargin.format(
         version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))

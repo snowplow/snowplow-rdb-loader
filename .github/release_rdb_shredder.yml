@@ -1,0 +1,75 @@
+---
+local:
+  root_dir : <%= ENV['GITHUB_WORKSPACE'] %>
+
+# Required: deployment targets
+targets:
+  - type              : "awss3"
+    access_key_id     : <%= ENV['AWS_ACCESS_KEY'] %>
+    secret_access_key : <%= ENV['AWS_SECRET_KEY'] %>
+
+# Required: packages to be deployed
+packages:
+  - name     : "rdb-shredder-hosted-asset"
+    locations:
+    - bucket   : "snowplow-hosted-assets"
+      path     : "4-storage/rdb-shredder"
+      region   : "eu-west-1"
+    - bucket   : "snowplow-hosted-assets-us-east-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "us-east-1"
+    - bucket   : "snowplow-hosted-assets-us-west-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "us-west-1"
+    - bucket   : "snowplow-hosted-assets-us-west-2"
+      path     : "4-storage/rdb-shredder"
+      region   : "us-west-2"
+    - bucket   : "snowplow-hosted-assets-sa-east-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "sa-east-1"
+    - bucket   : "snowplow-hosted-assets-eu-central-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "eu-central-1"
+    - bucket   : "snowplow-hosted-assets-ap-southeast-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "ap-southeast-1"
+    - bucket   : "snowplow-hosted-assets-ap-southeast-2"
+      path     : "4-storage/rdb-shredder"
+      region   : "ap-southeast-2"
+    - bucket   : "snowplow-hosted-assets-ap-northeast-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "ap-northeast-1"
+    - bucket   : "snowplow-hosted-assets-ap-south-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "ap-south-1"
+    - bucket   : "snowplow-hosted-assets-us-east-2"
+      path     : "4-storage/rdb-shredder"
+      region   : "us-east-2"
+    - bucket   : "snowplow-hosted-assets-ca-central-1"
+      path     : "4-storage/rdb-shredder"
+      region   : "ca-central-1"
+    - bucket   : "snowplow-hosted-assets-eu-west-2"
+      path     : "4-storage/rdb-shredder"
+      region   : "eu-west-2"
+    - bucket   : "snowplow-hosted-assets-ap-northeast-2"
+      path     : "4-storage/rdb-shredder"
+      region   : "ap-northeast-2"
+    publish  : true
+    override : false
+    continue_on_conflict : false
+    version  :  <%= CMD['sbt "project shredder" version -Dsbt.log.noformat=true | awk "END{print}" | sed -r "s/\[info\]\s(.*)/\1/" | xargs echo -n'] %>
+
+    # Required IF '--check-version' is passed: will assert that both versions are the same
+    build_version : <%= ENV['RDB_LOADER_VERSION'] %>
+
+    # Optional: Build commands
+    build_commands:
+      - sbt "project shredder" assembly
+
+    # Required: Artifact. Version will be inserted between prefix and suffix
+    artifacts:
+      - type   : "asis"
+        prefix : "snowplow-rdb-shredder-"
+        suffix : ".jar"
+        binary_paths:
+          - "modules/shredder/target/scala-2.12/snowplow-rdb-shredder-{{ packages.0.build_version }}.jar"

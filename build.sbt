@@ -11,14 +11,22 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val common = project.in(file("common"))
+version in ThisBuild := "0.18.0"
+
+lazy val root = project.in(file("."))
+  .aggregate(common, loader, shredder)
+
+lazy val common = project.in(file("modules/common"))
   .settings(Seq(
     name := "snowplow-rdb-loader-common"
   ))
+  .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.slf4j,
+      Dependencies.analyticsSdk,
       Dependencies.badrows,
       Dependencies.igluClient,
       Dependencies.scalaTracker,
@@ -31,10 +39,9 @@ lazy val common = project.in(file("common"))
     )
   )
 
-lazy val loader = project.in(file("."))
+lazy val loader = project.in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
-    version := "0.17.0",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
@@ -43,20 +50,18 @@ lazy val loader = project.in(file("."))
   .settings(BuildSettings.assemblySettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     libraryDependencies ++= Seq(
       Dependencies.decline,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
-      Dependencies.catsFree,
       Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
-      Dependencies.manifest,
       Dependencies.fs2,
       Dependencies.schemaDdl,
 
-      Dependencies.postgres,
       Dependencies.redshift,
       Dependencies.redshiftSdk,
       Dependencies.s3,
@@ -71,10 +76,9 @@ lazy val loader = project.in(file("."))
   )
   .dependsOn(common)
 
-lazy val shredder = project.in(file("shredder"))
+lazy val shredder = project.in(file("modules/shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
-    version     := "0.16.0",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )
@@ -96,18 +100,11 @@ lazy val shredder = project.in(file("shredder"))
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
       Dependencies.igluCoreCirce,
-      Dependencies.manifest,
       // Scala (test only)
       Dependencies.circeOptics,
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
-    ),
-
-    dependencyOverrides ++= Seq(
-      Dependencies.dynamodb,
-      "com.fasterxml.jackson.core" % "jackson-core" % "2.6.7",
-      "com.fasterxml.jackson.core" % "jackson-databind" % "2.6.7.2"
     )
   )
   .dependsOn(common)

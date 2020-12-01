@@ -1,8 +1,10 @@
 # Relational Database Loader
 
-[![Build Status][travis-image]][travis]
+[![Build Status][build-image]][build]
 [![Release][release-image]][releases]
 [![License][license-image]][license]
+[![Scala Steward][scala-steward-image]][scala-steward]
+[![Coverage Status][coveralls-image]][coveralls]
 
 ## Introduction
 
@@ -18,7 +20,7 @@ RDB Shredder is a [Spark][spark] job which:
 4. Adds metadata to these JSONs to track their origins
 5. Writes these JSONs out to nested folders dependent on their schema
 
-It is designed to be run by the [EmrEtlRunner][emr-etl-runner] immediately after the [Spark Enrich][spark-enrich] job.
+It is designed to be run by the [EmrEtlRunner][emr-etl-runner] immediately after the [Enrich][enrich] job.
 
 ### RDB Loader
 
@@ -49,21 +51,27 @@ limitations under the License.
 [techdocs-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/techdocs.png
 [setup-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/setup.png
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
-[setup]: https://github.com/snowplow/snowplow/wiki/6-Configuring-shredding
-[techdocs]: https://github.com/snowplow/snowplow/wiki/Relational-Database-Loader
+[setup]: https://docs.snowplowanalytics.com/docs/getting-started-on-snowplow-open-source/setup-snowplow-on-aws/setup-destinations/setup-redshift/
+[techdocs]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/
 
 [spark]: http://spark.apache.org/
-[emr-etl-runner]: https://github.com/snowplow/snowplow/tree/master/3-enrich/emr-etl-runner
-[spark-enrich]: https://github.com/snowplow/snowplow/tree/master/3-enrich/spark-enrich
+[emr-etl-runner]: https://github.com/snowplow/emr-etl-runner
+[enrich]: https://github.com/snowplow/snowplow/enrich
 
 [targets]: https://github.com/snowplow/snowplow/wiki/Configuring-storage-targets
-[shred]: https://github.com/snowplow/snowplow/wiki/Scala-Hadoop-Shred
+[shred]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/rdb-shredder/
 
-[travis-image]: https://travis-ci.org/snowplow/snowplow-rdb-loader.png?branch=master
-[travis]: http://travis-ci.org/snowplow/snowplow-rdb-loader
+[build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
+[build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
 
-[release-image]: http://img.shields.io/badge/release-r32-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-r33-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
-[license-image]: http://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
-[license]: http://www.apache.org/licenses/LICENSE-2.0
+[license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
+[license]: https://www.apache.org/licenses/LICENSE-2.0
+
+[scala-steward-image]: https://img.shields.io/badge/Scala_Steward-helping-blue.svg?style=flat&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA4AAAAQCAMAAAARSr4IAAAAVFBMVEUAAACHjojlOy5NWlrKzcYRKjGFjIbp293YycuLa3pYY2LSqql4f3pCUFTgSjNodYRmcXUsPD/NTTbjRS+2jomhgnzNc223cGvZS0HaSD0XLjbaSjElhIr+AAAAAXRSTlMAQObYZgAAAHlJREFUCNdNyosOwyAIhWHAQS1Vt7a77/3fcxxdmv0xwmckutAR1nkm4ggbyEcg/wWmlGLDAA3oL50xi6fk5ffZ3E2E3QfZDCcCN2YtbEWZt+Drc6u6rlqv7Uk0LdKqqr5rk2UCRXOk0vmQKGfc94nOJyQjouF9H/wCc9gECEYfONoAAAAASUVORK5CYII=
+[scala-steward]: https://scala-steward.org
+
+[coveralls]: https://coveralls.io/github/snowplow/snowplow-rdb-loader?branch=master
+[coveralls-image]: https://coveralls.io/repos/github/snowplow/snowplow-rdb-loader/badge.svg?branch=master
