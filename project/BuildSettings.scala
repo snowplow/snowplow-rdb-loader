@@ -35,7 +35,7 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.12",
+    scalaVersion := "2.13.4",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
