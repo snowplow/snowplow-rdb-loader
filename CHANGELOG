@@ -1,3 +1,7 @@
+Release 34 (2020-12-09)
+-----------------------
+RDB Shredder: escape newlines and tabs (#238)
+
 Release 33 (2020-12-01)
 -----------------------
 Common: integrate coveralls (#220)
