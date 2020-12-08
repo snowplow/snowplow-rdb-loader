@@ -100,12 +100,13 @@ object EventUtils {
       transformBool,
       _ => json.show,
       escape,
-      _ => json.noSpaces,
-      _ => json.noSpaces)
+      _ => escape(json.noSpaces),
+      _ => escape(json.noSpaces))
 
   /** Prevents data with newlines and tabs from breaking the loading process */
   private def escape(s: String): String =
-    if (s == NullCharacter) "\\\\N" else s
+    if (s == NullCharacter) "\\\\N"
+    else s.replace('\t', ' ').replace('\n', ' ')
 
   /** Get maximum length for a string value */
   private def getLength(schema: Schema): Option[Int] =
