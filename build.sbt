@@ -43,12 +43,14 @@ lazy val common = project.in(file("modules/common"))
 lazy val loader = project.in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
+    packageName in Docker := "snowplow/snowplow-rdb-loader",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.scalifySettings(shredder / name, shredder / version))
   .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -77,6 +79,7 @@ lazy val loader = project.in(file("modules/loader"))
     )
   )
   .dependsOn(common)
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
 
 lazy val shredder = project.in(file("modules/shredder"))
   .settings(
