@@ -129,6 +129,8 @@ object TestInterpreter {
       Test.pure(key.asRight)
     def print(message: String): Test[Unit] =
       results.print(message)
+    def trackException(e: Throwable): Test[Unit] =
+      results.print(s"EXCEPTION ${e.getMessage}")
   }
 
   def stateIgluInterpreter: Iglu[Test] = new Iglu[Test] {

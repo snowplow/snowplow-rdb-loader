@@ -16,15 +16,17 @@ import cats.Monad
 import cats.data.Validated._
 import cats.implicits._
 
-import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.{IOApp, IO, ExitCode}
 
 import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, RealWorld, Logging, AWS}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, RealWorld, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{discover, load}
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+
+import io.sentry.Sentry
 
 object Main extends IOApp {
   /**
@@ -45,6 +47,7 @@ object Main extends IOApp {
             .attempt
             .map {
               case Left(e) =>
+                Sentry.captureException(e)
                 e.printStackTrace(System.out)
                 (LoaderError.LoaderLocalError(e.getMessage): LoaderError).asLeft
               case Right(e) => e

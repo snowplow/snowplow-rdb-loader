@@ -69,6 +69,7 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.ssm,
       Dependencies.dynamodb,
       Dependencies.jSch,
+      Dependencies.sentry,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,

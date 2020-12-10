@@ -12,33 +12,31 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{Instant, ZoneId}
+import java.time.{ZoneId, Instant}
 import java.time.format.DateTimeFormatter
 
+import scala.util.control.NonFatal
+
 import org.joda.time.DateTime
-import cats.{Monad, Id}
+import cats.{Id, Monad}
 import cats.data.NonEmptyList
-import cats.syntax.option._
-import cats.syntax.apply._
-import cats.syntax.flatMap._
-import cats.syntax.either._
-import cats.syntax.functor._
-import cats.syntax.show._
-import cats.instances.either._
+import cats.implicits._
 
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
 
 import io.circe.Json
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
-import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
-import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncBatchEmitter, SyncEmitter}
+import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncEmitter, SyncBatchEmitter}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, _}
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.{ Monitoring, TrackerMethod }
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.{TrackerMethod, Monitoring}
+
+import io.sentry.Sentry
 
 
 trait Logging[F[_]] {
@@ -54,6 +52,9 @@ trait Logging[F[_]] {
 
   /** Print message to stdout */
   def print(message: String): F[Unit]
+
+  /** Log an error to Sentry if it's configured */
+  def trackException(e: Throwable): F[Unit]
 }
 
 object Logging {
@@ -104,6 +105,11 @@ object Logging {
           timestamped = s"$time: $message"
           _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
         } yield ()
+
+      def trackException(e: Throwable): F[Unit] =
+        Sync[F].delay(Sentry.captureException(e)).void.recover {
+          case NonFatal(_) => ()
+        }
 
       private def log(message: String): F[Unit] =
         messages.update(buf => message :: buf)

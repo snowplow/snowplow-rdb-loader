@@ -12,12 +12,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import java.net.URI
+
 import cats.implicits._
 
-import cats.effect.{Sync, Clock, ConcurrentEffect}
+import cats.effect.{Sync, ConcurrentEffect, Clock}
 import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.iglu.client.Client
+
+import io.sentry.{Sentry, SentryOptions}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
@@ -35,6 +39,7 @@ class RealWorld[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: 
 object RealWorld {
   def initialize[F[_] : ConcurrentEffect: Clock](config: CliConfig): F[RealWorld[F]] =
     for {
+      _ <- initSentry[F](config.target.sentryDsn)
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       messages <- Ref.of[F, List[String]](List.empty[String])
       tracker <- Logging.initializeTracking[F](config.configYaml.monitoring)
@@ -50,4 +55,14 @@ object RealWorld {
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
     } yield new RealWorld[F](cache, logging, iglu, aws)
+
+  def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =
+    dsn match {
+      case Some(uri) =>
+        val options = new SentryOptions()
+        options.setDsn(uri.toString)
+        Sync[F].delay(Sentry.init(options))
+      case None =>
+        Sync[F].unit
+    }
 }

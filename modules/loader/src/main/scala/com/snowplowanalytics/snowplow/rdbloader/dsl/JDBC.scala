@@ -75,9 +75,9 @@ object JDBC {
    */
   def getConnection[F[_]: Sync: Timer: AWS](target: StorageTarget): F[Connection] = {
     val password: F[String] = target.password match {
-      case StorageTarget.PlainText(text) =>
+      case StorageTarget.PasswordConfig.PlainText(text) =>
         Sync[F].pure(text)
-      case StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+      case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
         AWS[F].getEc2Property(key.parameterName).map(b => new String(b))
     }
 

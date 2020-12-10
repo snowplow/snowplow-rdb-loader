@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
+import java.net.URI
 import java.util.UUID
 import java.util.Properties
 
@@ -50,6 +51,7 @@ sealed trait StorageTarget extends Product with Serializable {
 
   def blacklistTabular: Option[List[SchemaCriterion]]   // None means tabular is disabled
   def messageQueue: Option[String]
+  def sentryDsn: Option[URI]
 }
 
 object StorageTarget {
@@ -89,7 +91,8 @@ object StorageTarget {
                             sshTunnel: Option[TunnelConfig],
 
                             blacklistTabular: Option[List[SchemaCriterion]],
-                            messageQueue: Option[String])
+                            messageQueue: Option[String],
+                            sentryDsn: Option[URI])
     extends StorageTarget
 
   /**
@@ -164,14 +167,28 @@ object StorageTarget {
   case class DestinationConfig(host: String, port: Int)
 
   /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
-  sealed trait PasswordConfig {
+  sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
-      case PlainText(plain) => plain
-      case EncryptedKey(EncryptedConfig(key)) => key.parameterName
+      case PasswordConfig.PlainText(plain) => plain
+      case PasswordConfig.EncryptedKey(EncryptedConfig(key)) => key.parameterName
     }
   }
-  case class PlainText(value: String) extends PasswordConfig
-  case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
+  object PasswordConfig {
+    final case class PlainText(value: String) extends PasswordConfig
+    final case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
+
+    implicit object PasswordDecoder extends Decoder[PasswordConfig] {
+      def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
+        hCursor.value.asString match {
+          case Some(s) => Right(PasswordConfig.PlainText(s))
+          case None => hCursor.value.asObject match {
+            case Some(_) => hCursor.value.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
+            case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
+          }
+        }
+      }
+    }
+  }
 
   /**
     * SSH configuration, enabling target to be loaded though tunnel
@@ -182,18 +199,6 @@ object StorageTarget {
     * @param destination end-socket of SSH tunnel (host/port pair to access DB)
     */
   case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
-
-  implicit object PasswordDecoder extends Decoder[PasswordConfig] {
-    def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
-      hCursor.value.asString match {
-        case Some(s) => Right(PlainText(s))
-        case None => hCursor.value.asObject match {
-          case Some(_) => hCursor.value.as[EncryptedConfig].map(EncryptedKey)
-          case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
-        }
-      }
-    }
-  }
 
   /**
     * Decode Json as one of known storage targets
@@ -222,6 +227,9 @@ object StorageTarget {
       .toEitherNel
       .flatMap { json => (decodeStorageTarget(json).toEitherNel, validate(client)(json).toEitherNel).parMapN { case (config, _) => config } }
 
+  implicit def uriDecoder: Decoder[URI] =
+    Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
+
   implicit def redsfhitConfigDecoder: Decoder[RedshiftConfig] =
     deriveDecoder[RedshiftConfig]
 
@@ -239,9 +247,6 @@ object StorageTarget {
 
   implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
-
-  implicit def passwordConfigDecoder: Decoder[PasswordConfig] =
-    deriveDecoder[PasswordConfig]
 
   implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
     Decoder.decodeString.emap {
