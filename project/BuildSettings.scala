@@ -19,6 +19,12 @@ import Keys._
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
 
+// sbt-native-packager
+import com.typesafe.sbt.packager.Keys.{daemonUser, maintainer}
+import com.typesafe.sbt.packager.linux.LinuxPlugin.autoImport._
+import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
+import com.typesafe.sbt.packager.docker.DockerVersion
+
 import scoverage.ScoverageKeys._
 
 // DynamoDB Local
@@ -40,11 +46,6 @@ object BuildSettings {
     Compile / console / scalacOptions := Seq(
       "-deprecation",
       "-encoding", "UTF-8"
-    ),
-
-    javacOptions := Seq(
-      "-source", "1.8",
-      "-target", "1.8"
     ),
 
     addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
@@ -151,5 +152,15 @@ object BuildSettings {
     test in Test := (test in Test).dependsOn(startDynamoDBLocal).value,
     testOnly in Test := (testOnly in Test).dependsOn(startDynamoDBLocal).evaluated,
     testOptions in Test += dynamoDBLocalTestCleanup.value
+  )
+
+  lazy val dockerSettings = Seq(
+    maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    dockerBaseImage := "snowplow-docker-registry.bintray.io/snowplow/base-debian:0.2.1",
+    daemonUser in Docker := "snowplow",
+    dockerUpdateLatest := true,
+    dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
+    daemonUserUid in Docker := None,
+    defaultLinuxInstallLocation in Docker := "/home/snowplow" // must be home directory of daemonUser
   )
 }
