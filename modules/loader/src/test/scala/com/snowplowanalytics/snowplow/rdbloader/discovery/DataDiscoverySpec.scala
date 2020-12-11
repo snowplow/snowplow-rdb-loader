@@ -19,35 +19,13 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.{TestInterpreter, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{TestState, ControlResults, AWSResults, Test}
+import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{TestState, AWSResults, Test}
 import com.snowplowanalytics.snowplow.rdbloader.common.{Semver, S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 
 import org.specs2.mutable.Specification
 
 class DataDiscoverySpec extends Specification {
-  "discover" should {
-    "not fail to proceed with empty shredded good folder" >> {
-      implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-      implicit val control: Logging[Test] = TestInterpreter.stateControlInterpreter(ControlResults.init)
-      implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init)
-
-      val shreddedGood = S3.Folder.coerce("s3://runfolder-test/shredded/good")
-
-      val expected = List.empty[DataDiscovery]
-
-      // The only difference with e3
-      val discoveryTarget = DataDiscovery.DiscoveryTarget.Global(shreddedGood)
-      val result = DataDiscovery
-        .discover[Test](discoveryTarget, Semver(0,11,0), "us-east-1", None)
-        .value
-        .runA(TestState.init)
-        .value
-
-      result must beRight(expected)
-    }
-  }
-
   "listGoodBucket" should {
     "ignore special fields" >> {
       def listS3(bucket: S3.Folder) =
@@ -75,9 +53,9 @@ class DataDiscoverySpec extends Specification {
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
       )
 
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), Some(8), Some(1024), shreddedTypes)
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes)
       discovery.show must beEqualTo(
-        """|my-path with 8 atomic files (0 Mb) and with following shredded types:
+        """|my-path with following shredded types:
            |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
            |  * iglu:com.acme/context/jsonschema/2-*-* (s3://assets/context_1.json)""".stripMargin)
     }

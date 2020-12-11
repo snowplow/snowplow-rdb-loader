@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -20,7 +20,6 @@ import cats.effect.{IOApp, IO, ExitCode}
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, RealWorld, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{discover, load}
@@ -52,7 +51,7 @@ object Main extends IOApp {
                 (LoaderError.LoaderLocalError(e.getMessage): LoaderError).asLeft
               case Right(e) => e
             }
-            .flatMap(res => close[IO](config.logKey, res))
+            .flatMap(close[IO])
         }
       case Invalid(errors) =>
         IO.delay(println("Configuration error")) *>
@@ -71,22 +70,6 @@ object Main extends IOApp {
   }
 
   /** Get exit status based on all previous steps */
-  private def close[F[_]: Monad: Logging: AWS](logKey: Option[S3.Key], result: Either[LoaderError, Unit]): F[ExitCode] = {
-    val dumping = logKey.traverse(Logging[F].dump).flatMap { dumpResult =>
-      (result, dumpResult) match {
-        case (Right(_), None) =>
-          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Success)
-        case (Left(_), None) =>
-          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Error)
-        case (Right(_), Some(Right(key))) =>
-          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Success)
-        case (Left(_), Some(Right(key))) =>
-          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Error)
-        case (_, Some(Left(error))) =>
-          Logging[F].print(s"ERROR: Log-dumping failed: [$error]").as(ExitCode.Error)
-      }
-    }
-
-    Logging[F].track(result) *> dumping
-  }
+  private def close[F[_]: Monad: Logging: AWS](result: Either[LoaderError, Unit]): F[ExitCode] =
+    Logging[F].track(result).as(result.fold(_ => ExitCode.Error, _ => ExitCode.Success))
 }

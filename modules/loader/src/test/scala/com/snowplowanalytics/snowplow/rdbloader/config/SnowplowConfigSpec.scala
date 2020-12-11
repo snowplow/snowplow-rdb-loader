@@ -12,39 +12,20 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import org.specs2.Specification
-import cats.syntax.either._
 
 import io.circe._
 import io.circe.yaml.parser
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Semver
-
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.Codecs._
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig._
 
 class SnowplowConfigSpec extends Specification { def is = s2"""
-  Parse storage without folder, but with comment, using auto decoder $e1
   Parse monitoring.snowplow with custom decoder $e2
   Parse monitoring with custom decoder $e3
   Parse enrich with custom decoder $e4
   Parse s3 with custom decoder $e7
   Parse whole configuration using parse method $e8
-  Get correct path in decoding failure $e9
   """
-
-  def e1 = {
-
-    val storageYaml =
-      """
-        |versions:
-        |  rdb_shredder: 1.8.0
-        |  hadoop_elasticsearch: 0.1.0
-      """.stripMargin
-
-    val ast: Either[Error, Json] = parser.parse(storageYaml)
-    val storage = ast.flatMap(_.as[SnowplowConfig.Storage])
-    storage must beRight(SnowplowConfig.Storage(SnowplowConfig.StorageVersions(Semver(1,8,0))))
-  }
 
   def e2 = {
     val monitoringYaml =
@@ -55,8 +36,8 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
       """.stripMargin
 
     val ast: Either[Error, Json] = parser.parse(monitoringYaml)
-    val storage = ast.flatMap(_.as[SnowplowConfig.SnowplowMonitoring])
-    storage must beRight(SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.TrackerMethod.Get), Some("ADD HERE"), Some("ADD HERE")))
+    val storage = ast.flatMap(_.as[SnowplowMonitoring])
+    storage must beRight(SnowplowMonitoring("ADD HERE", "ADD HERE"))
   }
 
   def e3 = {
@@ -69,10 +50,10 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
       """.stripMargin
 
     val ast: Either[Error, Json] = parser.parse(monitoringYaml)
-    val storage = ast.flatMap(_.as[SnowplowConfig.Monitoring])
+    val storage = ast.flatMap(_.as[Monitoring])
 
-    val snowplow = SnowplowConfig.SnowplowMonitoring(Some(SnowplowConfig.TrackerMethod.Get), Some("ADD HERE"), Some("ADD HERE"))
-    val expected = SnowplowConfig.Monitoring(Some(snowplow))
+    val snowplow = SnowplowMonitoring("ADD HERE", "ADD HERE")
+    val expected = Monitoring(Some(snowplow))
 
     storage must beRight(expected)
   }
@@ -87,9 +68,9 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
       """.stripMargin
 
     val ast: Either[Error, Json] = parser.parse(enrichYaml)
-    val storage = ast.flatMap(_.as[SnowplowConfig.Enrich])
+    val storage = ast.flatMap(_.as[Enrich])
 
-    val expected = SnowplowConfig.Enrich(SnowplowConfig.OutputCompression.None)
+    val expected = Enrich(OutputCompression.None)
 
     storage must beRight(expected)
   }
@@ -117,7 +98,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
       """.stripMargin
 
     val ast: Either[Error, Json] = parser.parse(s3Yaml)
-    val s3 = ast.flatMap(_.as[SnowplowConfig.SnowplowS3])
+    val s3 = ast.flatMap(_.as[SnowplowS3])
 
     s3 must beRight
   }
@@ -197,36 +178,7 @@ class SnowplowConfigSpec extends Specification { def is = s2"""
         |    collector: ADD HERE # e.g. d3rkrsqld9gmqf.cloudfront.net
       """.stripMargin
 
-    val result = SnowplowConfig.parse(configYaml)
+    val result = parse(configYaml)
     result must beRight
-  }
-
-  def e9 = {
-    // buckets.shredded.good cannot be integer
-    val s3Yaml =
-      """
-        |region: ADD HERE
-        |buckets:
-        |  assets: s3://snowplow-hosted-assets # DO NOT CHANGE unless you are hosting the jarfiles etc yourself in your own bucket
-        |  jsonpath_assets: # If you have defined your own JSON Schemas, add the s3:// path to your own JSON Path files in your own bucket here
-        |  log: s3://log-bucket/
-        |  raw:
-        |    in:                  # Multiple in buckets are permitted
-        |      - s3://in-first/          # e.g. s3://my-in-bucket
-        |      - s3://in-second/path/to/logs
-        |    processing: s3://processing-logs/
-        |    archive: s3://my-archive/    # e.g. s3://my-archive-bucket/raw
-        |  shredded:
-        |    good: 0       # e.g. s3://my-out-bucket/shredded/good
-        |    bad: s3://foo        # e.g. s3://my-out-bucket/shredded/bad
-        |    errors:      # Leave blank unless :continue_on_unexpected_error: set to true below
-        |    archive: s3://bar # Where to archive shredded events to, e.g. s3://my-archive-bucket/shredded
-      """.stripMargin
-
-    val ast: Either[Error, Json] = parser.parse(s3Yaml)
-    val s3 = ast.flatMap(_.as[SnowplowConfig.SnowplowS3])
-
-    val path = List(CursorOp.DownField("good"), CursorOp.DownField("shredded"), CursorOp.DownField("buckets"))
-    s3.leftMap(_.asInstanceOf[DecodingFailure].history) must beLeft(path)
   }
 }

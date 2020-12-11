@@ -21,15 +21,13 @@ import cats.implicits._
 
 import cats.effect.Timer
 
-import fs2.Stream
-
 import shapeless.tag
 import shapeless.tag._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging, AWS, JDBC, Iglu}
-import com.snowplowanalytics.snowplow.rdbloader.config.{ CliConfig, Step }
+import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, LoaderMessage }
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities._
@@ -98,33 +96,20 @@ object Common {
     */
   def discover[F[_]: Monad: Timer: Cache: Logging: AWS](cliConfig: CliConfig): DiscoveryStream[F] = {
     // Shortcuts
-    val shredJob = cliConfig.configYaml.storage.versions.rdbShredder
     val region = cliConfig.configYaml.aws.s3.region
     val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
 
-    cliConfig.target.messageQueue match {
-      case Some(name) =>
-        AWS[F]
-          .readSqs(name)
-          .translate(LoaderAction.fromFK[F])
-          .evalMap { s =>
-            LoaderMessage.fromString(s.data) match {
-              case Right(message: LoaderMessage.ShreddingComplete) =>
-                DataDiscovery.fromLoaderMessage[F](region, assets, message).map { discovery => (discovery, s.ack) }
-              case Left(error) =>
-                LoaderAction.liftE[F, DataDiscovery](LoaderError.LoaderLocalError(error).asLeft[DataDiscovery]).map { discovery => (discovery, s.ack) }
-            }
-          }
-      case None =>
-        val target = DataDiscovery.DiscoveryTarget.Global(cliConfig.configYaml.aws.s3.buckets.shredded.good)
-
-        val original = DataDiscovery.discover[F](target, shredJob, region, assets)
-        val result = if (cliConfig.steps.contains(Step.ConsistencyCheck))
-          DataDiscovery.checkConsistency[F](original)
-        else original
-
-        Stream.eval(result).flatMap(Stream.emits).map(x => (x, Monad[F].unit))
-    }
+    AWS[F]
+      .readSqs(cliConfig.target.messageQueue)
+      .translate(LoaderAction.fromFK[F])
+      .evalMap { s =>
+        LoaderMessage.fromString(s.data) match {
+          case Right(message: LoaderMessage.ShreddingComplete) =>
+            DataDiscovery.fromLoaderMessage[F](region, assets, message).map { discovery => (discovery, s.ack) }
+          case Left(error) =>
+            LoaderAction.liftE[F, DataDiscovery](LoaderError.LoaderLocalError(error).asLeft[DataDiscovery]).map { discovery => (discovery, s.ack) }
+        }
+      }
   }
 
   /**
@@ -165,41 +150,6 @@ object Common {
 
   sealed trait SqlStringTag
 
-  /**
-    * Check if entry already exists in load manifest
-    * @param schema database schema, e.g. `atomic` to access manifest
-    * @param eventsTable atomic data table, usually `events` or temporary tablename
-    * @param possiblyEmpty flag denoting that atomic data *can* be empty
-    * @return true if manifest record exists and atomic data is empty, assuming folder contains no events
-    *         and next manifest record shouldn't be written
-    */
-  def checkLoadManifest[F[_]: Monad: Logging: JDBC](schema: String,
-                                                    eventsTable: EventsTable,
-                                                    possiblyEmpty: Boolean): LoaderAction[F, Boolean] = {
-    for {
-      latestAtomicTstamp <- getEtlTstamp(eventsTable)
-      isEmptyLoad <- latestAtomicTstamp match {
-        case Some(timestamp) => for {
-          _ <- Logging[F].print(s"Load manifest: latest timestamp in ${eventsTable.getDescriptor} is ${timestamp.etlTstamp}").liftA
-          item <- getManifestItem(schema, timestamp.etlTstamp)
-          empty <- item match {
-            case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp && possiblyEmpty =>
-              val message = s"Load manifest: record for ${manifest.etlTstamp} already exists, but atomic folder is empty"
-              Logging[F].print(message).liftA.as(true)
-            case Some(manifest) if manifest.etlTstamp == timestamp.etlTstamp =>
-              val message = getLoadManifestMessage(manifest)
-              LoaderAction.liftE[F, Boolean](LoaderError.LoadManifestError(message).asLeft)
-            case Some(record) =>
-              Logging[F].print(s"Load manifest: latest record ${record.show}").liftA.as(false)
-            case None =>
-              Logging[F].print(s"Load manifest: no records found").liftA.as(false)
-          }
-        } yield empty
-        case None => LoaderAction.rightT[F, Boolean](false)
-      }
-    } yield isEmptyLoad
-  }
-
   /** Get ETL timestamp of ongoing load */
   private[loaders] def getEtlTstamp[F[_]: JDBC](eventsTable: EventsTable): LoaderAction[F, Option[Timestamp]] = {
     val query =
@@ -224,10 +174,4 @@ object Common {
 
     JDBC[F].executeQuery[Option[LoadManifestItem]](SqlString.unsafeCoerce(query))
   }
-
-  private def getLoadManifestMessage(manifest: LoadManifestItem): String =
-    s"Load Manifest record for ${manifest.etlTstamp} already exists. Cannot proceed to loading. " +
-      s"Manifest item committed at ${manifest.commitTstamp} with ${manifest.eventCount} events " +
-      s"and ${manifest.shreddedCardinality} shredded types. " +
-      s"Use --skip ${Step.LoadManifestCheck.asString} to bypass this check"
 }

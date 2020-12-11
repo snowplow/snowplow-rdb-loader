@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.io.Source.fromInputStream
+
 import java.util.UUID
 
 import cats.Id
@@ -23,8 +24,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, S3, Semver}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder.{coerce => s3}
+import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, S3 }
 import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig
 import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig._
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
@@ -55,18 +55,11 @@ object SpecHelpers {
       SnowplowAws(
         SnowplowS3(
           "us-east-1",
-          SnowplowBuckets(
-            None,
-            s3("s3://snowplow-acme-storage/logs"),
-            ShreddedBucket(
-              s3("s3://snowplow-acme-storage/shredded/good/")
-            )
-          )
+          SnowplowBuckets(None)
         )
       ),
       Enrich(OutputCompression.None),
-      Storage(StorageVersions(Semver(0,12,0,Some(Semver.Prerelease.ReleaseCandidate(4))))),
-      Monitoring(Some(SnowplowMonitoring(Some(TrackerMethod.Get),Some("batch-pipeline"),Some("snplow.acme.com")))))
+      Monitoring(Some(SnowplowMonitoring("batch-pipeline","snplow.acme.com"))))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
 
@@ -85,7 +78,7 @@ object SpecHelpers {
     20000,
     None,
     None,
-    None,
+    "message-queue",
     None)
 
   val validTargetWithManifest = StorageTarget.RedshiftConfig(
@@ -103,7 +96,7 @@ object SpecHelpers {
     20000,
     None,
     None,
-    None,
+    "message-queue",
     None
   )
 
