@@ -15,12 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 import cats.implicits._
 
 import io.circe.{Error, Decoder, Json => Yaml}
-import io.circe.generic.auto._
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.decoding.ConfiguredDecoder
 import io.circe.yaml.parser
-
-import com.snowplowanalytics.snowplow.rdbloader.common.Semver
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.StringEnum
@@ -34,11 +31,9 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
 case class SnowplowConfig(
     aws: SnowplowConfig.SnowplowAws,
     enrich: SnowplowConfig.Enrich,
-    storage: SnowplowConfig.Storage,
     monitoring: SnowplowConfig.Monitoring)
 
 object SnowplowConfig {
-  import Codecs._
 
   /**
    * Parse YAML string as `SnowplowConfig` object
@@ -59,11 +54,7 @@ object SnowplowConfig {
 
   case class SnowplowS3(region: String, buckets: SnowplowBuckets)
 
-  case class SnowplowBuckets(jsonpathAssets: Option[Folder],
-                             log: Folder,
-                             shredded: ShreddedBucket)
-
-  case class ShreddedBucket(good: Folder)
+  case class SnowplowBuckets(jsonpathAssets: Option[Folder])
 
   // enrich section
 
@@ -75,26 +66,11 @@ object SnowplowConfig {
     case object Gzip extends OutputCompression { val asString = "GZIP" }
   }
 
-  // storage section
-
-  case class Storage(versions: StorageVersions)
-
-  case class StorageVersions(rdbShredder: Semver)
-
   // monitoring section
 
   case class Monitoring(snowplow: Option[SnowplowMonitoring])
 
-  case class SnowplowMonitoring(
-      method: Option[TrackerMethod],
-      appId: Option[String],
-      collector: Option[String])
-
-  sealed trait TrackerMethod extends StringEnum
-  object TrackerMethod {
-    case object Get extends TrackerMethod { val asString = "get" }
-    case object Post extends TrackerMethod { val asString = "post" }
-  }
+  case class SnowplowMonitoring(appId: String, collector: String)
 
   object Lens {
     import shapeless._
@@ -104,49 +80,34 @@ object SnowplowConfig {
   }
 
   /**
-   * Instances of circe `Decoder` type class for all `config.yml` structures
+   * Allow circe codecs decode snake case YAML keys into camel case
+   * Used by codecs with `ConfiguredDecoder`
+   * Codecs should be declared in exact this order (reverse of their appearence in class)
    */
-  object Codecs {
+  private[this] implicit val decoderConfiguration =
+    Configuration.default.withSnakeCaseMemberNames
 
-    /**
-     * Allow circe codecs decode snake case YAML keys into camel case
-     * Used by codecs with `ConfiguredDecoder`
-     * Codecs should be declared in exact this order (reverse of their appearence in class)
-     */
-    private implicit val decoderConfiguration =
-      Configuration.default.withSnakeCaseMemberNames
+  implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val decodeTrackerMethod: Decoder[TrackerMethod] =
-      StringEnum.decodeStringEnum[TrackerMethod]
+  implicit val monitoringDecoder: Decoder[Monitoring] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
-      ConfiguredDecoder.decodeCaseClass
+  implicit val decodeOutputCompression: Decoder[OutputCompression] =
+    StringEnum.decodeStringEnum[OutputCompression]
 
-    implicit val monitoringDecoder: Decoder[Monitoring] =
-      ConfiguredDecoder.decodeCaseClass
+  implicit val enrichDecoder: Decoder[Enrich] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val decodeOutputCompression: Decoder[OutputCompression] =
-      StringEnum.decodeStringEnum[OutputCompression]
+  implicit val bucketsDecoder: Decoder[SnowplowBuckets] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val enrichDecoder: Decoder[Enrich] =
-      ConfiguredDecoder.decodeCaseClass
+  implicit val s3Decoder: Decoder[SnowplowS3] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val bucketsDecoder: Decoder[SnowplowBuckets] =
-      ConfiguredDecoder.decodeCaseClass
+  implicit val awsDecoder: Decoder[SnowplowAws] =
+    ConfiguredDecoder.decodeCaseClass
 
-    implicit val s3Decoder: Decoder[SnowplowS3] =
-      ConfiguredDecoder.decodeCaseClass
-
-    implicit val awsDecoder: Decoder[SnowplowAws] =
-      ConfiguredDecoder.decodeCaseClass
-
-    implicit val storageVersionsDecoder: Decoder[StorageVersions] =
-      ConfiguredDecoder.decodeCaseClass
-
-    implicit val storageDecoder: Decoder[Storage] =
-      ConfiguredDecoder.decodeCaseClass
-
-    implicit val configDecoder: Decoder[SnowplowConfig] =
-      ConfiguredDecoder.decodeCaseClass
-  }
+  implicit val configDecoder: Decoder[SnowplowConfig] =
+    ConfiguredDecoder.decodeCaseClass
 }

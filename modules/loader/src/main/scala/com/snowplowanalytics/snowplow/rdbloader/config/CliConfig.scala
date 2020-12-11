@@ -10,8 +10,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Base64
 import java.nio.charset.StandardCharsets
@@ -21,15 +20,16 @@ import cats.data._
 import cats.implicits._
 
 import com.monovore.decline.{Opts, Command, Argument}
+
 import com.snowplowanalytics.iglu.client.Client
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{StringEnum, StorageTarget, S3}
 import io.circe.Json
 import io.circe.parser.{parse => parseJson}
 
 // This project
-import LoaderError._
-import generated.ProjectMetadata
+import com.snowplowanalytics.snowplow.rdbloader.common.{StringEnum, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError._
+import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
 
 /**
  * Validated and parsed result application config
@@ -46,7 +46,6 @@ case class CliConfig(
   configYaml: SnowplowConfig,
   target: StorageTarget,
   steps: Set[Step],
-  logKey: Option[S3.Key],
   dryRun: Boolean,
   resolverConfig: Json)
 
@@ -58,16 +57,11 @@ object CliConfig {
     "base64-encoded string with single storage target configuration JSON", "t", "target.json")
   val resolver = Opts.option[String]("resolver",
     "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
-  val logkey = Opts.option[String]("logkey",
-    "S3 key to dump logs", "l", "path").orNone
-  val include = Opts.option[Set[Step.IncludeStep]]("include",
-    "include optional work steps", "i").withDefault(Set.empty[Step.IncludeStep])
-  val skip = Opts.option[Set[Step.SkipStep]]("skip",
-    "skip default steps", "s").withDefault(Set.empty[Step.SkipStep])
+  val steps = Opts.option[Set[Step]]("steps", "steps to include", "s").withDefault(Step.defaultSteps)
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
-  val rawConfig = (config, target, resolver, logkey, include, skip, dryRun).mapN {
-    case (cfg, storage, iglu, log, i, s, dry) => RawConfig(cfg, storage, iglu, i.toSeq, s.toSeq, log, dry)
+  val rawConfig = (config, target, resolver, steps, dryRun).mapN {
+    case (cfg, storage, iglu, s, dry) => RawConfig(cfg, storage, iglu, s.toSeq, dry)
   }
 
   val parser = Command[RawConfig](ProjectMetadata.name, ProjectMetadata.version)(rawConfig)
@@ -96,19 +90,14 @@ object CliConfig {
    * @param config base64-encoded Snowplow config.yml
    * @param target base64-encoded storage target JSON
    * @param resolver base64-encoded Iglu Resolver JSON
-   * @param include sequence of of decoded steps to include
-   * @param skip sequence of of decoded steps to skip
-   * @param logkey filename, where RDB log dump will be saved
+   * @param steps sequence of of decoded steps to include
    * @param dryRun if RDB Loader should just discover data and print SQL
    */
-  private[config] case class RawConfig(
-    config: String,
-    target: String,
-    resolver: String,
-    include: Seq[Step.IncludeStep],
-    skip: Seq[Step.SkipStep],
-    logkey: Option[String],
-    dryRun: Boolean)
+  private[config] case class RawConfig(config: String,
+                                       target: String,
+                                       resolver: String,
+                                       steps: Seq[Step],
+                                       dryRun: Boolean)
 
   type Parsed[A] = ValidatedNel[ConfigError, A]
 
@@ -127,18 +116,10 @@ object CliConfig {
     def defaultMetavar: String = "base64"
   }
 
-  implicit def includeStepsArgumentInstance: Argument[Set[Step.IncludeStep]] =
-    new Argument[Set[Step.IncludeStep]] {
-      def read(string: String): ValidatedNel[String, Set[Step.IncludeStep]] =
-        string.split(",").toList.traverse(StringEnum.fromString[Step.IncludeStep](_).toValidatedNel).map(_.toSet)
-
-      def defaultMetavar: String = "steps"
-    }
-
-  implicit def skipStepsArgumentInstance: Argument[Set[Step.SkipStep]] =
-    new Argument[Set[Step.SkipStep]] {
-      def read(string: String): ValidatedNel[String, Set[Step.SkipStep]] =
-        string.split(",").toList.traverse(StringEnum.fromString[Step.SkipStep](_).toValidatedNel).map(_.toSet)
+  implicit def includeStepsArgumentInstance: Argument[Set[Step]] =
+    new Argument[Set[Step]] {
+      def read(string: String): ValidatedNel[String, Set[Step]] =
+        string.split(",").toList.traverse(StringEnum.fromString[Step](_).toValidatedNel).map(_.toSet)
 
       def defaultMetavar: String = "steps"
     }
@@ -153,13 +134,12 @@ object CliConfig {
    */
   private[config] def transform(rawConfig: RawConfig): ValidatedNel[ConfigError, CliConfig] = {
     val config: Parsed[SnowplowConfig] = base64decode(rawConfig.config).flatMap(SnowplowConfig.parse).toValidatedNel
-    val logkey: Parsed[Option[S3.Key]] = rawConfig.logkey.map(k => S3.Key.parse(k).leftMap(ConfigError).toValidatedNel).sequence
     val client: Parsed[(Json, Client[Id, Json])] = loadResolver(rawConfig.resolver).toValidatedNel
     val target: Parsed[StorageTarget] = client.andThen { case (_, r) => loadTarget(r, rawConfig.target) }
-    val steps = Step.constructSteps(rawConfig.skip.toSet, rawConfig.include.toSet)
+    val steps = rawConfig.steps.toSet
 
-    (target, config, logkey, client).mapN {
-      case (t, c, l, (j, _)) => CliConfig(c, t, steps, l, rawConfig.dryRun, j)
+    (target, config, client).mapN {
+      case (t, c, (j, _)) => CliConfig(c, t, steps, rawConfig.dryRun, j)
     }
   }
 

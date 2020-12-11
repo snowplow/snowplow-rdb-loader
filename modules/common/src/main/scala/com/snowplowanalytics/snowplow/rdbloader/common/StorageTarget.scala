@@ -50,7 +50,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def blacklistTabular: Option[List[SchemaCriterion]]   // None means tabular is disabled
-  def messageQueue: Option[String]
+  def messageQueue: String
   def sentryDsn: Option[URI]
 }
 
@@ -91,7 +91,7 @@ object StorageTarget {
                             sshTunnel: Option[TunnelConfig],
 
                             blacklistTabular: Option[List[SchemaCriterion]],
-                            messageQueue: Option[String],
+                            messageQueue: String,
                             sentryDsn: Option[URI])
     extends StorageTarget
 

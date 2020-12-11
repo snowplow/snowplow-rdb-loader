@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{ SnowplowConfig, Step }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{ SqlString, EventsTable, checkLoadManifest, AtomicEvents, TransitTable }
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
 
 
 /**
@@ -49,7 +49,7 @@ object RedshiftLoader {
                                       target: StorageTarget.RedshiftConfig,
                                       steps: Set[Step],
                                       discovery: DataDiscovery) =
-    loadFolder[F](steps, getStatements(config, target, steps, discovery))
+    loadFolder[F](getStatements(config, target, steps, discovery))
 
   /**
    * Perform data-loading for a single run folder.
@@ -57,16 +57,10 @@ object RedshiftLoader {
    * @param statements prepared load statements
    * @return application state
    */
-  def loadFolder[F[_]: Monad: Logging: JDBC](steps: Set[Step], statements: RedshiftLoadStatements): LoaderAction[F, Unit] = {
-    val checkManifest = steps.contains(Step.LoadManifestCheck)
-    val loadManifest = steps.contains(Step.LoadManifest)
-
+  def loadFolder[F[_]: Monad: Logging: JDBC](statements: RedshiftLoadStatements): LoaderAction[F, Unit] = {
     val loadTransaction: LoaderAction[F, Unit] = for {
-      empty <- getLoad[F](checkManifest, statements.dbSchema, statements.atomicCopy, statements.discovery.possiblyEmpty)
+      _ <- getLoad[F](statements.dbSchema, statements.atomicCopy)
       _ <- JDBC[F].executeUpdates(statements.shredded)
-      _ <- if (loadManifest && !empty) JDBC[F].executeUpdate(statements.manifest) *> Logging[F].print("Load manifest: added new record").liftA
-           else if (loadManifest && empty) Logging[F].print(EmptyMessage).liftA
-           else LoaderAction.unit[F]
     } yield ()
 
     for {
@@ -85,27 +79,21 @@ object RedshiftLoader {
     * Get COPY action, either straight or transit (along with load manifest check)
     * @return
     */
-  def getLoad[F[_]: Monad: Logging: JDBC](checkManifest: Boolean, dbSchema: String, copy: AtomicCopy, empty: Boolean): LoaderAction[F, Boolean] = {
-    def check(eventsTable: EventsTable): LoaderAction[F, Boolean] =
-      if (checkManifest) checkLoadManifest(dbSchema, eventsTable, empty) else LoaderAction.rightT(false)
-
+  def getLoad[F[_]: Monad: Logging: JDBC](dbSchema: String, copy: AtomicCopy): LoaderAction[F, Unit] =
     copy match {
       case AtomicCopy.Straight(copyStatement) => for {
         _ <- JDBC[F].executeUpdate(copyStatement)
-        emptyLoad <- check(AtomicEvents(dbSchema))
-      } yield emptyLoad
+      } yield ()
       case AtomicCopy.Transit(copyStatement) =>
         val create = RedshiftLoadStatements.createTransitTable(dbSchema)
         val destroy = RedshiftLoadStatements.destroyTransitTable(dbSchema)
         for {
           _ <- JDBC[F].executeUpdate(create)
           // TODO: Transit copy provides more reliable empty-check
-          emptyLoad <- check(TransitTable(dbSchema))
           _ <- JDBC[F].executeUpdate(copyStatement)
           _ <- JDBC[F].executeUpdate(destroy)
-        } yield emptyLoad
+        } yield ()
     }
-  }
 
   /**
    * Return action executing VACUUM statements if there's any vacuum statements,
@@ -139,6 +127,4 @@ object RedshiftLoader {
       case None => Logging[F].print("VACUUM queries skipped").liftA
     }
   }
-
-  private val EmptyMessage = "Not adding record to load manifest as atomic data seems to be empty"
 }

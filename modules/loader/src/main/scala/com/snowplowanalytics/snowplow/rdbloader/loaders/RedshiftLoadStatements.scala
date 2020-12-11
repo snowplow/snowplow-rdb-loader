@@ -39,7 +39,6 @@ case class RedshiftLoadStatements(
     shredded: List[SqlString],
     vacuum: Option[List[SqlString]],
     analyze: Option[List[SqlString]],
-    manifest: SqlString,
     discovery: DataDiscovery) {
   def base = discovery.base
 }
@@ -72,7 +71,7 @@ object RedshiftLoadStatements {
    */
   private[loaders] def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], discovery: DataDiscovery): RedshiftLoadStatements = {
     val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
-    val transitCopy = target.messageQueue.isDefined && steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
+    val transitCopy = steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
     val atomic = buildEventsCopy(config, target, discovery.atomicEvents, transitCopy)
     buildLoadStatements(target, steps, atomic, shreddedStatements, discovery)
   }
@@ -99,7 +98,6 @@ object RedshiftLoadStatements {
    ): RedshiftLoadStatements = {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
-    val manifestStatement = getManifestStatements(target.schema, shreddedStatements.size)
     val eventsTable = Common.getEventsTable(target)
 
     // Vacuum all tables including events-table
@@ -114,7 +112,7 @@ object RedshiftLoadStatements {
       Some(statements)
     } else None
 
-    RedshiftLoadStatements(target.schema, atomicCopy, shreddedCopyStatements, vacuum, analyze, manifestStatement, discovery)
+    RedshiftLoadStatements(target.schema, atomicCopy, shreddedCopyStatements, vacuum, analyze, discovery)
   }
 
 
@@ -156,26 +154,6 @@ object RedshiftLoadStatements {
            | TRUNCATECOLUMNS
            | ACCEPTINVCHARS $compressionFormat""".stripMargin))
     }
-  }
-
-  /**
-   * Build standard manifest-table insertion
-   *
-   * @param databaseSchema storage target schema
-   * @param shreddedCardinality number of loaded shredded types
-   * @return SQL statement ready to be executed
-   */
-  def getManifestStatements(databaseSchema: String, shreddedCardinality: Int): SqlString = {
-    val eventsTable = Common.getEventsTable(databaseSchema)
-
-    SqlString.unsafeCoerce(
-      s"""INSERT INTO ${Common.getManifestTable(databaseSchema)}
-         | SELECT etl_tstamp, sysdate AS commit_tstamp, count(*) AS event_count, $shreddedCardinality AS shredded_cardinality
-         | FROM $eventsTable
-         | WHERE etl_tstamp IS NOT null
-         | GROUP BY 1
-         | ORDER BY etl_tstamp DESC
-         | LIMIT 1""".stripMargin)
   }
 
   /**

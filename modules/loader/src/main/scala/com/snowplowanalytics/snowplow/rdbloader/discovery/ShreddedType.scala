@@ -126,9 +126,6 @@ object ShreddedType {
       """/format=(?<format>[a-zA-Z0-9-_]+)""" +
       """/version=(?<model>[1-9][0-9]*)$""").r
 
-  /** Version of legacy Shred job, where TSV output was not possible */
-  val ShredJobBeforeTabularVersion = Semver(0,15,0)
-
   /**
    * "shredded-types" + vendor + name + format + version + filename
    */
@@ -235,7 +232,7 @@ object ShreddedType {
   def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (Boolean, Info)] = {
     val (bucket, path) = S3.splitS3Key(key)
     val (subpath, shredpath) = splitFilpath(path)
-    extractSchemaKey(shredpath, shredJob) match {
+    extractSchemaKey(shredpath) match {
       case Some(Extracted.Legacy(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)))) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
         val result = Info(prefix, vendor, name, model, shredJob)
@@ -251,8 +248,8 @@ object ShreddedType {
 
   sealed trait Extracted
   object Extracted {
-    case class Legacy(key: SchemaKey) extends Extracted
-    case class Tabular(vendor: String, name: String, format: String, model: Int) extends Extracted
+    final case class Legacy(key: SchemaKey) extends Extracted
+    final case class Tabular(vendor: String, name: String, format: String, model: Int) extends Extracted
   }
 
   /**
@@ -262,15 +259,14 @@ object ShreddedType {
    * This function transforms any of above valid paths to `SchemaKey`
    *
    * @param subpath S3 subpath of four `SchemaKey` elements
-   * @param shredJob shred job version to decide what format should be present
    * @return valid schema key if found
    */
-  def extractSchemaKey(subpath: String, shredJob: Semver): Option[Extracted] =
+  def extractSchemaKey(subpath: String): Option[Extracted] =
     subpath match {
       case ShreddedSubpathPattern(vendor, name, format, version) =>
         val uri = s"iglu:$vendor/$name/$format/$version"
         SchemaKey.fromUri(uri).toOption.map(Extracted.Legacy)
-      case ShreddedSubpathPatternTabular(vendor, name, format, model) if shredJob >= ShredJobBeforeTabularVersion =>
+      case ShreddedSubpathPatternTabular(vendor, name, format, model) =>
         scala.util.Try(model.toInt).toOption match {
           case Some(m) => Extracted.Tabular(vendor, name, format, m).some
           case None => None
