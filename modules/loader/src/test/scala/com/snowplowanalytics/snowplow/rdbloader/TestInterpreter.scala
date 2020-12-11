@@ -125,8 +125,6 @@ object TestInterpreter {
       Test.pure("No COPY in the test")
     def track(result: Either[LoaderError, Unit]): Test[Unit] =
       Test.pure(())
-    def dump(key: Key)(implicit S: AWS[Test]): Test[Either[String, Key]] =
-      Test.pure(key.asRight)
     def print(message: String): Test[Unit] =
       results.print(message)
     def trackException(e: Throwable): Test[Unit] =

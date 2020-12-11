@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -66,7 +66,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
 
   def e5 = {
     val input = "shredded-tsv/vendor=com.snowplow/name=event/format=jsonschema/version=1"
-    ShreddedType.extractSchemaKey(input, Semver(0,18,0)) must beSome(Extracted.Tabular("com.snowplow", "event", "jsonschema", 1))
+    ShreddedType.extractSchemaKey(input) must beSome(Extracted.Tabular("com.snowplow", "event", "jsonschema", 1))
   }
 
   def e6 = {
@@ -78,7 +78,6 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
     val result = ShreddedType.transformPath(key, Semver(0,16,0))
     result must beRight(expected)
   }
-
 }
 
 object ShreddedTypeSpec {
@@ -99,14 +98,9 @@ object ShreddedTypeSpec {
   } yield r
 
   implicit val subpath: Gen[String] = for {
-    s <- Gen.listOf(Gen.listOf(Gen.alphaNumChar).map(_.mkString).suchThat(!_.isEmpty))
+    s <- Gen.listOf(Gen.listOf(Gen.alphaNumChar).map(_.mkString).suchThat(_.nonEmpty))
     path = s.mkString("/")
   } yield if (path.isEmpty) "" else path + "/"
-
-  /**
-    * Elements for shredded path
-    */
-  type ShreddedTypeElements = (String, String, String, String, Int, Int, Int)
 
   /**
     * Generator of `ShreddedTypeElements`

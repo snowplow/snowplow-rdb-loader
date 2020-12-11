@@ -18,7 +18,7 @@ import java.time.format.DateTimeFormatter
 import scala.util.control.NonFatal
 
 import org.joda.time.DateTime
-import cats.{Id, Monad}
+import cats.Id
 import cats.data.NonEmptyList
 import cats.implicits._
 
@@ -31,10 +31,10 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey
 
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
-import com.snowplowanalytics.snowplow.scalatracker.emitters.id.{SyncEmitter, SyncBatchEmitter}
+import com.snowplowanalytics.snowplow.scalatracker.emitters.id.SyncBatchEmitter
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, _}
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.{TrackerMethod, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.Monitoring
 
 import io.sentry.Sentry
 
@@ -46,9 +46,6 @@ trait Logging[F[_]] {
 
   /** Track result via Snowplow tracker */
   def track(result: Either[LoaderError, Unit]): F[Unit]
-
-  /** Dump log to S3 */
-  def dump(key: S3.Key)(implicit S: AWS[F]): F[Either[String, S3.Key]]
 
   /** Print message to stdout */
   def print(message: String): F[Unit]
@@ -84,18 +81,6 @@ object Logging {
         }
       }
 
-      /** Dump log to S3 */
-      def dump(key: S3.Key)(implicit S: AWS[F]): F[Either[String, S3.Key]] =
-        log(s"Dumping $key") *>
-          Monad[F].ifM(S.keyExists(key))(
-            Monad[F].pure(Left(s"S3 log object [$key] already exists")),
-            for {
-              logs <- getMessages.map(_.mkString("\n") + "\n")
-              putResult <- S.putObject(key, logs).value
-            } yield putResult.as(key).leftMap(_.show)
-          )
-
-
       /** Print message to stdout */
       def print(message: String): F[Unit] =
         for {
@@ -121,9 +106,6 @@ object Logging {
           case None =>
             Sync[F].unit
         }
-
-      private def getMessages: F[List[String]] =
-        messages.get.map(_.reverse)
     }
 
   /**
@@ -133,19 +115,12 @@ object Logging {
    * @return some tracker if enabled, none otherwise
    */
   def initializeTracking[F[_]: Sync](monitoring: Monitoring): F[Option[Tracker[Id]]] = {
-    monitoring.snowplow.flatMap(_.collector) match {
+    monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         Sync[F].delay {
-          val emitter: Emitter[Id] = monitoring.snowplow.flatMap(_.method) match {
-            case Some(TrackerMethod.Get) =>
-              SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
-            case Some(TrackerMethod.Post) =>
-              SyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 2)
-            case None =>
-              SyncEmitter.createAndStart(host, port = Some(port), callback = Some(callback))
-          }
-
-          val tracker = new Tracker[Id](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.flatMap(_.appId).getOrElse("rdb-loader"))
+          val emitter: Emitter[Id] =
+            SyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 1, callback = Some(callback))
+          val tracker = new Tracker[Id](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader"))
           Some(tracker)
         }
       case Some(_) => Sync[F].pure(none[Tracker[Id]])
