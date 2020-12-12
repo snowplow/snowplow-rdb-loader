@@ -51,7 +51,7 @@ object LoaderMessage {
     implicit val loaderMessageFormatEncoder: Encoder[Format] =
       Encoder.instance(_.toString.asJson)
     implicit val loaderMessageFormatDecoder: Decoder[Format] =
-      Decoder.instance { c => c.as[String] match {
+      Decoder.instance { c => c.as[String].map(_.toUpperCase) match {
         case Right("TSV") => Format.TSV.asRight
         case Right("JSON") => Format.JSON.asRight
         case Right(other) => DecodingFailure(s"$other is unexpected format", c.history).asLeft

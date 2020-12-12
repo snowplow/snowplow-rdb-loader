@@ -90,7 +90,7 @@ object JDBC {
       _ = props.setProperty("user", target.username)
       _ = props.setProperty("password", p)
       jdbcConnection <- target match {
-        case r: StorageTarget.RedshiftConfig =>
+        case r: StorageTarget.Redshift =>
           r.jdbc.validation match {
             case Left(error) =>
               Sync[F].raiseError[Connection](new IllegalArgumentException(error.message)) // Should never happen

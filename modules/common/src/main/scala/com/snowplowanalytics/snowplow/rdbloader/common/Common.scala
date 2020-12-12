@@ -12,9 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import cats.data._
-
-import io.circe._
+import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
@@ -51,40 +49,19 @@ object Common {
       .replaceAll("""\.""", "_")
       .toLowerCase
 
-
+  def isTabular(config: Config[_])(schemaKey: SchemaKey): Boolean =
+    config.formats.default match {
+      case LoaderMessage.Format.TSV =>
+        val notJson = !config.formats.json.exists(c => c.matches(schemaKey))
+        val notSkip = !config.formats.skip.exists(c => c.matches(schemaKey))
+        notJson && notSkip
+      case LoaderMessage.Format.JSON =>
+        config.formats.tsv.exists(c => c.matches(schemaKey))
+    }
 
   /** Registry embedded into RDB Loader jar */
   private val loaderRefConf = Registry.Config("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
   val LoaderRegistry = Registry.Embedded(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
-
-  /**
-   * Syntax extension to transform `Either` with string as failure
-   * into circe-appropriate decoder result
-   */
-  implicit class ParseErrorOps[A](val error: Either[String, A]) extends AnyVal {
-    def asDecodeResult(hCursor: HCursor): Decoder.Result[A] = error match {
-      case Right(success) => Right(success)
-      case Left(message) => Left(DecodingFailure(message, hCursor.history))
-    }
-  }
-
-  /**
-   * Syntax extension to parse JSON objects with known keys
-   */
-  implicit class JsonHashOps(val obj: Map[String, Json]) extends AnyVal {
-    def getKey(key: String, hCursor: HCursor): Decoder.Result[Json] = obj.get(key) match {
-      case Some(success) => Right(success)
-      case None => Left(DecodingFailure(s"Key [$key] is missing", hCursor.history))
-    }
-  }
-
-  /**
-   * Syntax extension to transform left type in `ValidationNel`
-   */
-  implicit class LeftMapNel[L, R](val validation: ValidatedNel[L, R]) extends AnyVal {
-    def leftMapNel[LL](l: L => LL): ValidatedNel[LL, R] =
-      validation.leftMap(_.map(l))
-  }
 
   /**
    * Extract integer from string if it contains only valid number
