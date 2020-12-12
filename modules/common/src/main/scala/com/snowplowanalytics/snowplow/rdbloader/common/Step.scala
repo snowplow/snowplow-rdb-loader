@@ -10,9 +10,9 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.config
+package com.snowplowanalytics.snowplow.rdbloader.common
 
-import com.snowplowanalytics.snowplow.rdbloader.common.StringEnum
+import io.circe.Decoder
 
 /**
  * Step is part of loading process or result SQL-statement
@@ -24,6 +24,6 @@ object Step {
   case object Vacuum extends Step { def asString = "vacuum" }
   case object TransitCopy extends Step { def asString = "transit_copy" }
 
-  /** Steps included into app by default */
-  val defaultSteps: Set[Step] = Set(Step.Analyze)
+  implicit val stepDecoder: Decoder[Step] =
+    StringEnum.decodeStringEnum[Step]
 }

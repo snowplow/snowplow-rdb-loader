@@ -39,7 +39,6 @@ import eu.timepit.refined.types.all.TrimmedString
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.SnowplowAws
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 
@@ -67,11 +66,11 @@ object AWS {
   /**
    * Create S3 client, backed by AWS Java SDK
    *
-   * @param awsConfig Snowplow AWS Configuration
+   * @param region AWS region
    * @return Snowplow-specific S3 client
    */
-  def getClient[F[_]: Sync](awsConfig: SnowplowAws): F[AmazonS3] =
-    Sync[F].delay(AmazonS3ClientBuilder.standard().withRegion(awsConfig.s3.region).build())
+  def getClient[F[_]: Sync](region: String): F[AmazonS3] =
+    Sync[F].delay(AmazonS3ClientBuilder.standard().withRegion(region).build())
 
   def s3Interpreter[F[_]: ConcurrentEffect](client: AmazonS3): AWS[F] = new AWS[F] {
 

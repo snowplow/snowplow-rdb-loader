@@ -113,6 +113,13 @@ object BuildSettings {
     }
   )
 
+  /** Add `config` directory as a resource */
+  lazy val addExampleConfToTestCp = Seq(
+    unmanagedClasspath in Test += {
+      baseDirectory.value.getParentFile.getParentFile / "config"
+    }
+  )
+
   /**
    * Makes package (build) metadata available withing source code
    */

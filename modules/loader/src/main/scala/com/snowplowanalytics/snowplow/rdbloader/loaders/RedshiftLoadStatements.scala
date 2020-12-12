@@ -13,13 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.loaders
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.RedshiftConfig
-import com.snowplowanalytics.snowplow.rdbloader.config.{SnowplowConfig, Step}
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig.OutputCompression
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, Step}
+import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.Redshift
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{AtomicEvents, SqlString, TransitTable}
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{TransitTable, AtomicEvents, SqlString}
 
 
 /**
@@ -53,27 +51,15 @@ object RedshiftLoadStatements {
     final case class Transit(copy: SqlString) extends AtomicCopy
   }
 
-  /** Next version of Statements-generator (not yet used anywhere) */
-  case class Helper(
-      dbSchema: String,
-      region: String,
-      roleArn: String,
-      maxError: Int,
-
-      outputCompression: OutputCompression,
-      steps: Set[Step],
-
-      discovery: DataDiscovery)
-
   /**
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
-  private[loaders] def getStatements(config: SnowplowConfig, target: RedshiftConfig, steps: Set[Step], discovery: DataDiscovery): RedshiftLoadStatements = {
-    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, target, _))
-    val transitCopy = steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
-    val atomic = buildEventsCopy(config, target, discovery.atomicEvents, transitCopy)
-    buildLoadStatements(target, steps, atomic, shreddedStatements, discovery)
+  private[loaders] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftLoadStatements = {
+    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, _))
+    val transitCopy = config.steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
+    val atomic = buildEventsCopy(config, discovery.atomicEvents, transitCopy)
+    buildLoadStatements(config.storage, config.steps, atomic, shreddedStatements, discovery)
   }
 
   /**
@@ -89,12 +75,11 @@ object RedshiftLoadStatements {
    * @param discovery original discovery object
    * @return statements ready to be executed on Redshift
    */
-  def buildLoadStatements(
-      target: RedshiftConfig,
-      steps: Set[Step],
-      atomicCopy: AtomicCopy,
-      shreddedStatements: List[ShreddedStatements],
-      discovery: DataDiscovery
+  def buildLoadStatements(target: Redshift,
+                          steps: Set[Step],
+                          atomicCopy: AtomicCopy,
+                          shreddedStatements: List[ShreddedStatements],
+                          discovery: DataDiscovery
    ): RedshiftLoadStatements = {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
@@ -125,16 +110,16 @@ object RedshiftLoadStatements {
    * @param transitCopy COPY not straight to events table, but to temporary local table
    * @return valid SQL statement to LOAD
    */
-  def buildEventsCopy(config: SnowplowConfig, target: RedshiftConfig, s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
-    val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
-    val eventsTable = Common.getEventsTable(target)
+  def buildEventsCopy(config: Config[Redshift], s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
+    val compressionFormat = getCompressionFormat(config.compression)
+    val eventsTable = Common.getEventsTable(config.storage)
 
     if (transitCopy) {
       AtomicCopy.Transit(SqlString.unsafeCoerce(
         s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
-           | CREDENTIALS 'aws_iam_role=${target.roleArn}'
-           | REGION AS '${config.aws.s3.region}'
-           | MAXERROR ${target.maxError}
+           | CREDENTIALS 'aws_iam_role=${config.storage.roleArn}'
+           | REGION AS '${config.region}'
+           | MAXERROR ${config.storage.maxError}
            | TIMEFORMAT 'auto'
            | DELIMITER '$EventFieldSeparator'
            | EMPTYASNULL
@@ -144,9 +129,9 @@ object RedshiftLoadStatements {
     } else {
       AtomicCopy.Straight(SqlString.unsafeCoerce(
         s"""COPY $eventsTable FROM '$s3path'
-           | CREDENTIALS 'aws_iam_role=${target.roleArn}'
-           | REGION AS '${config.aws.s3.region}'
-           | MAXERROR ${target.maxError}
+           | CREDENTIALS 'aws_iam_role=${config.storage.roleArn}'
+           | REGION AS '${config.region}'
+           | MAXERROR ${config.storage.maxError}
            | TIMEFORMAT 'auto'
            | DELIMITER '$EventFieldSeparator'
            | EMPTYASNULL
@@ -163,15 +148,15 @@ object RedshiftLoadStatements {
    * @param tableName valid Redshift table name for shredded type
    * @return valid SQL statement to LOAD
    */
-  def buildCopyShreddedStatement(config: SnowplowConfig, shreddedType: ShreddedType, tableName: String, maxError: Int, roleArn: String): SqlString = {
-    val compressionFormat = getCompressionFormat(config.enrich.outputCompression)
+  def buildCopyShreddedStatement(config: Config[_], shreddedType: ShreddedType, tableName: String, maxError: Int, roleArn: String): SqlString = {
+    val compressionFormat = getCompressionFormat(config.compression)
 
     shreddedType match {
       case ShreddedType.Json(_, jsonPathsFile) =>
         SqlString.unsafeCoerce(
           s"""COPY $tableName FROM '${shreddedType.getLoadPath}'
              | CREDENTIALS 'aws_iam_role=$roleArn' JSON AS '$jsonPathsFile'
-             | REGION AS '${config.aws.s3.region}'
+             | REGION AS '${config.region}'
              | MAXERROR $maxError
              | TIMEFORMAT 'auto'
              | TRUNCATECOLUMNS
@@ -180,7 +165,7 @@ object RedshiftLoadStatements {
         SqlString.unsafeCoerce(
           s"""COPY $tableName FROM '${shreddedType.getLoadPath}'
              | CREDENTIALS 'aws_iam_role=$roleArn'
-             | REGION AS '${config.aws.s3.region}'
+             | REGION AS '${config.region}'
              | MAXERROR $maxError
              | TIMEFORMAT 'auto'
              | DELIMITER '$EventFieldSeparator'
@@ -240,9 +225,9 @@ object RedshiftLoadStatements {
    * @param shreddedType full info about shredded type found in `shredded/good`
    * @return three SQL-statements to load `shreddedType` from S3
    */
-  private def transformShreddedType(config: SnowplowConfig, target: RedshiftConfig, shreddedType: ShreddedType): ShreddedStatements = {
-    val tableName = target.shreddedTable(ShreddedType.getTableName(shreddedType))
-    val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, target.maxError, target.roleArn)
+  private def transformShreddedType(config: Config[Redshift], shreddedType: ShreddedType): ShreddedStatements = {
+    val tableName = config.storage.shreddedTable(ShreddedType.getTableName(shreddedType))
+    val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, config.storage.maxError, config.storage.roleArn)
     val analyze = buildAnalyzeStatement(tableName)
     val vacuum = buildVacuumStatement(tableName)
     ShreddedStatements(copyFromJson, analyze, vacuum)
@@ -251,8 +236,8 @@ object RedshiftLoadStatements {
   /**
    * Stringify output codec to use in SQL statement
    */
-  private def getCompressionFormat(outputCodec: SnowplowConfig.OutputCompression): String = outputCodec match {
-    case SnowplowConfig.OutputCompression.None => ""
-    case SnowplowConfig.OutputCompression.Gzip => "GZIP"
+  private def getCompressionFormat(outputCodec: Config.OutputCompression): String = outputCodec match {
+    case Config.OutputCompression.None => ""
+    case Config.OutputCompression.Gzip => "GZIP"
   }
 }
