@@ -62,8 +62,8 @@ object Main extends IOApp {
     import dsls._
 
     discover[IO](config).evalMap { case (discovery, _) =>
-      val jdbc = SSH.resource[IO](config.target.sshTunnel) *>
-        JDBC.interpreter[IO](config.target, config.dryRun)
+      val jdbc = SSH.resource[IO](config.config.storage.sshTunnel) *>
+        JDBC.interpreter[IO](config.config.storage, config.dryRun)
 
       LoaderAction(jdbc.use { implicit conn => load[IO](config, discovery).value })
     }

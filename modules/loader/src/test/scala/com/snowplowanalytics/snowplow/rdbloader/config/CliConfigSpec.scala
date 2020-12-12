@@ -12,129 +12,106 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.config
 
-import cats.data.{Validated, NonEmptyList}
+import java.util.Base64
+
+import cats.data.Validated
 
 // specs2
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError.ConfigError
-
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 
 class CliConfigSpec extends Specification {
+  import CliConfigSpec._
   "parse" should {
     "parse minimal valid configuration" in {
       val cli = Array(
-        "--config", configYml,
-        "--resolver", resolverConfig,
-        "--target", target)
+        "--config", configB64,
+        "--resolver", resolverConfig)
 
-      val expectedSteps: Set[Step] = Set(Step.Analyze)
-
-      val expected = CliConfig(validConfig, validTarget, expectedSteps, false, resolverJson)
-
+      val expected = CliConfig(validConfig, false, resolverJson)
       val result = CliConfig.parse(cli)
-
       result must beEqualTo(Validated.Valid(expected))
     }
 
     "collect custom steps" in {
       val cli = Array(
-        "--config", configYml,
-        "--resolver", resolverConfig,
-        "--target", target,
-        "-s", "vacuum,analyze")
+        "--config", configB64,
+        "--resolver", resolverConfig)
 
-      val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum)
-
-      val expected = CliConfig(validConfig, validTarget, expectedSteps, false, resolverJson)
+      val expected = CliConfig(validConfig, false, resolverJson)
 
       val result = CliConfig.parse(cli)
 
       result must beEqualTo(Validated.Valid(expected))
-    }
-
-    "aggregate errors" in {
-      val cli = Array(
-        "--config", invalidConfigYml,
-        "--resolver", resolverConfig,
-        "--target", invalidTarget,
-        "-s", "vacuum")
-
-      val result = CliConfig.parse(cli)
-
-      result must be like {
-        case Validated.Invalid(nel) =>
-          val errors = nel.toList
-          val idDecoding = errors must contain(ConfigError("DecodingFailure at .id: Attempt to decode value on failed cursor"))
-          val bucketDecoding = errors must contain(ConfigError("DecodingFailure at .aws.s3.buckets.jsonpath_assets: Bucket name must start with s3:// prefix"))
-          val validation = errors must contain(beLike[ConfigError] {
-            case ConfigError(message) =>
-              message must startWith("iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/1-0-0 Instance is not valid against its schema")
-          })
-
-          idDecoding.and(bucketDecoding).and(validation)
-      }
-    }
-
-    "return Validated.Invalid on invalid CLI options" in {
-      val cli = Array(
-        "--config", configYml,
-        "--resolver", resolverConfig,
-        "--target", target,
-        "-s", "vacuum,nosuchstep")
-
-      val result = CliConfig.parse(cli)
-
-      result must be like {
-        case Validated.Invalid(NonEmptyList(ConfigError(error), Nil)) => error must startWith("Unknown Step [nosuchstep]")
-        case _ => ko("CLI args are not invalidated")
-      }
     }
 
     "parse CLI options with dry-run" in {
       val cli = Array(
-        "--config", configYml,
+        "--config", configB64,
         "--resolver", resolverConfig,
-        "--target", target,
         "--dry-run")
 
-      val expected = CliConfig(validConfig, validTarget, Step.defaultSteps, true, resolverJson)
-
-      val result = CliConfig.parse(cli)
-
-      result must beEqualTo(Validated.Valid(expected))
-    }
-
-    "parse CLI options with skipped consistency check" in {
-      val cli = Array(
-        "--config", configYml,
-        "--resolver", resolverConfig,
-        "--steps", "transit_copy,analyze",
-        "--target", target)
-
-      val expectedSteps: Set[Step] = Set(Step.Analyze, Step.TransitCopy)
-
-      val expected = CliConfig(validConfig, validTarget, expectedSteps, false, resolverJson)
-
-      val result = CliConfig.parse(cli)
-
-      result must beEqualTo(Validated.Valid(expected))
-    }
-
-    "parse CLI options without log key" in {
-      val cli = Array(
-        "--config", configYml,
-        "--resolver", resolverConfig,
-        "--target", target)
-
-      val expectedSteps: Set[Step] = Set(Step.Analyze)
-
-      val expected = CliConfig(validConfig, validTarget, expectedSteps, false, resolverJson)
+      val expected = CliConfig(validConfig, true, resolverJson)
 
       val result = CliConfig.parse(cli)
 
       result must beEqualTo(Validated.Valid(expected))
     }
   }
+}
+
+object CliConfigSpec {
+  val configPlain = """
+    {
+      name         = "Acme Redshift"
+      id           = "123e4567-e89b-12d3-a456-426655440000"
+      region       = "us-east-1"
+      jsonpaths    = null
+      compression  = "GZIP"
+      messageQueue = "messages"
+
+      storage = {
+        "type":     "redshift",
+
+        "host":     "redshift.amazon.com",
+        "database": "snowplow",
+        "port":     5439,
+        "roleArn":  "${role_arn}",
+        "schema":   "atomic",
+        "username": "storage-loader",
+        "password": "secret",
+        "jdbc": { "ssl": true },
+        "maxError":  10,
+        "compRows":  100000,
+        "sshTunnel": null
+      },
+
+      monitoring = {
+        "snowplow": {
+          "collector": "snplow.acme.com",
+          "appId": "redshift-loader"
+        },
+        "sentryDsn": "http://sentry.acme.com"
+      },
+
+      formats = {
+        "default": "TSV",
+        "json": [
+          "iglu:com.acme/json-event/jsonschema/1-0-0"
+        ],
+        "tsv": [
+          "iglu:com.acme/tsv-event/jsonschema/1-*-*",
+          "iglu:com.acme/tsv-event/jsonschema/2-*-*"
+        ],
+        "skip": [
+          "iglu:com.acme/skip-event/jsonschema/1-*-*"
+        ]
+      },
+
+      steps = []
+    }"""
+
+  val configB64 = new String(Base64.getEncoder.encode(configPlain.getBytes))
+
 }

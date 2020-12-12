@@ -12,60 +12,30 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.io.Source.fromInputStream
-
 import java.util.UUID
+
+import scala.io.Source.fromInputStream
 
 import cats.Id
 
 import io.circe.jawn.parse
 
-import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.core.SelfDescribingData
-import com.snowplowanalytics.iglu.core.circe.implicits._
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{StorageTarget, S3 }
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig
-import com.snowplowanalytics.snowplow.rdbloader.config.SnowplowConfig._
+import com.snowplowanalytics.iglu.client.Resolver
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, StorageTarget, Config, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
 
 object SpecHelpers {
-
-  val configYmlStream = getClass.getResourceAsStream("/valid-config.yml.base64")
-  val configYml = fromInputStream(configYmlStream).getLines.mkString("\n")
 
   val resolverStream = getClass.getResourceAsStream("/resolver.json.base64")
   val resolverConfig = fromInputStream(resolverStream).getLines.mkString("\n")
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
   val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
 
-  val targetStream = getClass.getResourceAsStream("/valid-redshift.json.base64")
-  val target = fromInputStream(targetStream).getLines.mkString("\n")
-
-  // config.yml with invalid raw.in S3 path
-  val invalidConfigYmlStream = getClass.getResourceAsStream("/invalid-config.yml.base64")
-  val invalidConfigYml = fromInputStream(invalidConfigYmlStream).getLines.mkString("\n")
-
-  // target config with string as maxError
-  val invalidTargetStream = getClass.getResourceAsStream("/invalid-redshift.json.base64")
-  val invalidTarget = fromInputStream(invalidTargetStream).getLines.mkString("\n")
-
-  val validConfig =
-    SnowplowConfig(
-      SnowplowAws(
-        SnowplowS3(
-          "us-east-1",
-          SnowplowBuckets(None)
-        )
-      ),
-      Enrich(OutputCompression.None),
-      Monitoring(Some(SnowplowMonitoring("batch-pipeline","snplow.acme.com"))))
-
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
-
-  val validTarget = StorageTarget.RedshiftConfig(
-    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
-    "AWS Redshift enriched events storage",
+  val validTarget = StorageTarget.Redshift(
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
     5439,
@@ -76,14 +46,45 @@ object SpecHelpers {
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
     20000,
-    None,
-    None,
-    "message-queue",
     None)
 
-  val validTargetWithManifest = StorageTarget.RedshiftConfig(
-    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
-    "AWS Redshift enriched events storage",
+  val validConfig: Config[StorageTarget] = Config(
+    "Acme Redshift",
+    UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
+    "us-east-1",
+    None,
+    Config.OutputCompression.Gzip,
+    Config.Monitoring(
+      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
+      None
+    ),
+    "messages",
+    StorageTarget.Redshift(
+      "redshift.amazon.com",
+      "snowplow",
+      5439,
+      StorageTarget.RedshiftJdbc(None, None, None, None, None, None, None, Some(true),None,None,None,None),
+      "${role_arn}",
+      "atomic",
+      "storage-loader",
+      StorageTarget.PasswordConfig.PlainText("secret"),
+      10,
+      100000,
+      None
+    ),
+    Config.Formats(
+      LoaderMessage.Format.TSV,
+      List(
+        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
+        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
+      ),
+      List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
+      List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+    ),
+    Set.empty
+  )
+
+  val validTargetWithManifest = StorageTarget.Redshift(
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
     5439,
@@ -94,9 +95,6 @@ object SpecHelpers {
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
     20000,
-    None,
-    None,
-    "message-queue",
     None
   )
 
@@ -159,14 +157,6 @@ object SpecHelpers {
       // If we haven't specialized this type, just use its toString.
       case _ => a.toString
     }
-  }
-
-  def getPayload(jsonArray: String) = {
-    parse(
-      s"""|{
-          |"schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbshredder/processed_payload/jsonschema/1-0-0",
-          |"data": {"shreddedTypes": $jsonArray}
-          |}""".stripMargin).toOption.flatMap(json => SelfDescribingData.parse(json).toOption).getOrElse(throw new RuntimeException("Invalid processed_payload"))
   }
 
   implicit class AsSql(s: String) {

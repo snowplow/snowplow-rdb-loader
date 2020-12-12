@@ -37,21 +37,21 @@ class RealWorld[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: 
 }
 
 object RealWorld {
-  def initialize[F[_] : ConcurrentEffect: Clock](config: CliConfig): F[RealWorld[F]] =
+  def initialize[F[_] : ConcurrentEffect: Clock](cli: CliConfig): F[RealWorld[F]] =
     for {
-      _ <- initSentry[F](config.target.sentryDsn)
+      _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       messages <- Ref.of[F, List[String]](List.empty[String])
-      tracker <- Logging.initializeTracking[F](config.configYaml.monitoring)
-      igluParsed <- Client.parseDefault[F](config.resolverConfig).value
+      tracker <- Logging.initializeTracking[F](cli.config.monitoring)
+      igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
       igluClient <- igluParsed match {
         case Right(client) => Sync[F].pure(client)
         case Left(error) => Sync[F].raiseError(error) // Should never happen because we already validated it
       }
-      amazonS3 <- AWS.getClient[F](config.configYaml.aws)
+      amazonS3 <- AWS.getClient[F](cli.config.region)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
-      logging = Logging.controlInterpreter[F](config.target, messages, tracker)
+      logging = Logging.controlInterpreter[F](cli.config.storage, messages, tracker)
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
     } yield new RealWorld[F](cache, logging, iglu, aws)
