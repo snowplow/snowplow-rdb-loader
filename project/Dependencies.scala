@@ -22,13 +22,14 @@ object Dependencies {
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
     val scalaTracker     = "0.6.1"
-    val circeYaml        = "0.13.1"
+    val pureconfig       = "0.14.0"
     val circe            = "0.13.0"
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
     val fs2              = "2.4.6"
     val fs2Aws           = "2.29.0"
+    val monocle          = "2.0.3"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
@@ -55,29 +56,32 @@ object Dependencies {
   )
 
   // Scala (Loader)
-  val decline           = "com.monovore"          %% "decline"                           % V.decline
-  val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"                 % V.igluClient
-  val scalaTracker      = "com.snowplowanalytics" %% "snowplow-scala-tracker-core"       % V.scalaTracker
-  val scalaTrackerEmit  = "com.snowplowanalytics" %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
-  val badrows           = "com.snowplowanalytics" %% "snowplow-badrows"                  % V.badrows
-  val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"                   % V.igluCore
-  val cats              = "org.typelevel"         %% "cats"                              % V.cats
-  val circeCore         = "io.circe"              %% "circe-core"                        % V.circe
-  val circeGeneric      = "io.circe"              %% "circe-generic"                     % V.circe
-  val circeGenericExtra = "io.circe"              %% "circe-generic-extras"              % V.circe
-  val circeYaml         = "io.circe"              %% "circe-yaml"                        % V.circeYaml
-  val fs2               = "co.fs2"                %% "fs2-core"                          % V.fs2
-  val fs2Aws            = "io.laserdisc"          %% "fs2-aws"                           % V.fs2Aws
-  val analyticsSdk      = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
+  val decline           = "com.monovore"               %% "decline"                           % V.decline
+  val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
+  val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
+  val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
+  val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                  % V.badrows
+  val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
+  val cats              = "org.typelevel"              %% "cats"                              % V.cats
+  val circeCore         = "io.circe"                   %% "circe-core"                        % V.circe
+  val circeGeneric      = "io.circe"                   %% "circe-generic"                     % V.circe
+  val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"              % V.circe
+  val pureconfig        = "com.github.pureconfig"      %% "pureconfig"                        % V.pureconfig
+  val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
+  val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
+  val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
+  val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
+  val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
+  val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
   val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
   val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
   val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
-  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circeOptics     % "test"
-  val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % "provided"
-  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % "provided"
+  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circeOptics     % Test
+  val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
+  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
@@ -92,7 +96,7 @@ object Dependencies {
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
 
   // Scala (test only)
-  val specs2            = "org.specs2"            %% "specs2-core"             % V.specs2         % "test"
-  val specs2ScalaCheck  = "org.specs2"            %% "specs2-scalacheck"       % V.specs2         % "test"
-  val scalaCheck        = "org.scalacheck"        %% "scalacheck"              % V.scalaCheck     % "test"
+  val specs2            = "org.specs2"                 %% "specs2-core"             % V.specs2         % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"       % V.specs2         % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"              % V.scalaCheck     % Test
 }

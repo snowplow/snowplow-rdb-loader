@@ -1,0 +1,61 @@
+{
+  # Human-readable identificator, can be random
+  "name": "Acme Redshift",
+  # Machine-readable unique identificator, must be UUID
+  "id": "123e4567-e89b-12d3-a456-426655440000",
+
+  # Data Lake (S3) region
+  "region": "us-east-1",
+  # Shredder output compression, GZIP or NONE
+  "compression": "GZIP",
+  # SQS topic name used by Shredder and Loader to communicate
+  "messageQueue": "messages",
+
+  # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
+  "formats": {
+    # Format used by default (TSV or JSON)
+    "default": "TSV",
+    # Schemas to be shredded as JSONs, corresponding JSONPath files must be present. Automigrations will be disabled
+    "json": [ ],
+    # Schemas to be shredded as TSVs, presence of the schema on Iglu Server is necessary. Automigartions enabled
+    "tsv": [ ],
+    # Schemas that won't be loaded
+    "skip": [ ]
+  },
+
+  # Warehouse connection details
+  "storage" = {
+    # Database, redshift is the only acceptable option
+    "type": "redshift",
+    # Redshift hostname
+    "host": "redshift.amazon.com",
+    # Database name
+    "database": "snowplow",
+    # Database port
+    "port": 5439,
+    # AWS Role ARN allowing Redshift to load data from S3
+    "roleArn": "arn:aws:iam::123456789012:role/RedshiftLoadRole",
+    # DB schema name
+    "schema": "atomic",
+    # DB user with permissions to load data
+    "username": "storage-loader",
+    # DB password
+    "password": "secret",
+    # Custom JDBC configuration
+    "jdbc": {"ssl": true},
+    # MAXERROR, amount of acceptable loading errors
+    "maxError": 10,
+    "compRows": 100000
+  },
+
+  # Additional steps. analyze, vacuum and transit_load are valid values
+  "steps": ["analyze"],
+
+  # Observability and logging opitons
+  "monitoring": {
+    # Snowplow tracking (optional)
+    "snowplow": null,
+    # Sentry (optional)
+    "sentry": null
+  }
+}

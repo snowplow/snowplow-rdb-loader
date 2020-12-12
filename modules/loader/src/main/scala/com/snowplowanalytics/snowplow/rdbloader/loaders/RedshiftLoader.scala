@@ -17,8 +17,7 @@ import cats.implicits._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.config.{ SnowplowConfig, Step }
+import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, Config }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
@@ -45,11 +44,9 @@ object RedshiftLoader {
    * @param target Redshift storage target configuration
    * @param steps SQL steps
    */
-  def run[F[_]: Monad: Logging: JDBC](config: SnowplowConfig,
-                                      target: StorageTarget.RedshiftConfig,
-                                      steps: Set[Step],
+  def run[F[_]: Monad: Logging: JDBC](config: Config[StorageTarget.Redshift],
                                       discovery: DataDiscovery) =
-    loadFolder[F](getStatements(config, target, steps, discovery))
+    loadFolder[F](getStatements(config, discovery))
 
   /**
    * Perform data-loading for a single run folder.

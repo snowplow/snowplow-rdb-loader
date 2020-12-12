@@ -22,6 +22,7 @@ lazy val common = project.in(file("modules/common"))
   ))
   .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
@@ -35,8 +36,12 @@ lazy val common = project.in(file("modules/common"))
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
+      Dependencies.pureconfig,
+      Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
-      Dependencies.specs2
+      Dependencies.specs2,
+      Dependencies.monocle,
+      Dependencies.monocleMacro,
     )
   )
 
@@ -58,7 +63,6 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.decline,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
-      Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,

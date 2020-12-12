@@ -28,7 +28,7 @@ import shapeless.tag._
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging, AWS, JDBC, Iglu}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, LoaderMessage }
+import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, LoaderMessage, Config }
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities._
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
@@ -80,13 +80,14 @@ object Common {
    * Process any valid storage target,
    * including discovering step and establishing SSH-tunnel
    *
-   * @param config RDB Loader app configuration
+   * @param cli RDB Loader app configuration
    */
-  def load[F[_]: Monad: Logging: AWS: Iglu: JDBC](config: CliConfig, discovery: DataDiscovery): LoaderAction[F, Unit] =
-    config.target match {
-      case db: StorageTarget.RedshiftConfig =>
-        Migration.perform[F](config.target.schema)(discovery) *>
-          RedshiftLoader.run[F](config.configYaml, db, config.steps, discovery)
+  def load[F[_]: Monad: Logging: AWS: Iglu: JDBC](cli: CliConfig, discovery: DataDiscovery): LoaderAction[F, Unit] =
+    cli.config.storage match {
+      case redshift: StorageTarget.Redshift =>
+        val redshiftConfig: Config[StorageTarget.Redshift] = cli.config.copy(storage = redshift)
+        Migration.perform[F](cli.config.storage.schema)(discovery) *>
+          RedshiftLoader.run[F](redshiftConfig, discovery)
     }
 
   /**
@@ -96,11 +97,11 @@ object Common {
     */
   def discover[F[_]: Monad: Timer: Cache: Logging: AWS](cliConfig: CliConfig): DiscoveryStream[F] = {
     // Shortcuts
-    val region = cliConfig.configYaml.aws.s3.region
-    val assets = cliConfig.configYaml.aws.s3.buckets.jsonpathAssets
+    val region = cliConfig.config.region
+    val assets = cliConfig.config.jsonpaths
 
     AWS[F]
-      .readSqs(cliConfig.target.messageQueue)
+      .readSqs(cliConfig.config.messageQueue)
       .translate(LoaderAction.fromFK[F])
       .evalMap { s =>
         LoaderMessage.fromString(s.data) match {
