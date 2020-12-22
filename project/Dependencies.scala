@@ -30,6 +30,7 @@ object Dependencies {
     val fs2              = "2.4.6"
     val fs2Aws           = "2.29.0"
     val monocle          = "2.0.3"
+    val catsRetry        = "2.1.0"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
@@ -73,6 +74,7 @@ object Dependencies {
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
+  val catsRetry         = "com.github.cb372"           %% "cats-retry"                        % V.catsRetry
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest

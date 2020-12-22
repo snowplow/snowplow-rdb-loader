@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -10,14 +10,14 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.loaders
+package com.snowplowanalytics.snowplow.rdbloader.loading
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, Step}
 import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.Redshift
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{TransitTable, AtomicEvents, SqlString}
+import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
+import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
 
 
 /**
@@ -28,22 +28,22 @@ import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{TransitTable, At
  * @param shredded COPY FROM statements to load shredded tables
  * @param vacuum VACUUM statements **including `events` table** if necessary
  * @param analyze ANALYZE statements **including `events` table** if necessary
- * @param manifest SQL statement to populate `manifest` table
  * @param discovery original discovery object
  */
-case class RedshiftLoadStatements(
+case class RedshiftStatements(
     dbSchema: String,
     atomicCopy: AtomicCopy,
     shredded: List[SqlString],
     vacuum: Option[List[SqlString]],
-    analyze: Option[List[SqlString]],
-    discovery: DataDiscovery) {
-  def base = discovery.base
-}
+    analyze: Option[List[SqlString]])
 
-object RedshiftLoadStatements {
+object RedshiftStatements {
 
   val EventFieldSeparator = "\t"
+
+  val BeginTransaction: SqlString = SqlString.unsafeCoerce("BEGIN")
+  val CommitTransaction: SqlString = SqlString.unsafeCoerce("COMMIT")
+  val AbortTransaction: SqlString = SqlString.unsafeCoerce("ABORT")
 
   sealed trait AtomicCopy
   object AtomicCopy {
@@ -55,11 +55,11 @@ object RedshiftLoadStatements {
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
-  private[loaders] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftLoadStatements = {
-    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, _))
-    val transitCopy = config.steps.contains(Step.TransitCopy) // TODO: test with and without messageQueue
+  private[loading] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftStatements = {
+    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config))
+    val transitCopy = config.steps.contains(Step.TransitCopy)
     val atomic = buildEventsCopy(config, discovery.atomicEvents, transitCopy)
-    buildLoadStatements(config.storage, config.steps, atomic, shreddedStatements, discovery)
+    buildLoadStatements(config.storage, config.steps, atomic, shreddedStatements)
   }
 
   /**
@@ -72,18 +72,15 @@ object RedshiftLoadStatements {
    * @param atomicCopy a way to copy data into atomic events table
    * @param shreddedStatements statements for shredded tables (include COPY,
    *                           ANALYZE and VACUUM)
-   * @param discovery original discovery object
    * @return statements ready to be executed on Redshift
    */
   def buildLoadStatements(target: Redshift,
                           steps: Set[Step],
                           atomicCopy: AtomicCopy,
-                          shreddedStatements: List[ShreddedStatements],
-                          discovery: DataDiscovery
-   ): RedshiftLoadStatements = {
+                          shreddedStatements: List[ShreddedStatements]): RedshiftStatements = {
     val shreddedCopyStatements = shreddedStatements.map(_.copy)
 
-    val eventsTable = Common.getEventsTable(target)
+    val eventsTable = EventsTable.withSchema(target)
 
     // Vacuum all tables including events-table
     val vacuum = if (steps.contains(Step.Vacuum)) {
@@ -97,7 +94,7 @@ object RedshiftLoadStatements {
       Some(statements)
     } else None
 
-    RedshiftLoadStatements(target.schema, atomicCopy, shreddedCopyStatements, vacuum, analyze, discovery)
+    RedshiftStatements(target.schema, atomicCopy, shreddedCopyStatements, vacuum, analyze)
   }
 
 
@@ -105,18 +102,17 @@ object RedshiftLoadStatements {
    * Build COPY FROM TSV SQL-statement for atomic.events table
    *
    * @param config main Snowplow configuration
-   * @param target Redshift storage target configuration
    * @param s3path S3 path to atomic-events folder with shredded TSV files
    * @param transitCopy COPY not straight to events table, but to temporary local table
    * @return valid SQL statement to LOAD
    */
   def buildEventsCopy(config: Config[Redshift], s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
     val compressionFormat = getCompressionFormat(config.compression)
-    val eventsTable = Common.getEventsTable(config.storage)
+    val eventsTable = EventsTable.withSchema(config.storage)
 
     if (transitCopy) {
       AtomicCopy.Transit(SqlString.unsafeCoerce(
-        s"""COPY ${Common.TransitEventsTable} FROM '$s3path'
+        s"""COPY ${EventsTable.TransitName} FROM '$s3path'
            | CREDENTIALS 'aws_iam_role=${config.storage.roleArn}'
            | REGION AS '${config.region}'
            | MAXERROR ${config.storage.maxError}
@@ -194,11 +190,11 @@ object RedshiftLoadStatements {
 
   /** Build APPEND statement for moving data from transit temporary table to atomic events */
   def buildAppendStatement(schema: String): SqlString =
-    SqlString.unsafeCoerce(s"ALTER TABLE ${AtomicEvents(schema).getDescriptor} APPEND FROM ${TransitTable(schema).getDescriptor}")
+    SqlString.unsafeCoerce(s"ALTER TABLE ${EventsTable.AtomicEvents(schema).withSchema} APPEND FROM ${EventsTable.TransitTable(schema).withSchema}")
 
   /** Create a temporary copy of atomic.events table */
   def createTransitTable(schema: String): SqlString = SqlString.unsafeCoerce(
-    s"CREATE TABLE ${TransitTable(schema).getDescriptor} ( LIKE ${AtomicEvents(schema).getDescriptor} )")
+    s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )")
 
   /**
     * Destroy the temporary copy of atomic.events table
@@ -206,7 +202,7 @@ object RedshiftLoadStatements {
     * because table creation would fail whole process
     */
   def destroyTransitTable(schema: String): SqlString = SqlString.unsafeCoerce(
-    s"DROP TABLE ${TransitTable(schema).getDescriptor}")
+    s"DROP TABLE ${EventsTable.TransitTable(schema).withSchema}")
 
   /**
    * SQL statements for particular shredded type, grouped by their purpose
@@ -221,11 +217,10 @@ object RedshiftLoadStatements {
    * Build group of SQL statements for particular shredded type
    *
    * @param config main Snowplow configuration
-   * @param target Redshift storage target configuration
    * @param shreddedType full info about shredded type found in `shredded/good`
    * @return three SQL-statements to load `shreddedType` from S3
    */
-  private def transformShreddedType(config: Config[Redshift], shreddedType: ShreddedType): ShreddedStatements = {
+  private def transformShreddedType(config: Config[Redshift])(shreddedType: ShreddedType): ShreddedStatements = {
     val tableName = config.storage.shreddedTable(ShreddedType.getTableName(shreddedType))
     val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, config.storage.maxError, config.storage.roleArn)
     val analyze = buildAnalyzeStatement(tableName)

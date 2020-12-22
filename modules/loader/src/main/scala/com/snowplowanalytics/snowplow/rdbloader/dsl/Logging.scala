@@ -41,14 +41,14 @@ import io.sentry.Sentry
 
 trait Logging[F[_]] {
 
-  /** Get last COPY statement in case of failure */
-  def getLastCopyStatements: F[String]
-
   /** Track result via Snowplow tracker */
   def track(result: Either[LoaderError, Unit]): F[Unit]
 
   /** Print message to stdout */
-  def print(message: String): F[Unit]
+  def info(message: String): F[Unit]
+
+  /** Print error message to stderr */
+  def error(message: String): F[Unit]
 
   /** Log an error to Sentry if it's configured */
   def trackException(e: Throwable): F[Unit]
@@ -57,17 +57,16 @@ trait Logging[F[_]] {
 object Logging {
   def apply[F[_]](implicit ev: Logging[F]): Logging[F] = ev
 
-  val ApplicationContextSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "application_context", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
 
-  def controlInterpreter[F[_]: Sync](targetConfig: StorageTarget,
+  private val dateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
+
+  def loggingInterpreter[F[_]: Sync](targetConfig: StorageTarget,
                                      messages: Ref[F, List[String]],
                                      tracker: Option[Tracker[Id]]): Logging[F] =
     new Logging[F] {
-
-      def getLastCopyStatements: F[String] =
-        messages.get.map(_.find(_.startsWith("COPY ")).getOrElse("No COPY statements performed"))
 
       /** Track result via Snowplow tracker */
       def track(result: Either[LoaderError, Unit]): F[Unit] = {
@@ -75,19 +74,22 @@ object Logging {
           case Right(_) =>
             trackEmpty(LoadSucceededSchema)
           case Left(error) =>
-            val secrets = List(targetConfig.password.getUnencrypted, targetConfig.username)
-            val sanitizedMessage = Common.sanitize(error.show, secrets)
-            trackEmpty(LoadFailedSchema) *> this.print(sanitizedMessage)
+            trackEmpty(LoadFailedSchema) *> this.info(error.show)
         }
       }
 
       /** Print message to stdout */
-      def print(message: String): F[Unit] =
+      def info(message: String): F[Unit] =
         for {
-          time <- Sync[F].delay {
-            DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.now())
-          }
-          timestamped = s"$time: $message"
+          time <- Sync[F].delay(dateFormatter.format(Instant.now()))
+          timestamped = sanitize(s"INFO $time: $message")
+          _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
+        } yield ()
+
+      def error(message: String): F[Unit] =
+        for {
+          time <- Sync[F].delay(dateFormatter.format(Instant.now()))
+          timestamped = sanitize(s"ERROR $time: $message")
           _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
         } yield ()
 
@@ -95,6 +97,9 @@ object Logging {
         Sync[F].delay(Sentry.captureException(e)).void.recover {
           case NonFatal(_) => ()
         }
+
+      private def sanitize(string: String): String =
+        Common.sanitize(string, List(targetConfig.password.getUnencrypted, targetConfig.username))
 
       private def log(message: String): F[Unit] =
         messages.update(buf => message :: buf)
@@ -114,7 +119,7 @@ object Logging {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: Sync](monitoring: Monitoring): F[Option[Tracker[Id]]] = {
+  def initializeTracking[F[_]: Sync](monitoring: Monitoring): F[Option[Tracker[Id]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         Sync[F].delay {
@@ -126,7 +131,6 @@ object Logging {
       case Some(_) => Sync[F].pure(none[Tracker[Id]])
       case None => Sync[F].pure(none[Tracker[Id]])
     }
-  }
 
   /** Callback for failed  */
   private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {

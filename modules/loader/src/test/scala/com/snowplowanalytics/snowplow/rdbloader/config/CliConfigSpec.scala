@@ -74,16 +74,16 @@ object CliConfigSpec {
       storage = {
         "type":     "redshift",
 
-        "host":     "redshift.amazon.com",
+        "host":     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
         "database": "snowplow",
         "port":     5439,
-        "roleArn":  "${role_arn}",
+        "roleArn":  "arn:aws:iam::123456789876:role/RedshiftLoadRole",
         "schema":   "atomic",
-        "username": "storage-loader",
-        "password": "secret",
+        "username": "admin",
+        "password": "Supersecret1",
         "jdbc": { "ssl": true },
-        "maxError":  10,
-        "compRows":  100000,
+        "maxError":  1,
+        "compRows":  20000,
         "sshTunnel": null
       },
 
@@ -92,7 +92,9 @@ object CliConfigSpec {
           "collector": "snplow.acme.com",
           "appId": "redshift-loader"
         },
-        "sentryDsn": "http://sentry.acme.com"
+        "sentry": {
+          "dsn": "http://sentry.acme.com"
+        }
       },
 
       formats = {

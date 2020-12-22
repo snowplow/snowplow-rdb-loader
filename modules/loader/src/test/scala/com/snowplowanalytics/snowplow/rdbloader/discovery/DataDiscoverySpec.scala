@@ -14,38 +14,20 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
+import cats.data.NonEmptyList
 import cats.syntax.either._
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.{TestInterpreter, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.TestInterpreter.{TestState, AWSResults, Test}
-import com.snowplowanalytics.snowplow.rdbloader.common.{Semver, S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 
 import org.specs2.mutable.Specification
 
+import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
+
 class DataDiscoverySpec extends Specification {
-  "listGoodBucket" should {
-    "ignore special fields" >> {
-      def listS3(bucket: S3.Folder) =
-        List(
-          S3.BlobObject(S3.Key.join(bucket, "_SUCCESS"), 0L),
-          S3.BlobObject(S3.Key.join(bucket, "part-00000-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L),
-          S3.BlobObject(S3.Key.join(bucket, "part-00001-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L),
-          S3.BlobObject(S3.Key.join(bucket, "part-00002-8e95d7a6-4c5f-4dd3-ab78-6ca8b8cef5d4-c000.txt.gz"), 20L)
-        ).asRight[LoaderError]
-
-      implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init.copy(listS3 = Test.liftWith(listS3)))
-
-      val prefix = S3.Folder.coerce("s3://sp-com-acme-123987939231-10-batch-archive/main/shredded/good/run=2018-07-05-00-55-16/atomic-events/")
-
-      val result = DataDiscovery.listGoodBucket[Test](prefix).value.runA(TestState.init).value
-
-      result.map(_.length) must beRight(3)
-    }
-  }
-
   "show" should {
     "should DataDiscovery with several shredded types" >> {
       val shreddedTypes = List(
@@ -63,41 +45,80 @@ class DataDiscoverySpec extends Specification {
 
   "fromLoaderMessage" should {
     "aggregate errors" >> {
-      implicit val cache: Cache[Test] = TestInterpreter.stateCacheInterpreter
-      implicit val aws: AWS[Test] = TestInterpreter.stateAwsInterpreter(AWSResults.init)
+      implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
 
-      val message = LoaderMessage.ShreddingComplete(
-        S3.Folder.coerce("s3://bucket/folder/"),
-        List(
-          LoaderMessage.ShreddedType(
-            SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
-            LoaderMessage.Format.JSON
-          ),
-          LoaderMessage.ShreddedType(
-            SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(1, 0, 0)),
-            LoaderMessage.Format.JSON
-          )
-        ),
-        LoaderMessage.Timestamps(
-          Instant.ofEpochMilli(1600342341145L),
-          Instant.ofEpochMilli(1600342341145L),
-          None,
-          None
-        ),
-        LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
-      )
       val expected = LoaderError.DiscoveryError(
-        List(
+        NonEmptyList.of(
           DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
           DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_b_1.json")
         )
-      )
-      val result = DataDiscovery.fromLoaderMessage[Test]("eu-central-1", None, message)
-        .value
-        .runA(TestState.init)
-        .value
+      ).asLeft
 
-      result must beLeft(expected)
+      val result = DataDiscovery.fromLoaderMessage[Pure]("eu-central-1", None, DataDiscoverySpec.shreddingComplete)
+        .value
+        .runA
+
+      result must beRight(expected)
     }
   }
+
+  "handle" should {
+    "ack message if JSONPath cannot be found" >> {
+      implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+
+      val message = Message(DataDiscoverySpec.shreddingComplete, Pure.modify(_.log("ack")))
+
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+
+      result must beRight(None)
+      state.getLog must contain("GET com.acme/event_a_1.json", "GET com.acme/event_b_1.json", "ack")
+    }
+
+    "not ack message if it can be handled" >> {
+      implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+
+      val message = Message(DataDiscoverySpec.shreddingComplete, Pure.modify(_.log("ack")))
+
+      val expected = DataDiscovery(
+        S3.Folder.coerce("s3://bucket/folder/"),
+        List(
+          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,Semver(1,1,2,None)),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
+          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,Semver(1,1,2,None)),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
+        )
+      )
+
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+
+      result.map(_.map(_.data)) must beRight(Some(expected))
+      state.getLog must beEqualTo(List("GET com.acme/event_a_1.json", "GET com.acme/event_b_1.json"))
+    }
+  }
+}
+
+object DataDiscoverySpec {
+  val shreddingComplete = LoaderMessage.ShreddingComplete(
+    S3.Folder.coerce("s3://bucket/folder/"),
+    List(
+      LoaderMessage.ShreddedType(
+        SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+        LoaderMessage.Format.JSON
+      ),
+      LoaderMessage.ShreddedType(
+        SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(1, 0, 0)),
+        LoaderMessage.Format.JSON
+      )
+    ),
+    LoaderMessage.Timestamps(
+      Instant.ofEpochMilli(1600342341145L),
+      Instant.ofEpochMilli(1600342341145L),
+      None,
+      None
+    ),
+    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
+  )
 }
