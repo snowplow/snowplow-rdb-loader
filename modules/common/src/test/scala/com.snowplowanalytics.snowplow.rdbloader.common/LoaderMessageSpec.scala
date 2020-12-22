@@ -46,24 +46,24 @@ object LoaderMessageSpec {
     "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/1-0-0",
     "data": {
       "base" : "s3://bucket/folder/",
-        "types" : [
-          {
-            "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
-            "format" : "TSV"
-          }
-        ],
-        "timestamps" : {
-          "jobStarted" : "2020-09-17T11:32:21.145Z",
-          "jobCompleted" : "2020-09-17T11:32:21.145Z",
-          "min" : null,
-          "max" : null
-        },
-        "processor": {
-          "artifact" : "test-shredder",
-          "version" : "1.1.2"
+      "types" : [
+        {
+          "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
+          "format" : "TSV"
         }
+      ],
+      "timestamps" : {
+        "jobStarted" : "2020-09-17T11:32:21.145Z",
+        "jobCompleted" : "2020-09-17T11:32:21.145Z",
+        "min" : null,
+        "max" : null
+      },
+      "processor": {
+        "artifact" : "test-shredder",
+        "version" : "1.1.2"
       }
-    }"""
+    }
+  }"""
 
   val ValidMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),

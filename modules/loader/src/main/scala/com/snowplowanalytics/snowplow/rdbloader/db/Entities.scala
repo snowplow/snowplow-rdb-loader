@@ -24,14 +24,6 @@ object Entities {
 
   case class Timestamp(etlTstamp: SqlTimestamp)
 
-  case class LoadManifestItem(etlTstamp: SqlTimestamp,
-                              commitTstamp: SqlTimestamp,
-                              eventCount: Int,
-                              shreddedCardinality: Int) {
-    def show: String =
-      s"ETL timestamp $etlTstamp with $eventCount events and $shreddedCardinality shredded types, commited at $commitTstamp"
-  }
-
   case class Columns(names: List[String]) extends AnyVal
 
   case class TableState(version: SchemaKey) extends AnyVal

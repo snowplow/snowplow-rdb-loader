@@ -12,29 +12,25 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import java.net.URI
 import java.util.UUID
 
 import scala.io.Source.fromInputStream
-
-import cats.Id
 
 import io.circe.jawn.parse
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.iglu.client.Resolver
-
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, StorageTarget, Config, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
 
 object SpecHelpers {
 
-  val resolverStream = getClass.getResourceAsStream("/resolver.json.base64")
-  val resolverConfig = fromInputStream(resolverStream).getLines.mkString("\n")
+  val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
-  val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
 
-  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
+  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validTarget = StorageTarget.Redshift(
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
@@ -48,7 +44,7 @@ object SpecHelpers {
     20000,
     None)
 
-  val validConfig: Config[StorageTarget] = Config(
+  val validConfig: Config[StorageTarget.Redshift] = Config(
     "Acme Redshift",
     UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
     "us-east-1",
@@ -56,22 +52,10 @@ object SpecHelpers {
     Config.OutputCompression.Gzip,
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      None
+      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
-    StorageTarget.Redshift(
-      "redshift.amazon.com",
-      "snowplow",
-      5439,
-      StorageTarget.RedshiftJdbc(None, None, None, None, None, None, None, Some(true),None,None,None,None),
-      "${role_arn}",
-      "atomic",
-      "storage-loader",
-      StorageTarget.PasswordConfig.PlainText("secret"),
-      10,
-      100000,
-      None
-    ),
+    validTarget,
     Config.Formats(
       LoaderMessage.Format.TSV,
       List(
@@ -83,20 +67,7 @@ object SpecHelpers {
     ),
     Set.empty
   )
-
-  val validTargetWithManifest = StorageTarget.Redshift(
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
-    "snowplow",
-    5439,
-    disableSsl,
-    "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-    "atomic",
-    "admin",
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    1,
-    20000,
-    None
-  )
+  val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
   /**
     * Pretty prints a Scala value similar to its source represention.
