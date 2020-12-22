@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,14 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
-import cats.Monad
-import cats.data._
+import scala.util.matching.Regex
+
+import cats.{Apply, Monad}
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaCriterion, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, sequenceInF, LoaderError, LoaderAction, DiscoveryAction}
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 
@@ -43,7 +44,7 @@ object ShreddedType {
     *
     * @param jsonPaths existing JSONPaths file
     */
-  case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
+  final case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
     def getLoadPath: String =
       s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
 
@@ -56,7 +57,7 @@ object ShreddedType {
     *
     * @param info raw metadata extracted from S3 Key
     */
-  case class Tabular(info: Info) extends ShreddedType {
+  final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
       s"${info.base}shredded-tsv/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}"
 
@@ -73,7 +74,7 @@ object ShreddedType {
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
    */
-  case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
+  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
   }
 
@@ -89,7 +90,7 @@ object ShreddedType {
     commonType match {
       case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
-        Monad[F].pure(Tabular(info).asRight[DiscoveryFailure])
+        (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
       case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
         Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info)) { either =>
@@ -111,7 +112,7 @@ object ShreddedType {
   val JsonpathsPath = "4-storage/redshift-storage/jsonpaths/"
 
   /** Regex to extract `SchemaKey` from `shredded/good` */
-  val ShreddedSubpathPattern =
+  val ShreddedSubpathPattern: Regex =
     ("""shredded\-types""" +
      """/vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
      """/name=(?<name>[a-zA-Z0-9-_]+)""" +
@@ -119,7 +120,7 @@ object ShreddedType {
      """/version=(?<schemaver>[1-9][0-9]*(?:-(?:0|[1-9][0-9]*)){2})$""").r
 
   /** Regex to extract `SchemaKey` from `shredded/good` */
-  val ShreddedSubpathPatternTabular =
+  val ShreddedSubpathPatternTabular: Regex =
     ("""shredded\-tsv""" +
       """/vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
       """/name=(?<name>[a-zA-Z0-9-_]+)""" +
@@ -181,34 +182,14 @@ object ShreddedType {
    * @param key vendor dir and filename, e.g. `com.acme/event_1`
    * @return full S3 key if file exists, discovery error otherwise
    */
-  def getSnowplowJsonPath[F[_]: Monad: AWS: Cache](s3Region: String,
+  def getSnowplowJsonPath[F[_]: Apply: AWS: Cache](s3Region: String,
                                                    key: String): DiscoveryAction[F, S3.Key] = {
-    val hostedAssetsBucket = getHostedAssetsBucket(s3Region)
-    val fullDir = S3.Folder.append(hostedAssetsBucket, JsonpathsPath)
+    val fullDir = S3.Folder.append(getHostedAssetsBucket(s3Region), JsonpathsPath)
     val s3Key = S3.Key.coerce(fullDir + key)
-    AWS[F].keyExists(s3Key).flatMap {
-      case true =>
-        Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight)
-      case false =>
-        Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
-    }
-  }
-
-  /** Discover multiple JSONPaths for shredded types at once and turn into `LoaderAction` */
-  def discoverBatch[F[_]: Monad: Cache: AWS](region: String,
-                                             jsonpathAssets: Option[S3.Folder],
-                                             raw: List[ShreddedType.Info]): LoaderAction[F, List[ShreddedType]] = {
-    // Discover data for single item
-    def discover(info: ShreddedType.Info): F[ValidatedNel[DiscoveryFailure, ShreddedType]] = {
-      val jsonpaths: F[DiscoveryStep[S3.Key]] = ShreddedType.discoverJsonPath[F](region, jsonpathAssets, info)
-      val shreddedType = jsonpaths.map(_.map(s3key => ShreddedType.Json(info, s3key)))
-      shreddedType.map(_.toValidatedNel)
-    }
-
-    val action: F[Either[LoaderError, List[ShreddedType]]] =
-      sequenceInF(raw.traverse(discover), LoaderError.flattenValidated[List[ShreddedType]])
-
-    LoaderAction(action)
+    AWS[F].keyExists(s3Key).ifA(
+      Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight[DiscoveryFailure]),
+      Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft[S3.Key])
+    )
   }
 
   /**

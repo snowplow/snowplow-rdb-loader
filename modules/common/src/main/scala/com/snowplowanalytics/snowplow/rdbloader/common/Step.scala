@@ -24,6 +24,6 @@ object Step {
   case object Vacuum extends Step { def asString = "vacuum" }
   case object TransitCopy extends Step { def asString = "transit_copy" }
 
-  implicit val stepDecoder: Decoder[Step] =
+  implicit def stepDecoder: Decoder[Step] =
     StringEnum.decodeStringEnum[Step]
 }

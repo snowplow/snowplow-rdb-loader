@@ -68,6 +68,7 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.circeLiteral,
       Dependencies.fs2,
       Dependencies.schemaDdl,
+      Dependencies.catsRetry,
 
       Dependencies.redshift,
       Dependencies.redshiftSdk,
