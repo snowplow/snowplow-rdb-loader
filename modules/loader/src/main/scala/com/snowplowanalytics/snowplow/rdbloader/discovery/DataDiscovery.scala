@@ -13,13 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats._
-import cats.data._
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, LoaderAction, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddingComplete
-import com.snowplowanalytics.snowplow.rdbloader.common.{AtomicSubpathPattern, S3}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
+import com.snowplowanalytics.snowplow.rdbloader.common.{Config, S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 
 /**
   * Result of data discovery in shredded.good folder
@@ -55,51 +53,74 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType]) {
  */
 object DataDiscovery {
 
-  type Discovered = List[DataDiscovery]
+  /**
+   * App entrypoint, a generic discovery stream reading from message queue (like SQS)
+   * The plain text queue will be parsed into known message types (`LoaderMessage`) and
+   * handled appropriately - transformed either into action or into [[DataDiscovery]]
+   * In case of any error (parsing or transformation) the error will be raised, the message dropped,
+   * but stream will keep awaiting for a next message
+   *
+   * The stream is responsible for state changing as well
+   *
+   * @param config generic storage target configuration
+   * @param state mutable state to keep logging information
+   */
+  def discover[F[_]: Monad: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
+    AWS[F]
+      .readSqs(config.messageQueue)
+      .evalMapFilter { message =>
+        val action = LoaderMessage.fromString(message.data) match {
+          case Right(parsed: LoaderMessage.ShreddingComplete) =>
+            handle(config.region, config.jsonpaths, Message(parsed, message.ack))
+          case Left(error) =>
+            Logging[F].error(s"Error during message queue reading. $error") *>
+              message.ack.as(none[Message[F, DataDiscovery]])
+        }
 
-  /** Amount of times consistency check will be performed */
-  val ConsistencyChecks = 5
+        state.update(_.incrementMessages) *> action
+      }
 
-  /** Legacy */
-  sealed trait DiscoveryTarget extends Product with Serializable
-  object DiscoveryTarget {
-    final case class Global(folder: S3.Folder) extends DiscoveryTarget
-  }
+  /**
+   * Get `DataDiscovery` or log an error and drop the message
+   * actionable `DataDiscovery`
+   * @param region AWS region to discover JSONPaths
+   * @param assets optional bucket with custom JSONPaths
+   * @param message payload coming from shredder
+   * @tparam F effect type to perform AWS interactions
+   */
+  def handle[F[_]: Monad: AWS: Cache: Logging](region: String,
+                                               assets: Option[S3.Folder],
+                                               message: Message[F, LoaderMessage.ShreddingComplete]) =
+    fromLoaderMessage[F](region, assets, message.data)
+      .map(discovery => Message(discovery, message.ack))
+      .value
+      .flatMap[Option[Message[F, DataDiscovery]]] {
+        case Right(message) =>
+          Monad[F].pure(Some(message))
+        case Left(error) =>
+          Logging[F].error(error.show) *>
+            message.ack.as(none[Message[F, DataDiscovery]])
+      }
 
   /**
    * Convert `ShreddingComplete` message coming from shredder into
    * actionable `DataDiscovery`
    * @param region AWS region to discover JSONPaths
-   * @param jsonpathAssets optional bucket with custo mJSONPaths
+   * @param assets optional bucket with custo mJSONPaths
    * @param message payload coming from shredder
    * @tparam F effect type to perform AWS interactions
    */
   def fromLoaderMessage[F[_]: Monad: Cache: AWS](region: String,
-                                                 jsonpathAssets: Option[S3.Folder],
-                                                 message: ShreddingComplete): LoaderAction[F, DataDiscovery] = {
+                                                 assets: Option[S3.Folder],
+                                                 message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
     val types = message
       .types
       .traverse[F, DiscoveryStep[ShreddedType]] { shreddedType =>
-        ShreddedType.fromCommon[F](message.base, message.processor.version, region, jsonpathAssets, shreddedType)
+        ShreddedType.fromCommon[F](message.base, message.processor.version, region, assets, shreddedType)
       }
-      .map { steps => LoaderError.flattenValidated(steps.traverse(_.toValidatedNel)) }
+      .map { steps => LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel)) }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
       DataDiscovery(message.base, types)
     }
   }
-
-  /**
-   * List whole directory excluding special files
-   */
-  def listGoodBucket[F[_]: Functor: AWS](folder: S3.Folder): LoaderAction[F, List[S3.BlobObject]] =
-    EitherT(AWS[F].listS3(folder)).map(_.filterNot(k => isSpecial(k.key)))
-
-  // Common
-
-  def isAtomic(key: S3.Key): Boolean = key match {
-    case AtomicSubpathPattern(_, _, _) => true
-    case _ => false
-  }
-
-  def isSpecial(key: S3.Key): Boolean = key.contains("$") || key.contains("_SUCCESS")
 }

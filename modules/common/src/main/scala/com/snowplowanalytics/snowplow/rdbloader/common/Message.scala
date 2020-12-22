@@ -17,7 +17,7 @@ import cats.syntax.either._
 
 import cats.effect.Sync
 
-case class Message[F[_], A](data: A, ack: F[Unit])
+final case class Message[F[_], A](data: A, ack: F[Unit])
 
 object Message {
   implicit def messageDecoder[F[_]: Sync](message: JMessage): Either[Throwable, Message[F, String]] = {

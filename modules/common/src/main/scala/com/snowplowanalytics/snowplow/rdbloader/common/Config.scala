@@ -38,16 +38,16 @@ import Config._
  * Main config file parsed from HOCON
  * @tparam D kind of supported warehouse
  */
-final case class Config[D <: StorageTarget](name: String,
-                                            id: UUID,
-                                            region: String,
-                                            jsonpaths: Option[S3.Folder],
-                                            compression: OutputCompression,
-                                            monitoring: Monitoring,
-                                            messageQueue: String,
-                                            storage: D,
-                                            formats: Formats,
-                                            steps: Set[Step])
+final case class Config[+D <: StorageTarget](name: String,
+                                             id: UUID,
+                                             region: String,
+                                             jsonpaths: Option[S3.Folder],
+                                             compression: OutputCompression,
+                                             monitoring: Monitoring,
+                                             messageQueue: String,
+                                             storage: D,
+                                             formats: Formats,
+                                             steps: Set[Step])
 
 object Config {
 

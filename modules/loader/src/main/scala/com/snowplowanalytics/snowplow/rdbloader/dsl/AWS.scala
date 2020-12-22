@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.io.ByteArrayInputStream
-import java.nio.charset.StandardCharsets
-
 import javax.jms.MessageListener
 
 import scala.collection.JavaConverters._
@@ -38,20 +35,16 @@ import com.amazonaws.services.simplesystemsmanagement.model.{AWSSimpleSystemsMan
 import eu.timepit.refined.types.all.TrimmedString
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 
 
 trait AWS[F[_]] {
 
   /** Recursively list S3 folder */
-  def listS3(bucket: S3.Folder): F[Either[LoaderError, List[S3.BlobObject]]]
+  def listS3(bucket: S3.Folder): F[List[S3.BlobObject]]
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): F[Boolean]
-
-  /** Upload text file */
-  def putObject(key: S3.Key, data: String): LoaderAction[F, Unit]
 
   /** Retrieve decrypted property from EC2 Parameter Store */
   def getEc2Property(name: String): F[Array[Byte]]
@@ -74,25 +67,7 @@ object AWS {
 
   def s3Interpreter[F[_]: ConcurrentEffect](client: AmazonS3): AWS[F] = new AWS[F] {
 
-    def putObject(key: S3.Key, data: String): LoaderAction[F, Unit] = {
-      val meta = new ObjectMetadata()
-      meta.setContentLength(data.length.toLong)
-      meta.setContentEncoding("text/plain")
-      val (bucket, prefix) = S3.splitS3Key(key)
-      val is = new ByteArrayInputStream(data.getBytes(StandardCharsets.UTF_8))
-      val action = Sync[F]
-        .delay(client.putObject(bucket, prefix, is, meta))
-        .attempt
-        .map {
-          case Right(_) => ().asRight
-          case Left(error) =>
-            val message = s"Cannot put S3 object $key, " ++ error.getMessage
-            (LoaderError.LoaderLocalError(message): LoaderError).asLeft
-        }
-      LoaderAction(action)
-    }
-
-    private def list(str: S3.Folder): LoaderAction[F, List[S3ObjectSummary]] = {
+    private def list(str: S3.Folder): F[List[S3ObjectSummary]] = {
       val (bucket, prefix) = S3.splitS3Path(str)
 
       val req = new ListObjectsV2Request()
@@ -110,8 +85,6 @@ object AWS {
       }
 
       Sync[F].delay(keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList)
-        .attemptT
-        .leftMap(e => LoaderError.DiscoveryError(List(DiscoveryFailure.S3Failure(e.toString))): LoaderError)
     }
 
 
@@ -120,8 +93,9 @@ object AWS {
       val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
       S3.BlobObject(key, s3ObjectSummary.getSize)
     }
-    def listS3(bucket: S3.Folder): F[Either[LoaderError, List[S3.BlobObject]]] =
-      list(bucket).map(summaries => summaries.map(getKey)).value
+
+    def listS3(bucket: S3.Folder): F[List[S3.BlobObject]] =
+      list(bucket).map(summaries => summaries.map(getKey))
 
     /**
      * Check if some `file` exists in S3 `path`
@@ -151,7 +125,7 @@ object AWS {
 
       result.recoverWith {
         case e: AWSSimpleSystemsManagementException =>
-          Sync[F].raiseError(LoaderError.LoaderLocalError(s"Cannot get $name EC2 property: ${e.getMessage}"))
+          Sync[F].raiseError(LoaderError.RuntimeError(s"Cannot get $name EC2 property: ${e.getMessage}"))
       }
     }
 
