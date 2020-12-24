@@ -12,9 +12,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics
-package snowplow
-package storage.spark
+package com.snowplowanalytics.snowplow.storage.spark
 
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -44,31 +42,24 @@ case class ShredJobConfig(inFolder: String,
                           badFolder: String,
                           igluConfig: Json,
                           duplicateStorageConfig: Option[Json],
-                          dynamodbManifestTable: Option[String],
-                          itemId: Option[String],
-                          storage: Option[StorageTarget]) {
-
-  /** Get both manifest table and item id to process */
-  def getManifestData: Option[(String, String)] =
-    for {
-      t <- dynamodbManifestTable
-      i <- itemId
-    } yield (t, i)
-}
+                          storage: Config[StorageTarget])
 
 object ShredJobConfig {
 
-  object Base64Json {
-    val decoder = new Base64(true)
+  private val Base64Decoder = new Base64(true)
 
-    def decode(str: String): ValidatedNel[String, Json] = {
-      Either
-        .catchOnly[DecoderException](decoder.decode(str))
-        .map(arr => new String(arr, UTF_8))
-        .leftMap(_.getMessage)
+  def base64decode(str: String): Either[String, String] =
+    Either
+      .catchOnly[DecoderException](Base64Decoder.decode(str))
+      .map(arr => new String(arr, UTF_8))
+      .leftMap(_.getMessage)
+
+  object Base64Json {
+
+    def decode(str: String): ValidatedNel[String, Json] =
+      base64decode(str)
         .flatMap(str => parse(str).leftMap(_.show))
         .toValidatedNel
-    }
   }
 
   val inputFolder = Opts.option[String]("input-folder",
@@ -83,34 +74,15 @@ object ShredJobConfig {
   val igluConfig = Opts.option[String]("iglu-config",
     "Base64-encoded Iglu Client JSON config",
     metavar = "<base64>").mapValidated(Base64Json.decode)
-
   val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
     "Base64-encoded Events Manifest JSON config",
     metavar = "<base64>").mapValidated(Base64Json.decode).orNone
+  val config = Opts.option[String]("config",
+    "base64-encoded config HOCON", "c", "config.hocon")
+    .mapValidated(x => base64decode(x).flatMap(Config.fromString).toValidatedNel)
 
-  val processingManifestTable = Opts.option[String]("processing-manifest-table",
-    "Processing manifest table",
-    metavar = "<name>").orNone
-  val itemId = Opts.option[String]("item-id",
-    "Unique folder identificator for processing manifest (e.g. S3 URL)",
-    metavar = "<id>").orNone
-  val storageTarget = Opts.option[String]("target",
-    "base64-encoded string with single storage target configuration JSON", "t", "target.json")
-    .mapValidated(Base64Json.decode).orNone
-
-  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, processingManifestTable, itemId, storageTarget).mapN {
-    (input, output, bad, iglu, dupeStorage, manifest, itemId, target) => (ShredJobConfig(input, output, bad, iglu, dupeStorage, manifest, itemId, None), target)
-  }.validate("--item-id and --processing-manifest-table must be either both provided or both absent") {
-    case (ShredJobConfig(_, _, _, _, _, manifest, i, _), _) => (manifest.isDefined && i.isDefined) || (manifest.isEmpty && i.isEmpty)
-    case _ => false
-  }.mapValidated {
-    case (config, Some(target)) =>
-      val client = singleton.IgluSingleton.get(config.igluConfig)
-      StorageTarget.parseTarget(client, target.noSpaces)
-        .leftMap { errors => errors.toList.mkString(", ") }
-        .map(storage => config.copy(storage = Some(storage)))
-        .toValidatedNel
-    case (config, None) => config.validNel
+  val shredJobConfig = (inputFolder, outputFolder, badFolder, igluConfig, duplicateStorageConfig, config).mapN {
+    (input, output, bad, iglu, dupeStorage, target) => ShredJobConfig(input, output, bad, iglu, dupeStorage, target)
   }
 
   val command = Command(s"${ProjectMetadata.shredderName}-${ProjectMetadata.version}",
