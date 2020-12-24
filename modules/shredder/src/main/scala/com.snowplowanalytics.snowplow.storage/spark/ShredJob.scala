@@ -270,17 +270,9 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
   val shreddedTypes = new StringSetAccumulator
   sc.register(shreddedTypes)
 
-  /** Save set of found shredded types into accumulator if processing manifest is enabled */
-  def recordPayload(inventory: Set[SchemaKey]): Unit =
-    if (shredConfig.dynamodbManifestTable.isEmpty) ()
-    else shreddedTypes.add(inventory.map(_.toSchemaUri))
-
   /** Check if `shredType` should be transformed into TSV */
   def isTabular(shredType: SchemaKey): Boolean =
-    shredConfig.storage.flatMap(_.blacklistTabular) match {
-      case Some(blacklist) => !blacklist.exists(criterion => criterion.matches(shredType))
-      case None => false
-    }
+    Common.isTabular(shredConfig.storage)(shredType)
 
   def shreddingBadRow(event: Event)(errors: NonEmptyList[FailureDetails.LoaderIgluError]) = {
     val failure = Failure.LoaderIgluErrors(errors)
@@ -348,7 +340,6 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
       .flatMap { case (_, s) =>
         val first = s.minBy(_.etl_tstamp)
-        recordPayload(first.inventory.map(_.schemaKey))
         dedupeCrossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
           case Right(unique) if unique => Some(Right(first))
           case Right(_) => None
@@ -402,9 +393,11 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: ShredJobConfig) 
       .text(getAlteredEnrichedOutputPath(shredConfig.outFolder))
 
     // Final output
-    shredConfig.storage.flatMap(_.blacklistTabular).map(_.nonEmpty) match {
-      case Some(true) | None => writeShredded(shreddedData.flatMap(_.json), true)
-      case Some(false) => ()
+    shredConfig.storage.formats match {
+      case Config.Formats(default, _, json, _) if default == LoaderMessage.Format.JSON || json.nonEmpty =>
+        writeShredded(shreddedData.flatMap(_.json), true)
+      case _ =>
+        ()
     }
     writeShredded(shreddedData.flatMap(_.tabular), false)
 

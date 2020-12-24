@@ -25,7 +25,7 @@ class NewlineSpec extends Specification with ShredJobSpec {
   override def appName = "newline-output"
   sequential
   "A job which is provided with a valid context with newline and tab in it" should {
-    runShredJobTabular(NewlineSpec.lines)
+    runShredJob(NewlineSpec.lines, tsv = true)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in /atomic-events" in {

@@ -40,24 +40,28 @@ object MissingJsonSchemaSpec {
                "error":"ResolutionError",
                "lookupHistory":[
                   {
-                     "repository":"Iglu Central",
-                     "errors":[
-                        {
-                           "error":"NotFound"
-                        }
-                     ],
-                     "attempts":1,
-                     "lastAttempt":"2019-07-18T05:18:27.439Z"
+                    "repository":"Iglu Central",
+                    "errors":[{"error":"NotFound"}],
+                    "attempts":1,
+                    "lastAttempt":"2019-07-18T05:18:27.439Z"
                   },
                   {
-                     "repository":"Iglu Client Embedded",
-                     "errors":[
-                        {
-                           "error":"NotFound"
-                        }
-                     ],
-                     "attempts":1,
-                     "lastAttempt":"2019-07-18T05:18:27.439Z"
+                    "repository":"Iglu Central Mirror",
+                    "errors":[{"error":"NotFound"}],
+                    "attempts":1,
+                    "lastAttempt":"2019-07-18T05:18:27.439Z"
+                  },
+                  {
+                    "repository":"Iglu Client Embedded",
+                    "errors":[{"error":"NotFound"}],
+                    "attempts":1,
+                    "lastAttempt":"2019-07-18T05:18:27.439Z"
+                  },
+                  {
+                    "repository":"Local Iglu Server",
+                    "errors":[{"error":"RepoFailure","message":"Connection refused (Connection refused)"}],
+                    "attempts":1,
+                    "lastAttempt":"2019-07-18T05:18:27.439Z"
                   }
                ]
             }

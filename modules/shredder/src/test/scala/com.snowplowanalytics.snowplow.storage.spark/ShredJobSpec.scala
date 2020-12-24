@@ -209,28 +209,35 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private val igluConfig = {
+  private def storageConfig(tsv: Boolean) = {
     val encoder = new Base64(true)
-    new String(encoder.encode(
-      """|{
-          |"schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
-          |"data": {
-            |"cacheSize": 500,
-            |"repositories": [
-              |{
-                |"name": "Iglu Central",
-                |"priority": 0,
-                |"vendorPrefixes": [ "com.snowplowanalytics" ],
-                |"connection": {
-                  |"http": {
-                    |"uri": "http://iglucentral.com"
-                  |}
-                |}
-              |}
-            |]
-          |}
-        |}""".stripMargin.replaceAll("[\n\r]","").getBytes()
-    ))
+    val format = if (tsv) "TSV" else "JSON"
+    val configPlain = s"""|{
+    |name = "Acme Redshift"
+    |id = "123e4567-e89b-12d3-a456-426655440000"
+    |region = "us-east-1"
+    |jsonpaths = null
+    |compression = "NONE"
+    |messageQueue = "messages"
+    |storage = {
+    | "type": "redshift",
+    | "host": "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    | "database": "snowplow",
+    | "port": 5439,
+    | "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+    | "schema": "atomic",
+    | "username": "admin",
+    | "password": "Supersecret1",
+    | "jdbc": { "ssl": true },
+    | "maxError": 1,
+    | "compRows": 20000,
+    | "sshTunnel": null
+    |},
+    |monitoring = {"snowplow": null, "sentry": null},
+    |formats = { "default": "$format", "json": [ ], "tsv": [ ], "skip": [ ] },
+    |steps = []
+    |}""".stripMargin
+    new String(encoder.encode(configPlain.getBytes()))
   }
 
   private val igluConfigWithLocal = {
@@ -314,41 +321,14 @@ trait ShredJobSpec extends SparkSpec {
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false): Unit = {
-    val input = mkTmpFile("input", createParents = true, containing = lines.some)
-    val config = Array(
-      "--input-folder", input.toString(),
-      "--output-folder", dirs.output.toString(),
-      "--bad-folder", dirs.badRows.toString(),
-      "--iglu-config", igluConfig
-    )
-
-    val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
-      val encoder = new Base64(true)
-      val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
-      val config = SelfDescribingData.parse(duplicateStorageConfig).leftMap(_.code).flatMap(EventsManifestConfig.DynamoDb.extract).valueOr(e => throw ShredJob.FatalEtlError(e))
-      (Array("--duplicate-storage-config", encoded), Some(config))
-    } else {
-      (Array.empty[String], None)
-    }
-
-    val shredJobConfig = ShredJobConfig
-      .loadConfigFrom(config ++ dedupeConfigCli)
-      .fold(e => throw new RuntimeException(s"Cannot parse test configuration: $e"), c => c)
-
-    val job = new ShredJob(spark, shredJobConfig)
-    job.run(Map.empty, dedupeConfig)
-    deleteRecursively(input)
-  }
-
-  def runShredJobTabular(lines: Lines, crossBatchDedupe: Boolean = false): Unit = {
+  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false, tsv: Boolean = false): Unit = {
     val input = mkTmpFile("input", createParents = true, containing = lines.some)
     val config = Array(
       "--input-folder", input.toString(),
       "--output-folder", dirs.output.toString(),
       "--bad-folder", dirs.badRows.toString(),
       "--iglu-config", igluConfigWithLocal,
-      "--target", storageConfig
+      "--config", storageConfig(tsv)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -367,35 +347,6 @@ trait ShredJobSpec extends SparkSpec {
     val job = new ShredJob(spark, shredJobConfig)
     job.run(Map.empty, dedupeConfig)
     deleteRecursively(input)
-  }
-
-  val storageConfig = {
-    val encoder = new Base64(true)
-    new String(encoder.encode("""{
-        "schema": "iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/4-0-0",
-        "data": {
-            "name": "AWS Redshift enriched events storage",
-            "id": "33334444-eee7-4845-a7e6-8fdc88d599d0",
-            "host": "192.168.1.12",
-            "database": "ADD HERE",
-            "port": 5439,
-            "jdbc": {},
-            "processingManifest": null,
-            "sshTunnel": null,
-            "username": "ADD HERE",
-            "password": {
-                "ec2ParameterStore": {
-                    "parameterName": "snowplow.rdbloader.redshift.password"
-                }
-            },
-            "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-            "schema": "atomic",
-            "maxError": 1,
-            "compRows": 20000,
-            "blacklistTabular": [],
-            "purpose": "ENRICHED_EVENTS"
-        }
-    } """.stripMargin.replaceAll("[\n\r]","").getBytes()))
   }
 
   override def afterAll(): Unit = {
