@@ -23,7 +23,7 @@ class EmptySchemaSpec extends Specification with ShredJobSpec {
   override def appName = "empty-schema"
   sequential
   "A job which is provided with a valid application_error event and page_context context" should {
-    runShredJobTabular(EmptySchemaSpec.lines)
+    runShredJob(EmptySchemaSpec.lines, tsv = true)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in /atomic-events" in {
