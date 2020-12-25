@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 // This project
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, Step}
 import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.Redshift
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
@@ -56,9 +57,10 @@ object RedshiftStatements {
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
   private[loading] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftStatements = {
-    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config))
+    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, discovery.compression))
     val transitCopy = config.steps.contains(Step.TransitCopy)
-    val atomic = buildEventsCopy(config, discovery.atomicEvents, transitCopy)
+    val compressionFormat = getCompressionFormat(discovery.compression)
+    val atomic = buildEventsCopy(config, discovery.atomicEvents, transitCopy, compressionFormat)
     buildLoadStatements(config.storage, config.steps, atomic, shreddedStatements)
   }
 
@@ -106,8 +108,7 @@ object RedshiftStatements {
    * @param transitCopy COPY not straight to events table, but to temporary local table
    * @return valid SQL statement to LOAD
    */
-  def buildEventsCopy(config: Config[Redshift], s3path: S3.Folder, transitCopy: Boolean): AtomicCopy = {
-    val compressionFormat = getCompressionFormat(config.compression)
+  def buildEventsCopy(config: Config[Redshift], s3path: S3.Folder, transitCopy: Boolean, compression: String): AtomicCopy = {
     val eventsTable = EventsTable.withSchema(config.storage)
 
     if (transitCopy) {
@@ -121,7 +122,7 @@ object RedshiftStatements {
            | EMPTYASNULL
            | FILLRECORD
            | TRUNCATECOLUMNS
-           | ACCEPTINVCHARS $compressionFormat""".stripMargin))
+           | ACCEPTINVCHARS $compression""".stripMargin))
     } else {
       AtomicCopy.Straight(SqlString.unsafeCoerce(
         s"""COPY $eventsTable FROM '$s3path'
@@ -133,7 +134,7 @@ object RedshiftStatements {
            | EMPTYASNULL
            | FILLRECORD
            | TRUNCATECOLUMNS
-           | ACCEPTINVCHARS $compressionFormat""".stripMargin))
+           | ACCEPTINVCHARS $compression""".stripMargin))
     }
   }
 
@@ -144,8 +145,8 @@ object RedshiftStatements {
    * @param tableName valid Redshift table name for shredded type
    * @return valid SQL statement to LOAD
    */
-  def buildCopyShreddedStatement(config: Config[_], shreddedType: ShreddedType, tableName: String, maxError: Int, roleArn: String): SqlString = {
-    val compressionFormat = getCompressionFormat(config.compression)
+  def buildCopyShreddedStatement(config: Config[_], shreddedType: ShreddedType, tableName: String, maxError: Int, roleArn: String, compression: Compression): SqlString = {
+    val compressionFormat = getCompressionFormat(compression)
 
     shreddedType match {
       case ShreddedType.Json(_, jsonPathsFile) =>
@@ -220,9 +221,9 @@ object RedshiftStatements {
    * @param shreddedType full info about shredded type found in `shredded/good`
    * @return three SQL-statements to load `shreddedType` from S3
    */
-  private def transformShreddedType(config: Config[Redshift])(shreddedType: ShreddedType): ShreddedStatements = {
+  private def transformShreddedType(config: Config[Redshift], compression: Compression)(shreddedType: ShreddedType): ShreddedStatements = {
     val tableName = config.storage.shreddedTable(ShreddedType.getTableName(shreddedType))
-    val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, config.storage.maxError, config.storage.roleArn)
+    val copyFromJson = buildCopyShreddedStatement(config, shreddedType, tableName, config.storage.maxError, config.storage.roleArn, compression)
     val analyze = buildAnalyzeStatement(tableName)
     val vacuum = buildVacuumStatement(tableName)
     ShreddedStatements(copyFromJson, analyze, vacuum)
@@ -231,8 +232,8 @@ object RedshiftStatements {
   /**
    * Stringify output codec to use in SQL statement
    */
-  private def getCompressionFormat(outputCodec: Config.OutputCompression): String = outputCodec match {
-    case Config.OutputCompression.None => ""
-    case Config.OutputCompression.Gzip => "GZIP"
+  private def getCompressionFormat(outputCodec: Compression): String = outputCodec match {
+    case Compression.None => ""
+    case Compression.Gzip => "GZIP"
   }
 }

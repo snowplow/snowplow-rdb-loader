@@ -21,6 +21,7 @@ import io.circe.jawn.parse
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.{Shredder, Compression}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
@@ -49,12 +50,17 @@ object SpecHelpers {
     UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
     "us-east-1",
     None,
-    Config.OutputCompression.Gzip,
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
+    Shredder(
+      URI.create("s3://bucket/input/"),
+      URI.create("s3://bucket/shredded/"),
+      URI.create("s3://bucket/shredded-bad/"),
+      Compression.Gzip
+    ),
     validTarget,
     Config.Formats(
       LoaderMessage.Format.TSV,

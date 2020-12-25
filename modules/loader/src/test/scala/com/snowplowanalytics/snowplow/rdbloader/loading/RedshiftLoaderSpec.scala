@@ -14,7 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver, Step}
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Step, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString.{unsafeCoerce => sql}
@@ -88,7 +89,7 @@ class RedshiftLoaderSpec extends Specification {
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
       )
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes)
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
 
       val (state, result) = RedshiftLoader.run[Pure](SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum, Step.Analyze)), discovery).flatMap(identity).run
 

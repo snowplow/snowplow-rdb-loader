@@ -16,6 +16,8 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Formats
+
 /**
  * Various common utility functions
  */
@@ -49,14 +51,14 @@ object Common {
       .replaceAll("""\.""", "_")
       .toLowerCase
 
-  def isTabular(config: Config[_])(schemaKey: SchemaKey): Boolean =
-    config.formats.default match {
+  def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
+    formats.default match {
       case LoaderMessage.Format.TSV =>
-        val notJson = !config.formats.json.exists(c => c.matches(schemaKey))
-        val notSkip = !config.formats.skip.exists(c => c.matches(schemaKey))
+        val notJson = !formats.json.exists(c => c.matches(schemaKey))
+        val notSkip = !formats.skip.exists(c => c.matches(schemaKey))
         notJson && notSkip
       case LoaderMessage.Format.JSON =>
-        config.formats.tsv.exists(c => c.matches(schemaKey))
+        formats.tsv.exists(c => c.matches(schemaKey))
     }
 
   /** Registry embedded into RDB Loader jar */
