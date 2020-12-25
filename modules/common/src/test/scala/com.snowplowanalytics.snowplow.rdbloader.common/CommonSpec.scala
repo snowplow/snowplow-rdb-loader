@@ -23,26 +23,26 @@ class CommonSpec extends Specification {
   "isTabular" should {
     "respect default TSV even if SchemaKey is not listed" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig)(input)
+      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
       result should beTrue
     }
 
     "respect default JSON" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
       val jsonFormat = CommonSpec.formats.copy(default = LoaderMessage.Format.JSON)
-      val result = Common.isTabular(CommonSpec.validConfig.copy(formats = jsonFormat))(input)
+      val result = Common.isTabular(jsonFormat)(input)
       result should beFalse
     }
 
     "respect keys listed in json" in {
       val input = SchemaKey("com.acme","json-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig)(input)
+      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
       result should beFalse
     }
 
     "respect keys listed in skip" in {
       val input = SchemaKey("com.acme","skip-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig)(input)
+      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
       result should beFalse
     }
   }
@@ -74,17 +74,24 @@ object CommonSpec {
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
 
+  val shredder = Config.Shredder(
+    URI.create("s3://bucket/input/"),
+    URI.create("s3://bucket/good/"),
+    URI.create("s3://bucket/bad/"),
+    Config.Compression.Gzip,
+  )
+
   val validConfig: Config[StorageTarget.Redshift] = Config(
     "Acme Redshift",
     UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
     "us-east-1",
     None,
-    Config.OutputCompression.Gzip,
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
+    shredder,
     validTarget,
     formats,
     Set.empty

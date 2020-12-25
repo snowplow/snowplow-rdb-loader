@@ -16,13 +16,15 @@ import java.time.Instant
 
 import cats.implicits._
 
-import io.circe.{Encoder, DecodingFailure, Decoder, Json}
+import io.circe.{Encoder, DecodingFailure, Json, Decoder}
 import io.circe.generic.semiauto._
 import io.circe.parser.parse
 import io.circe.syntax._
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 import com.snowplowanalytics.iglu.core.circe.implicits._
+
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 
 /** Common type of message RDB Loader can receive from Shredder or other apps */
 sealed trait LoaderMessage {
@@ -39,7 +41,7 @@ sealed trait LoaderMessage {
 object LoaderMessage {
 
   val ShreddingCompleteKey: SchemaKey =
-    SchemaKey("com.snowplowanalytics.snowplow.storage", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
+    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
 
   /** Data format for shredded data */
   sealed trait Format extends Product with Serializable
@@ -85,6 +87,7 @@ object LoaderMessage {
   final case class ShreddingComplete(base: S3.Folder,
                                      types: List[ShreddedType],
                                      timestamps: Timestamps,
+                                     compression: Compression,
                                      processor: Processor) extends LoaderMessage
 
   /** Parse raw string into self-describing JSON with [[LoaderMessage]] */

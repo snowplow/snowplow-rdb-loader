@@ -15,8 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import cats._
 import cats.implicits._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
-import com.snowplowanalytics.snowplow.rdbloader.common.{Config, S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Config, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 
 /**
@@ -27,7 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
   * @param base shred run folder full path
   * @param shreddedTypes list of shredded types in this directory
   */
-case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType]) {
+case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -122,7 +123,7 @@ object DataDiscovery {
       }
       .map { steps => LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel)) }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
-      DataDiscovery(message.base, types)
+      DataDiscovery(message.base, types.distinct, message.compression)
     }
   }
 }

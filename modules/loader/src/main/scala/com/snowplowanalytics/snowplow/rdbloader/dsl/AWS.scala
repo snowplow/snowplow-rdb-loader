@@ -14,8 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import javax.jms.MessageListener
 
-import scala.collection.JavaConverters._
-
 import cats.implicits._
 
 import cats.effect.{Sync, ConcurrentEffect}
@@ -24,17 +22,16 @@ import fs2.{Stream => FStream}
 import fs2.aws.sqsStream
 import fs2.aws.sqs.{SqsConfig, SQSConsumerBuilder, ConsumerBuilder}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{ S3, Message }
-
 import com.amazonaws.AmazonServiceException
 import com.amazonaws.services.s3.model._
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder
-import com.amazonaws.services.simplesystemsmanagement.model.{AWSSimpleSystemsManagementException, GetParameterRequest}
+import com.amazonaws.services.simplesystemsmanagement.model.{GetParameterRequest, AWSSimpleSystemsManagementException}
 
 import eu.timepit.refined.types.all.TrimmedString
 
 // This project
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Cloud}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 
 
@@ -69,28 +66,6 @@ object AWS {
     Sync[F].delay(AmazonS3ClientBuilder.standard().withRegion(region).build())
 
   def s3Interpreter[F[_]: ConcurrentEffect](client: AmazonS3): AWS[F] = new AWS[F] {
-
-    private def list(str: S3.Folder): F[List[S3ObjectSummary]] = {
-      val (bucket, prefix) = S3.splitS3Path(str)
-
-      val req = new ListObjectsV2Request()
-        .withBucketName(bucket)
-        .withPrefix(prefix)
-
-      def keyUnfold(result: ListObjectsV2Result): Stream[S3ObjectSummary] = {
-        if (result.isTruncated) {
-          val loaded = result.getObjectSummaries()
-          req.setContinuationToken(result.getNextContinuationToken)
-          loaded.asScala.toStream #::: keyUnfold(client.listObjectsV2(req))
-        } else {
-          result.getObjectSummaries().asScala.toStream
-        }
-      }
-
-      Sync[F].delay(keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList)
-    }
-
-
     /** * Transform S3 object summary into valid S3 key string */
     def getKey(s3ObjectSummary: S3ObjectSummary): S3.BlobObject = {
       val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
@@ -98,7 +73,7 @@ object AWS {
     }
 
     def listS3(bucket: S3.Folder): F[List[S3.BlobObject]] =
-      list(bucket).map(summaries => summaries.map(getKey))
+      Sync[F].delay(Cloud.list(client, bucket)).map(summaries => summaries.map(getKey))
 
     /**
      * Check if some `file` exists in S3 `path`
@@ -106,13 +81,10 @@ object AWS {
      * @param key valid S3 key (without trailing slash)
      * @return true if file exists, false if file doesn't exist or not available
      */
-    def keyExists(key: S3.Key): F[Boolean] = {
-      val (bucket, s3Key) = S3.splitS3Key(key)
-      val request = new GetObjectMetadataRequest(bucket, s3Key)
-      Sync[F].delay(client.getObjectMetadata(request)).as(true).recover {
+    def keyExists(key: S3.Key): F[Boolean] =
+      Sync[F].delay(Cloud.keyExists(client, key)).recover {
         case _: AmazonServiceException => false
       }
-    }
 
     /**
      * Get value from AWS EC2 Parameter Store
