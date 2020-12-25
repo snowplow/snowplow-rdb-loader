@@ -19,6 +19,7 @@ import cats.syntax.either._
 import cats.syntax.show._
 
 import io.circe._
+import io.circe.syntax._
 import io.circe.generic.semiauto._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -42,9 +43,9 @@ final case class Config[+D <: StorageTarget](name: String,
                                              id: UUID,
                                              region: String,
                                              jsonpaths: Option[S3.Folder],
-                                             compression: OutputCompression,
                                              monitoring: Monitoring,
                                              messageQueue: String,
+                                             shredder: Shredder,
                                              storage: D,
                                              formats: Formats,
                                              steps: Set[Step])
@@ -72,10 +73,12 @@ object Config {
         Either.cond(overlaps.isEmpty, config, message)
       }
 
-  sealed trait OutputCompression extends StringEnum
-  object OutputCompression {
-    final case object None extends OutputCompression { val asString = "NONE" }
-    final case object Gzip extends OutputCompression { val asString = "GZIP" }
+  final case class Shredder(input: URI, output: URI, outputBad: URI, compression: Compression)
+
+  sealed trait Compression extends StringEnum
+  object Compression {
+    final case object None extends Compression { val asString = "NONE" }
+    final case object Gzip extends Compression { val asString = "GZIP" }
   }
 
   final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry])
@@ -122,6 +125,9 @@ object Config {
 
   final case class Sentry(dsn: URI)
 
+  implicit val shredderDecoder: Decoder[Shredder] =
+    deriveDecoder[Shredder]
+
   implicit val uriDecoder: Decoder[URI] =
     Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
 
@@ -137,8 +143,10 @@ object Config {
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]
 
-  implicit val decodeOutputCompression: Decoder[OutputCompression] =
-    StringEnum.decodeStringEnum[OutputCompression]
+  implicit val decodeOutputCompression: Decoder[Compression] =
+    StringEnum.decodeStringEnum[Compression]
+  implicit val encodeOutputCompression: Encoder[Compression] =
+    Encoder.instance(_.toString.toUpperCase.asJson)
 
   implicit val configDecoder: Decoder[Config[StorageTarget]] =
     deriveDecoder[Config[StorageTarget]]

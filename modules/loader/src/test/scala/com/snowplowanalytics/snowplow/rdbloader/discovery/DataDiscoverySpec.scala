@@ -20,11 +20,11 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
 
 class DataDiscoverySpec extends Specification {
@@ -35,7 +35,7 @@ class DataDiscoverySpec extends Specification {
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
       )
 
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes)
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
       discovery.show must beEqualTo(
         """|my-path with following shredded types:
            |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
@@ -89,7 +89,8 @@ class DataDiscoverySpec extends Specification {
         List(
           ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,Semver(1,1,2,None)),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
           ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,Semver(1,1,2,None)),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
-        )
+        ),
+        Compression.Gzip
       )
 
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
@@ -123,6 +124,7 @@ object DataDiscoverySpec {
       None,
       None
     ),
+    Compression.Gzip,
     LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
   )
 }

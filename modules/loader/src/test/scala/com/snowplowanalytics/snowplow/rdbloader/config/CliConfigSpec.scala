@@ -68,8 +68,14 @@ object CliConfigSpec {
       id           = "123e4567-e89b-12d3-a456-426655440000"
       region       = "us-east-1"
       jsonpaths    = null
-      compression  = "GZIP"
       messageQueue = "messages"
+
+      shredder = {
+        "input": "s3://bucket/input/",
+        "output": "s3://bucket/shredded/",
+        "outputBad": "s3://bucket/shredded-bad/",
+        "compression": "GZIP"
+      },
 
       storage = {
         "type":     "redshift",

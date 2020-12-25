@@ -17,7 +17,9 @@ import java.time.Instant
 import io.circe.Json
 import io.circe.literal._
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 
 import org.specs2.mutable.Specification
 
@@ -58,6 +60,7 @@ object LoaderMessageSpec {
         "min" : null,
         "max" : null
       },
+      "compression": "GZIP",
       "processor": {
         "artifact" : "test-shredder",
         "version" : "1.1.2"
@@ -76,6 +79,7 @@ object LoaderMessageSpec {
       None,
       None
     ),
+    Compression.Gzip,
     LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
   )
 }

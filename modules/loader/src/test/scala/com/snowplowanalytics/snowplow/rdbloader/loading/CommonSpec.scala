@@ -16,15 +16,15 @@ import cats.effect.Timer
 import cats.syntax.either._
 import cats.syntax.alternative._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.loading.CommonSpec.{isFirstCommit, failCommit}
+import com.snowplowanalytics.snowplow.rdbloader.loading.CommonSpec.{failCommit, isFirstCommit}
 
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureIglu, PureJDBC, PureOps, PureLogging, PureTimer}
 
 class CommonSpec extends Specification {
@@ -117,7 +117,8 @@ object CommonSpec {
         ),
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
       )
-    )
+    ),
+    Compression.Gzip
   )
 
   def isFirstCommit(sql: SqlString, ts: TestState) =

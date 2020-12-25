@@ -18,6 +18,8 @@ import java.nio.file.{Paths, Files}
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Shredder
+
 import org.specs2.mutable.Specification
 
 class ConfigSpec extends Specification {
@@ -29,8 +31,14 @@ class ConfigSpec extends Specification {
           id           = "123e4567-e89b-12d3-a456-426655440000"
           region       = "us-east-1"
           jsonpaths    = null
-          compression  = "GZIP"
           messageQueue = "messages"
+
+          shredder = {
+            "input": "s3://bucket/input/",
+            "output": "s3://bucket/good/",
+            "outputBad": "s3://bucket/bad/",
+            "compression": "GZIP"
+          }
 
           storage = {
             "type":     "redshift",
@@ -97,8 +105,14 @@ class ConfigSpec extends Specification {
           name         = "Acme Redshift"
           id           = "123e4567-e89b-12d3-a456-426655440000"
           region       = "us-east-1"
-          compression  = "GZIP"
           messageQueue = "messages"
+          shredder = {
+            "input": "s3://bucket/input/",
+            "output": "s3://bucket/good/",
+            "outputBad": "s3://bucket/bad/",
+            "compression": "GZIP"
+          }
+
           storage = {
             "type":     "redshift",
             "host":     "redshift.amazon.com",
@@ -196,12 +210,17 @@ object ConfigSpec {
     UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
     "us-east-1",
     None,
-    Config.OutputCompression.Gzip,
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
+    Shredder(
+      URI.create("s3://bucket/input/"),
+      URI.create("s3://bucket/good/"),
+      URI.create("s3://bucket/bad/"),
+      Config.Compression.Gzip,
+    ),
     StorageTarget.Redshift(
       "redshift.amazon.com",
       "snowplow",

@@ -30,6 +30,21 @@ object S3 {
    */
   type Folder = String @@ S3FolderTag
 
+  implicit class FolderOps(f: Folder) {
+    def withKey(s: String): S3.Key =
+      S3.Key.join(f, s)
+
+    def append(s: String): S3.Folder =
+      Folder.append(f, s)
+
+    def folderName: String =
+      f.split("/").last
+
+    def bucketName: String =
+      f.split("://").last.split("/").head
+  }
+
+
   object Folder extends tag.Tagger[S3FolderTag] {
 
     def parse(s: String): Either[String, Folder] = s match {
@@ -142,12 +157,13 @@ object S3 {
    * @param key S3 full path with `s3://` prefix and without trailing slash
    * @return pair of bucket name and remaining path ("some-bucket", "some/prefix/")
    */
-  private[rdbloader] def splitS3Key(key: Key): (String, String) =
+  def splitS3Key(key: Key): (String, String) =
     key.stripPrefix("s3://").split("/").toList match {
       case head :: tail => (head, tail.mkString("/").stripSuffix("/"))
       case _ => throw new IllegalArgumentException(s"Invalid S3 key [$key] was passed")  // Impossible
     }
 
+  /** Used only to list S3 directories, not to read and write data. */
   private def fixPrefix(s: String): String =
     if (s.startsWith("s3n")) "s3" + s.stripPrefix("s3n")
     else if (s.startsWith("s3a")) "s3" + s.stripPrefix("s3a")

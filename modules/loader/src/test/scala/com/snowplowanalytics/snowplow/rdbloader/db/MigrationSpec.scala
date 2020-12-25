@@ -23,9 +23,10 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.Columns
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType, DiscoveryFailure}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
 
 import org.specs2.mutable.Specification
@@ -55,7 +56,7 @@ class MigrationSpec extends Specification {
             Semver(0, 17, 0)
           ), S3.Key.coerce("s3://shredded/jsonpaths"))
         )
-      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types)
+      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
 
       val expected = List(
         "Fetch iglu:com.acme/some_context/jsonschema/2-0-0",
