@@ -30,7 +30,7 @@ object Dependencies {
     val fs2              = "2.4.4"
 
     // Scala (Shredder)
-    val spark            = "3.0.1"
+    val spark            = "3.1.0"
     val eventsManifest   = "0.2.0"
     val schemaDdl        = "0.12.0"
 
