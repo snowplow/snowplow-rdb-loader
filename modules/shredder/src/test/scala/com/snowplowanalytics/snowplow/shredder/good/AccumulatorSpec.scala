@@ -35,7 +35,6 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
     "return the list of shredded types with their format without --target" in {
       val expected = Set(
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.JSON),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON)
       )
       val actual = runShredJob(inputEvent).types.toSet
@@ -45,7 +44,6 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
     "return the list of shredded types with their format with --target and no blacklist" in {
       val expected = Set(
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV)
       )
       val actual = runShredJob(inputEvent, false, true).types.toSet
@@ -56,7 +54,6 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       val linkClickSchema = SchemaCriterion("com.snowplowanalytics.snowplow", "link_click", "jsonschema", 1)
       val expected = Set(
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON)
       )
       val actual = runShredJob(inputEvent, false, true, List(linkClickSchema)).types.toSet
@@ -67,7 +64,6 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       val randomSchema = SchemaCriterion("foo", "bar", "jsonschema", 1)
       val expected = Set(
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV)
       )
       val actual = runShredJob(inputEvent, false, true, List(randomSchema)).types.toSet
