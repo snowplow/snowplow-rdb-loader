@@ -34,7 +34,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 
 import com.snowplowanalytics.snowplow.shredder.Discovery.MessageProcessor
 import com.snowplowanalytics.snowplow.shredder.transformation.{FinalRow, EventUtils}
-import com.snowplowanalytics.snowplow.shredder.spark.{singleton, Sink, ShreddedTypesAccumulator}
+import com.snowplowanalytics.snowplow.shredder.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
 
 /**
  * The Snowplow Shred job, written in Spark.
@@ -48,6 +48,10 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: CliConfig) exten
   // Accumulator to track shredded types
   val shreddedTypesAccumulator = new ShreddedTypesAccumulator
   sc.register(shreddedTypesAccumulator)
+
+  // Accumulator to track min and max timestamps
+  val timestampsAccumulator = new TimestampsAccumulator
+  sc.register(timestampsAccumulator)
 
   /** Check if `shredType` should be transformed into TSV */
   def isTabular(shredType: SchemaKey): Boolean =
@@ -99,7 +103,6 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: CliConfig) exten
         val first = s.minBy(_.etl_tstamp)
         Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
           case Right(unique) if unique =>
-            ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(first.inventory.map(_.schemaKey))
             Some(Right(first))
           case Right(_) => None
           case Left(badRow) => Some(Left(badRow))
@@ -126,6 +129,8 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: CliConfig) exten
     // those that are synthetic duplicates
     val shredded = good.map { e =>
       e.flatMap { event =>
+        ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(event.inventory.map(_.schemaKey))
+        timestampsAccumulator.add(event)
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
         FinalRow.shred(shredConfig.igluConfig, isTabular, atomicLengths)(withDupeContext)
