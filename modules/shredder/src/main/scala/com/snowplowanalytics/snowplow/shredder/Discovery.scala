@@ -94,16 +94,17 @@ object Discovery {
         .withMessageGroupId("shredding")
 
     val (bucket, key) = S3.splitS3Key(message.base.withKey(FinalKeyName))
-    Either.catchNonFatal(s3Client.putObject(bucket, key, message.selfDescribingData.asString)) match {
+
+    Either.catchNonFatal(sqsClient.sendMessage(sqsMessage)) match {
       case Left(e) =>
-        throw new RuntimeException(s"RDB Shredder could not write ${message.base.withKey(FinalKeyName)}", e)
+        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to SQS for ${message.base}", e)
       case _ =>
         ()
     }
 
-    Either.catchNonFatal(sqsClient.sendMessage(sqsMessage)) match {
+    Either.catchNonFatal(s3Client.putObject(bucket, key, message.selfDescribingData.asString)) match {
       case Left(e) =>
-        throw new RuntimeException(s"RDB Shredder could not send shredded types [${message.selfDescribingData.asString}] to SQS", e)
+        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to SQS but could not write ${message.base.withKey(FinalKeyName)}", e)
       case _ =>
         ()
     }
