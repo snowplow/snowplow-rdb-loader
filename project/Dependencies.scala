@@ -41,7 +41,7 @@ object Dependencies {
     val jSch             = "0.1.55"
 
     // Scala (test only)
-    val specs2           = "4.10.5"
+    val specs2           = "4.10.6"
     val scalaCheck       = "1.14.0"
   }
 
