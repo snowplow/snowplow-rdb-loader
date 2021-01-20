@@ -34,6 +34,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
   "A shredding job" should {
     "return the list of shredded types with their format without --target" in {
       val expected = Set(
+        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.JSON),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON)
       )
@@ -43,6 +44,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
 
     "return the list of shredded types with their format with --target and no blacklist" in {
       val expected = Set(
+        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV)
       )
@@ -53,6 +55,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
     "return the list of shredded types with their format with --target and schema in non-empty blacklist" in {
       val linkClickSchema = SchemaCriterion("com.snowplowanalytics.snowplow", "link_click", "jsonschema", 1)
       val expected = Set(
+        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON)
       )
@@ -63,6 +66,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
     "return the list of shredded types with their format with --target and schema not in non-empty blacklist" in {
       val randomSchema = SchemaCriterion("foo", "bar", "jsonschema", 1)
       val expected = Set(
+        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV),
         ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV)
       )

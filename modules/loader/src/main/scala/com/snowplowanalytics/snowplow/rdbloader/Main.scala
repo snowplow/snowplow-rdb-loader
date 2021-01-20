@@ -24,7 +24,7 @@ import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.load
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
 import io.sentry.Sentry

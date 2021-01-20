@@ -44,7 +44,9 @@ object LoaderMessage {
     SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
 
   /** Data format for shredded data */
-  sealed trait Format extends Product with Serializable
+  sealed trait Format extends Product with Serializable {
+    def path: String = this.toString.toLowerCase
+  }
   object Format {
     final case object TSV extends Format
     final case object JSON extends Format

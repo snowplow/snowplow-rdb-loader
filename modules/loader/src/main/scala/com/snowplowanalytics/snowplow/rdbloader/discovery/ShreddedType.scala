@@ -17,10 +17,10 @@ import scala.util.matching.Regex
 import cats.{Apply, Monad}
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Semver, Common}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 
@@ -31,6 +31,15 @@ sealed trait ShreddedType {
   def getLoadPath: String
   /** Human-readable form */
   def show: String
+
+  /** Check if this type is special atomic type */
+  def isAtomic = this match {
+    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
+      vendor == Common.AtomicSchema.vendor && name == Common.AtomicSchema.name && model == Common.AtomicSchema.version.model
+    case _ =>
+      false
+  }
+
 }
 
 /**
@@ -46,7 +55,7 @@ object ShreddedType {
     */
   final case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}shredded-types/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}-"
+      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -59,7 +68,7 @@ object ShreddedType {
     */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}shredded-tsv/vendor=${info.vendor}/name=${info.name}/format=jsonschema/version=${info.model}"
+      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
@@ -69,7 +78,7 @@ object ShreddedType {
    * It cannot be counted as "final" shredded type,
    * as it's not proven to have JSONPaths file
    *
-   * @param base s3 path run folder (without `shredded-types` suffix)
+   * @param base s3 path run folder
    * @param vendor self-describing type's vendor
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
@@ -113,24 +122,22 @@ object ShreddedType {
 
   /** Regex to extract `SchemaKey` from `shredded/good` */
   val ShreddedSubpathPattern: Regex =
-    ("""shredded\-types""" +
-     """/vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
+    ("""vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
      """/name=(?<name>[a-zA-Z0-9-_]+)""" +
-     """/format=(?<format>[a-zA-Z0-9-_]+)""" +
-     """/version=(?<schemaver>[1-9][0-9]*(?:-(?:0|[1-9][0-9]*)){2})$""").r
+     """/format=json""" +
+     """/model=(?<model>[1-9][0-9]*)$""").r
 
   /** Regex to extract `SchemaKey` from `shredded/good` */
   val ShreddedSubpathPatternTabular: Regex =
-    ("""shredded\-tsv""" +
-      """/vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
-      """/name=(?<name>[a-zA-Z0-9-_]+)""" +
-      """/format=(?<format>[a-zA-Z0-9-_]+)""" +
-      """/version=(?<model>[1-9][0-9]*)$""").r
+    ("""vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
+     """/name=(?<name>[a-zA-Z0-9-_]+)""" +
+     """/format=tsv""" +
+     """/model=(?<model>[1-9][0-9]*)$""").r
 
   /**
-   * "shredded-types" + vendor + name + format + version + filename
+   * vendor + name + format + version + filename
    */
-  private val MinShreddedPathLengthModern = 6
+  private val MinShreddedPathLengthModern = 5
 
   /**
    * Check where JSONPaths file for particular shredded type exists:
@@ -210,27 +217,17 @@ object ShreddedType {
    * @param shredJob version of shred job to decide what path format should be present
    * @return either discovery failure or info (which in turn can be tabular (true) or JSON (false))
    */
-  def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (Boolean, Info)] = {
+  def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (LoaderMessage.Format, Info)] = {
     val (bucket, path) = S3.splitS3Key(key)
-    val (subpath, shredpath) = splitFilpath(path)
+    val (subpath, shredpath) = splitFilepath(path)
     extractSchemaKey(shredpath) match {
-      case Some(Extracted.Legacy(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)))) =>
+      case Some((vendor, name, model, format)) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
         val result = Info(prefix, vendor, name, model, shredJob)
-        (false, result).asRight
-      case Some(Extracted.Tabular(vendor, name, _, model)) =>
-        val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, vendor, name, model, shredJob)
-        (true, result).asRight
+        (format, result).asRight
       case None =>
         DiscoveryFailure.ShreddedTypeKeyFailure(key).asLeft
     }
-  }
-
-  sealed trait Extracted
-  object Extracted {
-    final case class Legacy(key: SchemaKey) extends Extracted
-    final case class Tabular(vendor: String, name: String, format: String, model: Int) extends Extracted
   }
 
   /**
@@ -242,17 +239,20 @@ object ShreddedType {
    * @param subpath S3 subpath of four `SchemaKey` elements
    * @return valid schema key if found
    */
-  def extractSchemaKey(subpath: String): Option[Extracted] =
+  def extractSchemaKey(subpath: String): Option[(String, String, Int, LoaderMessage.Format)] =
     subpath match {
-      case ShreddedSubpathPattern(vendor, name, format, version) =>
-        val uri = s"iglu:$vendor/$name/$format/$version"
-        SchemaKey.fromUri(uri).toOption.map(Extracted.Legacy)
-      case ShreddedSubpathPatternTabular(vendor, name, format, model) =>
+      case ShreddedSubpathPattern(vendor, name, model) =>
         scala.util.Try(model.toInt).toOption match {
-          case Some(m) => Extracted.Tabular(vendor, name, format, m).some
+          case Some(m) => Some((vendor, name, m, LoaderMessage.Format.JSON))
           case None => None
         }
-      case _ => None
+      case ShreddedSubpathPatternTabular(vendor, name, model) =>
+        scala.util.Try(model.toInt).toOption match {
+          case Some(m) => Some((vendor, name, m, LoaderMessage.Format.TSV))
+          case None => None
+        }
+      case _ =>
+        None
     }
 
   /**
@@ -266,7 +266,7 @@ object ShreddedType {
    * @param path S3 key without bucket name
    * @return pair of subpath and shredpath
    */
-  private def splitFilpath(path: String): (String, String) =
+  private def splitFilepath(path: String): (String, String) =
     path.split("/").reverse.splitAt(MinShreddedPathLengthModern) match {
       case (reverseSchema, reversePath) =>
         (reversePath.reverse.mkString("/"), reverseSchema.tail.reverse.mkString("/"))

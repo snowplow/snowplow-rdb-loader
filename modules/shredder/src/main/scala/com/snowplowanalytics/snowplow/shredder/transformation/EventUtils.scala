@@ -19,10 +19,10 @@ import java.time.Instant
 import java.time.format.DateTimeParseException
 
 import io.circe.Json
-
 import cats.{Id, Monad}
 import cats.data.{EitherT, NonEmptyList}
 import cats.implicits._
+
 import cats.effect.Clock
 
 import com.snowplowanalytics.iglu.core._
@@ -35,20 +35,13 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{ParsingError, Event}
-
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Failure, Payload, FailureDetails}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
+import com.snowplowanalytics.snowplow.rdbloader.common.{catsClockIdInstance, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.Flattening.{NullCharacter, getOrdered}
-
 import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
-
 import com.snowplowanalytics.snowplow.shredder.spark.singleton
 
 object EventUtils {
-
-  val AtomicSchema: SchemaKey =
-    SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
 
   val BadRowsProcessor: Processor = Processor(ProjectMetadata.name, ProjectMetadata.version)
 
@@ -70,8 +63,8 @@ object EventUtils {
     singleton.IgluSingleton
       .get(iglu)
       .resolver
-      .lookupSchema(AtomicSchema)
-      .leftMap(error => s"RDB Shredder could not fetch ${AtomicSchema.toSchemaUri} schema at initialization. ${(error: ClientError).show}")
+      .lookupSchema(Common.AtomicSchema)
+      .leftMap(error => s"RDB Shredder could not fetch ${Common.AtomicSchema.toSchemaUri} schema at initialization. ${(error: ClientError).show}")
       .flatMap(json => Schema.parse(json).flatMap(_.properties).map(_.value).toRight("atomic schema does not conform expected format"))
       .map(_.flatMap { case (k, v) => getLength(v).map { l => (k, l)}})
       .flatMap(lengths => if (lengths.isEmpty) "atomic schema properties is empty".asLeft else lengths.asRight)

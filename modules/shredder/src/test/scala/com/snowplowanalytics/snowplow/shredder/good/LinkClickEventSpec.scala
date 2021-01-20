@@ -26,7 +26,7 @@ object LinkClickEventSpec {
 
 
   object expected {
-    val path = "shredded-types/vendor=com.snowplowanalytics.snowplow/name=link_click/format=jsonschema/version=1-0-0"
+    val path = "vendor=com.snowplowanalytics.snowplow/name=link_click/format=json/model=1"
     val contents  =
       s"""|{
             |"schema":{
@@ -61,8 +61,8 @@ class LinkClickEventSpec extends Specification with ShredJobSpec {
     runShredJob(LinkClickEventSpec.lines)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform the enriched event and store it in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform the enriched event and store it in atomic folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(LinkClickEventSpec.expected.event)
     }

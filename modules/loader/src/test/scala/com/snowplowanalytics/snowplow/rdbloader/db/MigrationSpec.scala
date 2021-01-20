@@ -70,6 +70,43 @@ class MigrationSpec extends Specification {
       val (state, value) = Migration.perform[Pure]("public", input).run
       (state.getLog must beEqualTo(expected)).and(value must beRight)
     }
+
+    "ignore atomic schema" in {
+      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+
+      val types =
+        List(
+          ShreddedType.Tabular(ShreddedType.Info(
+            S3.Folder.coerce("s3://shredded/archive"),
+            "com.snowplowanalytics.snowplow",
+            "atomic",
+            1,
+            Semver(0, 17, 0)
+          )),
+          ShreddedType.Tabular(ShreddedType.Info(
+            S3.Folder.coerce("s3://shredded/archive"),
+            "com.acme",
+            "some_event",
+            1,
+            Semver(0, 17, 0)
+          ))
+        )
+      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
+
+      val expected = List(
+        "Fetch iglu:com.acme/some_event/jsonschema/1-0-0",
+        "SELECT EXISTS ( SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'com_acme_some_event_1') AS exists;",
+        "Creating public.com_acme_some_event_1 table for iglu:com.acme/some_event/jsonschema/1-0-0",
+        "CREATE TABLE IF NOT EXISTS public.com_acme_some_event_1 ( \"schema_vendor\" VARCHAR(128) ENCODE ZSTD NOT NULL, \"schema_name\" VARCHAR(128) ENCODE ZSTD NOT NULL, \"schema_format\" VARCHAR(128) ENCODE ZSTD NOT NULL, \"schema_version\" VARCHAR(128) ENCODE ZSTD NOT NULL, \"root_id\" CHAR(36) ENCODE RAW NOT NULL, \"root_tstamp\" TIMESTAMP ENCODE ZSTD NOT NULL, \"ref_root\" VARCHAR(255) ENCODE ZSTD NOT NULL, \"ref_tree\" VARCHAR(1500) ENCODE ZSTD NOT NULL, \"ref_parent\" VARCHAR(255) ENCODE ZSTD NOT NULL, FOREIGN KEY (root_id) REFERENCES public.events(event_id) ) DISTSTYLE KEY DISTKEY (root_id) SORTKEY (root_tstamp)",
+        "COMMENT ON TABLE public.com_acme_some_event_1 IS 'iglu:com.acme/some_event/jsonschema/1-0-0'",
+        "Table created"
+      )
+
+      val (state, value) = Migration.perform[Pure]("public", input).run
+      (state.getLog must beEqualTo(expected)).and(value must beRight)
+    }
   }
 
   "updateTable" should {
