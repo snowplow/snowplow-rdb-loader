@@ -3,10 +3,10 @@ package com.snowplowanalytics.snowplow.shredder.spark
 import java.util.UUID
 import java.time.Instant
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.shredder.transformation.{FinalRow, Hierarchy}
+import com.snowplowanalytics.snowplow.shredder.transformation.{Hierarchy, Shredded}
 
 object Serialization {
   val classesToRegister: Array[Class[_]] = Array(
@@ -16,8 +16,9 @@ object Serialization {
     classOf[SelfDescribingData[_]],
     classOf[Event],
     classOf[Hierarchy],
-    classOf[FinalRow],
     classOf[Instant],
+    classOf[Array[Shredded]],
+    classOf[Shredded.Tabular],
     classOf[UUID],
     Class.forName("com.snowplowanalytics.iglu.core.SchemaVer$Full"),
     Class.forName("io.circe.JsonObject$LinkedHashMapJsonObject"),

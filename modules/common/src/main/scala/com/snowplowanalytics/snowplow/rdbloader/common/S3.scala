@@ -88,20 +88,6 @@ object S3 {
   case class BlobObject(key: Key, size: Long)
 
   /**
-   * Extract `s3://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events/` part from
-   * `s3://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events/somefile`
-   *
-   * @param s string probably containing run id and atomic events subpath
-   * @return string refined as folder
-   */
-  def getAtomicPath(s: Key): Option[Folder] =
-    s match {
-      case AtomicSubpathPattern(prefix, subpath, _) =>
-        Some(Folder.coerce(prefix + "/" + subpath))
-      case _ => None
-    }
-
-  /**
    * Refined type for AWS S3 key,  allowing only valid S3 paths
    * (with `s3://` prefix and without trailing shash)
    */

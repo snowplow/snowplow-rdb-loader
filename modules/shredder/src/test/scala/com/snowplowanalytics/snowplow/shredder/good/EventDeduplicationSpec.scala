@@ -43,7 +43,7 @@ object EventDeduplicationSpec {
   )
 
   object expected {
-    val path = "shredded-types/vendor=com.snowplowanalytics.snowplow/name=duplicate/format=jsonschema/version=1-0-0"
+    val path = "vendor=com.snowplowanalytics.snowplow/name=duplicate/format=json/model=1"
     val contents =
       s"""|{
           |"schema":{
@@ -64,7 +64,7 @@ object EventDeduplicationSpec {
           |}
           |}""".stripMargin.replaceAll("[\n\r]","")
 
-    val additionalContextPath = "shredded-types/vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=jsonschema/version=1-0-0"
+    val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1"
     val additionalContextContents =
       s"""
         |{
@@ -133,14 +133,14 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     runShredJob(EventDeduplicationSpec.lines)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform two enriched events and store them in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform two enriched events and store them in atomic events folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       val updatedLines = lines.map(EventDeduplicationSpec.eraseEventId)
       updatedLines.sorted mustEqual EventDeduplicationSpec.expected.events
     }
     "shred two enriched events with deduplicated event ids" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       val eventIds = lines.map(_.split("\t").apply(6))
 

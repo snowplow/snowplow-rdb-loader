@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Step, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString.{unsafeCoerce => sql}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString.{unsafeCoerce => sql}
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureLogging}
@@ -87,23 +87,27 @@ class RedshiftLoaderSpec extends Specification {
 
       val shreddedTypes = List(
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_1.json"))
+        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_2.json")),
+        ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 3, Semver(1,5,0))),
       )
       val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
 
       val (state, result) = RedshiftLoader.run[Pure](SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum, Step.Analyze)), discovery).flatMap(identity).run
 
       val expected = List(
-        "COPY atomic.events FROM 's3://my-bucket/my-path/atomic-events/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_event_2 FROM 's3://my-bucket/my-path/shredded-types/vendor=com.acme/name=event/format=jsonschema/version=2-' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/event_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_context_2 FROM 's3://my-bucket/my-path/shredded-types/vendor=com.acme/name=context/format=jsonschema/version=2-' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.events FROM 's3://my-bucket/my-path/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_event_2 FROM 's3://my-bucket/my-path/vendor=com.acme/name=event/format=json/model=2' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/event_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_context_2 FROM 's3://my-bucket/my-path/vendor=com.acme/name=context/format=json/model=2' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/context_2.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_context_3 FROM 's3://my-bucket/my-path/vendor=com.acme/name=context/format=tsv/model=3' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
         "VACUUM SORT ONLY atomic.events",
         "VACUUM SORT ONLY atomic.com_acme_event_2",
         "VACUUM SORT ONLY atomic.com_acme_context_2",
+        "VACUUM SORT ONLY atomic.com_acme_context_3",
         "BEGIN",
         "ANALYZE atomic.events",
         "ANALYZE atomic.com_acme_event_2",
         "ANALYZE atomic.com_acme_context_2",
+        "ANALYZE atomic.com_acme_context_3",
         "COMMIT"
       )
 

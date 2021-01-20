@@ -66,7 +66,7 @@ object CrossBatchDeduplicationSpec {
   )
 
   object expected {
-    val additionalContextPath = "shredded-types/vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=jsonschema/version=1-0-0"
+    val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1"
     val additionalContextContents1 =
       s"""
         |{
@@ -233,13 +233,13 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
 
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "remove cross-batch duplicate and store left event in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "remove cross-batch duplicate and store left event in atomic events folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines.sorted mustEqual CrossBatchDeduplicationSpec.expected.events
     }
     "shred two unique events out of cross-batch and in-batch duplicates" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       val eventIds = lines.map(_.split("\t").apply(6))
       eventIds must containTheSameElementsAs(

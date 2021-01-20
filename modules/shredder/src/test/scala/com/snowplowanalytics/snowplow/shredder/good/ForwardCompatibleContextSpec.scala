@@ -26,7 +26,7 @@ object ForwardCompatibleContextSpec {
   )
 
   object expected {
-    val path = "shredded-types/vendor=org.schema/name=WebPage/format=jsonschema/version=1-0-0"
+    val path = "vendor=org.schema/name=WebPage/format=json/model=1"
     val contents  =
       s"""|{
             |"schema":{
@@ -64,8 +64,8 @@ class ForwardCompatibleContextSpec extends Specification with ShredJobSpec {
     runShredJob(ForwardCompatibleContextSpec.lines)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform the enriched event and store it in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform the enriched event and store it in atomic events folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(ForwardCompatibleContextSpec.expected.event)
     }

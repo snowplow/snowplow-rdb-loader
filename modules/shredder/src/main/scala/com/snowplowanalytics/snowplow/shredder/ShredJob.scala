@@ -33,7 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 
 import com.snowplowanalytics.snowplow.shredder.Discovery.MessageProcessor
-import com.snowplowanalytics.snowplow.shredder.transformation.{FinalRow, EventUtils}
+import com.snowplowanalytics.snowplow.shredder.transformation.{ EventUtils, Shredded }
 import com.snowplowanalytics.snowplow.shredder.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
 
 /**
@@ -133,23 +133,15 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: CliConfig) exten
         timestampsAccumulator.add(event)
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        FinalRow.shred(shredConfig.igluConfig, isTabular, atomicLengths)(withDupeContext)
+        Shredded.fromEvent(shredConfig.igluConfig, isTabular, atomicLengths)(withDupeContext)
       }
     }.cache()
 
-    val shreddedGood = shredded.flatMap(_.toOption)
-
-    // Ready the events for database load
-    val events = shreddedGood.map(_.atomic)
-
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shreddedData = shreddedGood.flatMap(_.shredded)
+    val shreddedData = shredded.flatMap(_.getOrElse(Nil))
 
     // Data that failed TSV transformation
     val shreddedBad = (common.flatMap(_.swap.toOption) ++ shredded.flatMap(_.swap.toOption)).map(bad => Row(bad.compact))
-
-    // Write as strings to `atomic-events` directory
-    Sink.writeEvents(spark, shredder.compression, events, outFolder)
 
     // Final output
     Sink.writeShredded(spark, shredder.compression, shredConfig.config.formats, shreddedData, outFolder)
@@ -157,10 +149,14 @@ class ShredJob(@transient val spark: SparkSession, shredConfig: CliConfig) exten
     // Bad data
     Sink.writeBad(spark, shredder.compression, shreddedBad, badFolder)
 
-    val shreddedTypes = (shreddedTypesAccumulator.value).toList
+    val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
-    LoaderMessage.ShreddingComplete(outFolder, shreddedTypes, timestamps, shredder.compression, MessageProcessor)
+
+    val isEmpty = batchTimestamps.isEmpty || shreddedTypes.isEmpty || shreddedData.isEmpty()  // RDD.isEmpty called as last resort
+    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
+
+    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredder.compression, MessageProcessor)
   }
 }
 

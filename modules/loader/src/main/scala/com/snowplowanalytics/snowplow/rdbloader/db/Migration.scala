@@ -27,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.{ LoaderAction, LoaderError, Act
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.{Columns, TableState}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 object Migration {
   /**
@@ -36,7 +36,7 @@ object Migration {
     * Do nothing in case there's only legacy JSON data
     */
   def perform[F[_]: Monad: Logging: Iglu: JDBC](dbSchema: String, discovery: DataDiscovery): LoaderAction[F, Unit] =
-    discovery.shreddedTypes.traverse_ {
+    discovery.shreddedTypes.filterNot(_.isAtomic).traverse_ {
       case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
         for {
           schemas   <- EitherT(Iglu[F].getSchemas(vendor, name, model))

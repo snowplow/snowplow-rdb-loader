@@ -14,8 +14,6 @@
  */
 package com.snowplowanalytics.snowplow.shredder.bad
 
-import java.io.File
-
 import io.circe.literal._
 
 import org.specs2.mutable.Specification
@@ -48,11 +46,8 @@ class NotEnrichedEventsSpec extends Specification with ShredJobSpec {
       jsons must containTheSameElementsAs(NotEnrichedEventsSpec.expected)
     }
 
-    "not write any atomic-events" in {
-      new File(dirs.output, "atomic-events") must beEmptyDir
-    }
     "not write any jsons" in {
-      new File(dirs.output, "shredded-types") must beEmptyDir
+      dirs.output must beEmptyDir
     }
   }
 }

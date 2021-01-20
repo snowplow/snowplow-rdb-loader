@@ -60,6 +60,8 @@ object ShredJobSpec {
 
   val Version = ProjectMetadata.version
 
+  val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+
   /** Case class representing the input lines written in a file. */
   case class Lines(l: String*) {
     val lines = l.toList

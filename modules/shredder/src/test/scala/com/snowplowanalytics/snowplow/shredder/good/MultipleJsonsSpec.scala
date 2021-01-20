@@ -38,8 +38,8 @@ class MultipleJsonsSpec extends Specification with ShredJobSpec {
     runShredJob(MultipleJsonsSpec.lines)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform the enriched event and store it in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform the enriched event and store it in atomic events folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(MultipleJsonsSpec.expectedAtomicEvent)
     }

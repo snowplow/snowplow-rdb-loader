@@ -1,38 +1,45 @@
+/*
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ * http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and
+ * limitations there under.
+ */
 package com.snowplowanalytics.snowplow.shredder.spark
-
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.{Config, LoaderMessage}
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, Row, SaveMode, DataFrameWriter}
 import org.apache.spark.sql.types.{StructField, StructType, StringType}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.{Config, LoaderMessage}
+
 import com.snowplowanalytics.snowplow.shredder.transformation.Shredded
 
 object Sink {
 
-  def writeEvents(spark: SparkSession, compression: Compression, events: RDD[Row], outFolder: String): Unit =
-    spark.createDataFrame(events, StructType(StructField("_", StringType, true) :: Nil))
-      .write
-      .withCompression(compression)
-      .mode(SaveMode.Overwrite)
-      .text(getAlteredEnrichedOutputPath(outFolder))
-
   def writeShredded(spark: SparkSession, compression: Compression, formats: Config.Formats, shreddedData: RDD[Shredded], outFolder: String): Unit = {
+    writeShredded(spark, compression, shreddedData.flatMap(_.tsv), outFolder)
     val canBeJson = formats.default == LoaderMessage.Format.JSON || formats.json.nonEmpty
-    val canBeTsv = formats.default == LoaderMessage.Format.TSV || formats.tsv.nonEmpty
-    if (canBeJson) writeShredded(spark, compression, shreddedData.flatMap(_.json), true, outFolder)
-    if (canBeTsv) writeShredded(spark, compression, shreddedData.flatMap(_.tabular), false, outFolder)
+    if (canBeJson) writeShredded(spark, compression, shreddedData.flatMap(_.json), outFolder)
   }
 
-  def writeShredded(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, String, String)], json: Boolean, outFolder: String): Unit = {
+  def writeShredded(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, Int, String)], outFolder: String): Unit = {
     import spark.implicits._
     data
-      .toDF("vendor", "name", "format", "version", "data")
+      .toDF("vendor", "name", "format", "model", "data")
       .write
       .withCompression(compression)
-      .partitionBy("vendor", "name", "format", "version")
+      .partitionBy("vendor", "name", "format", "model")
       .mode(SaveMode.Append)
-      .text(getShreddedTypesOutputPath(outFolder, json))
+      .text(outFolder)
   }
 
   def writeBad(spark: SparkSession, compression: Compression, shreddedBad: RDD[Row], outFolder: String): Unit =
@@ -41,27 +48,6 @@ object Sink {
       .withCompression(compression)
       .mode(SaveMode.Overwrite)
       .text(outFolder)
-
-
-  /**
-   * The path at which to store the shredded types.
-   * @param outFolder shredded/good/run=xxx
-   * @param json pre-R31 output path
-   * @return The shredded types output path
-   */
-  def getShreddedTypesOutputPath(outFolder: String, json: Boolean): String = {
-    val shreddedTypesSubdirectory = if (json) "shredded-types" else "shredded-tsv"
-    s"$outFolder${if (outFolder.endsWith("/")) "" else "/"}$shreddedTypesSubdirectory"
-  }
-  /**
-   * The path at which to store the altered enriched events.
-   * @param outFolder shredded/good/run=xxx
-   * @return The altered enriched event path
-   */
-  def getAlteredEnrichedOutputPath(outFolder: String): String = {
-    val alteredEnrichedEventSubdirectory = "atomic-events"
-    s"$outFolder${if (outFolder.endsWith("/")) "" else "/"}$alteredEnrichedEventSubdirectory"
-  }
 
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {
     def withCompression(compression: Compression): DataFrameWriter[A] =

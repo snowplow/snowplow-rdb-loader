@@ -28,8 +28,8 @@ class TabularOutputSpec extends Specification with ShredJobSpec {
     runShredJob(TabularOutputSpec.lines, tsv = true)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform the enriched event and store it in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform the enriched event and store it in atomic events folder" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(TabularOutputSpec.expected.event)
     }
@@ -76,12 +76,12 @@ object TabularOutputSpec {
   )
 
   object expected {
-    val contextPath = s"shredded-tsv/vendor=org.schema/name=WebPage/format=jsonschema/version=1"
+    val contextPath = s"vendor=org.schema/name=WebPage/format=tsv/model=1"
 
     val contextContents =
       "org.schema\tWebPage\tjsonschema\t1-0-0\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"WebPage\"]\tevents\tJonathan Almeida\t[\"blog\",\"releases\"]\t\\N\t\\N\t2014-07-23T00:00:00Z\tblog\ten-US\t[\"snowplow\",\"analytics\",\"java\",\"jvm\",\"tracker\"]"
 
-    val eventPath = s"shredded-tsv/vendor=com.snowplowanalytics.snowplow/name=application_error/format=jsonschema/version=1"
+    val eventPath = s"vendor=com.snowplowanalytics.snowplow/name=application_error/format=tsv/model=1"
 
     val eventContents =
       "com.snowplowanalytics.snowplow\tapplication_error\tjsonschema\t1-0-2\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"application_error\"]\tevents\tundefined is not a function\tJAVASCRIPT\tAbstractSingletonFactoryBean\t\\N\t1\t\\N\t\\N\t14\t\\N\t\\N\t\\N\tthis column should be last"

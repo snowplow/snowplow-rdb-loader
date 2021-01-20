@@ -6,7 +6,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.JDBC
 import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.{TableState, Columns}
 
