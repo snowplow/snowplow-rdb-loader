@@ -15,13 +15,13 @@ package discovery
 
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver}
-
 import org.scalacheck.Gen
-import org.specs2.{Specification, ScalaCheck}
+import org.specs2.{ScalaCheck, Specification}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver, LoaderMessage}
+
 
 class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
   Fail to transform path without valid vendor $e1
@@ -47,33 +47,33 @@ class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
   }
 
   def e3 = {
-    val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001"
-    val key = S3.Key.coerce(s"s3://rdb-test/shredded-types/$path")
+    val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001"
+    val key = S3.Key.coerce(s"s3://rdb-test/$path")
     val result = ShreddedType.transformPath(key, Semver(0,13,0))
-    val expected = (false, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+    val expected = (LoaderMessage.Format.JSON, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
     result must beRight(expected)
   }
 
   def e4 = {
-    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-types/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1-0-0/part-00000-00001")
+    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001")
 
     val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-    val expected = (false, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+    val expected = (LoaderMessage.Format.JSON, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
 
     val result = ShreddedType.transformPath(key, Semver(0,13,0))
     result must beRight(expected)
   }
 
   def e5 = {
-    val input = "shredded-tsv/vendor=com.snowplow/name=event/format=jsonschema/version=1"
-    ShreddedType.extractSchemaKey(input) must beSome(Extracted.Tabular("com.snowplow", "event", "jsonschema", 1))
+    val input = "vendor=com.snowplow/name=event/format=tsv/model=1"
+    ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, LoaderMessage.Format.TSV))
   }
 
   def e6 = {
-    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/shredded-tsv/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=jsonschema/version=1/part-00000-00001")
+    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=tsv/model=1/part-00000-00001")
 
     val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-    val expected = (true, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
+    val expected = (LoaderMessage.Format.TSV, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
 
     val result = ShreddedType.transformPath(key, Semver(0,16,0))
     result must beRight(expected)

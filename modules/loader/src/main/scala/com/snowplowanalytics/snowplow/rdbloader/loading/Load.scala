@@ -33,7 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Iglu}
 
 
 /** Entry-point for loading-related logic */
-object Common {
+object Load {
 
   type MonadThrow[F[_]] = MonadError[F, Throwable]
 

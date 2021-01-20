@@ -26,7 +26,7 @@ object DerivedContextsSpec {
   )
 
   object expected {
-    val path = s"shredded-types/vendor=org.schema/name=WebPage/format=jsonschema/version=1-0-0"
+    val path = s"vendor=org.schema/name=WebPage/format=json/model=1"
     val contents  =
       s"""|{
             |"schema":{
@@ -64,12 +64,13 @@ class DerivedContextsSpec extends Specification with ShredJobSpec {
     runShredJob(DerivedContextsSpec.lines)
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
-    "transform the enriched event and store it in /atomic-events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, "atomic-events")
+    "transform the enriched event and store it in atomic events" in {
+      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(DerivedContextsSpec.expected.event)
     }
     "shred the website page_context into its appropriate path" in {
+      println(dirs.output.list().toList)
       val Some((lines, f)) = readPartFile(dirs.output, DerivedContextsSpec.expected.path)
       expectedFiles += f
       lines mustEqual Seq(DerivedContextsSpec.expected.contents)

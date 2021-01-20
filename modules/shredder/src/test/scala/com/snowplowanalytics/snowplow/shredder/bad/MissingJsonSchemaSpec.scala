@@ -14,8 +14,6 @@
  */
 package com.snowplowanalytics.snowplow.shredder.bad
 
-import java.io.File
-
 import io.circe.literal._
 
 import org.specs2.mutable.Specification
@@ -241,11 +239,8 @@ class MissingJsonSchemaSpec extends Specification with ShredJobSpec {
       jsons.map(setTimestamp("2019-07-18T05:18:27.439Z")) must beEqualTo(List(MissingJsonSchemaSpec.expected))
     }
 
-    "not write any atomic-events" in {
-      new File(dirs.output, "atomic-events") must beEmptyDir
-    }
     "not write any jsons" in {
-      new File(dirs.output, "shredded-types") must beEmptyDir
+      dirs.output must beEmptyDir
     }
   }
 }

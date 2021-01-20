@@ -21,13 +21,13 @@ import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, Loade
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.loading.CommonSpec.{failCommit, isFirstCommit}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureIglu, PureJDBC, PureOps, PureLogging, PureTimer}
 
-class CommonSpec extends Specification {
+class LoadSpec extends Specification {
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
@@ -35,16 +35,16 @@ class CommonSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(CommonSpec.dataDiscovery, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscovery, Pure.pure(()))
 
       val expected = List(
         "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/atomic-events/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/shredded-types/vendor=com.acme/name=json-context/format=jsonschema/version=1-' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.events FROM 's3://shredded/base/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
         "COMMIT"
       )
 
-      val result = Common.load[Pure](SpecHelpers.validCliConfig, message).runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -55,17 +55,17 @@ class CommonSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(CommonSpec.dataDiscovery, Pure.modify(_.log("ACK")))
+      val message = Message(LoadSpec.dataDiscovery, Pure.modify(_.log("ACK")))
 
       val expected = List(
         "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/atomic-events/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/shredded-types/vendor=com.acme/name=json-context/format=jsonschema/version=1-' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.events FROM 's3://shredded/base/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
         "ACK",
         "COMMIT"
       )
 
-      val result = Common.load[Pure](SpecHelpers.validCliConfig, message).runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -76,15 +76,15 @@ class CommonSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(CommonSpec.dataDiscovery, Pure.fail[Unit](new RuntimeException("Failed ack")))
+      val message = Message(LoadSpec.dataDiscovery, Pure.fail[Unit](new RuntimeException("Failed ack")))
 
       val expected = List(
         "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/atomic-events/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/shredded-types/vendor=com.acme/name=json-context/format=jsonschema/version=1-' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.events FROM 's3://shredded/base/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
       )
 
-      val result = Common.load[Pure](SpecHelpers.validCliConfig, message).runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -95,18 +95,18 @@ class CommonSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(CommonSpec.dataDiscovery, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscovery, Pure.pure(()))
 
       val expected = List("BEGIN", "COPY", "COPY", "ABORT", "SLEEP", "BEGIN", "COPY", "COPY", "COMMIT")
 
-      val result = Common.load[Pure](SpecHelpers.validCliConfig, message).runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
 
       result.getLog.map(_.split(" ").headOption).unite must beEqualTo(expected)
     }
   }
 }
 
-object CommonSpec {
+object LoadSpec {
   val dataDiscovery = DataDiscovery(
     S3.Folder.coerce("s3://shredded/base/"),
     List(

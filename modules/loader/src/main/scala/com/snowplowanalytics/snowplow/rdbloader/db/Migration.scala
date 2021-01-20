@@ -27,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.{ LoaderAction, LoaderError, Act
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.{Columns, TableState}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 object Migration {
   /**

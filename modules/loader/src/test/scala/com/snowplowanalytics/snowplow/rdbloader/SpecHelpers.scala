@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.rdbloader.common.Config.{Shredder, Compression}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 object SpecHelpers {
 

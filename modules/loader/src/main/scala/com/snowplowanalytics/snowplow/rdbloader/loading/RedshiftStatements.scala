@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, Step}
 import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.Redshift
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
-import com.snowplowanalytics.snowplow.rdbloader.loading.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 
 /**
@@ -57,7 +57,10 @@ object RedshiftStatements {
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
   private[loading] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftStatements = {
-    val shreddedStatements = discovery.shreddedTypes.map(transformShreddedType(config, discovery.compression))
+    val shreddedStatements = discovery
+      .shreddedTypes
+      .filterNot(_.isAtomic)
+      .map(transformShreddedType(config, discovery.compression))
     val transitCopy = config.steps.contains(Step.TransitCopy)
     val compressionFormat = getCompressionFormat(discovery.compression)
     val atomic = buildEventsCopy(config, discovery.atomicEvents, transitCopy, compressionFormat)
