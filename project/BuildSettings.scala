@@ -48,7 +48,7 @@ object BuildSettings {
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.10.0" cross CrossVersion.binary)
   )
 
   // sbt-assembly settings
