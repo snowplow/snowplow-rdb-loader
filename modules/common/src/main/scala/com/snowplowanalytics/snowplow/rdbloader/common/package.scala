@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,12 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import java.util.UUID
 
-import scala.concurrent.duration.{TimeUnit, MILLISECONDS, NANOSECONDS}
+import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
 
 import io.circe._
-
 import cats.Id
+
 import cats.effect.Clock
+
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
@@ -65,4 +67,10 @@ package object common {
             false
         }
     }
+
+  implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
+    Decoder.decodeString.emap {
+      s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
+    }
+
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,60 +13,47 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
-import cats.data.ValidatedNel
+import cats.data.{ValidatedNel, NonEmptyList}
 
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 /** Root error type */
-sealed trait LoaderError extends Product with Serializable
+sealed trait LoaderError extends Throwable with Product with Serializable {
+  override def getMessage: String =
+    LoaderError.loaderErrorShow.show(this)
+}
 
 object LoaderError {
 
-  implicit object ErrorShow extends Show[LoaderError] {
-    def show(error: LoaderError): String = error match {
-      case c: ConfigError => "Configuration error" + c.message
-      case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.map(_.getMessage).mkString("\n")
-      case l: StorageTargetError => "Data loading error " + l.message
-      case l: LoaderLocalError => "Internal Exception " + l.message
-      case m: LoadManifestError => "Load Manifest: " + m.message
-      case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
-    }
+  implicit val loaderErrorShow: Show[LoaderError] = {
+    case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.toList.map(_.getMessage).mkString("\n")
+    case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
+    case l: StorageTargetError => s"Data loading error ${l.message}"
+    case l: RuntimeError => s"Internal Exception ${l.message}"
   }
-
-  /**
-   * Top-level error, representing error in configuration
-   * Will always be printed to EMR stderr
-   */
-  case class ConfigError(message: String) extends LoaderError
 
   /**
    * Error representing failure on events (or types, or JSONPaths) discovery
    * Contains multiple step failures
    */
-  case class DiscoveryError(failures: List[DiscoveryFailure]) extends LoaderError
+  final case class DiscoveryError(failures: NonEmptyList[DiscoveryFailure]) extends LoaderError
   object DiscoveryError {
-    def apply(single: DiscoveryFailure): LoaderError = DiscoveryError(List(single))
+    def apply(single: DiscoveryFailure): LoaderError = DiscoveryError(NonEmptyList.one(single))
+
+    /** Turn non-empty list of discovery failures into top-level `LoaderError` */
+    def fromValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
+      validated.leftMap(errors => DiscoveryError(errors): LoaderError).toEither
   }
 
   /**
    * Error representing failure on database loading (or executing any statements)
    * These errors have short-circuit semantics (as in `scala.Either`)
    */
-  case class StorageTargetError(message: String) extends LoaderError
+  final case class StorageTargetError(message: String) extends LoaderError
 
-  /** `atomic.manifest` prevents this folder to be loaded */
-  case class LoadManifestError(message: String) extends LoaderError
-
-  /** Turn non-empty list of discovery failures into top-level `LoaderError` */
-  def flattenValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
-    validated.leftMap(errors => DiscoveryError(errors.toList): LoaderError).toEither
-
-  /** Other errors */
-  case class LoaderLocalError(message: String) extends Throwable with LoaderError {
-    override def getMessage: String = message
-  }
+  /** Other errors, not related to a warehouse */
+  final case class RuntimeError(message: String) extends LoaderError
 
   /** Error happened during DDL-statements execution. Critical */
-  case class MigrationError(message: String) extends LoaderError
-
+  final case class MigrationError(message: String) extends LoaderError
 }

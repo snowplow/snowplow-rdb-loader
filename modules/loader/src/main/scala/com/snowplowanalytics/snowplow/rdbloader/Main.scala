@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,69 +12,74 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.Monad
+import scala.util.control.NonFatal
+
 import cats.data.Validated._
 import cats.implicits._
-import cats.effect.{ExitCode, IO, IOApp }
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, JDBC, Logging, RealWorld}
+import cats.effect.{IOApp, IO, ExitCode, Resource}
+
+import fs2.Stream
+
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{discover, load}
-import com.snowplowanalytics.snowplow.rdbloader.utils.{S3, SSH}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
+import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+
+import io.sentry.Sentry
 
 object Main extends IOApp {
-  /**
-   * If arguments or config is invalid exit with 1
-   * and print errors to EMR stdout
-   * If arguments and config are valid, but loading failed
-   * print message to `track` bucket
-   */
+
   def run(argv: List[String]): IO[ExitCode] =
     CliConfig.parse(argv) match {
-      case Valid(config) =>
-        RealWorld.initialize[IO](config).flatMap { dsls =>
-          import dsls._
-
-          val result = for {
-            discovery <- discover[IO](config)
-            jdbc = SSH.resource[IO](config.target.sshTunnel) *>
-              JDBC.interpreter[IO](config.target, config.dryRun)
-            _ <- LoaderAction(jdbc.use { implicit conn => load[IO](config, discovery).value })
-          } yield ()
-
-          result
-            .value
-            .attempt
-            .map {      // TODO: write shorter; and figure out if unit test is possible
-              case Left(e) =>
-                e.printStackTrace(System.out)
-                (LoaderError.LoaderLocalError(e.getMessage): LoaderError).asLeft
-              case Right(e) => e
-            }
-            .flatMap(res => close[IO](config.logKey, res))
+      case Valid(cli) =>
+        Environment.initialize[IO](cli).flatMap { env =>
+          env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+            process(cli, env)
+              .compile
+              .drain
+              .attempt
+              .flatMap {
+                case Left(e) =>
+                  Sentry.captureException(e)
+                  e.printStackTrace(System.err)
+                  env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
+                case Right(_) =>
+                  IO.pure(ExitCode.Success)
+              }
         }
       case Invalid(errors) =>
-        IO.delay(println("Configuration error")) *>
-          errors.traverse_(message => IO.delay(println(message))).as(ExitCode.Error)
+        IO.delay(System.err.println("Configuration error")) *>
+          errors.traverse_(message => IO.delay(System.err.println(message))).as(ExitCode(2))
     }
 
-  /** Get exit status based on all previous steps */
-  private def close[F[_]: Monad: Logging: AWS](logKey: Option[S3.Key], result: Either[LoaderError, Unit]): F[ExitCode] = {
-    val dumping = logKey.traverse(Logging[F].dump).flatMap { dumpResult =>
-      (result, dumpResult) match {
-        case (Right(_), None) =>
-          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Success)
-        case (Left(_), None) =>
-          Logging[F].print(s"INFO: Logs were not dumped to S3").as(ExitCode.Error)
-        case (Right(_), Some(Right(key))) =>
-          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Success)
-        case (Left(_), Some(Right(key))) =>
-          Logging[F].print(s"INFO: Logs successfully dumped to S3 [$key]").as(ExitCode.Error)
-        case (_, Some(Left(error))) =>
-          Logging[F].print(s"ERROR: Log-dumping failed: [$error]").as(ExitCode.Error)
+  /**
+   * Main application workflow, responsible for discovering new data via message queue
+   * and processing this data with loaders
+   *
+   * @param cli whole app configuration
+   * @param env initialised environment containing resources and effect interpreters
+   * @return endless stream waiting for messages
+   */
+  def process(cli: CliConfig, env: Environment[IO]): Stream[IO, Unit] = {
+    import env._
+
+    DataDiscovery.discover[IO](cli.config, env.state)
+      .pauseWhen[IO](env.isBusy)
+      .evalMap { message =>
+        val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
+          SSH.resource[IO](cli.config.storage.sshTunnel) *>
+          JDBC.interpreter[IO](cli.config.storage, cli.dryRun)
+
+        val action = jdbc.use { implicit conn => load[IO](cli, message) *> env.incrementLoaded }
+
+        // Make sure that stream is never interrupted
+        action.recoverWith {
+          case NonFatal(e) =>
+            Sentry.captureException(e)
+            Logging[IO].error(s"Fatal failure during message processing (base ${message.data.base}), message hasn't been ack'ed. ${e.getMessage}")
+        }
       }
-    }
-
-    Logging[F].track(result) *> dumping
   }
 }

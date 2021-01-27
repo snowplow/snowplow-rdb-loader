@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,67 +12,27 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.io.Source.fromInputStream
+import java.net.URI
 import java.util.UUID
 
-import cats.Id
+import scala.io.Source.fromInputStream
+
 import io.circe.jawn.parse
-import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.core.SelfDescribingData
-import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
-import common.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => s3}
-import config.{Semver, SnowplowConfig}
-import config.Semver._
-import config.SnowplowConfig._
-import loaders.Common.SqlString
+
+import com.snowplowanalytics.iglu.core.SchemaCriterion
+
+import com.snowplowanalytics.snowplow.rdbloader.common.Config.{Shredder, Compression}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 object SpecHelpers {
 
-  val configYmlStream = getClass.getResourceAsStream("/valid-config.yml.base64")
-  val configYml = fromInputStream(configYmlStream).getLines.mkString("\n")
-
-  val resolverStream = getClass.getResourceAsStream("/resolver.json.base64")
-  val resolverConfig = fromInputStream(resolverStream).getLines.mkString("\n")
+  val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
-  val resolver = Resolver.parse[Id](resolverJson).toOption.getOrElse(throw new RuntimeException("Invalid resolver config"))
 
-  val targetStream = getClass.getResourceAsStream("/valid-redshift.json.base64")
-  val target = fromInputStream(targetStream).getLines.mkString("\n")
-
-  // config.yml with invalid raw.in S3 path
-  val invalidConfigYmlStream = getClass.getResourceAsStream("/invalid-config.yml.base64")
-  val invalidConfigYml = fromInputStream(invalidConfigYmlStream).getLines.mkString("\n")
-
-  // target config with string as maxError
-  val invalidTargetStream = getClass.getResourceAsStream("/invalid-redshift.json.base64")
-  val invalidTarget = fromInputStream(invalidTargetStream).getLines.mkString("\n")
-
-  val validConfig =
-    SnowplowConfig(
-      SnowplowAws(
-        SnowplowS3(
-          "us-east-1",
-          SnowplowBuckets(
-            s3("s3://snowplow-acme-storage/"),
-            None,
-            s3("s3://snowplow-acme-storage/logs"),
-            ShreddedBucket(
-              s3("s3://snowplow-acme-storage/shredded/good/")
-            )
-          )
-        )
-      ),
-      Enrich(NoneCompression),
-      Storage(StorageVersions(Semver(0,12,0,Some(ReleaseCandidate(4))),Semver(0,1,0,None))),
-      Monitoring(Map(),Logging(DebugLevel),Some(SnowplowMonitoring(Some(GetMethod),Some("batch-pipeline"),Some("snplow.acme.com")))))
-
-  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(false))
-
-  val validTarget = StorageTarget.RedshiftConfig(
-    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
-    "AWS Redshift enriched events storage",
+  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
+  val validTarget = StorageTarget.Redshift(
     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
     "snowplow",
     5439,
@@ -80,28 +40,40 @@ object SpecHelpers {
     "arn:aws:iam::123456789876:role/RedshiftLoadRole",
     "atomic",
     "admin",
-    StorageTarget.PlainText("Supersecret1"),
+    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
     20000,
-    None,
     None)
 
-  val validTargetWithManifest = StorageTarget.RedshiftConfig(
-    UUID.fromString("e17c0ded-eee7-4845-a7e6-8fdc88d599d0"),
-    "AWS Redshift enriched events storage",
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
-    "snowplow",
-    5439,
-    disableSsl,
-    "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-    "atomic",
-    "admin",
-    StorageTarget.PlainText("Supersecret1"),
-    1,
-    20000,
+  val validConfig: Config[StorageTarget.Redshift] = Config(
+    "Acme Redshift",
+    UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
+    "us-east-1",
     None,
-    None
+    Config.Monitoring(
+      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
+      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
+    ),
+    "messages",
+    Shredder(
+      URI.create("s3://bucket/input/"),
+      URI.create("s3://bucket/shredded/"),
+      URI.create("s3://bucket/shredded-bad/"),
+      Compression.Gzip
+    ),
+    validTarget,
+    Config.Formats(
+      LoaderMessage.Format.TSV,
+      List(
+        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
+        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
+      ),
+      List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
+      List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+    ),
+    Set.empty
   )
+  val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
   /**
     * Pretty prints a Scala value similar to its source represention.
@@ -162,14 +134,6 @@ object SpecHelpers {
       // If we haven't specialized this type, just use its toString.
       case _ => a.toString
     }
-  }
-
-  def getPayload(jsonArray: String) = {
-    parse(
-      s"""|{
-          |"schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbshredder/processed_payload/jsonschema/1-0-0",
-          |"data": {"shreddedTypes": $jsonArray}
-          |}""".stripMargin).toOption.flatMap(json => SelfDescribingData.parse(json).toOption).getOrElse(throw new RuntimeException("Invalid processed_payload"))
   }
 
   implicit class AsSql(s: String) {

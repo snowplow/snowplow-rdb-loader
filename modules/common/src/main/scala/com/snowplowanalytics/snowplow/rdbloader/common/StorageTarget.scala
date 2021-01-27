@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,69 +12,53 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import java.util.UUID
 import java.util.Properties
 
-import cats.Id
 import cats.data._
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.core.circe.implicits.{ schemaCriterionDecoder => _, _ }
-import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaCriterion}
-
-import com.snowplowanalytics.iglu.client.Client
-
 import io.circe._
+import io.circe.CursorOp
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
-import io.circe.parser.parse
 
 /**
  * Common configuration for JDBC target, such as Redshift
  * Any of those can be safely coerced
  */
 sealed trait StorageTarget extends Product with Serializable {
-  def id: UUID
-  def name: String
   def host: String
   def database: String
   def schema: String
   def port: Int
   def username: String
   def password: StorageTarget.PasswordConfig
+  def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
-
-  def sshTunnel: Option[StorageTarget.TunnelConfig]
-
-  def blacklistTabular: Option[List[SchemaCriterion]]   // None means tabular is disabled
 }
 
 object StorageTarget {
 
-  case class ParseError(message: String) extends AnyVal
+  final case class ParseError(message: String) extends AnyVal
 
-  sealed trait SslMode extends StringEnum { def asProperty = asString.toLowerCase.replace('_', '-') }
-
-  implicit val sslModeDecoder: Decoder[SslMode] =
-    StringEnum.decodeStringEnum[SslMode]  // TODO: tests fail if it is in object
-
-  object SslMode {
-    case object Disable extends SslMode { def asString = "DISABLE" }
-    case object Require extends SslMode { def asString = "REQUIRE" }
-    case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
-    case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
+  sealed trait SslMode extends StringEnum {
+    def asProperty = asString.toLowerCase.replace('_', '-')
   }
 
+  implicit val sslModeDecoder: Decoder[SslMode] =
+    StringEnum.decodeStringEnum[SslMode]
 
-  /**
-   * Redshift config
-   * `com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/3-0-0`
-   */
-  case class RedshiftConfig(id: UUID,
-                            name: String,
-                            host: String,
+  object SslMode {
+    final case object Disable extends SslMode { def asString = "DISABLE" }
+    final case object Require extends SslMode { def asString = "REQUIRE" }
+    final case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
+    final case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
+  }
+
+  /** Amazon Redshift connection settings */
+  final case class Redshift(host: String,
                             database: String,
                             port: Int,
                             jdbc: RedshiftJdbc,
@@ -84,15 +68,14 @@ object StorageTarget {
                             password: PasswordConfig,
                             maxError: Int,
                             compRows: Long,
-                            sshTunnel: Option[TunnelConfig],
-                            blacklistTabular: Option[List[SchemaCriterion]])
+                            sshTunnel: Option[TunnelConfig])
     extends StorageTarget
 
   /**
     * All possible JDBC according to Redshift documentation, except deprecated
     * and authentication-related
     */
-  case class RedshiftJdbc(blockingRows: Option[Int],
+  final case class RedshiftJdbc(blockingRows: Option[Int],
                           disableIsValidQuery: Option[Boolean],
                           dsiLogLevel: Option[Int],
                           filterLevel: Option[String],
@@ -148,26 +131,40 @@ object StorageTarget {
   }
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
-  case class ParameterStoreConfig(parameterName: String)
+  final case class ParameterStoreConfig(parameterName: String)
 
   /** Reference to encrypted key (EC2 Parameter Store only so far) */
-  case class EncryptedConfig(ec2ParameterStore: ParameterStoreConfig)
+  final case class EncryptedConfig(ec2ParameterStore: ParameterStoreConfig)
 
   /** Bastion host access configuration for SSH tunnel */
-  case class BastionConfig(host: String, port: Int, user: String, passphrase: Option[String], key: Option[EncryptedConfig])
+  final case class BastionConfig(host: String, port: Int, user: String, passphrase: Option[String], key: Option[EncryptedConfig])
 
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
-  case class DestinationConfig(host: String, port: Int)
+  final case class DestinationConfig(host: String, port: Int)
 
   /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
-  sealed trait PasswordConfig {
+  sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
-      case PlainText(plain) => plain
-      case EncryptedKey(EncryptedConfig(key)) => key.parameterName
+      case PasswordConfig.PlainText(plain) => plain
+      case PasswordConfig.EncryptedKey(EncryptedConfig(key)) => key.parameterName
     }
   }
-  case class PlainText(value: String) extends PasswordConfig
-  case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
+  object PasswordConfig {
+    final case class PlainText(value: String) extends PasswordConfig
+    final case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
+
+    implicit object PasswordDecoder extends Decoder[PasswordConfig] {
+      def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
+        hCursor.value.asString match {
+          case Some(s) => Right(PasswordConfig.PlainText(s))
+          case None => hCursor.value.asObject match {
+            case Some(_) => hCursor.value.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
+            case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
+          }
+        }
+      }
+    }
+  }
 
   /**
     * SSH configuration, enabling target to be loaded though tunnel
@@ -177,49 +174,10 @@ object StorageTarget {
     *                  same port as in `StorageTarget`, can be arbitrary
     * @param destination end-socket of SSH tunnel (host/port pair to access DB)
     */
-  case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
+  final case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
 
-  implicit object PasswordDecoder extends Decoder[PasswordConfig] {
-    def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
-      hCursor.value.asString match {
-        case Some(s) => Right(PlainText(s))
-        case None => hCursor.value.asObject match {
-          case Some(_) => hCursor.value.as[EncryptedConfig].map(EncryptedKey)
-          case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
-        }
-      }
-    }
-  }
-
-  /**
-    * Decode Json as one of known storage targets
-    *
-    * @param validJson JSON that is presumably self-describing storage target configuration
-    * @return validated entity of `StorageTarget` ADT if success
-    */
-  def decodeStorageTarget(validJson: SelfDescribingData[Json]): Either[ParseError, StorageTarget] =
-    (validJson.schema.name, validJson.data) match {
-      case ("redshift_config", data) => data.as[RedshiftConfig].leftMap(e => ParseError(e.show))
-      case (name, _) => ParseError(s"Unsupported storage target [$name]").asLeft
-    }
-
-  /**
-    * Parse string as `StorageTarget` validating it via Iglu resolver
-    *
-    * @param client Iglu resolver and validator
-    * @param target string presumably containing self-describing JSON with storage target
-    * @return valid `StorageTarget` OR
-    *         non-empty list of errors (such as validation or parse errors)
-    */
-  def parseTarget(client: Client[Id, Json], target: String): EitherNel[ParseError, StorageTarget] =
-    parse(target)
-      .leftMap(e => ParseError(e.show))
-      .flatMap { json => SelfDescribingData.parse(json).leftMap(e => ParseError(s"Not a self-describing JSON, ${e.code}")) }
-      .toEitherNel
-      .flatMap { json => (decodeStorageTarget(json).toEitherNel, validate(client)(json).toEitherNel).parMapN { case (config, _) => config } }
-
-  implicit def redsfhitConfigDecoder: Decoder[RedshiftConfig] =
-    deriveDecoder[RedshiftConfig]
+  implicit def redsfhitConfigDecoder: Decoder[Redshift] =
+    deriveDecoder[Redshift]
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     deriveDecoder[EncryptedConfig]
@@ -236,27 +194,18 @@ object StorageTarget {
   implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
 
-  implicit def passwordConfigDecoder: Decoder[PasswordConfig] =
-    deriveDecoder[PasswordConfig]
-
-  implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
-    Decoder.decodeString.emap {
-      s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
+  implicit def storageTargetDecoder: Decoder[StorageTarget] =
+    Decoder.instance { cur =>
+      val typeCur = cur.downField("type")
+      typeCur.as[String] match {
+        case Right("redshift") =>
+          cur.as[Redshift]
+        case Right(other) =>
+          Left(DecodingFailure(s"Storage target of type $other is not supported yet", typeCur.history))
+        case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+          Left(DecodingFailure("Cannot find 'type' string in storage configuration", typeCur.history))
+        case Left(other) =>
+          Left(other)
+      }
     }
-
-  /**
-    * Validate json4s JValue AST with Iglu Resolver and immediately convert it into circe AST
-    *
-    * @param client Iglu resolver and validator
-    * @param json json4s AST
-    * @return circe AST
-    */
-  private def validate(client: Client[Id, Json])(json: SelfDescribingData[Json]): Either[ParseError, SelfDescribingData[Json]] = {
-    def attempt = client.check(json)
-    attempt
-      .recoverWith { case error if isInputError(error) => attempt }
-      .value
-      .leftMap(error => ParseError(s"${json.schema.toSchemaUri} ${error.show}"))
-      .as(json)
-  }
 }

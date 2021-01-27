@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.sql.{Connection, SQLException}
+import java.sql.{SQLException, Connection}
 import java.util.Properties
 
 import scala.util.control.NonFatal
@@ -21,27 +21,29 @@ import scala.concurrent.duration._
 import cats.Monad
 import cats.data.EitherT
 import cats.implicits._
-import cats.effect.{ Sync, Timer, Resource }
+
+import cats.effect.{Timer, Resource, Sync}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
-
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError}
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
 import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
+
+import retry.{RetryPolicy, RetryPolicies, RetryDetails, retryingOnAllErrors}
 
 trait JDBC[F[_]] {
 
   /** Execute single SQL statement (against target in interpreter) */
   def executeUpdate(sql: SqlString): LoaderAction[F, Long]
 
+  /** Execute query and parse results into `A` */
+  def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A]
+
   /** Execute multiple (against target in interpreter) */
   def executeUpdates(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] =
     EitherT(queries.traverse_(executeUpdate).value)
-
-  /** Execute query and parse results into `A` */
-  def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A]
 
   /** Execute SQL transaction (against target in interpreter) */
   def executeTransaction(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] = {
@@ -54,15 +56,32 @@ trait JDBC[F[_]] {
 
 object JDBC {
 
+
+  /** Base for retry backoff - every next retry will be doubled time */
+  val Backoff: FiniteDuration = 2.minutes
+
+  /** Maximum amount of times the loading will be attempted */
+  val MaxRetries: Int = 5
+
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
+
+  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
+    Logging[F].error(s"Cannot acquire connection ${e.getMessage}. Tried ${d.retriesSoFar} times, ${d.cumulativeDelay} total. ${d.upcomingDelay.fold("Giving up")(x => s"Waiting for $x")}")
+
+  // 2 + 4 + 8 + 16 + 32 = 62
+  def retryPolicy[F[_]: Monad]: RetryPolicy[F] =
+    RetryPolicies
+      .limitRetries[F](MaxRetries)
+      .join(RetryPolicies.exponentialBackoff(Backoff))
 
   /**
    * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`,
-   * which guarantees to close a JDBC connection
+   * which guarantees to close a JDBC connection.
+   * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: Sync: Timer: AWS](target: StorageTarget, dryRun: Boolean): Resource[F, JDBC[F]] =
+  def interpreter[F[_]: Sync: Logging: Timer: AWS](target: StorageTarget, dryRun: Boolean): Resource[F, JDBC[F]] =
     Resource
-      .make(getConnection[F](target))(conn => Sync[F].delay(conn.close()))
+      .make(retryingOnAllErrors(retryPolicy[F], log[F])(getConnection[F](target)))(conn => Sync[F].delay(conn.close()))
       .map { conn =>
         if (dryRun) JDBC.jdbcDryRunInterpreter[F](conn) else JDBC.jdbcRealInterpreter[F](conn)
       }
@@ -73,40 +92,29 @@ object JDBC {
    * @tparam F effect type with `S3I` DSL to get encrypted password
    * @return JDBC connection type
    */
-  def getConnection[F[_]: Sync: Timer: AWS](target: StorageTarget): F[Connection] = {
+  def getConnection[F[_]: Sync: AWS](target: StorageTarget): F[Connection] = {
     val password: F[String] = target.password match {
-      case StorageTarget.PlainText(text) =>
+      case StorageTarget.PasswordConfig.PlainText(text) =>
         Sync[F].pure(text)
-      case StorageTarget.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+      case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
         AWS[F].getEc2Property(key.parameterName).map(b => new String(b))
     }
 
-    def connect(props: Properties): F[Connection] =
-      Sync[F].delay(new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props))
-
     for {
       p <- password
-      props = new Properties()
-      _ = props.setProperty("user", target.username)
-      _ = props.setProperty("password", p)
       jdbcConnection <- target match {
-        case r: StorageTarget.RedshiftConfig =>
+        case r: StorageTarget.Redshift =>
           r.jdbc.validation match {
             case Left(error) =>
               Sync[F].raiseError[Connection](new IllegalArgumentException(error.message)) // Should never happen
             case Right(propertyUpdaters) =>
-              for {
-                _ <- Sync[F].delay(propertyUpdaters.foreach(f => f(props)))
-                firstAttempt <- connect(props).attempt
-                connection <- firstAttempt match {
-                  case Right(c) =>
-                    Sync[F].delay(c)
-                  case Left(e) =>
-                    Sync[F].delay(println(s"${e.getMessage} Sleeping and making another attempt")) *>
-                      Timer[F].sleep(60.seconds) *>
-                      connect(props)
-                }
-              } yield connection
+              Sync[F].delay {
+                val props = new Properties()
+                props.setProperty("user", target.username)
+                props.setProperty("password", p)
+                propertyUpdaters.foreach(f => f(props))
+                new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props)
+              }
           }
       }
     } yield jdbcConnection

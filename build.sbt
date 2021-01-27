@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-version in ThisBuild := "0.18.1"
+version in ThisBuild := "0.19.0"
 
 lazy val root = project.in(file("."))
   .aggregate(common, loader, shredder)
@@ -22,9 +22,11 @@ lazy val common = project.in(file("modules/common"))
   ))
   .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.fs2Aws,
       Dependencies.slf4j,
       Dependencies.analyticsSdk,
       Dependencies.badrows,
@@ -34,20 +36,26 @@ lazy val common = project.in(file("modules/common"))
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
+      Dependencies.pureconfig,
+      Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
-      Dependencies.specs2
+      Dependencies.specs2,
+      Dependencies.monocle,
+      Dependencies.monocleMacro,
     )
   )
 
 lazy val loader = project.in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
+    packageName in Docker := "snowplow/snowplow-rdb-loader",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.scalifySettings(shredder / name, shredder / version))
   .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -55,12 +63,12 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.decline,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
-      Dependencies.circeYaml,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
       Dependencies.fs2,
       Dependencies.schemaDdl,
+      Dependencies.catsRetry,
 
       Dependencies.redshift,
       Dependencies.redshiftSdk,
@@ -68,6 +76,7 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.ssm,
       Dependencies.dynamodb,
       Dependencies.jSch,
+      Dependencies.sentry,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
@@ -75,6 +84,7 @@ lazy val loader = project.in(file("modules/loader"))
     )
   )
   .dependsOn(common)
+  .enablePlugins(JavaAppPackaging, DockerPlugin)
 
 lazy val shredder = project.in(file("modules/shredder"))
   .settings(
@@ -91,6 +101,7 @@ lazy val shredder = project.in(file("modules/shredder"))
     libraryDependencies ++= Seq(
       // Java
       Dependencies.dynamodb,
+      Dependencies.sqs,
       // Scala
       Dependencies.decline,
       Dependencies.eventsManifest,
