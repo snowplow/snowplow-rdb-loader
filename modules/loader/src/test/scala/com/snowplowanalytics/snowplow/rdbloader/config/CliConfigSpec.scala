@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -10,188 +10,116 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
-package config
+package com.snowplowanalytics.snowplow.rdbloader.config
 
-import cats.data.{ Validated, NonEmptyList }
+import java.util.Base64
+
+import cats.data.Validated
 
 // specs2
-import org.specs2.Specification
+import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Key.{coerce => s3}
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3.Folder.{coerce => dir}
-import LoaderError.ConfigError
+import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 
-class CliConfigSpec extends Specification { def is = s2"""
-  Parse minimal valid configuration $e1
-  Collect custom steps $e2
-  Aggregate errors $e3
-  Return None on invalid CLI options $e4
-  Parse minimal valid configuration with specific folder $e5
-  Parse CLI options with dry-run $e6
-  Parse CLI options with skipped consistency check $e7
-  Parse CLI options without log key $e8
-  Skip load_manifest_check if load_manifest is skipped $e9
-  """
+class CliConfigSpec extends Specification {
+  import CliConfigSpec._
+  "parse" should {
+    "parse minimal valid configuration" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", resolverConfig)
 
-  import SpecHelpers._
+      val expected = CliConfig(validConfig, false, resolverJson)
+      val result = CliConfig.parse(cli)
+      result must beEqualTo(Validated.Valid(expected))
+    }
 
-  def e1 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")
+    "collect custom steps" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", resolverConfig)
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
+      val expected = CliConfig(validConfig, false, resolverJson)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), None, false, resolverJson)
+      val result = CliConfig.parse(cli)
 
-    val result = CliConfig.parse(cli)
+      result must beEqualTo(Validated.Valid(expected))
+    }
 
-    result must beEqualTo(Validated.Valid(expected))
-  }
+    "parse CLI options with dry-run" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", resolverConfig,
+        "--dry-run")
 
-  def e2 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "-i", "vacuum",
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")
+      val expected = CliConfig(validConfig, true, resolverJson)
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.Vacuum, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
+      val result = CliConfig.parse(cli)
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), None, false, resolverJson)
-
-    val result = CliConfig.parse(cli)
-
-    result must beEqualTo(Validated.Valid(expected))
-  }
-
-  def e3 = {
-    val cli = Array(
-      "--config", invalidConfigYml,
-      "--resolver", resolverConfig,
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
-      "--target", invalidTarget,
-      "-i", "vacuum")
-
-    val result = CliConfig.parse(cli)
-
-    result must be like {
-      case Validated.Invalid(nel) =>
-        val errors = nel.toList
-        val idDecoding = errors must contain(ConfigError("DecodingFailure at .id: Attempt to decode value on failed cursor"))
-        val bucketDecoding = errors must contain(ConfigError("DecodingFailure at .aws.s3.buckets.jsonpath_assets: Bucket name must start with s3:// prefix"))
-        val validation = errors must contain(beLike[ConfigError] {
-          case ConfigError(message) =>
-            message must startWith("iglu:com.snowplowanalytics.snowplow.storage/redshift_config/jsonschema/1-0-0 Instance is not valid against its schema")
-        })
-
-        idDecoding.and(bucketDecoding).and(validation)
+      result must beEqualTo(Validated.Valid(expected))
     }
   }
+}
 
-  def e4 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "-i", "vacuum,nosuchstep")
+object CliConfigSpec {
+  val configPlain = """
+    {
+      name         = "Acme Redshift"
+      id           = "123e4567-e89b-12d3-a456-426655440000"
+      region       = "us-east-1"
+      jsonpaths    = null
+      messageQueue = "messages"
 
-    val result = CliConfig.parse(cli)
+      shredder = {
+        "input": "s3://bucket/input/",
+        "output": "s3://bucket/shredded/",
+        "outputBad": "s3://bucket/shredded-bad/",
+        "compression": "GZIP"
+      },
 
-    result must be like {
-      case Validated.Invalid(NonEmptyList(ConfigError(error), Nil)) => error must startWith("Unknown IncludeStep [nosuchstep]")
-      case _ => ko("CLI args are not invalidated")
-    }
-  }
+      storage = {
+        "type":     "redshift",
 
-  def e5 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
-      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
+        "host":     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+        "database": "snowplow",
+        "port":     5439,
+        "roleArn":  "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+        "schema":   "atomic",
+        "username": "admin",
+        "password": "Supersecret1",
+        "jdbc": { "ssl": true },
+        "maxError":  1,
+        "compRows":  20000,
+        "sshTunnel": null
+      },
 
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
+      monitoring = {
+        "snowplow": {
+          "collector": "snplow.acme.com",
+          "appId": "redshift-loader"
+        },
+        "sentry": {
+          "dsn": "http://sentry.acme.com"
+        }
+      },
 
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
+      formats = {
+        "default": "TSV",
+        "json": [
+          "iglu:com.acme/json-event/jsonschema/1-0-0"
+        ],
+        "tsv": [
+          "iglu:com.acme/tsv-event/jsonschema/1-*-*",
+          "iglu:com.acme/tsv-event/jsonschema/2-*-*"
+        ],
+        "skip": [
+          "iglu:com.acme/skip-event/jsonschema/1-*-*"
+        ]
+      },
 
-    val result = CliConfig.parse(cli)
+      steps = []
+    }"""
 
-    result must beEqualTo(Validated.Valid(expected))
-  }
+  val configB64 = new String(Base64.getEncoder.encode(configPlain.getBytes))
 
-  def e6 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--dry-run",
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
-      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
-
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.ConsistencyCheck, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
-
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), true, resolverJson)
-
-    val result = CliConfig.parse(cli)
-
-    result must beEqualTo(Validated.Valid(expected))
-  }
-
-  def e7 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--skip", "consistency_check,load_manifest_check",
-      "--logkey", "s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef",
-      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
-
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.TransitCopy, Step.LoadManifest)
-
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, Some(s3("s3://log-bucket/run=2017-04-12-10-01-02/abcdef-1234-8912-abcdef")), Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
-
-    val result = CliConfig.parse(cli)
-
-    result must beEqualTo(Validated.Valid(expected))
-  }
-
-  def e8 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--skip", "consistency_check",
-      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
-
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.LoadManifestCheck, Step.TransitCopy, Step.LoadManifest)
-
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, None, Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
-
-    val result = CliConfig.parse(cli)
-
-    result must beEqualTo(Validated.Valid(expected))
-  }
-
-  def e9 = {
-    val cli = Array(
-      "--config", configYml,
-      "--resolver", resolverConfig,
-      "--target", target,
-      "--skip", "consistency_check,load_manifest",
-      "--folder", "s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10")
-
-    val expectedSteps: Set[Step] = Set(Step.Analyze, Step.TransitCopy)
-
-    val expected = CliConfig(validConfig, validTarget, expectedSteps, None, Some(dir("s3://snowplow-acme/archive/enriched/run=2017-04-12-10-00-10/")), false, resolverJson)
-
-    val result = CliConfig.parse(cli)
-
-    result must beEqualTo(Validated.Valid(expected))
-  }
 }

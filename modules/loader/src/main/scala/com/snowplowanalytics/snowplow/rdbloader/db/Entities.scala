@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -23,14 +23,6 @@ object Entities {
   case class Count(count: Long)
 
   case class Timestamp(etlTstamp: SqlTimestamp)
-
-  case class LoadManifestItem(etlTstamp: SqlTimestamp,
-                              commitTstamp: SqlTimestamp,
-                              eventCount: Int,
-                              shreddedCardinality: Int) {
-    def show: String =
-      s"ETL timestamp $etlTstamp with $eventCount events and $shreddedCardinality shredded types, commited at $commitTstamp"
-  }
 
   case class Columns(names: List[String]) extends AnyVal
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -13,9 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
+
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-import com.snowplowanalytics.snowplow.rdbloader.utils.S3
+
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 trait Cache[F[_]] {
   /** Put value into cache (stored in interpreter) */

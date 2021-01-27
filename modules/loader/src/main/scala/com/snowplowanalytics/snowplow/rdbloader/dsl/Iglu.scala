@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2020 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import cats.effect.{Sync, Clock}
 
 import io.circe.Json
+import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.client.Client
 
@@ -43,7 +44,7 @@ object Iglu {
             attempt
         }
         .leftMap { resolutionError =>
-          val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*\n$resolutionError"
+          val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*  ${resolutionError.asJson.noSpaces}"
           LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
         }
         .value

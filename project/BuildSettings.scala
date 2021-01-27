@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2019 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -18,6 +18,12 @@ import Keys._
 // sbt-assembly
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
+
+// sbt-native-packager
+import com.typesafe.sbt.packager.Keys.{daemonUser, maintainer}
+import com.typesafe.sbt.packager.linux.LinuxPlugin.autoImport._
+import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
+import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
@@ -42,12 +48,7 @@ object BuildSettings {
       "-encoding", "UTF-8"
     ),
 
-    javacOptions := Seq(
-      "-source", "1.8",
-      "-target", "1.8"
-    ),
-
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.6" cross CrossVersion.binary)
+    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
   )
 
   // sbt-assembly settings
@@ -95,6 +96,12 @@ object BuildSettings {
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
       case x if x.endsWith("package-info.class") => MergeStrategy.first
+      case x if x.endsWith("customization.config") => MergeStrategy.first
+      case x if x.endsWith("examples-1.json") => MergeStrategy.first
+      case x if x.endsWith("paginators-1.json") => MergeStrategy.first
+      case x if x.endsWith("service-2.json") => MergeStrategy.first
+      case x if x.endsWith("waiters-2.json") => MergeStrategy.first
+      case x if x.endsWith("mime.types") => MergeStrategy.first
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
@@ -109,6 +116,13 @@ object BuildSettings {
     coverageFailOnMinimum := false,
     (test in Test) := {
       (coverageReport dependsOn (test in Test)).value
+    }
+  )
+
+  /** Add `config` directory as a resource */
+  lazy val addExampleConfToTestCp = Seq(
+    unmanagedClasspath in Test += {
+      baseDirectory.value.getParentFile.getParentFile / "config"
     }
   )
 
@@ -151,5 +165,15 @@ object BuildSettings {
     test in Test := (test in Test).dependsOn(startDynamoDBLocal).value,
     testOnly in Test := (testOnly in Test).dependsOn(startDynamoDBLocal).evaluated,
     testOptions in Test += dynamoDBLocalTestCleanup.value
+  )
+
+  lazy val dockerSettings = Seq(
+    maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    dockerBaseImage := "snowplow-docker-registry.bintray.io/snowplow/base-debian:0.2.1",
+    daemonUser in Docker := "snowplow",
+    dockerUpdateLatest := true,
+    dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
+    daemonUserUid in Docker := None,
+    defaultLinuxInstallLocation in Docker := "/home/snowplow" // must be home directory of daemonUser
   )
 }
