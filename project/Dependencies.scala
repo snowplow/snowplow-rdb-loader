@@ -45,7 +45,7 @@ object Dependencies {
     val sentry           = "3.2.0"
 
     // Scala (test only)
-    val specs2           = "4.10.5"
+    val specs2           = "4.10.6"
     val scalaCheck       = "1.14.3"
   }
 
