@@ -42,14 +42,6 @@ trait JDBC[F[_]] {
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A]
-
-  /** Execute SQL transaction (against target in interpreter) */
-  def executeTransaction(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] = {
-    val begin = SqlString.unsafeCoerce("BEGIN")
-    val commit = SqlString.unsafeCoerce("COMMIT")
-    val transaction = (begin :: queries) :+ commit
-    executeUpdates(transaction)
-  }
 }
 
 object JDBC {
