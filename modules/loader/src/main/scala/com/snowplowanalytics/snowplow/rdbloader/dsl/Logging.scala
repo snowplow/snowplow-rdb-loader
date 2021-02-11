@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{ Instant, ZoneId }
-import java.time.format.DateTimeFormatter
-
 import org.joda.time.DateTime
 
 import cats.{Id, Monad}
@@ -102,10 +99,8 @@ object Logging {
       /** Print message to stdout */
       def print(message: String): F[Unit] =
         for {
-          time <- Sync[F].delay {
-            DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault()).format(Instant.now())
-          }
-          timestamped = s"$time: $message"
+          time <- Sync[F].delay(DateTime.now())
+          timestamped = s"RDB Loader [$time]: $message"
           _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
         } yield ()
 
