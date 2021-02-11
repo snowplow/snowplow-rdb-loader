@@ -14,12 +14,13 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
 
-import cats.effect.{Sync, Clock, Async}
+import cats.effect.{Async, Sync, Clock}
 import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
 import com.snowplowanalytics.snowplow.rdbloader.utils.S3
 
 /** Container for most of interepreters to be used in Main
@@ -51,5 +52,6 @@ object RealWorld {
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
       fs = FS.fileSystemInterpreter[F]
+      _ <- logging.print(s"Initialising Snowplow RDB Loader ${ProjectMetadata.version}")
     } yield new RealWorld[F](cache, logging, iglu, aws, fs)
 }
