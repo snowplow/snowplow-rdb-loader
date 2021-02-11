@@ -1,3 +1,9 @@
+Version 0.18.2 (2020-02-11)
+---------------------------
+RDB Loader: bring pre-R34 logging format back (#301)
+RDB Loader: print list of shredded types if consistency_check is skipped (#303)
+RDB Loader: print version before loading (#302)
+
 Release 34 (2020-12-09)
 -----------------------
 RDB Shredder: escape newlines and tabs (#238)
