@@ -252,9 +252,9 @@ object DataDiscovery {
       case Right(key @ ShreddedDataKeyTabular(_, _)) =>
         Monad[F].pure(key.toFinal.validNel[DiscoveryFailure])
       case Right(AtomicDataKey(fullPath, size)) =>
-          Monad[F].pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
+        Monad[F].pure(AtomicDataKey(fullPath, size).validNel[DiscoveryFailure])
       case Left(failure) =>
-          Monad[F].pure(failure.invalidNel)
+        Monad[F].pure(failure.invalidNel)
     }
   }
 
@@ -281,11 +281,6 @@ object DataDiscovery {
   }
 
   // Common
-
-  def isAtomic(key: S3.Key): Boolean = key match {
-    case loaders.Common.atomicSubpathPattern(_, _, _) => true
-    case _ => false
-  }
 
   def isSpecial(key: S3.Key): Boolean = key.contains("$") || key.contains("_SUCCESS")
 
@@ -315,31 +310,27 @@ object DataDiscovery {
     def retry(original: Either[LoaderError, Discovered], control: Either[LoaderError, Discovered], attempt: Int): F[Either[LoaderError, Discovered]] = {
       (original, control) match {
         case _ if attempt >= ConsistencyChecks =>
-          for {
-            _ <- Logging[F].print(s"Consistency check did not pass after $ConsistencyChecks attempts")
-            discovered <- Monad[F].pure(control.orElse(original))
-          } yield discovered
+          Logging[F]
+            .print(s"Consistency check did not pass after ${ConsistencyChecks - 1} attempts")
+            .as(control.orElse(original))
         case (Right(o), Right(c)) if o.sortBy(_.base.toString) == c.sortBy(_.base.toString) =>
-          val found = o.map(x => s"+ ${x.show}").mkString("\n")
+          val found = o.map(x => s"+ ${x.runId}").mkString("\n")
           val message = if (found.isEmpty) "No run ids discovered" else s"Following run ids found:\n$found"
-          for {
-            _ <- Logging[F].print(s"Consistency check passed after ${attempt - 1} attempt. " ++ message)
-            discovered <- Monad[F].pure(original)
-          } yield discovered
+          Logging[F]
+            .print(s"Consistency check passed after $attempt attempt. " ++ message)
+            .as(original)
         case (Right(o), Right(c)) =>
           val message = if (attempt == ConsistencyChecks - 1)
             s"Difference:\n ${discoveryDiff(o, c).map(m => s"+ $m").mkString("\n")}"
           else ""
 
-          for {
-            _ <- Logging[F].print(s"Consistency check failed. $message")
-            next <- check(attempt, Some(control))
-          } yield next
-        case _ =>
-          for {
-            _ <- Logging[F].print(s"Consistency check failed. Making another attempt")
-            next <- check(attempt, None)
-          } yield next
+          Logging[F]
+            .print(s"Consistency check failed. $message") *>
+            check(attempt, Some(control))
+        case (o, c) =>
+          val control = List(c, o).collectFirst { case Right(discovered) => Right(discovered) }
+          Logging[F].print(s"Consistency check failed. Making attempt #$attempt ") *>
+            check(attempt, control)
       }
     }
 

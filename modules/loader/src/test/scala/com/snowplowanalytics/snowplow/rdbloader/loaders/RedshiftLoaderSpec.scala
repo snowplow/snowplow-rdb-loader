@@ -208,7 +208,6 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       "LOAD INTO SHRED 3 MOCK",
       "MANIFEST INSERT MOCK",
       "COMMIT",
-      "END",
       "VACUUM MOCK",
       "BEGIN",
       "ANALYZE MOCK",
@@ -291,7 +290,7 @@ class RedshiftLoaderSpec extends Specification { def is = s2"""
       "COPY",
       "DROP TABLE atomic.temp_transit_events",
 
-      "LOAD INTO SHRED 1 MOCK", "LOAD INTO SHRED 2 MOCK", "LOAD INTO SHRED 3 MOCK", "MANIFEST INSERT MOCK", "COMMIT", "END",
+      "LOAD INTO SHRED 1 MOCK", "LOAD INTO SHRED 2 MOCK", "LOAD INTO SHRED 3 MOCK", "MANIFEST INSERT MOCK", "COMMIT",
       "VACUUM MOCK", "BEGIN", "ANALYZE MOCK", "COMMIT"
     )
 

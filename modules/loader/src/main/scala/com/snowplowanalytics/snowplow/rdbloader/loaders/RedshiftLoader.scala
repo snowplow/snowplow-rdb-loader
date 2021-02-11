@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{ SnowplowConfig, Step }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loaders.RedshiftLoadStatements._
-import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{ SqlString, EventsTable, checkLoadManifest, AtomicEvents, TransitTable }
+import com.snowplowanalytics.snowplow.rdbloader.loaders.Common.{ EventsTable, checkLoadManifest, AtomicEvents, TransitTable }
 
 
 /**
@@ -115,10 +115,12 @@ object RedshiftLoader {
     statements.analyze match {
       case Some(analyze) =>
         for {
-          _ <- JDBC[F].executeTransaction(analyze)
-          _ <- Logging[F].print("ANALYZE transaction executed").liftA
+          _ <- JDBC[F].executeUpdate(Common.BeginTransaction) *>
+            JDBC[F].executeUpdates(analyze) *>
+            JDBC[F].executeUpdate(Common.CommitTransaction)
+          _ <- Logging[F].print("ANALYZE executed").liftA
         } yield ()
-      case None => Logging[F].print("ANALYZE transaction skipped").liftA
+      case None => Logging[F].print("ANALYZE skipped").liftA
     }
 
   /**
@@ -128,15 +130,10 @@ object RedshiftLoader {
   def vacuum[F[_]: Monad: Logging: JDBC](statements: RedshiftLoadStatements): LoaderAction[F, Unit] = {
     statements.vacuum match {
       case Some(vacuum) =>
-        val block = SqlString.unsafeCoerce("END") :: vacuum
-        val actions = for {
-          statement <- block
-        } yield for {
-          _ <- Logging[F].print(statement).liftA
-          _ <- JDBC[F].executeUpdate(statement)
-        } yield ()
-        actions.sequence.void
-      case None => Logging[F].print("VACUUM queries skipped").liftA
+        vacuum.traverse_ { sql =>
+          Logging[F].print(sql).liftA *> JDBC[F].executeUpdate(sql)
+        }
+      case None => Logging[F].print("VACUUM statements skipped").liftA
     }
   }
 

@@ -115,9 +115,15 @@ object Common {
     cliConfig.target match {
       case _: StorageTarget.RedshiftConfig =>
         val original = DataDiscovery.discover[F](target, shredJob, region, assets)
-        if (cliConfig.steps.contains(Step.ConsistencyCheck))
+        val result = if (cliConfig.steps.contains(Step.ConsistencyCheck))
           DataDiscovery.checkConsistency[F](original)
         else original
+        result.flatTap { discovered =>
+          Logging[F].print("Loading following discovery:").liftA *>
+            discovered
+              .traverse_(discovery => Logging[F].print(discovery.show))
+              .liftA
+        }
     }
   }
 
