@@ -88,21 +88,22 @@ object AWS {
     private def list(str: S3.Folder): LoaderAction[F, List[S3ObjectSummary]] = {
       val (bucket, prefix) = S3.splitS3Path(str)
 
-      val req = new ListObjectsV2Request()
-        .withBucketName(bucket)
-        .withPrefix(prefix)
-
-      def keyUnfold(result: ListObjectsV2Result): Stream[S3ObjectSummary] = {
+      def keyUnfold(request: ListObjectsV2Request, result: ListObjectsV2Result): Stream[S3ObjectSummary] = {
         if (result.isTruncated) {
           val loaded = result.getObjectSummaries()
-          req.setContinuationToken(result.getNextContinuationToken)
-          loaded.asScala.toStream #::: keyUnfold(client.listObjectsV2(req))
+          request.setContinuationToken(result.getNextContinuationToken)
+          loaded.asScala.toStream #::: keyUnfold(request, client.listObjectsV2(request))
         } else {
           result.getObjectSummaries().asScala.toStream
         }
       }
 
-      Sync[F].delay(keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList)
+      val result = for {
+        req <- Sync[F].delay(new ListObjectsV2Request().withBucketName(bucket).withPrefix(prefix))
+        res <- Sync[F].delay(client.listObjectsV2(req))
+      } yield keyUnfold(req, res).filterNot(_.getSize == 0).toList
+
+      result
         .attemptT
         .leftMap(e => LoaderError.DiscoveryError(List(S3Failure(e.toString))): LoaderError)
     }
