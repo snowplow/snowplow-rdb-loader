@@ -28,7 +28,7 @@ object Dependencies {
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
     val fs2              = "2.4.6"
-    val fs2Aws           = "2.29.0"
+    val fs2Aws           = "3.0.9"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
 
