@@ -51,7 +51,7 @@ object Resources {
     }
 
     for {
-      (client, lengths) <- Resource.liftF(client)
+      (client, lengths) <- Resource.eval(client)
       blocker <- Blocker[F]
       state <- Resource.make(State.init[F]) { global =>
         global.get.flatMap { stack =>
@@ -62,9 +62,9 @@ object Resources {
         }
       }
       sqsClient <- SQS.mkClientBuilder[F](_.region(Region.of(region)))
-      sinks <- Resource.liftF(Ref.of(0L))
+      sinks <- Resource.eval(Ref.of(0L))
       instanceId <- Resource
-        .liftF(Sync[F].delay(UUID.randomUUID()))
+        .eval(Sync[F].delay(UUID.randomUUID()))
         .evalTap(id => logger[F].info(s"Instantiated $id shredder instance"))
       halt <- Resource.make(SignallingRef(false)) { s =>
         logger[F].warn("Halting the source, sleeping for 5 seconds...") *>
