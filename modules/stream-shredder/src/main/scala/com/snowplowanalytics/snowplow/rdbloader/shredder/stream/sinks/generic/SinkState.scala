@@ -41,7 +41,7 @@ object SinkState {
         val release = (_: KeyedEnqueue[F, K, V]) => Logger[F].info(releaseMessage)
         Resource.make(acquire)(release).map(h => SinkState(window, 0L, h))
       case None =>
-        Resource.liftF(KeyedEnqueue.noop[F, K, V]).map(h => SinkState(window, 0L, h))
+        Resource.eval(KeyedEnqueue.noop[F, K, V]).map(h => SinkState(window, 0L, h))
     }
 }
 
