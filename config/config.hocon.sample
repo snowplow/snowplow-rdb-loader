@@ -33,6 +33,9 @@
     "skip": [ ]
   },
 
+  # Optional. S3 path that holds JSONPaths
+  "jsonpaths": "s3://bucket/jsonpaths/",
+
   # Warehouse connection details
   "storage" = {
     # Database, redshift is the only acceptable option
