@@ -19,7 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget.Redshift
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Config}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, Step}
 
 
 /**

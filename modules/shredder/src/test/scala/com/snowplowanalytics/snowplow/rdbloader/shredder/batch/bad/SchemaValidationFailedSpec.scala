@@ -52,7 +52,7 @@ class SchemaValidationFailedSpec extends Specification with ShredJobSpec {
     }
 
     "not write any jsons" in {
-      dirs.output must beEmptyDir
+      dirs.goodRows must beEmptyDir
     }
   }
 }

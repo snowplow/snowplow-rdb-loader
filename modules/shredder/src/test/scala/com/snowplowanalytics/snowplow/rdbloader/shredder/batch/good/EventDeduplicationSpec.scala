@@ -134,13 +134,13 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform two enriched events and store them in atomic events folder" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       val updatedLines = lines.map(EventDeduplicationSpec.eraseEventId)
       updatedLines.sorted mustEqual EventDeduplicationSpec.expected.events
     }
     "shred two enriched events with deduplicated event ids" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       val eventIds = lines.map(_.split("\t").apply(6))
 
@@ -150,7 +150,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       exactTwoEventsIds.and(distinctIds)
     }
     "shred duplicate contexts into their appropriate path" in {
-      val Some((contexts, f)) = readPartFile(dirs.output, EventDeduplicationSpec.expected.path)
+      val Some((contexts, f)) = readPartFile(dirs.goodRows, EventDeduplicationSpec.expected.path)
       expectedFiles += f
       val updatedLines = contexts.map(EventDeduplicationSpec.eraseHierarchy)
       updatedLines must containTheSameElementsAs(Seq(EventDeduplicationSpec.expected.contents, EventDeduplicationSpec.expected.contents))
@@ -158,7 +158,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     }
     "shred additional, non-duplicate contexts into their appropriate path" in {
       val Some((contexts, f)) =
-        readPartFile(dirs.output, EventDeduplicationSpec.expected.additionalContextPath)
+        readPartFile(dirs.goodRows, EventDeduplicationSpec.expected.additionalContextPath)
       expectedFiles += f
       val rootIds = contexts.map(EventDeduplicationSpec.getRootId)
 
@@ -173,7 +173,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must beEmpty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must beEmpty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir

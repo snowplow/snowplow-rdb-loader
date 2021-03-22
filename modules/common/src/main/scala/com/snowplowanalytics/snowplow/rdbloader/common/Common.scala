@@ -24,13 +24,15 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedTy
  */
 object Common {
 
+  val GoodPrefix = "output=good"
+
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
   val AtomicType = ShreddedType(AtomicSchema, Format.TSV)
   val AtomicPath: String = entityPath(AtomicType)
 
   def entityPath(entity: ShreddedType) =
-    s"vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
+    s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
 
   /**
    * Remove all occurrences of access key id and secret access key from message

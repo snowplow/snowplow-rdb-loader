@@ -62,18 +62,18 @@ class LinkClickEventSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in atomic folder" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(LinkClickEventSpec.expected.event)
     }
     "shred the Snowplow link_click event into its appropriate path" in {
-      val Some((lines, f)) = readPartFile(dirs.output, LinkClickEventSpec.expected.path)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, LinkClickEventSpec.expected.path)
       expectedFiles += f
       lines mustEqual Seq(LinkClickEventSpec.expected.contents)
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must be empty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must be empty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir

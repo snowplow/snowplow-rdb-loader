@@ -39,23 +39,23 @@ class MultipleJsonsSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in atomic events folder" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(MultipleJsonsSpec.expectedAtomicEvent)
     }
     "shred the Snowplow link_click event into its appropriate path" in {
-      val Some((lines, f)) = readPartFile(dirs.output, MultipleJsonsSpec.expectedEvent.path)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, MultipleJsonsSpec.expectedEvent.path)
       expectedFiles += f
       lines mustEqual Seq(MultipleJsonsSpec.expectedEvent.contents)
     }
     "shred the website page_context into its appropriate path" in {
-      val Some((lines, f)) = readPartFile(dirs.output, MultipleJsonsSpec.expectedContext.path)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, MultipleJsonsSpec.expectedContext.path)
       expectedFiles += f
       lines mustEqual Seq(MultipleJsonsSpec.expectedContext.contents)
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must be empty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must be empty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir
