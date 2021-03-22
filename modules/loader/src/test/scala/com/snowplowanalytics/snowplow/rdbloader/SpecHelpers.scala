@@ -59,7 +59,6 @@ object SpecHelpers {
       URI.create("s3://bucket/input/"),
       Config.Shredder.Output(
         URI.create("s3://bucket/good/"),
-        URI.create("s3://bucket/bad/"),
         Config.Shredder.Compression.Gzip
       )
     ),
