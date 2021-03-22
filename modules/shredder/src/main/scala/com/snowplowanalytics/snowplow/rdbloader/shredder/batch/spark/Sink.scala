@@ -15,40 +15,22 @@
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SparkSession, Row, SaveMode, DataFrameWriter}
-import org.apache.spark.sql.types.{StructField, StructType, StringType}
+import org.apache.spark.sql.{SparkSession, SaveMode, DataFrameWriter}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
-
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Shredded
 
 object Sink {
 
-  def writeShredded(spark: SparkSession, compression: Compression, formats: Config.Formats, shreddedData: RDD[Shredded], outFolder: String): Unit = {
-    writeShredded(spark, compression, shreddedData.flatMap(_.tsv), outFolder)
-    val canBeJson = formats.default == LoaderMessage.Format.JSON || formats.json.nonEmpty
-    if (canBeJson) writeShredded(spark, compression, shreddedData.flatMap(_.json), outFolder)
-  }
-
-  def writeShredded(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, Int, String)], outFolder: String): Unit = {
+  def writeShredded(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, String, Int, String)], outFolder: String): Unit = {
     import spark.implicits._
     data
-      .toDF("vendor", "name", "format", "model", "data")
+      .toDF("kind", "vendor", "name", "format", "model", "data")
       .write
       .withCompression(compression)
-      .partitionBy("vendor", "name", "format", "model")
+      .partitionBy("kind", "vendor", "name", "format", "model")
       .mode(SaveMode.Append)
       .text(outFolder)
   }
-
-  def writeBad(spark: SparkSession, compression: Compression, shreddedBad: RDD[Row], outFolder: String): Unit =
-    spark.createDataFrame(shreddedBad, StructType(StructField("_", StringType, true) :: Nil))
-      .write
-      .withCompression(compression)
-      .mode(SaveMode.Overwrite)
-      .text(outFolder)
 
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {
     def withCompression(compression: Compression): DataFrameWriter[A] =

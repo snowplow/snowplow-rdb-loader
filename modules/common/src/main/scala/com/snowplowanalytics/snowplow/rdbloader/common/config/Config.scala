@@ -118,7 +118,7 @@ object Config {
       case class File(dir: String) extends StreamInput
     }
 
-    case class Output(good: URI, bad: URI, compression: Compression)
+    case class Output(path: URI, compression: Compression)
 
     sealed trait Compression extends StringEnum
     object Compression {
