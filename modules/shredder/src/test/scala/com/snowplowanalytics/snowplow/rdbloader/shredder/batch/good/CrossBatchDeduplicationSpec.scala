@@ -234,12 +234,12 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "remove cross-batch duplicate and store left event in atomic events folder" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       lines.sorted mustEqual CrossBatchDeduplicationSpec.expected.events
     }
     "shred two unique events out of cross-batch and in-batch duplicates" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       val eventIds = lines.map(_.split("\t").apply(6))
       eventIds must containTheSameElementsAs(
@@ -247,7 +247,7 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
       )
     }
     "shred additional contexts into their appropriate path" in {
-      val Some((contexts, f)) = readPartFile(dirs.output,
+      val Some((contexts, f)) = readPartFile(dirs.goodRows,
         CrossBatchDeduplicationSpec.expected.additionalContextPath)
       expectedFiles += f
       contexts must containTheSameElementsAs(Seq(CrossBatchDeduplicationSpec.expected.additionalContextContents2, CrossBatchDeduplicationSpec.expected.additionalContextContents1))
@@ -259,7 +259,7 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must be empty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must be empty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir

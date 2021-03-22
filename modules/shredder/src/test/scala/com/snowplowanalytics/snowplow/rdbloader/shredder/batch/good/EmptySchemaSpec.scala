@@ -27,7 +27,7 @@ class EmptySchemaSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in atomic folder" in {
-      readPartFile(dirs.output, ShredJobSpec.AtomicFolder) match {
+      readPartFile(dirs.goodRows, ShredJobSpec.AtomicFolder) match {
         case Some((lines, f)) =>
           expectedFiles += f
           lines mustEqual Seq(EmptySchemaSpec.expected.event)
@@ -36,7 +36,7 @@ class EmptySchemaSpec extends Specification with ShredJobSpec {
       }
     }
     "shred the context without any data into TSV with only metadata" in {
-      readPartFile(dirs.output, EmptySchemaSpec.expected.contextAPath) match {
+      readPartFile(dirs.goodRows, EmptySchemaSpec.expected.contextAPath) match {
         case Some((lines, f)) =>
           expectedFiles += f
           lines mustEqual Seq(EmptySchemaSpec.expected.contexAContents)
@@ -45,7 +45,7 @@ class EmptySchemaSpec extends Specification with ShredJobSpec {
       }
     }
       "shred the anything-b context with additional datat into TSV with only metadata" in {
-      readPartFile(dirs.output, EmptySchemaSpec.expected.contextBPath) match {
+      readPartFile(dirs.goodRows, EmptySchemaSpec.expected.contextBPath) match {
         case Some((lines, f)) =>
           expectedFiles += f
           lines mustEqual Seq(EmptySchemaSpec.expected.contexBContents)
@@ -54,7 +54,7 @@ class EmptySchemaSpec extends Specification with ShredJobSpec {
       }
     }
     "not shred any unexpected data" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must beEmpty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must beEmpty
     }
     "not write any bad rows" in {
       dirs.badRows must beEmptyDir
