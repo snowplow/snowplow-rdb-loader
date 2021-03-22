@@ -15,13 +15,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
 import java.io.{FileWriter, IOException, File, BufferedWriter}
+import java.util.Base64
 
 import scala.collection.JavaConverters._
 import scala.io.Source
 import scala.util.Random
 
 // Commons
-import org.apache.commons.codec.binary.Base64
 import org.apache.commons.io.filefilter.IOFileFilter
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
@@ -81,7 +81,10 @@ object ShredJobSpec {
   }
 
   /** Case class representing the directories where the output of the job has been written. */
-  case class OutputDirs(output: File, badRows: File)
+  case class OutputDirs(output: File) {
+    val goodRows: File = new File(output, "output=good")
+    val badRows: File = new File(output, "output=bad")
+  }
 
   /**
    * Read a part file at the given path into a List of Strings
@@ -214,7 +217,7 @@ object ShredJobSpec {
   }
 
   private def storageConfig(shredder: Shredder.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
-    val encoder = new Base64(true)
+    val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
     val configPlain = s"""|{
@@ -228,8 +231,7 @@ object ShredJobSpec {
     |  "type": "batch",
     |  "input": "${shredder.input}",
     |  "output" = {
-    |    "good": "${shredder.output.good}",
-    |    "bad": "${shredder.output.bad}",
+    |    "path": "${shredder.output.path}",
     |    "compression": "${shredder.output.compression.toString.toUpperCase}"
     |  }
     |},
@@ -255,7 +257,7 @@ object ShredJobSpec {
   }
 
   private val igluConfigWithLocal = {
-    val encoder = new Base64(true)
+    val encoder = Base64.getUrlEncoder
     new String(encoder.encode(
       """|{
          |"schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
@@ -327,7 +329,7 @@ object ShredJobSpec {
 
   def getShredder(lines: Lines, dirs: OutputDirs): Shredder.Batch = {
     val input = mkTmpFile("input", createParents = true, containing = Some(lines))
-    Shredder.Batch(input.toURI, Shredder.Output(dirs.output.toURI, dirs.badRows.toURI, Shredder.Compression.None))
+    Shredder.Batch(input.toURI, Shredder.Output(dirs.output.toURI, Shredder.Compression.None))
   }
 }
 
@@ -335,7 +337,7 @@ object ShredJobSpec {
 trait ShredJobSpec extends SparkSpec {
   import ShredJobSpec._
 
-  val dirs = OutputDirs(randomFile("output"), randomFile("bad-rows"))
+  val dirs = OutputDirs(randomFile("output"))
 
   /**
    * Run the shred job with the specified lines as input.
@@ -349,7 +351,7 @@ trait ShredJobSpec extends SparkSpec {
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
-      val encoder = new Base64(true)
+      val encoder = Base64.getUrlEncoder
       val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
       val config = SelfDescribingData.parse(duplicateStorageConfig).leftMap(_.code).flatMap(EventsManifestConfig.DynamoDb.extract).valueOr(e => throw new RuntimeException(e))
       (Array("--duplicate-storage-config", encoded), Some(config))

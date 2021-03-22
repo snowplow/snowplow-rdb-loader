@@ -41,8 +41,7 @@ class ConfigSpec extends Specification {
             "type": "batch",
             "input": "s3://bucket/input/",
             "output" = {
-              "good": "s3://bucket/good/",
-              "bad": "s3://bucket/bad/",
+              "path": "s3://bucket/good/",
               "compression": "GZIP"
             }
           },
@@ -119,7 +118,7 @@ class ConfigSpec extends Specification {
             "type": "batch",
             "input": "s3://bucket/input/",
             "output" = {
-              "good": "s3://bucket/good/",
+              "path": "s3://bucket/good/",
               "bad": "s3://bucket/bad/",
               "compression": "GZIP"
             }
@@ -231,7 +230,6 @@ object ConfigSpec {
       URI.create("s3://bucket/input/"),
       Shredder.Output(
         URI.create("s3://bucket/good/"),
-        URI.create("s3://bucket/bad/"),
         Config.Shredder.Compression.Gzip
       )
     ),

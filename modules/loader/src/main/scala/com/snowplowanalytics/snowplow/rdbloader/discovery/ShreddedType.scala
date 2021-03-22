@@ -56,7 +56,7 @@ object ShreddedType {
     */
   final case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -69,7 +69,7 @@ object ShreddedType {
     */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
