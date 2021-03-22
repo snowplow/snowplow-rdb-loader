@@ -65,19 +65,18 @@ class DerivedContextsSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in atomic events" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(DerivedContextsSpec.expected.event)
     }
     "shred the website page_context into its appropriate path" in {
-      println(dirs.output.list().toList)
-      val Some((lines, f)) = readPartFile(dirs.output, DerivedContextsSpec.expected.path)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, DerivedContextsSpec.expected.path)
       expectedFiles += f
       lines mustEqual Seq(DerivedContextsSpec.expected.contents)
     }
 
     "not shred any unexpected JSONs" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must beEmpty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must beEmpty
     }
     "not write any bad row JSONs" in {
       dirs.badRows must beEmptyDir

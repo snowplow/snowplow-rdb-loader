@@ -16,10 +16,9 @@ import software.amazon.awssdk.services.sqs.SqsClient
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.iglu.client.Client
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
+import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.badrows.Processor
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.{Shredder, Formats}
@@ -111,7 +110,7 @@ object Processing {
                                                     sinkCount: Window => F[Int],
                                                     onComplete: Window => F[Unit]): Grouping[F] =
     config match {
-      case Shredder.Output(path, _, _) =>
+      case Shredder.Output(path, _) =>
         val dataSink = Option(path.getScheme) match {
           case Some("file") =>
             file.getSink[F](blocker, path, config.compression, sinkCount) _
@@ -140,10 +139,9 @@ object Processing {
       }
       Stream.eval(shreddedRecord).flatMap {
         case Record.Data(window, checkpoint, Right(shredded)) =>
-          Record.mapWithLast(shredded)(s => Record.Data(window, None, s.splitGood), s => Record.Data(window, checkpoint, s.splitGood))
+          Record.mapWithLast(shredded)(s => Record.Data(window, None, s.split), s => Record.Data(window, checkpoint, s.split))
         case Record.Data(window, checkpoint, Left(badRow)) =>
-          val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-          Stream.emit(Record.Data(window, checkpoint, (Shredded.Path(false, vendor, name, Format.JSON, model), Shredded.Data(badRow.compact))))
+          Stream.emit(Record.Data(window, checkpoint, Shredded.fromBadRow(badRow).split))
         case Record.EndWindow(window, next, checkpoint) =>
           Stream.emit(Record.EndWindow[F, Window, (Shredded.Path, Shredded.Data)](window, next, checkpoint))
       }

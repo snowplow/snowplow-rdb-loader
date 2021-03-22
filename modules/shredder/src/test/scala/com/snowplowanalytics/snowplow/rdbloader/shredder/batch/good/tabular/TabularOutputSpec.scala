@@ -29,22 +29,22 @@ class TabularOutputSpec extends Specification with ShredJobSpec {
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform the enriched event and store it in atomic events folder" in {
-      val Some((lines, f)) = readPartFile(dirs.output, AtomicFolder)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, AtomicFolder)
       expectedFiles += f
       lines mustEqual Seq(TabularOutputSpec.expected.event)
     }
     "shred the page_context TSV into its appropriate path" in {
-      val Some((lines, f)) = readPartFile(dirs.output, TabularOutputSpec.expected.contextPath)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, TabularOutputSpec.expected.contextPath)
       expectedFiles += f
       lines mustEqual Seq(TabularOutputSpec.expected.contextContents)
     }
     "shred the application_error TSV into its appropriate path" in {
-      val Some((lines, f)) = readPartFile(dirs.output, TabularOutputSpec.expected.eventPath)
+      val Some((lines, f)) = readPartFile(dirs.goodRows, TabularOutputSpec.expected.eventPath)
       expectedFiles += f
       lines mustEqual Seq(TabularOutputSpec.expected.eventContents)
     }
     "not shred any unexpected data" in {
-      listFilesWithExclusions(dirs.output, expectedFiles.toList) must beEmpty
+      listFilesWithExclusions(dirs.goodRows, expectedFiles.toList) must beEmpty
     }
     "not write any bad rows" in {
       dirs.badRows must beEmptyDir

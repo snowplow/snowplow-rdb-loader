@@ -18,13 +18,12 @@ import cats.Id
 import cats.implicits._
 
 import io.circe.Json
-
 import java.util.UUID
 import java.time.Instant
 
 // Spark
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.SparkSession
 
 // Snowplow
 import com.snowplowanalytics.snowplow.badrows.Processor
@@ -80,8 +79,7 @@ class ShredJob(@transient val spark: SparkSession,
           eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
     val jobStarted: Instant = Instant.now()
     val inputFolder: S3.Folder = S3.Folder.coerce(shredderConfig.input.toString).append(folderName)
-    val outFolder: S3.Folder = S3.Folder.coerce(shredderConfig.output.good.toString).append(folderName)
-    val badFolder: S3.Folder = S3.Folder.coerce(shredderConfig.output.bad.toString).append(folderName)
+    val outFolder: S3.Folder = S3.Folder.coerce(shredderConfig.output.path.toString).append(folderName)
 
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
@@ -148,16 +146,17 @@ class ShredJob(@transient val spark: SparkSession,
     }.cache()
 
     // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shreddedData = shredded.flatMap(_.getOrElse(Nil))
+    val shreddedData = shredded.flatMap {
+      case Right(shredded) => shredded
+      case Left(row) => List(Shredded.fromBadRow(row))
+    }
 
     // Data that failed TSV transformation
-    val shreddedBad = (common.flatMap(_.swap.toOption) ++ shredded.flatMap(_.swap.toOption)).map(bad => Row(bad.compact))
+    val shreddedBad = common.flatMap(_.swap.toOption.map(Shredded.fromBadRow).flatMap(_.json))
 
     // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, formats, shreddedData, outFolder)
-
-    // Bad data
-    Sink.writeBad(spark, shredderConfig.output.compression, shreddedBad, badFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.tsv), outFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
@@ -187,7 +186,7 @@ object ShredJob {
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(shredderConfig.input.toString)
-    val shreddedFolder = Folder.coerce(shredderConfig.output.good.toString)
+    val shreddedFolder = Folder.coerce(shredderConfig.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
       .getState(region, enrichedFolder, shreddedFolder)
