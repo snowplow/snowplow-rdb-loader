@@ -99,6 +99,9 @@ object DataDiscovery {
       .map(discovery => Message(discovery, message.ack))
       .value
       .flatMap[Option[Message[F, DataDiscovery]]] {
+        case Right(_) if isEmpty(message.data) =>
+          Logging[F].info(s"Empty discovery at ${message.data.base}. Acknowledging the message without loading attempt") *>
+            message.ack.as(none[Message[F, DataDiscovery]])
         case Right(message) =>
           Logging[F].info(s"New data discovery at ${message.data.show}").as(Some(message))
         case Left(error) =>
@@ -127,4 +130,8 @@ object DataDiscovery {
       DataDiscovery(message.base, types.distinct, message.compression)
     }
   }
+
+  /** Check if discovery contains no data */
+  def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty
 }
