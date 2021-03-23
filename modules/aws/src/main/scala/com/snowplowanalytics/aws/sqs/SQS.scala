@@ -17,7 +17,7 @@ object SQS {
     mkClientBuilder(identity[SqsClientBuilder])
 
   def mkClientBuilder[F[_]: Sync](build: SqsClientBuilder => SqsClientBuilder): Resource[F, SqsClient] =
-    Resource.make(Sync[F].delay[SqsClient](build(SqsClient.builder()).build()))(c => Sync[F].delay(c.close()))
+    Resource.fromAutoCloseable(Sync[F].delay[SqsClient](build(SqsClient.builder()).build()))
 
   def readQueue[F[_]: Timer: Sync](queueName: String): Stream[F, (Message, F[Unit])] = {
 

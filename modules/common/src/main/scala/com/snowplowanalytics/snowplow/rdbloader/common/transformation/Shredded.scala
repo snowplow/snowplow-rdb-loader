@@ -15,7 +15,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 
 import cats.data.{EitherT, NonEmptyList}
-import cats.Monad
+import cats.{Monad, Show}
 import cats.implicits._
 
 import cats.effect.Clock
@@ -24,36 +24,59 @@ import io.circe.{Json => CJson}
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.iglu.client.{Client, Resolver}
+import com.snowplowanalytics.iglu.client.{Resolver, Client}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-
-import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
-
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, FailureDetails}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
 
 /** ADT, representing possible forms of data in blob storage */
 sealed trait Shredded {
+  def vendor: String
+  def name: String
+  def format: Format
+  def model: Int
+  def data: String
+
   def json: Option[(String, String, String, Int, String)] = this match {
     case Shredded.Json(vendor, name, version, data) => Some((vendor, name, Format.JSON.path, version, data))
     case Shredded.Tabular(_, _, _, _) => None
   }
 
   def tsv: Option[(String, String, String, Int, String)] = this match {
-    case Shredded.Tabular(vendor, name, version, data) => Some((vendor, name, Format.TSV.path, version, data))
-    case Shredded.Json(_, _, _, _) => None
+    case _: Shredded.Tabular => Some((vendor, name, format.path, model, data))
+    case _: Shredded.Json => None
   }
+
+  def splitGood: (Shredded.Path, Shredded.Data) =
+    (Shredded.Path(true, vendor, name, format, model), Shredded.Data(data))
 }
 
 object Shredded {
 
+  case class Data(value: String) extends AnyVal
+
+  case class Path(good: Boolean, vendor: String, name: String, format: Format, model: Int) {
+    def getDir: String = {
+      val init = if (good) "kind=good" else "kind=bad"
+      s"$init/vendor=$vendor/name=$name/format=${format.path.toLowerCase}/model=$model/"
+    }
+  }
+
+  implicit val pathShow: Show[Path] =
+    Show(_.getDir)
+
   /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
-  case class Json(vendor: String, name: String, model: Int, data: String) extends Shredded
+  case class Json(vendor: String, name: String, model: Int, data: String) extends Shredded {
+    val format: Format = Format.JSON
+  }
 
   /** Data will be represented as TSV, with RDB Loader loading it directly */
-  case class Tabular(vendor: String, name: String, model: Int, data: String) extends Shredded
+  case class Tabular(vendor: String, name: String, model: Int, data: String) extends Shredded {
+    val format: Format = Format.TSV
+  }
 
   /**
     * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity,
@@ -86,7 +109,11 @@ object Shredded {
    * @param event enriched event
    * @return either bad row (in case of failed flattening) or list of shredded entities inside original event
    */
-  def fromEvent[F[_]: Monad: RegistryLookup: Clock](igluClient: Client[F, CJson], isTabular: SchemaKey => Boolean, atomicLengths: Map[String, Int], processor: Processor)(event: Event): EitherT[F, BadRow, List[Shredded]] =
+  def fromEvent[F[_]: Monad: RegistryLookup: Clock](igluClient: Client[F, CJson],
+                                                    isTabular: SchemaKey => Boolean,
+                                                    atomicLengths: Map[String, Int],
+                                                    processor: Processor)
+                                                   (event: Event): EitherT[F, BadRow, List[Shredded]] =
     Hierarchy.fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
