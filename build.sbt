@@ -123,3 +123,39 @@ lazy val shredder = project.in(file("modules/shredder"))
   )
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
+
+lazy val streamShredder = project.in(file("modules/stream-shredder"))
+  .settings(
+    name        := "snowplow-rdb-stream-shredder",
+    description := "Stream Shredding job",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated",
+    buildInfoKeys := List(name, version, description),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    scalacOptions.in(Compile) ~= {    // TODO: remove before production
+      seq => seq.filterNot(_.contains("fatal-warnings"))
+    }
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.assemblySettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(BuildSettings.dynamoDbSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      // Java
+      Dependencies.dynamodb,
+      Dependencies.slf4j,
+      // Scala
+      Dependencies.log4cats,
+      Dependencies.fs2Blobstore,
+      Dependencies.fs2Io,
+      Dependencies.fs2Aws,
+      Dependencies.fs2AwsSqs,
+      Dependencies.aws2kinesis,
+      // Scala (test only)
+      Dependencies.specs2,
+      Dependencies.specs2ScalaCheck,
+      Dependencies.scalaCheck
+    )
+  )
+  .dependsOn(common, aws)
+  .enablePlugins(BuildInfoPlugin)
