@@ -15,7 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import java.net.URI
 import java.util.UUID
 
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 
 import org.specs2.mutable.Specification
 
@@ -74,11 +76,13 @@ object CommonSpec {
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
 
-  val shredder = Config.Shredder(
+  val shredder = Config.Shredder.Batch(
     URI.create("s3://bucket/input/"),
-    URI.create("s3://bucket/good/"),
-    URI.create("s3://bucket/bad/"),
-    Config.Compression.Gzip,
+    Config.Shredder.Output(
+      URI.create("s3://bucket/good/"),
+      URI.create("s3://bucket/bad/"),
+      Config.Shredder.Compression.Gzip
+    )
   )
 
   val validConfig: Config[StorageTarget.Redshift] = Config(

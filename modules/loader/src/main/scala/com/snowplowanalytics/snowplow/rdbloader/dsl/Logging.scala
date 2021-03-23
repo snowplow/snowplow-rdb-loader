@@ -33,7 +33,8 @@ import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor.
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.id.SyncBatchEmitter
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Monitoring
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Monitoring
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, _}
 
 import io.sentry.Sentry

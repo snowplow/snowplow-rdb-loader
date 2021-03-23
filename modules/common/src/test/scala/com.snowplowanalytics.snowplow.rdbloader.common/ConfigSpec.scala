@@ -18,7 +18,8 @@ import java.nio.file.{Paths, Files}
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config, Step}
 
 import org.specs2.mutable.Specification
 
@@ -34,11 +35,14 @@ class ConfigSpec extends Specification {
           messageQueue = "messages"
 
           shredder = {
+            "type": "batch",
             "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
+            "output" = {
+              "good": "s3://bucket/good/",
+              "bad": "s3://bucket/bad/",
+              "compression": "GZIP"
+            }
+          },
 
           storage = {
             "type":     "redshift",
@@ -107,11 +111,14 @@ class ConfigSpec extends Specification {
           region       = "us-east-1"
           messageQueue = "messages"
           shredder = {
+            "type": "batch",
             "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
+            "output" = {
+              "good": "s3://bucket/good/",
+              "bad": "s3://bucket/bad/",
+              "compression": "GZIP"
+            }
+          },
 
           storage = {
             "type":     "redshift",
@@ -215,11 +222,13 @@ object ConfigSpec {
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
-    Shredder(
+    Shredder.Batch(
       URI.create("s3://bucket/input/"),
-      URI.create("s3://bucket/good/"),
-      URI.create("s3://bucket/bad/"),
-      Config.Compression.Gzip,
+      Shredder.Output(
+        URI.create("s3://bucket/good/"),
+        URI.create("s3://bucket/bad/"),
+        Config.Shredder.Compression.Gzip
+      )
     ),
     StorageTarget.Redshift(
       "redshift.amazon.com",

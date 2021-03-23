@@ -19,7 +19,8 @@ import io.circe.literal._
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 import org.specs2.mutable.Specification
 

@@ -22,9 +22,9 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
-
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common._
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Flattening
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 trait Iglu[F[_]] {

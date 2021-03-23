@@ -19,14 +19,17 @@ import cats.implicits._
 
 import cats.effect.Timer
 
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+
 import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
 import shapeless.tag
 import shapeless.tag._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, Config, Message }
+import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Iglu}

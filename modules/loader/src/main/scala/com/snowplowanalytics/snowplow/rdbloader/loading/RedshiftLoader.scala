@@ -17,7 +17,7 @@ import cats.implicits._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, Config }
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._

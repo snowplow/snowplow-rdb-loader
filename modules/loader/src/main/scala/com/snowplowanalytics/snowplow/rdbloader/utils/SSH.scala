@@ -18,8 +18,9 @@ import cats.implicits._
 
 import com.jcraft.jsch.{JSch, Session}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.TunnelConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
+
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget.TunnelConfig
 
 object SSH {
 
