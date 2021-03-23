@@ -20,9 +20,10 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}

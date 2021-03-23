@@ -15,10 +15,11 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import cats._
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
-import com.snowplowanalytics.snowplow.rdbloader.common.{Config, Message, LoaderMessage, S3, Common}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
 /**
   * Result of data discovery in shredded.good folder

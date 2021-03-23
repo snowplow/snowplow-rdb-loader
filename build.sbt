@@ -11,14 +11,28 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-version in ThisBuild := "0.19.0"
+version in ThisBuild := "0.20.0-SNAPSHOT"
 
 lazy val root = project.in(file("."))
-  .aggregate(common, loader, shredder)
+  .aggregate(common, aws, loader, shredder)
 
-lazy val common = project.in(file("modules/common"))
+lazy val aws = project.in(file("modules/aws"))
+  .settings(BuildSettings.buildSettings)
+  .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    libraryDependencies ++= Seq(
+      Dependencies.aws2s3,
+      Dependencies.aws2sqs,
+      Dependencies.fs2,
+      Dependencies.catsRetry,
+    )
+  )
+  .enablePlugins(BuildInfoPlugin)
+
+lazy val common: Project = project.in(file("modules/common"))
   .settings(Seq(
-    name := "snowplow-rdb-loader-common"
+    name := "snowplow-rdb-loader-common",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
   ))
   .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
@@ -26,11 +40,8 @@ lazy val common = project.in(file("modules/common"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
-      Dependencies.fs2Aws,
-      Dependencies.slf4j,
-      Dependencies.analyticsSdk,
+      Dependencies.decline,
       Dependencies.badrows,
-      Dependencies.igluClient,
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.circeGeneric,
@@ -39,11 +50,13 @@ lazy val common = project.in(file("modules/common"))
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
+
       Dependencies.specs2,
       Dependencies.monocle,
       Dependencies.monocleMacro,
     )
   )
+  .enablePlugins(BuildInfoPlugin)
 
 lazy val loader = project.in(file("modules/loader"))
   .settings(
@@ -53,64 +66,54 @@ lazy val loader = project.in(file("modules/loader"))
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.scalifySettings(shredder / name, shredder / version))
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     libraryDependencies ++= Seq(
-      Dependencies.decline,
-      Dependencies.scalaTracker,
-      Dependencies.scalaTrackerEmit,
-      Dependencies.circeGeneric,
-      Dependencies.circeGenericExtra,
-      Dependencies.circeLiteral,
-      Dependencies.fs2,
-      Dependencies.schemaDdl,
-      Dependencies.catsRetry,
-
+      Dependencies.slf4j,
       Dependencies.redshift,
       Dependencies.redshiftSdk,
-      Dependencies.s3,
       Dependencies.ssm,
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
+
+      Dependencies.fs2,
+      Dependencies.fs2Blobstore,
+      Dependencies.catsRetry,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
     )
   )
-  .dependsOn(common)
-  .enablePlugins(JavaAppPackaging, DockerPlugin)
+  .dependsOn(common, aws)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val shredder = project.in(file("modules/shredder"))
   .settings(
     name        := "snowplow-rdb-shredder",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated",
+    buildInfoKeys := List(name, version, description),
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
-  .settings(BuildSettings.scalifySettings(name, version))
   .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
-      Dependencies.dynamodb,
       Dependencies.sqs,
+      Dependencies.dynamodb,
+      Dependencies.slf4j,
       // Scala
-      Dependencies.decline,
       Dependencies.eventsManifest,
-      Dependencies.circeJawn,
-      Dependencies.circeLiteral,
-      Dependencies.schemaDdl,
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
-      Dependencies.igluCoreCirce,
       // Scala (test only)
       Dependencies.circeOptics,
       Dependencies.specs2,
@@ -119,3 +122,4 @@ lazy val shredder = project.in(file("modules/shredder"))
     )
   )
   .dependsOn(common)
+  .enablePlugins(BuildInfoPlugin)

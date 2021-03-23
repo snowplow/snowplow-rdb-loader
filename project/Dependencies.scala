@@ -27,6 +27,7 @@ object Dependencies {
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
+    val fs2Blobstore     = "0.7.3"
     val fs2              = "2.4.6"
     val fs2Aws           = "2.29.0"
     val monocle          = "2.0.3"
@@ -41,6 +42,7 @@ object Dependencies {
     val slf4j            = "1.7.30"
     val redshift         = "1.2.51.1078"
     val aws              = "1.11.916"
+    val aws2             = "2.16.23"
     val jSch             = "0.1.55"
     val sentry           = "3.2.0"
 
@@ -52,8 +54,6 @@ object Dependencies {
   val resolutionRepos = Seq(
     // Redshift native driver
     ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
-    // Speed-up build
-    "snowplow" at "https://snowplow.bintray.com/snowplow-maven"
   )
 
   // Scala (Loader)
@@ -71,6 +71,7 @@ object Dependencies {
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
   val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
+  val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
@@ -84,19 +85,23 @@ object Dependencies {
   val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circeOptics     % Test
   val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
+  val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
-  val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
-  val s3                = "com.amazonaws"         % "aws-java-sdk-s3"           % V.aws
-  val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
   val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
   val sqs               = "com.amazonaws"         % "aws-java-sdk-sqs"          % V.aws
+  val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
+  val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
+
+  val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
+  val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
+  val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"             % V.specs2         % Test

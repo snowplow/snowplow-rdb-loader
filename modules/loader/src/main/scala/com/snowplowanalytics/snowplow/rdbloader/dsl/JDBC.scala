@@ -27,11 +27,11 @@ import cats.effect.{Timer, Resource, Sync}
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
-import retry.{RetryPolicy, RetryPolicies, RetryDetails, retryingOnAllErrors}
+import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
 
 trait JDBC[F[_]] {
 

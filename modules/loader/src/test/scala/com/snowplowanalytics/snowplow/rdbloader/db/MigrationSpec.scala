@@ -23,11 +23,12 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.db.Entities.Columns
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureIglu, PureLogging}
