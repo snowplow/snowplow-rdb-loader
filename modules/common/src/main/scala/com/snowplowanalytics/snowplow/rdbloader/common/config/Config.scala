@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
 import java.net.URI
+import java.time.Instant
 import java.util.UUID
 
 import scala.concurrent.duration.Duration
@@ -25,14 +26,11 @@ import io.circe.syntax._
 import io.circe.generic.semiauto._
 
 import com.typesafe.config.ConfigFactory
-
 import pureconfig._
 import pureconfig.module.circe._
 import pureconfig.error.{CannotParse, ConfigReaderFailures}
-
 import monocle.Lens
 import monocle.macros.GenLens
-
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.common._
@@ -77,14 +75,46 @@ object Config {
         Either.cond(overlaps.isEmpty, config, message)
       }
 
-  sealed trait Shredder
+  sealed trait Shredder {
+    def output: Shredder.Output
+  }
   object Shredder {
-    case class Batch(input: URI, output: Output) extends Shredder
-    case class Stream(input: StreamInput, output: Output, windowing: Duration) extends Shredder
+    final case class Batch(input: URI, output: Output) extends Shredder
+    final case class Stream(input: StreamInput, output: Output, windowing: Duration) extends Shredder
+
+    sealed trait InitPosition
+    object InitPosition {
+      case object Latest extends InitPosition
+      case object TrimHorizon extends InitPosition
+      final case class AtTimestamp(timestamp: Instant) extends InitPosition
+
+      implicit val ioCirceInitPositionDecoder: Decoder[InitPosition] =
+        Decoder.decodeJson.emap { json =>
+          json.asString match {
+            case Some("TRIM_HORIZON") => TrimHorizon.asRight
+            case Some("LATEST")       => Latest.asRight
+            case Some(other) =>
+              s"Initial position $other is unknown. Choose from LATEST and TRIM_HORIZON. AT_TIMESTAMP must provide the timestamp".asLeft
+            case None =>
+              val result = for {
+                root <- json.asObject.map(_.toMap)
+                atTimestamp <- root.get("AT_TIMESTAMP")
+                atTimestampObj <- atTimestamp.asObject.map(_.toMap)
+                timestampStr <- atTimestampObj.get("timestamp")
+                timestamp <- timestampStr.as[Instant].toOption
+              } yield AtTimestamp(timestamp)
+              result match {
+                case Some(atTimestamp) => atTimestamp.asRight
+                case None =>
+                  "Initial position can be either LATEST or TRIM_HORIZON string or AT_TIMESTAMP object (e.g. 2020-06-03T00:00:00Z)".asLeft
+              }
+          }
+        }
+    }
 
     sealed trait StreamInput
     object StreamInput {
-      case class Kinesis(appName: String, streamName: String, region: String) extends StreamInput
+      case class Kinesis(appName: String, streamName: String, region: String, position: InitPosition) extends StreamInput
       case class File(dir: String) extends StreamInput
     }
 

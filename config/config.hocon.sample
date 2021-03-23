@@ -11,14 +11,31 @@
 
   # Shredder-specific configs
   "shredder": {
-    # Path to enriched archive (must be populated separately with run=YYYY-MM-DD-hh-mm-ss directories)
-    "input": "s3://bucket/input/",
-    # Path to shredded output
-    "output": "s3://bucket/good/",
-    # Path to data failed being processed
-    "outputBad": "s3://bucket/bad/",
-    # Shredder output compression, GZIP or NONE
-    "compression": "GZIP"
+    # "batch" for Spark job and "stream" for fs2 streaming app
+    "type" : "stream",
+    # For batch: path to enriched archive (must be populated separately with run=YYYY-MM-DD-hh-mm-ss directories) for S3 input
+    # For stream: appName, streamName, region triple for kinesis
+    "input": {
+      # kinesis and file are the only options for stream shredder
+      "type": "kinesis",
+      # KCL app name - a DynamoDB table will be created with the same name
+      "appName": "acme-rdb-shredder",
+      # Kinesis Stream name
+      "streamName": "enriched-events",
+      # Kinesis region
+      "region": "us-east-1",
+      # Kinesis position: LATEST or TRIM_HORIZON
+      "position": "LATEST"
+    },
+    # A frequency to emit loading finished message - 5,10,15,20,30,60 etc minutes
+    "windowing": "10 minutes",
+    # Path to shredded archive
+    "output": {
+      # Path to shredded output
+      "path": "s3://bucket/good/",
+      # Shredder output compression, GZIP or NONE
+      "compression": "GZIP"
+    }
   },
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
