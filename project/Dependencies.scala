@@ -27,11 +27,12 @@ object Dependencies {
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
+    val fs2              = "2.5.1"
+    val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
-    val fs2              = "2.4.6"
-    val fs2Aws           = "2.29.0"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
+    val log4cats         = "1.2.0"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
@@ -71,11 +72,13 @@ object Dependencies {
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
   val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
+  val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
   val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
   val catsRetry         = "com.github.cb372"           %% "cats-retry"                        % V.catsRetry
+  val log4cats          = "org.typelevel"              %% "log4cats-slf4j"                    % V.log4cats
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest

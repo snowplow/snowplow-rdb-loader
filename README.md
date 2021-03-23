@@ -26,6 +26,11 @@ It is designed to be run downstream of the [Enrich][enrich] job.
 
 RDB Loader (previously known as StorageLoader) is a Scala application that runs in background, discovering [data][shred], produced by RDB Shredder from SQS queue and loading it into one of possible [storage targets][targets].
 
+### RDB Stream Shredder (experimental)
+
+An application similar to RDB Shredder, but working without Apache Spark or EMR
+and reading directly from Kinesis Stream. Only Shredder or Stream Shredder
+should be used.
 
 ## Find out more
 

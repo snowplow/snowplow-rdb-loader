@@ -11,21 +11,20 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.common
+package com.snowplowanalytics.snowplow.rdbloader.common.config
 
 import java.util.Base64
 import java.nio.charset.StandardCharsets.UTF_8
 
-import io.circe.Json
-import io.circe.parser.parse
-
 import cats.data.ValidatedNel
 import cats.implicits._
+
+import io.circe.Json
+import io.circe.parser.parse
 
 import com.monovore.decline.{Command, Opts}
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config}
 
 /**
  * Case class representing the configuration for the shred job.
@@ -35,8 +34,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Co
  * @param igluConfig JSON representing the Iglu configuration
  */
 case class ShredderCliConfig(igluConfig: Json,
-                     duplicateStorageConfig: Option[Json],
-                     config: Config[StorageTarget])
+                             duplicateStorageConfig: Option[Json],
+                             config: Config[StorageTarget])
 
 object ShredderCliConfig {
 
@@ -78,6 +77,6 @@ object ShredderCliConfig {
    * @param args The command line arguments
    * @return The job config or one or more error messages boxed in a Scalaz Validation Nel
    */
-  def loadConfigFrom(name: String, description: String)(args: Array[String]): Either[String, ShredderCliConfig] =
+  def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, ShredderCliConfig] =
     command(name, description).parse(args).leftMap(_.toString())
 }

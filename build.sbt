@@ -14,7 +14,7 @@
 version in ThisBuild := "0.20.0-SNAPSHOT"
 
 lazy val root = project.in(file("."))
-  .aggregate(common, aws, loader, shredder)
+  .aggregate(common, aws, loader, shredder, streamShredder)
 
 lazy val aws = project.in(file("modules/aws"))
   .settings(BuildSettings.buildSettings)
@@ -123,3 +123,38 @@ lazy val shredder = project.in(file("modules/shredder"))
   )
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
+
+lazy val streamShredder = project.in(file("modules/stream-shredder"))
+  .settings(
+    name        := "snowplow-rdb-stream-shredder",
+    description := "Stream Shredding job",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated",
+    buildInfoKeys := List(name, version, description),
+    packageName in Docker := "snowplow/snowplow-rdb-stream-shredder",
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(BuildSettings.dynamoDbSettings)
+  .settings(
+    libraryDependencies ++= Seq(
+      // Java
+      Dependencies.dynamodb,
+      Dependencies.slf4j,
+      // Scala
+      Dependencies.log4cats,
+      Dependencies.fs2Blobstore,
+      Dependencies.fs2Io,
+      Dependencies.fs2Aws,
+      Dependencies.fs2AwsSqs,
+      Dependencies.aws2kinesis,
+      // Scala (test only)
+      Dependencies.specs2,
+      Dependencies.specs2ScalaCheck,
+      Dependencies.scalaCheck
+    )
+  )
+  .dependsOn(common, aws)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
