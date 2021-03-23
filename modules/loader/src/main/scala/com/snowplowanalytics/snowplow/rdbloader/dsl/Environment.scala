@@ -17,7 +17,7 @@ import java.net.URI
 import cats.{Monad, Functor}
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, ConcurrentEffect, Sync}
+import cats.effect.{Clock, Resource, ConcurrentEffect, Sync, Timer}
 import cats.effect.concurrent.Ref
 
 import fs2.Stream
@@ -54,7 +54,7 @@ class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws
 }
 
 object Environment {
-  def initialize[F[_] : ConcurrentEffect: Clock](cli: CliConfig): F[Environment[F]] =
+  def initialize[F[_] : ConcurrentEffect: Clock: Timer](cli: CliConfig): F[Environment[F]] =
     for {
       _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)

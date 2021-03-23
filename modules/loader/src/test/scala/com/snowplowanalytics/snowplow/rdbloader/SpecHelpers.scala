@@ -21,8 +21,8 @@ import io.circe.jawn.parse
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.{Shredder, Compression}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
@@ -55,11 +55,13 @@ object SpecHelpers {
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
-    Shredder(
+    Config.Shredder.Batch(
       URI.create("s3://bucket/input/"),
-      URI.create("s3://bucket/shredded/"),
-      URI.create("s3://bucket/shredded-bad/"),
-      Compression.Gzip
+      Config.Shredder.Output(
+        URI.create("s3://bucket/good/"),
+        URI.create("s3://bucket/bad/"),
+        Config.Shredder.Compression.Gzip
+      )
     ),
     validTarget,
     Config.Formats(

@@ -20,9 +20,10 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Semver, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 sealed trait ShreddedType {
   /** raw metadata extracted from S3 Key */

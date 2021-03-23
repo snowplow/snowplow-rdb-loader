@@ -16,16 +16,19 @@ import cats.effect.Timer
 import cats.syntax.either._
 import cats.syntax.alternative._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
 
-import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureIglu, PureJDBC, PureOps, PureLogging, PureTimer}
+
+import org.specs2.mutable.Specification
 
 class LoadSpec extends Specification {
   "load" should {

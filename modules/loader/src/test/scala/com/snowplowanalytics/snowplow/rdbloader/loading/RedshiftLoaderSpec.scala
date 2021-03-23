@@ -14,14 +14,17 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Step, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString.{unsafeCoerce => sql}
 
-import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Semver, Step }
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureLogging}
+
+import org.specs2.mutable.Specification
 
 class RedshiftLoaderSpec extends Specification {
   "loadFolder" should {

@@ -126,27 +126,6 @@ object BuildSettings {
     }
   )
 
-  /**
-   * Makes package (build) metadata available withing source code
-   */
-  def scalifySettings(shredderName: SettingKey[String], shredderVersion: SettingKey[String]) = Seq(
-    Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "settings.scala"
-      IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
-                       |object ProjectMetadata {
-                       |  val version = "%s"
-                       |  val name = "%s"
-                       |  val organization = "%s"
-                       |  val scalaVersion = "%s"
-                       |
-                       |  val shredderName = "%s"
-                       |}
-                       |""".stripMargin.format(
-        version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))
-      Seq(file)
-    }.taskValue
-  )
-
   lazy val oneJvmPerTestSetting =
     Test / testGrouping := (Test / definedTests).value map { test =>
       val forkOptions = ForkOptions()

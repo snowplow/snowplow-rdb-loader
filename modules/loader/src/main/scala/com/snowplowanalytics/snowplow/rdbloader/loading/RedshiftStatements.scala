@@ -13,12 +13,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, Step}
-import com.snowplowanalytics.snowplow.rdbloader.common.StorageTarget.Redshift
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget.Redshift
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Config}
 
 
 /**

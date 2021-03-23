@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import io.circe.{DecodingFailure, CursorOp}
 import io.circe.literal._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
+
 import org.specs2.mutable.Specification
 
 class StorageTargetSpec extends Specification {

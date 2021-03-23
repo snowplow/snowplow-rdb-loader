@@ -20,7 +20,8 @@ import org.specs2.{ScalaCheck, Specification}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Semver, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 
 class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
