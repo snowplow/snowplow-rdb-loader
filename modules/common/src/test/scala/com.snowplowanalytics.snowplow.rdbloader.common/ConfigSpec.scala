@@ -16,12 +16,15 @@ import java.net.URI
 import java.util.UUID
 import java.nio.file.{Paths, Files}
 
+import scala.concurrent.duration._
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config, Step}
 
 import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.InitPosition
 
 class ConfigSpec extends Specification {
   "fromString" should {
@@ -93,11 +96,13 @@ class ConfigSpec extends Specification {
     "be able to parse config.hocon.sample" in {
       val configPath = Paths.get(getClass.getResource("/config.hocon.sample").toURI)
       val configContent = Files.readString(configPath)
+      val input = Config.Shredder.StreamInput.Kinesis("acme-rdb-shredder", "enriched-events", "us-east-1", InitPosition.Latest)
       val expected: Config[StorageTarget] =
         (identity[Config[StorageTarget]] _)
           .compose(Config.formats.set(Config.Formats.Default))
           .compose(Config.monitoring.set(Config.Monitoring(None, None)))
           .apply(ConfigSpec.configExample)
+          .copy(shredder = Config.Shredder.Stream(input, ConfigSpec.configExample.shredder.output, 10.minutes))
 
       val result = Config.fromString(configContent)
       result must beRight(expected)
