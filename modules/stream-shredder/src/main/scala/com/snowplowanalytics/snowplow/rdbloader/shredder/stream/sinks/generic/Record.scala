@@ -3,7 +3,7 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.generic
 import scala.annotation.tailrec
 import scala.concurrent.duration._
 
-import cats.Applicative
+import cats.{Applicative, ApplicativeError}
 import cats.implicits._
 
 import cats.effect.{Timer, Concurrent}
@@ -51,7 +51,7 @@ object Record {
 
       val initialWindow = Stream.eval(getWindow.map(_.asLeft))  // To prevent IllegalStateException
 
-      (initialWindow ++ merged).through(fromEither)
+      (initialWindow ++ merged).through(fromEither2)
   }
 
   /**
@@ -90,6 +90,30 @@ object Record {
 
     in => go(None, Applicative[F].unit, in).stream
   }
+
+  case class LocalState[F[_], W](w: W, checkpoint: F[Unit])
+
+  private def fromEither2[F[_], W, A](implicit AE: ApplicativeError[F, Throwable]): Pipe[F, Either[W, (A, F[Unit])], Record[F, W, A]] =
+    in =>
+      stateMap[F, Either[W, (A, F[Unit])], Record[F, W, A], Option[LocalState[F, W]]](in, Option.empty[LocalState[F, W]]) {
+        case (None, Left(w)) =>
+          AE.pure(Some(LocalState(w, AE.unit)) -> None)
+        case (None, Right(_)) =>
+          AE.raiseError(new IllegalStateException("windowing hasn't started"))
+        case (Some(LocalState(lastWindow, _)), Left(w)) if w == lastWindow =>
+          AE.pure(Some(LocalState(w, AE.unit)) -> None)
+        case (Some(LocalState(lastWindow, lastChk)), Left(w)) =>
+          AE.pure(Some(LocalState(w, AE.unit)) -> Some(Record.EndWindow(lastWindow, w, lastChk)))
+        case (Some(LocalState(lastWindow, _)), Right((a, chk))) =>
+          AE.pure(Some(LocalState(lastWindow, chk)) -> Some(Record.Data(lastWindow, Some(chk), a)))
+      }
+
+  def stateMap[F[_], In, Out, S](stream: Stream[F, In], initial: S)(f: (S, In) => F[(S, Option[Out])]): Stream[F, Out] =
+    stream.evalScan((initial, Option.empty[Out])) {
+      case ((state, _), next) => f(state, next)
+    }.collect {
+      case (_, Some(next)) => next
+    }
 
   /** Apply `f` function to all elements in a list, except last one, where `lastF` applied */
   def mapWithLast[A, B](as: List[A])(f: A => B, lastF: A => B): Stream[Pure, B] = {

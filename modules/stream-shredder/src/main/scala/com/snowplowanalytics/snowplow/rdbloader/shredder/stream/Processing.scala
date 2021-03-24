@@ -53,7 +53,7 @@ object Processing {
       .evalTap(State.add(resources.windows))
       .through(shred[F](resources.iglu, isTabular, resources.atomicLengths))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
-      .flatMap(_.sink)  // Sinks must be issued sequentially
+      .flatMap(_.stream)  // Sinks must be issued sequentially
       .compile
       .drain
   }
@@ -101,7 +101,7 @@ object Processing {
                                                     instanceId: String,
                                                     config: Shredder.Output,
                                                     sinkCount: Window => F[Int],
-                                                    onComplete: Window => F[Unit]): Grouping[F] =
+                                                    onComplete: Window => F[Unit]): Pipe[F, Record[F, Window, (Shredded.Path, Shredded.Data)], generic.Partitioned2.KeyedFlushable[F, Shredded.Path, Window]] =
     config match {
       case Shredder.Output(path, _) =>
         val dataSink = Option(path.getScheme) match {
@@ -117,7 +117,7 @@ object Processing {
                 Stream.raiseError[F](error)
         }
 
-        generic.Partitioned.write[F, Window, Shredded.Path, Shredded.Data](dataSink, onComplete)
+        generic.Partitioned2.write[F, Window, Shredded.Path, Shredded.Data](dataSink, onComplete)
     }
 
   def shred[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
