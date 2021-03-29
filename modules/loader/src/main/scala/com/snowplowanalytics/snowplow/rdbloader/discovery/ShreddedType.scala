@@ -41,6 +41,10 @@ sealed trait ShreddedType {
       false
   }
 
+  /** Build valid table name for the shredded type */
+  def getTableName: String =
+    s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
+
 }
 
 /**
@@ -173,15 +177,6 @@ object ShreddedType {
         }
     }
   }
-
-  /**
-   * Build valid table name for some shredded type
-   *
-   * @param shreddedType shredded type for self-describing event or context
-   * @return valid table name
-   */
-  def getTableName(shreddedType: ShreddedType): String =
-    s"${toSnakeCase(shreddedType.info.vendor)}_${toSnakeCase(shreddedType.info.name)}_${shreddedType.info.model}"
 
   /**
    * Check that JSONPaths file exists in Snowplow hosted assets bucket

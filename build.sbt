@@ -82,6 +82,7 @@ lazy val loader = project.in(file("modules/loader"))
 
       Dependencies.fs2,
       Dependencies.fs2Blobstore,
+      Dependencies.doobie,
       Dependencies.catsRetry,
 
       Dependencies.specs2,
