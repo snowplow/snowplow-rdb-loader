@@ -34,6 +34,9 @@ object Common {
   def entityPath(entity: ShreddedType) =
     s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
 
+  def entityPathFull(base: S3.Folder, entity: ShreddedType): S3.Folder =
+    S3.Folder.append(base, entityPath(entity))
+
   /**
    * Remove all occurrences of access key id and secret access key from message
    * Helps to avoid publishing credentials on insecure channels
