@@ -24,6 +24,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessa
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
@@ -94,7 +95,7 @@ class DataDiscoverySpec extends Specification {
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
 
       result must beRight(None)
-      state.getLog must contain("GET com.acme/event_a_1.json", "GET com.acme/event_b_1.json", "ack")
+      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json"), LogEntry.Message("GET com.acme/event_b_1.json"), LogEntry.Message("ack"))
     }
 
     "not ack message if it can be handled" >> {
@@ -117,9 +118,9 @@ class DataDiscoverySpec extends Specification {
 
       result.map(_.map(_.data)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
-        "GET com.acme/event_a_1.json",
-        "GET com.acme/event_b_1.json",
-        "New data discovery at folder with following shredded types: * iglu:com.acme/event-a/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json) * iglu:com.acme/event-b/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)"
+        LogEntry.Message("GET com.acme/event_a_1.json"),
+        LogEntry.Message("GET com.acme/event_b_1.json"),
+        LogEntry.Message("New data discovery at folder with following shredded types: * iglu:com.acme/event-a/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json) * iglu:com.acme/event-b/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)")
       ))
     }
   }

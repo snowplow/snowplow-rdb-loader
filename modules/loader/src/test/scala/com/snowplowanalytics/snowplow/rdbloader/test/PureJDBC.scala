@@ -2,19 +2,19 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.JDBC
-import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
+import doobie.Read
+
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.db.Entities.{TableState, Columns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.JDBC
 
-case class PureJDBC(executeQuery: SqlString => Decoder[Any] => LoaderAction[Pure, Any],
-                    executeUpdate: SqlString => LoaderAction[Pure, Long]) {
+case class PureJDBC(executeQuery: Statement => LoaderAction[Pure, Any],
+                    executeUpdate: Statement => LoaderAction[Pure, Int]) {
   /** If certain predicate met, return `update` action, otherwise do usual `executeUpdate` */
-  def withExecuteUpdate(predicate: (SqlString, TestState) => Boolean, update: LoaderAction[Pure, Long]): PureJDBC = {
-    val updated = (sql: SqlString) => {
+  def withExecuteUpdate(predicate: (Statement, TestState) => Boolean, update: LoaderAction[Pure, Int]): PureJDBC = {
+    val updated = (sql: Statement) => {
       Pure { (ts: TestState) =>
         if (predicate(sql, ts))
           (ts, update)
@@ -28,27 +28,32 @@ case class PureJDBC(executeQuery: SqlString => Decoder[Any] => LoaderAction[Pure
 object PureJDBC {
 
   val init: PureJDBC = {
-    def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Pure, A] = {
-      val result = ev.name match {
-        case "TableState" => TableState(SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0)))
-        case "Boolean" => false
-        case "Columns" => Columns(List("some_column"))
+    def executeQuery(query: Statement): LoaderAction[Pure, Any] = {
+      val result = query match {
+        case Statement.GetVersion(_, _) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
+        case Statement.TableExists(_, _) => false
+        case Statement.GetColumns(_) => List("some_column")
+        case _ => throw new IllegalArgumentException(s"Unexpected query $query")
       }
-      Pure((s: TestState) => (s.log(query), result.asInstanceOf[A].asRight[LoaderError])).toAction
+      Pure((s: TestState) => (s.log(query), result.asInstanceOf[Any].asRight[LoaderError])).toAction
     }
 
-    def executeUpdate(sql: SqlString): LoaderAction[Pure, Long] =
-      Pure((s: TestState) => (s.log(sql), 1L.asRight[LoaderError])).toAction
+    def executeUpdate(sql: Statement): LoaderAction[Pure, Int] =
+      Pure((s: TestState) => (s.log(sql), 1.asRight[LoaderError])).toAction
 
-    PureJDBC(q => e => executeQuery(q)(e), executeUpdate)
+    PureJDBC(q => executeQuery(q), executeUpdate)
   }
 
   def interpreter(results: PureJDBC): JDBC[Pure] = new JDBC[Pure] {
-    def executeUpdate(sql: SqlString): LoaderAction[Pure, Long] =
+    def executeUpdate(sql: Statement): LoaderAction[Pure, Int] =
       results.executeUpdate(sql)
 
-    def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[Pure, A] =
-      results.executeQuery.asInstanceOf[SqlString => Decoder[A] => LoaderAction[Pure, A]](query)(ev)
+    def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[Pure, A] =
+      results.executeQuery.asInstanceOf[Statement => LoaderAction[Pure, A]](query)
+
+    def executeQueryList[A](query: Statement)(implicit A: Read[A]): LoaderAction[Pure, List[A]] =
+      results.executeQuery.asInstanceOf[Statement => LoaderAction[Pure, List[A]]](query)
+
   }
 }
 

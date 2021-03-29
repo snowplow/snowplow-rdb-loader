@@ -17,7 +17,7 @@ import cats.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
@@ -32,10 +32,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Co
 case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
   /** ETL id */
   def runId: String = base.split("/").last
-
-  /** `atomic-events` directory full path */
-  def atomicEvents: S3.Folder =
-    S3.Folder.append(base, Common.AtomicPath)
 
   def show: String = {
     val shreddedTypesList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")

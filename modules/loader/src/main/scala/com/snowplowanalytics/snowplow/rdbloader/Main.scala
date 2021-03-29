@@ -34,7 +34,7 @@ object Main extends IOApp {
   def run(argv: List[String]): IO[ExitCode] =
     CliConfig.parse(argv) match {
       case Valid(cli) =>
-        Environment.initialize[IO](cli).flatMap { env =>
+        Environment.initialize[IO](cli).use { env =>
           env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
             process(cli, env)
               .compile
@@ -70,15 +70,16 @@ object Main extends IOApp {
       .evalMap { message =>
         val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
           SSH.resource[IO](cli.config.storage.sshTunnel) *>
-          JDBC.interpreter[IO](cli.config.storage, cli.dryRun)
+          JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
 
         val action = jdbc.use { implicit conn => load[IO](cli, message) *> env.incrementLoaded }
 
-        // Make sure that stream is never interrupted
         action.recoverWith {
           case NonFatal(e) =>
             Sentry.captureException(e)
-            Logging[IO].error(s"Fatal failure during message processing (base ${message.data.base}), message hasn't been ack'ed. ${e.getMessage}")
+            val logging = Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), message hasn't been ack'ed. ${e.getMessage}")
+            e.printStackTrace(System.out)
+            logging *> IO.raiseError(e)
         }
       }
   }
