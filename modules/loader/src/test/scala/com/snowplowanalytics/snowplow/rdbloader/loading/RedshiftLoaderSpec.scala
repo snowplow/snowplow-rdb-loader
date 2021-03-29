@@ -17,11 +17,11 @@ import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString.{unsafeCoerce => sql}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Semver, Step }
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
-
+import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.AsSql
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureLogging}
 
 import org.specs2.mutable.Specification
@@ -34,19 +34,31 @@ class RedshiftLoaderSpec extends Specification {
 
       val input = RedshiftStatements(
         "atomic",
-        RedshiftStatements.AtomicCopy.Straight(sql("LOAD INTO atomic MOCK")),
-        List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
-        Some(List(sql("VACUUM MOCK"))),
-        Some(List(sql("ANALYZE MOCK")))
+        Statement.EventsCopy("atomic", false, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None),
+        List(Statement.ShreddedCopy(
+          "atomic",
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          "eu-central-1",
+          1,
+          "role",
+          Compression.None
+        )),
+        Some(List(Statement.Vacuum("foo"))),
+        Some(List(Statement.Analyze("foo")))
       )
 
       val (state, result) = RedshiftLoader.loadFolder[Pure](input).run
 
       val expected = List(
-        "LOAD INTO atomic MOCK",
-        "LOAD INTO SHRED 1 MOCK",
-        "LOAD INTO SHRED 2 MOCK",
-        "LOAD INTO SHRED 3 MOCK",
+        LogEntry.Sql(Statement.EventsCopy("atomic", false, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None)),
+        LogEntry.Sql(Statement.ShreddedCopy(
+          "atomic",
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          "eu-central-1",
+          1,
+          "role",
+          Compression.None
+        )),
       )
 
       val transactionsExpectation = state.getLog must beEqualTo(expected)
@@ -60,26 +72,37 @@ class RedshiftLoaderSpec extends Specification {
 
       val input = RedshiftStatements(
         "schema",
-        RedshiftStatements.AtomicCopy.Transit(sql("LOAD INTO atomic TRANSIT MOCK")),
-        List(sql("LOAD INTO SHRED 1 MOCK"), sql("LOAD INTO SHRED 2 MOCK"), sql("LOAD INTO SHRED 3 MOCK")),
-        Some(List(sql("VACUUM MOCK"))),
-        Some(List(sql("ANALYZE MOCK")))
+        Statement.EventsCopy("schema", true, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None),
+        List(Statement.ShreddedCopy(
+          "schema",
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          "eu-central-1",
+          1,
+          "role",
+          Compression.None
+        )),
+        Some(List(Statement.Vacuum("foo"))),
+        Some(List(Statement.Analyze("foo")))
       )
 
       val (state, result) = RedshiftLoader.loadFolder[Pure](input).run
 
       val expected = List(
-        "CREATE TABLE schema.temp_transit_events ( LIKE schema.events )",
-        "LOAD INTO atomic TRANSIT MOCK",
-        "DROP TABLE schema.temp_transit_events",
-        "LOAD INTO SHRED 1 MOCK",
-        "LOAD INTO SHRED 2 MOCK",
-        "LOAD INTO SHRED 3 MOCK",
+        LogEntry.Sql(Statement.CreateTransient("schema")),
+        LogEntry.Sql(Statement.EventsCopy("schema", true, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None)),
+        LogEntry.Sql(Statement.DropTransient("schema")),
+        LogEntry.Sql(Statement.ShreddedCopy(
+          "schema",
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          "eu-central-1",
+          1,
+          "role",
+          Compression.None
+        ))
       )
 
-      val transactionsExpectation = state.getLog must beEqualTo(expected)
-      val resultExpectation = result must beRight
-      transactionsExpectation.and(resultExpectation)
+      state.getLog must beEqualTo(expected)
+      result must beRight
     }
   }
 
@@ -89,29 +112,29 @@ class RedshiftLoaderSpec extends Specification {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
 
       val shreddedTypes = List(
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/event_1.json")),
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0)), S3.Key.coerce("s3://assets/context_2.json")),
-        ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 3, Semver(1,5,0))),
+        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0)), "s3://assets/event_1.json".key),
+        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0)), "s3://assets/context_2.json".key),
+        ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0))),
       )
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://bucket/path/run=1/"), shreddedTypes, Compression.Gzip)
 
       val (state, result) = RedshiftLoader.run[Pure](SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum, Step.Analyze)), discovery).flatMap(identity).run
 
       val expected = List(
-        "COPY atomic.events FROM 's3://my-bucket/my-path/kind=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_event_2 FROM 's3://my-bucket/my-path/kind=good/vendor=com.acme/name=event/format=json/model=2' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/event_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_context_2 FROM 's3://my-bucket/my-path/kind=good/vendor=com.acme/name=context/format=json/model=2' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/context_2.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_context_3 FROM 's3://my-bucket/my-path/kind=good/vendor=com.acme/name=context/format=tsv/model=3' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "VACUUM SORT ONLY atomic.events",
-        "VACUUM SORT ONLY atomic.com_acme_event_2",
-        "VACUUM SORT ONLY atomic.com_acme_context_2",
-        "VACUUM SORT ONLY atomic.com_acme_context_3",
-        "BEGIN",
-        "ANALYZE atomic.events",
-        "ANALYZE atomic.com_acme_event_2",
-        "ANALYZE atomic.com_acme_context_2",
-        "ANALYZE atomic.com_acme_context_3",
-        "COMMIT"
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://bucket/path/run=1/".dir,"us-east-1",1,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0)), "s3://assets/event_1.json".key),"us-east-1",1,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0)), "s3://assets/context_2.json".key),"us-east-1",1,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0))),"us-east-1",1,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.Vacuum("atomic.events")),
+        LogEntry.Sql(Statement.Vacuum("atomic.com_acme_event_1")),
+        LogEntry.Sql(Statement.Vacuum("atomic.com_acme_context_2")),
+        LogEntry.Sql(Statement.Vacuum("atomic.com_acme_context_3")),
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.Analyze("atomic.events")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_event_1")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_context_2")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_context_3")),
+        LogEntry.Sql(Statement.Commit),
       )
 
       val transactionsExpectation = state.getLog must beEqualTo(expected)

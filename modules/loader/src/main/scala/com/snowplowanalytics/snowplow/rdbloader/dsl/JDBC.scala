@@ -15,53 +15,55 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import java.sql.{SQLException, Connection}
 import java.util.Properties
 
-import scala.util.control.NonFatal
 import scala.concurrent.duration._
 
-import cats.Monad
+import cats.{Id, Monad}
 import cats.data.EitherT
 import cats.implicits._
 
-import cats.effect.{Timer, Resource, Sync}
+import cats.effect.{ContextShift, Async, Blocker, Resource, Timer, Sync}
+
+import doobie._
+import doobie.implicits._
+import doobie.util.transactor.Strategy
+import doobie.free.connection.{ setAutoCommit, abort }
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.db.Decoder
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
 import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
 
 trait JDBC[F[_]] {
 
   /** Execute single SQL statement (against target in interpreter) */
-  def executeUpdate(sql: SqlString): LoaderAction[F, Long]
+  def executeUpdate(sql: Statement): LoaderAction[F, Int]
 
   /** Execute query and parse results into `A` */
-  def executeQuery[A](query: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A]
+  def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, A]
+
+  def executeQueryList[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]]
 
   /** Execute multiple (against target in interpreter) */
-  def executeUpdates(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] =
-    EitherT(queries.traverse_(executeUpdate).value)
+  def executeUpdates(updates: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] =
+    EitherT(updates.traverse_(executeUpdate).value)
 
   /** Execute SQL transaction (against target in interpreter) */
-  def executeTransaction(queries: List[SqlString])(implicit A: Monad[F]): LoaderAction[F, Unit] = {
-    val begin = SqlString.unsafeCoerce("BEGIN")
-    val commit = SqlString.unsafeCoerce("COMMIT")
-    val transaction = (begin :: queries) :+ commit
-    executeUpdates(transaction)
-  }
+  def executeTransaction(queries: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] =
+    executeUpdates((Statement.Begin :: queries) :+ Statement.Commit)
 }
 
 object JDBC {
-
 
   /** Base for retry backoff - every next retry will be doubled time */
   val Backoff: FiniteDuration = 2.minutes
 
   /** Maximum amount of times the loading will be attempted */
   val MaxRetries: Int = 5
+
+  val NoCommitStrategy = Strategy.void.copy(before = setAutoCommit(false), oops = abort(concurrent.ExecutionContext.global))
 
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
 
@@ -79,12 +81,10 @@ object JDBC {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: Sync: Logging: Timer: AWS](target: StorageTarget, dryRun: Boolean): Resource[F, JDBC[F]] =
-    Resource
-      .make(retryingOnAllErrors(retryPolicy[F], log[F])(getConnection[F](target)))(conn => Sync[F].delay(conn.close()))
-      .map { conn =>
-        if (dryRun) JDBC.jdbcDryRunInterpreter[F](conn) else JDBC.jdbcRealInterpreter[F](conn)
-      }
+  def interpreter[F[_]: Async: ContextShift: Logging: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): Resource[F, JDBC[F]] =
+    getConnection[F](target, blocker).map { xa =>
+      if (dryRun) JDBC.jdbcDryRunInterpreter[F](xa) else JDBC.jdbcRealInterpreter[F](xa)
+    }
 
   /**
    * Acquire JDBC connection. In case of failure - sleep 1 minute and retry again
@@ -92,7 +92,7 @@ object JDBC {
    * @tparam F effect type with `S3I` DSL to get encrypted password
    * @return JDBC connection type
    */
-  def getConnection[F[_]: Sync: AWS](target: StorageTarget): F[Connection] = {
+  def getConnection[F[_]: Async: ContextShift: Logging: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] = {
     val password: F[String] = target.password match {
       case StorageTarget.PasswordConfig.PlainText(text) =>
         Sync[F].pure(text)
@@ -101,8 +101,8 @@ object JDBC {
     }
 
     for {
-      p <- password
-      jdbcConnection <- target match {
+      p <- Resource.liftF(password)
+      jdbcConnection = target match {
         case r: StorageTarget.Redshift =>
           r.jdbc.validation match {
             case Left(error) =>
@@ -113,92 +113,78 @@ object JDBC {
                 props.setProperty("user", target.username)
                 props.setProperty("password", p)
                 propertyUpdaters.foreach(f => f(props))
-                new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props)
+                val conn = new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props)
+                conn.setAutoCommit(false)
+                conn
               }
           }
       }
-    } yield jdbcConnection
+      transactor <- Resource
+        .make(retryingOnAllErrors(retryPolicy[F], log[F])(jdbcConnection))(conn => Sync[F].delay(conn.close()))
+        .map(conn => Transactor.fromConnection[F](conn, blocker).copy(strategy0 = NoCommitStrategy))
+    } yield transactor
   }
 
-  def setAutocommit[F[_]: Sync](conn: Connection, autoCommit: Boolean): LoaderAction[F, Unit] =
-    Sync[F]
-      .delay[Unit](conn.setAutoCommit(autoCommit))
-      .onError {
-        case e => Sync[F].delay(println("setAutocommit error")) *>
-          Sync[F].delay(e.printStackTrace(System.out))
-      }
-      .attemptA(err => StorageTargetError(err.toString))
-
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Sync](conn: Connection): JDBC[F] = new JDBC[F] {
+  def jdbcRealInterpreter[F[_]: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     /**
      * Execute a single update-statement in provided Postgres connection
      *
      * @param sql string with valid SQL statement
      * @return number of updated rows in case of success, failure otherwise
      */
-    def executeUpdate(sql: SqlString): LoaderAction[F, Long] = {
-      val update = Sync[F]
-        .delay[Long](conn.createStatement().executeUpdate(sql).toLong)
-        .attempt
-        .flatMap[Either[LoaderError, Long]] {
+    def executeUpdate(sql: Statement): LoaderAction[F, Int] = {
+      val update = sql
+        .toFragment
+        .update
+        .run
+        .transact(conn)
+        .attemptSql
+        .flatMap[Either[LoaderError, Int]] {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
-            (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Long].pure[F]
+            (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Int].pure[F]
           case Left(e) =>
             val log = Sync[F].delay(println("RDB Loader unknown error in executeUpdate")) *>
               Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Long])
+            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
           case Right(result) =>
             result.asRight[LoaderError].pure[F]
         }
 
-      LoaderAction[F, Long](update)
+      LoaderAction[F, Int](update)
     }
 
-    def executeQuery[A](sql: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A] = {
-      val query = Sync[F]
-        .delay(conn.createStatement().executeQuery(sql))
-        .map { resultSet =>
-          ev.decode(resultSet) match {
-            case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
-            case Right(a) => a.asRight[LoaderError]
-          }
-        }
-        .attempt
-        .flatMap[Either[LoaderError, A]] {
-          case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[A])
-          case Right(either) =>
-            either.pure[F]
-        }
+    def executeQuery[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
+      LoaderAction(JDBC.query[F, Id, A](conn, _.unique, sql.toFragment.query[A]))
 
-      LoaderAction(query)
-    }
+    def executeQueryList[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]] =
+      LoaderAction(JDBC.query(conn, _.to[List], sql.toFragment.query[A]))
   }
 
   /** Dry run interpreter, not performing any *destructive* statements */
-  def jdbcDryRunInterpreter[F[_]: Sync](conn: Connection): JDBC[F] = new JDBC[F] {
-    def executeUpdate(sql: SqlString): LoaderAction[F, Long] =
-      LoaderAction.liftF(Sync[F].delay(println(sql)).as(1L))
+  def jdbcDryRunInterpreter[F[_]: Sync: Logging](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+    def executeUpdate(sql: Statement): LoaderAction[F, Int] =
+      LoaderAction.liftF(Logging[F].info(sql.toFragment.toString)).as(1)
 
-    def executeQuery[A](sql: SqlString)(implicit ev: Decoder[A]): LoaderAction[F, A] = {
-      val result = try {
-        val resultSet = conn.createStatement().executeQuery(sql)
-        ev.decode(resultSet) match {
-          case Left(e) => StorageTargetError(s"Cannot decode SQL row: ${e.message}").asLeft
-          case Right(a) => a.asRight[StorageTargetError]
-        }
-      } catch {
-        case NonFatal(e) =>
-          println("RDB Loader unknown error in executeQuery")
-          e.printStackTrace(System.out)
-          StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[A]
+    def executeQuery[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
+      LoaderAction(JDBC.query[F, Id, A](conn, _.unique, sql.toFragment.query[A]))
+
+    def executeQueryList[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]] =
+      LoaderAction(JDBC.query(conn, _.to[List], sql.toFragment.query[A]))
+  }
+
+  private def query[F[_]: Sync, G[_], A](xa: Transactor[F], get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] = {
+    get(sql)
+      .transact(xa)
+      .attemptSql
+      .flatMap[Either[LoaderError, G[A]]] {
+        case Left(e) =>
+          val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
+            Sync[F].delay(e.printStackTrace(System.out))
+          log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+        case Right(a) =>
+          a.asRight[LoaderError].pure[F]
       }
-
-      LoaderAction.liftE(result)
-    }
   }
 
   implicit class SyncOps[F[_]: Sync, A](fa: F[A]) {

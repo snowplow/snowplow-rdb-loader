@@ -20,10 +20,9 @@ import cats.implicits._
 import cats.effect.Timer
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
 import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
-import shapeless.tag
-import shapeless.tag._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
@@ -54,11 +53,11 @@ object Load {
 
         // The transaction can be retried several time as long as transaction is aborted
         val transaction = for {
-          _ <- JDBC[F].executeUpdate(RedshiftStatements.BeginTransaction)
+          _ <- JDBC[F].executeUpdate(Statement.Begin)
           _ <- Migration.perform[F](cli.config.storage.schema, discovery.data)
           postLoad <- RedshiftLoader.run[F](redshiftConfig, discovery.data)
           _ <- discovery.ack.liftA
-          _ <- JDBC[F].executeUpdate(RedshiftStatements.CommitTransaction)
+          _ <- JDBC[F].executeUpdate(Statement.Commit)
         } yield postLoad
 
         val action = for {
@@ -95,7 +94,7 @@ object Load {
     retryingOnSomeErrors[A](retryPolicy[F], isWorth, abortAndLog[F])(fa)
 
   def abortAndLog[F[_]: Monad: JDBC: Logging](e: LoaderError, d: RetryDetails): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(RedshiftStatements.AbortTransaction) *>
+    JDBC[F].executeUpdate(Statement.Abort) *>
       Logging[F].error(show"$e Transaction aborted. Tried ${d.retriesSoFar} times, ${d.cumulativeDelay.toSeconds}sec total. ${d.upcomingDelay.fold("Giving up")(x => s"Waiting for $x")}").liftA
 
   /** Check if error is worth retrying */
@@ -118,16 +117,6 @@ object Load {
     RetryPolicies
       .limitRetries[LoaderAction[F, *]](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
-
-  /**
-   * String representing valid SQL query/statement,
-   * ready to be executed
-   */
-  type SqlString = String @@ SqlStringTag
-
-  object SqlString extends tag.Tagger[SqlStringTag] {
-    def unsafeCoerce(s: String) = apply(s)
-  }
 
   sealed trait SqlStringTag
 }

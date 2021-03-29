@@ -18,7 +18,12 @@ import cats.implicits._
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Message
+import doobie.util.{Get, Put, Read}
+
+import com.snowplowanalytics.iglu.core.SchemaKey
+
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
 package object rdbloader {
@@ -74,4 +79,18 @@ package object rdbloader {
 
   /** Single discovery step */
   type DiscoveryAction[F[_], A] = F[DiscoveryStep[A]]
+
+  implicit val putFolder: Put[S3.Folder] =
+    Put[String].tcontramap(_.toString)
+
+  implicit val putKey: Put[S3.Key] =
+    Put[String].tcontramap(_.toString)
+
+  implicit val putCompression: Put[Compression] =
+    Put[String].tcontramap(_.asString)
+
+  implicit val getSchemaKey: Get[SchemaKey] =
+    Get[String].temap(s => SchemaKey.fromUri(s).leftMap(e => s"Cannot parse $s into Iglu schema key, ${e.code}"))
+  implicit val readSchemaKey: Read[SchemaKey] =
+    Read.fromGet(getSchemaKey)
 }
