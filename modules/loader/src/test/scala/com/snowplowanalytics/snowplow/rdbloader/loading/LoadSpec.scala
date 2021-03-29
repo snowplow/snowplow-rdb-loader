@@ -14,18 +14,18 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import cats.effect.Timer
 import cats.syntax.either._
-import cats.syntax.alternative._
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
-import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
-
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
+import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureIglu, PureJDBC, PureOps, PureLogging, PureTimer}
 
 import org.specs2.mutable.Specification
@@ -40,11 +40,13 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscovery, Pure.pure(()))
 
+      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/kind=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/kind=good/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COMMIT"
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.Commit),
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
@@ -60,12 +62,14 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscovery, Pure.modify(_.log("ACK")))
 
+      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/kind=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/kind=good/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "ACK",
-        "COMMIT"
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Message("ACK"),
+        LogEntry.Sql(Statement.Commit),
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
@@ -81,10 +85,12 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscovery, Pure.fail[Unit](new RuntimeException("Failed ack")))
 
+      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        "BEGIN",
-        "COPY atomic.events FROM 's3://shredded/base/kind=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' DELIMITER ' ' EMPTYASNULL FILLRECORD TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
-        "COPY atomic.com_acme_json_context_1 FROM 's3://shredded/base/kind=good/vendor=com.acme/name=json-context/format=json/model=1' CREDENTIALS 'aws_iam_role=arn:aws:iam::123456789876:role/RedshiftLoadRole' JSON AS 's3://assets/com.acme/json_context_1.json' REGION AS 'us-east-1' MAXERROR 1 TIMEFORMAT 'auto' TRUNCATECOLUMNS ACCEPTINVCHARS GZIP",
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
@@ -100,11 +106,22 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscovery, Pure.pure(()))
 
-      val expected = List("BEGIN", "COPY", "COPY", "ABORT", "SLEEP", "BEGIN", "COPY", "COPY", "COMMIT")
-
+      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
+      val expected = List(
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.Abort),
+        LogEntry.Message("SLEEP 30000000000 nanoseconds"),
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.Commit),
+      )
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).runS
 
-      result.getLog.map(_.split(" ").headOption).unite must beEqualTo(expected)
+      result.getLog must beEqualTo(expected)
     }
   }
 }
@@ -124,8 +141,12 @@ object LoadSpec {
     Compression.Gzip
   )
 
-  def isFirstCommit(sql: SqlString, ts: TestState) =
-    sql.contains("COMMIT") && ts.getLog.length < 4
-  val failCommit: LoaderAction[Pure, Long] =
-    LoaderAction.liftE[Pure, Long](LoaderError.StorageTargetError("Commit failed").asLeft)
+  def isFirstCommit(sql: Statement, ts: TestState) =
+    sql match {
+      case Statement.Commit => ts.getLog.length < 4
+      case _ => false
+    }
+
+  val failCommit: LoaderAction[Pure, Int] =
+    LoaderAction.liftE[Pure, Int](LoaderError.StorageTargetError("Commit failed").asLeft)
 }
