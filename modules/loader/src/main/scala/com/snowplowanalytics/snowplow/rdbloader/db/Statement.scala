@@ -12,12 +12,17 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import java.sql.Timestamp
+
 import doobie.Fragment
 import doobie.implicits._
+import doobie.implicits.javasql._
+
+import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.schemaddl.redshift
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
@@ -139,13 +144,16 @@ object Statement {
   // Migration
   case class TableExists(schema: String, tableName: String) extends Statement {
     def toFragment: Fragment =
-      sql"""
-           |SELECT EXISTS (
-           |   SELECT 1
-           |   FROM   pg_tables
-           |   WHERE  schemaname = $schema
-           |   AND    tablename = $tableName) AS exists;
-      """.stripMargin
+      sql"""|SELECT EXISTS (
+            |  SELECT 1
+            |  FROM   pg_tables
+            |  WHERE  schemaname = $schema
+            |  AND    tablename = $tableName)
+            | AS exists""".stripMargin
+  }
+  case class SchemaExists(schema: String) extends Statement {
+    def toFragment: Fragment =
+      sql"SELECT schema_name FROM information_schema.schemata WHERE schema_name = $schema"
   }
   case class GetVersion(schema: String, tableName: String) extends Statement {
     def toFragment: Fragment =
@@ -170,6 +178,30 @@ object Statement {
       sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName"""
   }
 
+  // Manifest
+  case class ManifestAdd(schema: String, message: LoaderMessage.ShreddingComplete) extends Statement {
+    def toFragment: Fragment = {
+      val tableName = Fragment.const(s"$schema.manifest")
+      val types = message.types.asJson.noSpaces
+      // Redshift JDBC doesn't accept java.time.Instant
+      sql"""INSERT INTO $tableName
+        (base, types, shredding_started, shredding_completed,
+        min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
+        compression, processor_artifact, processor_version)
+        VALUES (${message.base}, $types,
+        ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
+        ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
+        getdate(),
+        ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version})"""
+    }
+  }
+  case class ManifestGet(schema: String, base: S3.Folder) extends Statement {
+    def toFragment: Fragment =
+      sql"""SELECT ingestion_tstamp, base, types, shredding_started, shredding_completed,
+           min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
+           compression, processor_artifact, processor_version FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+  }
+
   // Schema DDL
   case class CreateTable(ddl: redshift.CreateTable) extends Statement {
     def toFragment: Fragment =
@@ -180,8 +212,10 @@ object Statement {
       Fragment.const0(ddl.toDdl)
   }
   case class DdlFile(ddl: redshift.generators.DdlFile) extends Statement {
-    def toFragment: Fragment =
-      Fragment.const0(ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n"))
+    def toFragment: Fragment = {
+      val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
+      Fragment.const0(str)
+    }
   }
 
   private def getCompressionFormat(compression: Config.Shredder.Compression): Fragment =
