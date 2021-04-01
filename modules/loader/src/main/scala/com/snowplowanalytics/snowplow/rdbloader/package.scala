@@ -20,15 +20,20 @@ import fs2.Stream
 
 import doobie.util.{Get, Put, Read}
 
+import io.circe.parser.parse
+
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
 package object rdbloader {
 
-  type DiscoveryStream[F[_]] = Stream[F, Message[F, DataDiscovery]]
+  /** Stream of discovered folders. `LoaderMessage` is here for metainformation */
+  type DiscoveryStream[F[_]] = Stream[F, Message[F, DataDiscovery.WithOrigin]]
 
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]
@@ -46,6 +51,12 @@ package object rdbloader {
 
     def apply[F[_], A](actionE: ActionE[F, A]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)
+
+    def raiseError[F[_]: Applicative, A](error: LoaderError): LoaderAction[F, A] =
+      liftE(error.asLeft)
+
+    def pure[F[_]: Applicative, A](a: A): LoaderAction[F, A] =
+      EitherT.pure[F, LoaderError](a)
   }
 
   implicit class ActionOps[F[_], A](a: F[A]) {
@@ -83,6 +94,18 @@ package object rdbloader {
   implicit val putFolder: Put[S3.Folder] =
     Put[String].tcontramap(_.toString)
 
+  implicit val getFolder: Get[S3.Folder] =
+    Get[String].temap(S3.Folder.parse)
+
+  implicit val getFormat: Get[Format] =
+    Get[String].temap(Format.fromString)
+
+  implicit val getListShreddedType: Get[List[ShreddedType]] =
+    Get[String].temap(str => parse(str).flatMap(_.as[List[ShreddedType]]).leftMap(_.show))
+
+  implicit val getCompression: Get[Compression] =
+    Get[String].temap(str => StringEnum.fromString[Compression](str))
+
   implicit val putKey: Put[S3.Key] =
     Put[String].tcontramap(_.toString)
 
@@ -91,6 +114,13 @@ package object rdbloader {
 
   implicit val getSchemaKey: Get[SchemaKey] =
     Get[String].temap(s => SchemaKey.fromUri(s).leftMap(e => s"Cannot parse $s into Iglu schema key, ${e.code}"))
+
   implicit val readSchemaKey: Read[SchemaKey] =
     Read.fromGet(getSchemaKey)
+
+  implicit val putSemver: Put[Semver] =
+    Put[String].tcontramap(_.show)
+
+  implicit val getSemver: Get[Semver] =
+    Get[String].temap(Semver.decodeSemver)
 }
