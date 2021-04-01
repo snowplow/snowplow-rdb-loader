@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.util.control.NonFatal
-
 import cats.data.Validated._
 import cats.implicits._
 
@@ -21,6 +19,7 @@ import cats.effect.{IOApp, IO, ExitCode, Resource}
 
 import fs2.Stream
 
+import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
@@ -65,22 +64,23 @@ object Main extends IOApp {
   def process(cli: CliConfig, env: Environment[IO]): Stream[IO, Unit] = {
     import env._
 
-    DataDiscovery.discover[IO](cli.config, env.state)
-      .pauseWhen[IO](env.isBusy)
-      .evalMap { message =>
-        val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
-          SSH.resource[IO](cli.config.storage.sshTunnel) *>
-          JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
+    Stream.eval_(Manifest.initialize[IO](cli.config.storage, cli.dryRun, env.blocker)) ++
+      DataDiscovery.discover[IO](cli.config, env.state)
+        .pauseWhen[IO](env.isBusy)
+        .evalMap { discovery =>
+          val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
+            SSH.resource[IO](cli.config.storage.sshTunnel) *>
+            JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
 
-        val action = jdbc.use { implicit conn => load[IO](cli, message) *> env.incrementLoaded }
-
-        action.recoverWith {
-          case NonFatal(e) =>
-            Sentry.captureException(e)
-            val logging = Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), message hasn't been ack'ed. ${e.getMessage}")
-            e.printStackTrace(System.out)
-            logging *> IO.raiseError(e)
+          jdbc.use { implicit conn =>
+            load[IO](cli, discovery).value.flatMap {
+              case Right(_) =>
+                env.incrementLoaded
+              case Left(error) =>
+                Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
+                  discovery.ack *> IO.raiseError(error)
+            }
+          }
         }
-      }
   }
 }

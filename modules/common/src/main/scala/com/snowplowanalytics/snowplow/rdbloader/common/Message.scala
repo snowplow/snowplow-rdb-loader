@@ -12,4 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-final case class Message[F[_], A](data: A, ack: F[Unit])
+final case class Message[F[_], A](data: A, ack: F[Unit]) {
+  def map[B](f: A => B): Message[F, B] =
+    Message(f(data), ack)
+}
