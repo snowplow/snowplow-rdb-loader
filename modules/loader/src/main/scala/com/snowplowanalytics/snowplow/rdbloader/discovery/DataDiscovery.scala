@@ -51,6 +51,8 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
  */
 object DataDiscovery {
 
+  case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
+
   /**
    * App entrypoint, a generic discovery stream reading from message queue (like SQS)
    * The plain text queue will be parsed into known message types (`LoaderMessage`) and
@@ -69,10 +71,10 @@ object DataDiscovery {
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.data) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle(config.region, config.jsonpaths, Message(parsed, message.ack))
+            handle(config.region, config.jsonpaths, parsed, message.ack)
           case Left(error) =>
             Logging[F].error(s"Error during message queue reading. $error") *>
-              message.ack.as(none[Message[F, DataDiscovery]])
+              message.ack.as(none[Message[F, WithOrigin]])
         }
 
         state.updateAndGet(_.incrementMessages).flatMap { state =>
@@ -90,19 +92,21 @@ object DataDiscovery {
    */
   def handle[F[_]: Monad: AWS: Cache: Logging](region: String,
                                                assets: Option[S3.Folder],
-                                               message: Message[F, LoaderMessage.ShreddingComplete]) =
-    fromLoaderMessage[F](region, assets, message.data)
-      .map(discovery => Message(discovery, message.ack))
+                                               message: LoaderMessage.ShreddingComplete,
+                                               ack: F[Unit]) =
+    fromLoaderMessage[F](region, assets, message)
       .value
-      .flatMap[Option[Message[F, DataDiscovery]]] {
-        case Right(_) if isEmpty(message.data) =>
-          Logging[F].info(s"Empty discovery at ${message.data.base}. Acknowledging the message without loading attempt") *>
-            message.ack.as(none[Message[F, DataDiscovery]])
-        case Right(message) =>
-          Logging[F].info(s"New data discovery at ${message.data.show}").as(Some(message))
+      .flatMap[Option[Message[F, WithOrigin]]] {
+        case Right(_) if isEmpty(message) =>
+          Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt") *>
+            ack.as(none[Message[F, WithOrigin]])
+        case Right(discovery) =>
+          Logging[F]
+            .info(s"New data discovery at ${discovery.show}")
+            .as(Some(Message(WithOrigin(discovery, message), ack)))
         case Left(error) =>
           Logging[F].error(error.show) *>
-            message.ack.as(none[Message[F, DataDiscovery]])
+            ack.as(none[Message[F, WithOrigin]])
       }
 
   /**

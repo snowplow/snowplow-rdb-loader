@@ -20,7 +20,7 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -90,9 +90,9 @@ class DataDiscoverySpec extends Specification {
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
 
-      val message = Message(DataDiscoverySpec.shreddingComplete, Pure.modify(_.log("ack")))
+      val message = DataDiscoverySpec.shreddingComplete
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
 
       result must beRight(None)
       state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json"), LogEntry.Message("GET com.acme/event_b_1.json"), LogEntry.Message("ack"))
@@ -103,7 +103,7 @@ class DataDiscoverySpec extends Specification {
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
 
-      val message = Message(DataDiscoverySpec.shreddingComplete, Pure.modify(_.log("ack")))
+      val message = DataDiscoverySpec.shreddingComplete
 
       val expected = DataDiscovery(
         S3.Folder.coerce("s3://bucket/folder/"),
@@ -114,9 +114,9 @@ class DataDiscoverySpec extends Specification {
         Compression.Gzip
       )
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
 
-      result.map(_.map(_.data)) must beRight(Some(expected))
+      result.map(_.map(_.data.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
         LogEntry.Message("GET com.acme/event_a_1.json"),
         LogEntry.Message("GET com.acme/event_b_1.json"),
