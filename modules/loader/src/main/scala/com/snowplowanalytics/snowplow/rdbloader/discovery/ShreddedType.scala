@@ -25,6 +25,14 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
+/**
+ * Generally same as `LoaderMessage.ShreddedType`, but for JSON types
+ * holds an information about discovered JSONPath file and does NOT
+ * contain full SchemaVer
+ *
+ * Can be converted from `LoaderMessage.ShreddedType`
+ * using `DataDiscover.fromLoaderMessage`
+ */
 sealed trait ShreddedType {
   /** raw metadata extracted from S3 Key */
   def info: ShreddedType.Info

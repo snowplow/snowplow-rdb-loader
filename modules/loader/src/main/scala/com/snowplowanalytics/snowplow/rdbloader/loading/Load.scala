@@ -46,7 +46,7 @@ object Load {
    * @param cli RDB Loader app configuration
    * @param discovery discovered folder to load
    */
-  def load[F[_]: MonadThrow: JDBC: Iglu: Timer: Logging](cli: CliConfig, discovery: Message[F, DataDiscovery]): F[Unit] =
+  def load[F[_]: MonadThrow: JDBC: Iglu: Timer: Logging](cli: CliConfig, discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] =
     cli.config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = cli.config.copy(storage = redshift)
@@ -54,10 +54,20 @@ object Load {
         // The transaction can be retried several time as long as transaction is aborted
         val transaction = for {
           _ <- JDBC[F].executeUpdate(Statement.Begin)
-          _ <- Migration.perform[F](cli.config.storage.schema, discovery.data)
-          postLoad <- RedshiftLoader.run[F](redshiftConfig, discovery.data)
+          state <- db.Manifest.get[F](redshiftConfig.storage.schema, discovery.data.discovery.base)
+          postLoad <- state match {
+            case Some(entry) =>
+              Logging[F].error(s"Folder ${entry.meta.base} is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+                JDBC[F].executeUpdate(Statement.Abort).as(LoaderAction.unit[F])
+            case None =>
+              Migration.perform[F](redshiftConfig.storage.schema, discovery.data.discovery) *>
+                RedshiftLoader.run[F](redshiftConfig, discovery.data.discovery) <*
+                db.Manifest.add[F](redshiftConfig.storage.schema, discovery.data.origin) <*
+                JDBC[F].executeUpdate(Statement.Commit)
+          }
+
+          // With manifest protecting from double-loading it's safer to ack *after* commit
           _ <- discovery.ack.liftA
-          _ <- JDBC[F].executeUpdate(Statement.Commit)
         } yield postLoad
 
         val action = for {

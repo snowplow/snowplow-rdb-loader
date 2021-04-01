@@ -12,18 +12,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import cats.{Functor, Monad}
+import cats.Monad
 import cats.data.EitherT
 import cats.implicits._
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => DMigration, SchemaList => DSchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
 
-import com.snowplowanalytics.snowplow.rdbloader.{ LoaderAction, LoaderError, ActionOps }
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, ActionOps, readSchemaKey}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
 
 object Migration {
@@ -40,11 +40,12 @@ object Migration {
           schemas   <- EitherT(Iglu[F].getSchemas(vendor, name, model))
           tableName  = StringUtils.getTableName(SchemaMap(SchemaKey(vendor, name, "jsonschema", SchemaVer.Full(model, 0, 0))))
           _         <- for {
-            exists  <- tableExists[F](dbSchema, tableName)
+            exists  <- Control.tableExists[F](dbSchema, tableName)
             _       <- if (exists) for {
+              _ <- Logging[F].info(s"Getting table version for $tableName").liftA
               schemaKey   <- getVersion[F](dbSchema, tableName)
               matches      = schemas.latest.schemaKey == schemaKey
-              columns     <- getColumns[F](dbSchema, tableName)
+              columns     <- Control.getColumns[F](dbSchema, tableName)
               _           <- if (matches) LoaderAction.unit[F] else updateTable[F](dbSchema, schemaKey, columns, schemas)
             } yield () else createTable[F](dbSchema, tableName, schemas)
           } yield ()
@@ -54,12 +55,9 @@ object Migration {
 
   /** Find the latest schema version in the table and confirm that it is the latest in `schemas` */
   def getVersion[F[_]: Monad: JDBC](dbSchema: String, tableName: String): LoaderAction[F, SchemaKey] =
-    JDBC[F].executeQuery[SchemaKey](Statement.GetVersion(dbSchema, tableName)).leftMap(annotateError(dbSchema, tableName))
+    JDBC[F].executeQuery[SchemaKey](Statement.GetVersion(dbSchema, tableName))(readSchemaKey).leftMap(Control.annotateError(dbSchema, tableName))
 
   /** Check if table exists in `dbSchema` */
-  def tableExists[F[_]: Functor: JDBC](dbSchema: String, tableName: String): LoaderAction[F, Boolean] =
-    JDBC[F].executeQuery[Boolean](Statement.TableExists(dbSchema, tableName)).leftMap(annotateError(dbSchema, tableName))
-
   def createTable[F[_]: Monad: Logging: JDBC](dbSchema: String, name: String, schemas: DSchemaList): LoaderAction[F, Unit] = {
     val subschemas = FlatSchema.extractProperties(schemas)
     val tableName = StringUtils.getTableName(schemas.latest)
@@ -88,20 +86,5 @@ object Migration {
         }
       case s: DSchemaList.Single =>
         Logging[F].info(s"Warning: updateTable executed for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state").liftA
-    }
-
-  /** List all columns in the table */
-  def getColumns[F[_]: Monad: JDBC](dbSchema: String, tableName: String): LoaderAction[F, List[String]] =
-    for {
-      _       <- JDBC[F].executeUpdate(Statement.SetSchema(dbSchema))
-      columns <- JDBC[F].executeQueryList[String](Statement.GetColumns(tableName)).leftMap(annotateError(dbSchema, tableName))
-    } yield columns
-
-  private def annotateError(dbSchema: String, tableName: String)(error: LoaderError): LoaderError =
-    error match {
-      case LoaderError.StorageTargetError(message) =>
-        LoaderError.StorageTargetError(s"$dbSchema.$tableName. " ++ message)
-      case other =>
-        other
     }
 }
