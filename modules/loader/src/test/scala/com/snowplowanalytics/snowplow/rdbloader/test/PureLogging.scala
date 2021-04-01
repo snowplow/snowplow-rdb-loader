@@ -10,6 +10,8 @@ case class PureLogging(print: String => Pure[Unit])
 object PureLogging {
   val init: PureLogging = PureLogging(print)
   val noPrint: PureLogging = init.copy(print = PureLogging.noop)
+  def withPredicate(p: String => Boolean): PureLogging =
+    init.copy(print = s => if (p(s)) PureLogging.print(s) else PureLogging.noop(s) )
 
   def interpreter(results: PureLogging): Logging[Pure] = new Logging[Pure] {
     def track(result: Either[LoaderError, Unit]): Pure[Unit] =

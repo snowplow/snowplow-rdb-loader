@@ -53,13 +53,18 @@ object LoaderMessage {
     final case object JSON extends Format
     // Another options can be Parquet and InAtomic for Snowflake-like structure
 
+    def fromString(str: String): Either[String, Format] =
+      str match {
+        case "TSV" => TSV.asRight
+        case "JSON" => JSON.asRight
+        case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
+      }
+
     implicit val loaderMessageFormatEncoder: Encoder[Format] =
       Encoder.instance(_.toString.asJson)
     implicit val loaderMessageFormatDecoder: Decoder[Format] =
       Decoder.instance { c => c.as[String].map(_.toUpperCase) match {
-        case Right("TSV") => Format.TSV.asRight
-        case Right("JSON") => Format.JSON.asRight
-        case Right(other) => DecodingFailure(s"$other is unexpected format", c.history).asLeft
+        case Right(str) => fromString(str).leftMap(err => DecodingFailure(err, c.history))
         case Left(error) => error.asLeft
       } }
   }
