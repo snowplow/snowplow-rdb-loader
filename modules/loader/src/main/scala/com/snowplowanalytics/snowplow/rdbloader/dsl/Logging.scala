@@ -75,7 +75,7 @@ object Logging {
           case Right(_) =>
             trackEmpty(LoadSucceededSchema)
           case Left(error) =>
-            trackEmpty(LoadFailedSchema) *> this.info(error.show)
+            trackEmpty(LoadFailedSchema) *> this.error(error.show)
         }
       }
 
