@@ -47,7 +47,7 @@ object RedshiftLoader {
       _ <- Logging[F].info(s"Loading ${discovery.base}").liftA
       statements = getStatements(config, discovery)
       _ <- loadFolder[F](statements)
-      _ <- Logging[F].info(s"Loading finished for ${discovery.base}").liftA
+      _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)").liftA
     } yield vacuum[F](statements) *> analyze[F](statements)
 
   /** Perform data-loading for a single run folder */

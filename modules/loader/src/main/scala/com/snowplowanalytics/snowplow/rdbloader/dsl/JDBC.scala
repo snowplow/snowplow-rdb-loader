@@ -36,15 +36,22 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
 import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
 
-trait JDBC[F[_]] {
+trait JDBC[F[_]] { self =>
 
   /** Execute single SQL statement (against target in interpreter) */
   def executeUpdate(sql: Statement): LoaderAction[F, Int]
 
-  /** Execute query and parse results into `A` */
-  def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, A]
+  def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]]
 
-  def executeQueryList[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]]
+  /** Execute query and parse results into `A` */
+  def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
+    LoaderAction(self.query[Id, A](_.unique, query.toFragment.query[A]))
+
+  def executeQueryList[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]] =
+    LoaderAction(self.query[List, A](_.to[List], query.toFragment.query[A]))
+
+  def executeQueryOption[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, Option[A]] =
+    LoaderAction(self.query[Option, A](_.option, query.toFragment.query[A]))
 
   /** Execute multiple (against target in interpreter) */
   def executeUpdates(updates: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] =
@@ -154,11 +161,18 @@ object JDBC {
       LoaderAction[F, Int](update)
     }
 
-    def executeQuery[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
-      LoaderAction(JDBC.query[F, Id, A](conn, _.unique, sql.toFragment.query[A]))
-
-    def executeQueryList[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]] =
-      LoaderAction(JDBC.query(conn, _.to[List], sql.toFragment.query[A]))
+    def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
+      get(sql)
+        .transact(conn)
+        .attemptSql
+        .flatMap[Either[LoaderError, G[A]]] {
+          case Left(e) =>
+            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
+              Sync[F].delay(e.printStackTrace(System.out))
+            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+          case Right(a) =>
+            a.asRight[LoaderError].pure[F]
+        }
   }
 
   /** Dry run interpreter, not performing any *destructive* statements */
@@ -166,25 +180,18 @@ object JDBC {
     def executeUpdate(sql: Statement): LoaderAction[F, Int] =
       LoaderAction.liftF(Logging[F].info(sql.toFragment.toString)).as(1)
 
-    def executeQuery[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
-      LoaderAction(JDBC.query[F, Id, A](conn, _.unique, sql.toFragment.query[A]))
-
-    def executeQueryList[A](sql: Statement)(implicit A: Read[A]): LoaderAction[F, List[A]] =
-      LoaderAction(JDBC.query(conn, _.to[List], sql.toFragment.query[A]))
-  }
-
-  private def query[F[_]: Sync, G[_], A](xa: Transactor[F], get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] = {
-    get(sql)
-      .transact(xa)
-      .attemptSql
-      .flatMap[Either[LoaderError, G[A]]] {
-        case Left(e) =>
-          val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-            Sync[F].delay(e.printStackTrace(System.out))
-          log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
-        case Right(a) =>
-          a.asRight[LoaderError].pure[F]
-      }
+    def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
+      get(sql)
+        .transact(conn)
+        .attemptSql
+        .flatMap[Either[LoaderError, G[A]]] {
+          case Left(e) =>
+            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
+              Sync[F].delay(e.printStackTrace(System.out))
+            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+          case Right(a) =>
+            a.asRight[LoaderError].pure[F]
+        }
   }
 
   implicit class SyncOps[F[_]: Sync, A](fa: F[A]) {
