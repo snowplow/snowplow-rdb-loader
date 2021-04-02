@@ -110,7 +110,7 @@ object JDBC {
     }
 
     for {
-      p <- Resource.liftF(password)
+      p <- Resource.eval(password)
       jdbcConnection = target match {
         case r: StorageTarget.Redshift =>
           r.jdbc.validation match {

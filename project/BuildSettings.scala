@@ -77,6 +77,7 @@ object BuildSettings {
       case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
       case PathList("buildinfo", _) => MergeStrategy.first
       case x if x.contains("javax") => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class") => MergeStrategy.first // http4s, 2.13 shim
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
