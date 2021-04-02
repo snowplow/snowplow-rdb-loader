@@ -58,8 +58,6 @@ object Environment {
     val init = for {
       _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      messages <- Ref.of[F, List[String]](List.empty[String])
-      tracker <- Logging.initializeTracking[F](cli.config.monitoring)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
       igluClient <- igluParsed match {
         case Right(client) => Sync[F].pure(client)
@@ -68,15 +66,17 @@ object Environment {
       amazonS3 <- AWS.getClient[F](cli.config.region)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
-      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
       state <- State.mk[F]
-    } yield (cache, logging, iglu, aws, state)
+    } yield (cache, iglu, aws, state)
 
     for {
       blocker <- Blocker[F]
-      (cache, logging, iglu, aws, state) <- Resource.liftF(init)
+      messages <- Resource.eval(Ref.of[F, List[String]](List.empty[String]))
+      tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
+      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
+      (cache, iglu, aws, state) <- Resource.eval(init)
     } yield new Environment(cache, logging, iglu, aws, state, blocker)
   }
 
