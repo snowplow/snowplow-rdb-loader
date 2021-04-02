@@ -15,27 +15,28 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import java.time.{ZoneId, Instant}
 import java.time.format.DateTimeFormatter
 
+import scala.concurrent.ExecutionContext
 import scala.util.control.NonFatal
 
-import org.joda.time.DateTime
-import cats.Id
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.Sync
+import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 import cats.effect.concurrent.Ref
 
 import io.circe.Json
 
+import org.http4s.client.blaze.BlazeClientBuilder
+
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
-import com.snowplowanalytics.snowplow.scalatracker.emitters.id.RequestProcessor._
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
-import com.snowplowanalytics.snowplow.scalatracker.emitters.id.SyncBatchEmitter
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
+
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.common.{Common, _}
 
 import io.sentry.Sentry
 
@@ -66,7 +67,7 @@ object Logging {
 
   def loggingInterpreter[F[_]: Sync](targetConfig: StorageTarget,
                                      messages: Ref[F, List[String]],
-                                     tracker: Option[Tracker[Id]]): Logging[F] =
+                                     tracker: Option[Tracker[F]]): Logging[F] =
     new Logging[F] {
 
       /** Track result via Snowplow tracker */
@@ -108,7 +109,7 @@ object Logging {
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
           case Some(t) =>
-            Sync[F].delay(t.trackSelfDescribingEvent(SelfDescribingData(schema, Json.obj())))
+            t.trackSelfDescribingEvent(SelfDescribingData(schema, Json.obj()))
           case None =>
             Sync[F].unit
         }
@@ -120,37 +121,36 @@ object Logging {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: Sync](monitoring: Monitoring): F[Option[Tracker[Id]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Monitoring, ec: ExecutionContext): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
-        Sync[F].delay {
-          val emitter: Emitter[Id] =
-            SyncBatchEmitter.createAndStart(host, port = Some(port), bufferSize = 1, callback = Some(callback))
-          val tracker = new Tracker[Id](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader"))
-          Some(tracker)
-        }
-      case Some(_) => Sync[F].pure(none[Tracker[Id]])
-      case None => Sync[F].pure(none[Tracker[Id]])
+        val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
+        for {
+          client <- BlazeClientBuilder[F](ec).resource
+          emitter <- Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F]))
+          tracker = new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader"))
+        } yield Some(tracker)
+      case None => Resource.pure[F, Option[Tracker[F]]](none[Tracker[F]])
     }
 
   /** Callback for failed  */
-  private def callback(params: CollectorParams, request: CollectorRequest, response: CollectorResponse): Unit = {
+  private def callback[F[_]: Sync: Clock](params: Emitter.EndpointParams, request: Emitter.Request, response: Emitter.Result): F[Unit] = {
     val _ = request
-    def toMsg(rsp: CollectorResponse, includeHeader: Boolean): String = rsp match {
-      case CollectorFailure(code) =>
-        val header = if (includeHeader) { s"Snowplow Tracker [${DateTime.now()}]: " } else ""
-        header ++ s"Cannot deliver event to ${params.getUri}. Collector responded with $code"
-      case TrackerFailure(error) =>
-        val header = if (includeHeader) { s"Snowplow Tracker [${DateTime.now()}]: " } else ""
-        header ++ s"Cannot deliver event to ${params.getUri}. Tracker failed due ${error.getMessage}"
-      case RetriesExceeded(r) => s"Tracker [${DateTime.now()}]: Gave up on trying to deliver event. Last error: ${toMsg(r, false)}"
-      case CollectorSuccess(_) => ""
+    def toMsg(rsp: Emitter.Result): String = rsp match {
+      case Emitter.Result.Failure(code) =>
+        s"Cannot deliver event to ${params.getUri}. Collector responded with $code"
+      case Emitter.Result.TrackerFailure(error) =>
+        s"Cannot deliver event to ${params.getUri}. Tracker failed due ${error.getMessage}"
+      case Emitter.Result.RetriesExceeded(_) =>
+        s"Tracker gave up on trying to deliver event"
+      case Emitter.Result.Success(_) =>
+        ""
     }
 
-    val message = toMsg(response, true)
+    val message = toMsg(response)
 
     // The only place in interpreters where println used instead of logger as this is async function
-    if (message.isEmpty) () else println(message)
+    if (message.isEmpty) Sync[F].unit else Sync[F].delay(System.out.println(message))
   }
 
 

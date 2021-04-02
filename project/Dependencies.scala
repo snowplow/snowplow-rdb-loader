@@ -21,7 +21,6 @@ object Dependencies {
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
-    val scalaTracker     = "0.6.1"
     val pureconfig       = "0.14.0"
     val circe            = "0.13.0"
     val circeOptics      = "0.13.0"
@@ -34,6 +33,8 @@ object Dependencies {
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
     val log4cats         = "1.2.0"
+    val http4s           = "0.21.21"
+    val scalaTracker     = "1.0.0"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
@@ -61,8 +62,6 @@ object Dependencies {
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
   val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
-  val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
-  val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-id" % V.scalaTracker
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"              %% "cats"                              % V.cats
@@ -81,6 +80,9 @@ object Dependencies {
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
   val catsRetry         = "com.github.cb372"           %% "cats-retry"                        % V.catsRetry
   val log4cats          = "org.typelevel"              %% "log4cats-slf4j"                    % V.log4cats
+  val http4sClient      = "org.http4s"                 %% "http4s-blaze-client"               % V.http4s
+  val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
+  val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
