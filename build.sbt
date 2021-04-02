@@ -42,8 +42,6 @@ lazy val common: Project = project.in(file("modules/common"))
     libraryDependencies ++= Seq(
       Dependencies.decline,
       Dependencies.badrows,
-      Dependencies.scalaTracker,
-      Dependencies.scalaTrackerEmit,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
@@ -80,8 +78,10 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.jSch,
       Dependencies.sentry,
 
-      Dependencies.fs2,
+      Dependencies.scalaTracker,
+      Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
+      Dependencies.http4sClient,
       Dependencies.doobie,
       Dependencies.catsRetry,
 
@@ -152,6 +152,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
       Dependencies.fs2Aws,
       Dependencies.fs2AwsSqs,
       Dependencies.aws2kinesis,
+      Dependencies.http4sClient,
       // Scala (test only)
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
