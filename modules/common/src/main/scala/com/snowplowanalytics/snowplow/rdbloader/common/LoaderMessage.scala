@@ -42,7 +42,7 @@ sealed trait LoaderMessage {
 object LoaderMessage {
 
   val ShreddingCompleteKey: SchemaKey =
-    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
+    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,1))
 
   /** Data format for shredded data */
   sealed trait Format extends Product with Serializable {
@@ -85,6 +85,8 @@ object LoaderMessage {
 
   final case class Processor(artifact: String, version: Semver)
 
+  final case class Count(good: Long)
+
   /**
    * Message signalling that shredder has finished and data ready to be loaded
    * @param base root of the shredded data
@@ -96,7 +98,8 @@ object LoaderMessage {
                                      types: List[ShreddedType],
                                      timestamps: Timestamps,
                                      compression: Compression,
-                                     processor: Processor) extends LoaderMessage
+                                     processor: Processor,
+                                     count: Option[Count]) extends LoaderMessage
 
   /** Parse raw string into self-describing JSON with [[LoaderMessage]] */
   def fromString(s: String): Either[String, LoaderMessage] =
@@ -120,6 +123,10 @@ object LoaderMessage {
     deriveEncoder[Processor]
   implicit val loaderMessageProcessorDecoder: Decoder[Processor] =
     deriveDecoder[Processor]
+  implicit val loaderMessageCountEncoder: Encoder[Count] =
+    deriveEncoder[Count]
+  implicit val loaderMessageCountDecoder: Decoder[Count] =
+    deriveDecoder[Count]
   implicit val loaderMessageShreddingCompleteEncoder: Encoder[LoaderMessage] =
     deriveEncoder[ShreddingComplete].contramap { case e: ShreddingComplete => e }
   implicit val loaderMessageShreddingCompleteDecoder: Decoder[ShreddingComplete] =

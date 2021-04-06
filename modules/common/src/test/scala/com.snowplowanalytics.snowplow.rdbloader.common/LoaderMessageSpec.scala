@@ -36,7 +36,7 @@ class LoaderMessageSpec extends Specification {
     "encode into valid self-describing JSON" >> {
       val result = LoaderMessageSpec.ValidMessage.selfDescribingData
       val expected = SelfDescribingData(
-        SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0)),
+        SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,1)),
         LoaderMessageSpec.ValidMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
       )
       result must beEqualTo(expected)
@@ -46,7 +46,7 @@ class LoaderMessageSpec extends Specification {
 
 object LoaderMessageSpec {
   val ValidMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/1-0-0",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/1-0-1",
     "data": {
       "base" : "s3://bucket/folder/",
       "types" : [
@@ -65,7 +65,8 @@ object LoaderMessageSpec {
       "processor": {
         "artifact" : "test-shredder",
         "version" : "1.1.2"
-      }
+      },
+      "count": null
     }
   }"""
 
@@ -81,6 +82,7 @@ object LoaderMessageSpec {
       None
     ),
     Compression.Gzip,
-    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
+    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
+    None
   )
 }
