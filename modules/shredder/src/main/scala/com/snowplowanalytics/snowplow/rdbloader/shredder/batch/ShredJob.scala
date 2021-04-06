@@ -21,6 +21,9 @@ import io.circe.Json
 import java.util.UUID
 import java.time.Instant
 
+import scala.concurrent.{Future, Await, TimeoutException}
+import scala.concurrent.duration._
+
 // Spark
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
@@ -151,6 +154,8 @@ class ShredJob(@transient val spark: SparkSession,
       case Left(row) => List(Shredded.fromBadRow(row))
     }
 
+    val goodCount: Future[Long] = shredded.filter(_.isRight).countAsync()
+
     // Data that failed TSV transformation
     val shreddedBad = common.flatMap(_.swap.toOption.map(Shredded.fromBadRow).flatMap(_.json))
 
@@ -162,10 +167,12 @@ class ShredJob(@transient val spark: SparkSession,
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    val isEmpty = batchTimestamps.isEmpty || shreddedTypes.isEmpty || shreddedData.isEmpty()  // RDD.isEmpty called as last resort
+    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()  // RDD.isEmpty called as last resort
     val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
 
-    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredderConfig.output.compression, MessageProcessor)
+    val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption
+
+    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredderConfig.output.compression, MessageProcessor, count)
   }
 }
 
@@ -173,6 +180,9 @@ class ShredJob(@transient val spark: SparkSession,
 object ShredJob {
 
   val BadRowsProcessor: Processor = Processor(BuildInfo.name, BuildInfo.version)
+
+  /** Timeout to wait for `countAsync` for good events */
+  val CountTimeout: FiniteDuration = 5.minutes
 
   def run(
     spark: SparkSession,

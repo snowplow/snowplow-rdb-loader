@@ -146,7 +146,8 @@ object DataDiscoverySpec {
       None
     ),
     Compression.Gzip,
-    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
+    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
+    None
   )
 
   val shreddingCompleteWithSameModel = LoaderMessage.ShreddingComplete(
@@ -168,6 +169,7 @@ object DataDiscoverySpec {
       None
     ),
     Compression.None,
-    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
+    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
+    None
   )
 }
