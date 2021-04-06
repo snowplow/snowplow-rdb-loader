@@ -1,3 +1,19 @@
+Version 1.0.0 (2021-04-09)
+--------------------------
+Common: bump pureconfig from 0.14.0 to 0.14.1 (#329)
+Common: bump aws-java-sdk from 1.11.916 to 1.11.990 (#370)
+Common: bump decline from 1.3.0 to 1.4.0 (#333)
+Common: bump snowplow-scala-tracker to 1.0.0 (#372)
+Common: bump kind-projector to 0.11.3 (#371)
+Common: bump sbt from 1.4.4 to 1.4.9 (#344)
+RDB Loader: add 2nd gen load manifest table (#366)
+RDB Loader: migrate to doobie (#367)
+RDB Loader: skip empty folders (#357)
+Common: merge good and bad output folders (#358)
+Common: extract shredding logic into common module (#355)
+Common: add events count to the shredding complete message (#376)
+Stream Shredder: add (#354)
+
 Release 35 (2021-01-27)
 -----------------------
 RDB Shredder: add min and max timestamps of events for the batch to the SQS message with shredded types (#275)
