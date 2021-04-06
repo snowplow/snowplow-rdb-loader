@@ -227,7 +227,8 @@ object LoadSpec {
         Instant.ofEpochMilli(1600342341145L).some
       ),
       dataDiscovery.compression,
-      Processor("snowplow-rdb-shredder", Semver(0,18,0, None))
+      Processor("snowplow-rdb-shredder", Semver(0,18,0, None)),
+      None
     ),
   )
 
