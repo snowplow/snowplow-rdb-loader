@@ -8,7 +8,8 @@ import cats.implicits._
 
 import cats.effect.{Timer, Async, Blocker, ContextShift}
 
-import doobie.implicits.javatimedrivernative._
+import doobie.Read
+import doobie.implicits.javasql._
 
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 
@@ -37,6 +38,9 @@ object Manifest {
 
     Column("processor_artifact",RedshiftVarchar(64),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
     Column("processor_version",RedshiftVarchar(32),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
+
+    Column("count_good",RedshiftInteger,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(Null))),
+
   )
 
   private val LegacyColumns = List(
@@ -101,14 +105,25 @@ object Manifest {
   def add[F[_]: Functor: JDBC](schema: String, message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
     JDBC[F].executeUpdate(Statement.ManifestAdd(schema, message)).void
 
-  def get[F[_]: Functor: JDBC](schema: String, base: S3.Folder): LoaderAction[F, Option[Entry]] =
-    JDBC[F].executeQueryOption[Entry](Statement.ManifestGet(schema, base))
+  def get[F[_]: Functor: JDBC](schema: String, base: S3.Folder): LoaderAction[F, Option[Entry]] = {
+    JDBC[F].executeQueryOption[Entry](Statement.ManifestGet(schema, base))(Entry.entryRead)
+  }
 
   /** Create manifest table */
   def create[F[_]: Functor: JDBC](schema: String): LoaderAction[F, Unit] =
     JDBC[F].executeUpdate(Statement.CreateTable(getManifestDef(schema))).void
 
   case class Entry(ingestion: Instant, meta: LoaderMessage.ShreddingComplete)
+
+  object Entry {
+    import com.snowplowanalytics.snowplow.rdbloader.readTimestamps
+
+    implicit val entryRead: Read[Entry] =
+      (Read[java.sql.Timestamp], Read[LoaderMessage.ShreddingComplete]).mapN { case (ingestion, meta) =>
+        println(s"Using readEntry for ${meta}")
+        Entry(ingestion.toInstant, meta)
+      }
+  }
 
   sealed trait InitStatus extends Product with Serializable
   object InitStatus {
