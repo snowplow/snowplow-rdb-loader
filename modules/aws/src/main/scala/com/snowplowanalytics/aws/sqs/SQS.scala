@@ -9,9 +9,20 @@ import cats.implicits._
 import fs2.Stream
 
 import software.amazon.awssdk.services.sqs.{SqsClient, SqsClientBuilder}
-import software.amazon.awssdk.services.sqs.model.{GetQueueUrlRequest, DeleteMessageRequest, SendMessageRequest, Message, ReceiveMessageRequest}
+import software.amazon.awssdk.services.sqs.model.{GetQueueUrlRequest, DeleteMessageRequest, SqsException, SendMessageRequest, Message, ReceiveMessageRequest}
 
 object SQS {
+
+  /**
+   * SQS visibility timeout is the time window in which a message must be
+   * deleted (acknowledged). Otherwise it is considered abandoned.
+   * If a message has been pulled, but hasn't been deleted, the next time
+   * it will re-appear in another consumer is equal to `VisibilityTimeout`
+   * Another consequence is that if Loader has failed on a message processing,
+   * the next time it will get this (or anything) from a queue has this delay
+   * Specified in seconds
+   */
+  val VisibilityTimeout = 300
 
   def mkClient[F[_]: Sync]: Resource[F, SqsClient] =
     mkClientBuilder(identity[SqsClientBuilder])
@@ -26,7 +37,9 @@ object SQS {
         .builder()
         .queueUrl(queueUrl)
         .waitTimeSeconds(1)
+        .visibilityTimeout(VisibilityTimeout)
         .build()
+
 
     Stream.resource(mkClient.evalMap(getUrl[F](queueName))).flatMap { case (client, queueUrl) =>
       Stream
@@ -42,11 +55,12 @@ object SQS {
                 .queueUrl(queueUrl)
                 .receiptHandle(message.receiptHandle())
                 .build()
-              (message, Sync[F].delay(client.deleteMessage(delete)).void)
+              (message, ignoreExpiration(Sync[F].delay(client.deleteMessage(delete)).void))
             }
         }
     }
   }
+
 
   def sendMessage[F[_]: Sync](sqsClient: SqsClient)
                              (queueName: String, groupId: Option[String], body: String): F[Unit] = {
@@ -68,6 +82,13 @@ object SQS {
       Sync[F].delay(sqsClient.sendMessage(getRequest(queueUrl))).void
     }
   }
+
+  // We're okay to ignore the exception because duplicates just get ignored
+  private def ignoreExpiration[F[_]: Sync](fa: F[Unit]) =
+    Sync[F].recoverWith(fa) {
+      case e: SqsException if e.getMessage.contains("The receipt handle has expired") =>
+        Sync[F].unit
+    }
 
   private def getUrl[F[_]: Sync](queueName: String)(client: SqsClient) =
     Sync[F]
