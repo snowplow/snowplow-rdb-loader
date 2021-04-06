@@ -57,7 +57,8 @@ object Completion {
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
       }
       base = getBasePath(S3.Folder.coerce(root.toString), window)
-      message = LoaderMessage.ShreddingComplete(base, shreddedTypes, timestamps, compression, MessageProcessor)
+      count = LoaderMessage.Count(state.total - state.bad)
+      message = LoaderMessage.ShreddingComplete(base, shreddedTypes, timestamps, compression, MessageProcessor, Some(count))
       body = message.selfDescribingData.asJson.noSpaces
       _ <- SQS.sendMessage[F](sqsClient)(queueName, Some(MessageGroupId), body)
     } yield ()
