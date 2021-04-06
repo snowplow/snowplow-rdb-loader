@@ -187,19 +187,19 @@ object Statement {
       sql"""INSERT INTO $tableName
         (base, types, shredding_started, shredding_completed,
         min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
-        compression, processor_artifact, processor_version)
+        compression, processor_artifact, processor_version, count_good)
         VALUES (${message.base}, $types,
         ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
         ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
         getdate(),
-        ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version})"""
+        ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
     }
   }
   case class ManifestGet(schema: String, base: S3.Folder) extends Statement {
     def toFragment: Fragment =
       sql"""SELECT ingestion_tstamp, base, types, shredding_started, shredding_completed,
            min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
-           compression, processor_artifact, processor_version FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+           compression, processor_artifact, processor_version, count_good FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
   }
 
   // Schema DDL

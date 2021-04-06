@@ -18,14 +18,14 @@ import cats.implicits._
 
 import fs2.Stream
 
-import doobie.util.{Get, Put, Read}
+import doobie.util.{Read, Get, Put}
 
 import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType, Count}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
@@ -123,4 +123,10 @@ package object rdbloader {
 
   implicit val getSemver: Get[Semver] =
     Get[String].temap(Semver.decodeSemver)
+
+  implicit val getCount: Get[Count] =
+    Get[Long].tmap(Count)
+
+  implicit val putCount: Put[Count] =
+    Put[Long].contramap(_.good)
 }
