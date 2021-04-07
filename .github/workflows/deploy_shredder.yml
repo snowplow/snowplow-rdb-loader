@@ -1,10 +1,12 @@
 name: Deploy Shredder
 
-on: [push, pull_request]
+on:
+  push:
+    tags:
+      - '*'
 
 jobs:
   deploy_shredder:
-    if: startsWith(github.ref, 'refs/tags/rdb_shredder')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
