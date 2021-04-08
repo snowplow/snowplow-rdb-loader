@@ -121,7 +121,11 @@ object BuildSettings {
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
-    }
+    },
+
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+    )
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
