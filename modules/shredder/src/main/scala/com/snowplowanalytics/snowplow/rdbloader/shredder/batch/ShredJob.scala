@@ -209,15 +209,23 @@ object ShredJob {
       config
     }
 
-    incomplete.toList.foreach { folder =>
-      System.err.println(s"$folder was not successfully shredded")
-    }
-
-    unshredded.toList.foreach { folder =>
+    unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
       val job = new ShredJob(spark, igluConfig, formats, shredderConfig)
       val completed = job.run(folder.folderName, atomicLengths, eventsManifest)
       Discovery.seal(completed, region, sqsQueue)
     }
+
+    Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {
+      case Right(Nil) =>
+        System.out.println("No incomplete folders were discovered")
+      case Right(incomplete) =>
+        incomplete.foreach { folder =>
+          System.err.println(s"$folder was not successfully shredded")
+        }
+      case Left(_) =>
+        System.err.println("Incomplete folders discovered has timed out")
+    }
+
   }
 }
