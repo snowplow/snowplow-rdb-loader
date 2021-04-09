@@ -12,6 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import scala.concurrent.Future
+import scala.concurrent.ExecutionContext.global
+
 import cats.syntax.either._
 
 import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConfiguration}
@@ -19,6 +22,7 @@ import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.sqs.{AmazonSQSClientBuilder, AmazonSQS}
 import com.amazonaws.services.sqs.model.SendMessageRequest
+
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
@@ -34,6 +38,9 @@ object Discovery {
   final val MaxRetries = 10
   final val RetryBaseDelay = 1000 // milliseconds
   final val RetryMaxDelay = 20 * 1000 // milliseconds
+
+  /** Amount of folders at the end of archive that will be checked for corrupted state */
+  final val FoldersToCheck = 512
 
   /** Common retry policy for S3 and SQS (jitter) */
   final val RetryPolicy =
@@ -53,25 +60,36 @@ object Discovery {
     LoaderMessage.Processor(BuildInfo.name, MessageProcessorVersion)
 
 
-  /** @return Tuple containing list of folders with incomplete shredding and list of unshredded folders */
-  def getState(region: String, enrichedFolder: Folder, shreddedFolder: Folder): (Set[S3.Folder], Set[S3.Folder]) = {
+  /**
+   * Get an async computation, looking for incomplete folders
+   * (ones where shredding hasn't completed successfully) and
+   * list of folders ready to be shredded
+   */
+  def getState(region: String, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
     val client = createS3Client(region)
-    val enrichedDirs = Cloud.listDirs(client, enrichedFolder).toSet
-    val shreddedDirs = Cloud.listDirs(client, shreddedFolder).toSet
+    val enrichedDirs = Cloud.listDirs(client, enrichedFolder)
+    val shreddedDirs = Cloud.listDirs(client, shreddedFolder)
 
     val enrichedFolderNames = enrichedDirs.map(Folder.coerce).map(_.folderName)
     val shreddedFolderNames = shreddedDirs.map(Folder.coerce).map(_.folderName)
 
-    val incomplete = enrichedFolderNames.intersect(shreddedFolderNames).collect {
-      case folder if !Cloud.keyExists(client, shreddedFolder.append(folder).withKey(FinalKeyName)) =>
-        enrichedFolder.append(folder)
-    }
-
     val unshredded = enrichedFolderNames.diff(shreddedFolderNames)
       .map(enrichedFolder.append)
 
+    // Folders that exist both in enriched and shredded
+    val intersecting = enrichedFolderNames.intersect(shreddedFolderNames).takeRight(FoldersToCheck)
+
+    val incomplete = Future {
+      intersecting.collect {
+        case folder if !Cloud.keyExists(client, shreddedFolder.append(folder).withKey(FinalKeyName)) =>
+          enrichedFolder.append(folder)
+      }
+    }(global)
+
+
     (incomplete, unshredded)
   }
+
 
   /**
    * Send SQS message and save thumb file on S3, signalising that the folder
