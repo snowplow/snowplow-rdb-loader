@@ -14,14 +14,10 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Monad}
 import cats.implicits._
 
 import cats.effect.{Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
-import cats.effect.concurrent.Ref
-
-import fs2.Stream
-import fs2.concurrent.SignallingRef
+import cats.effect.concurrent.{Ref, Semaphore}
 
 import com.snowplowanalytics.iglu.client.Client
 
@@ -33,24 +29,15 @@ import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
+class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker, val guard: Semaphore[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
-
-  def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
-    Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
-
-  def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    Stream.eval[F, SignallingRef[F, Boolean]](busy).flatMap[F, Boolean](_.discrete)
+  implicit val guardF: Semaphore[F] = guard
 
   def incrementLoaded: F[Unit] =
     state.update(_.incrementLoaded)
-
-  private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
-    state.get.map(_.busy)
-
 }
 
 object Environment {
@@ -69,15 +56,16 @@ object Environment {
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
       state <- State.mk[F]
-    } yield (cache, iglu, aws, state)
+      guard <- Semaphore[F](1)
+    } yield (cache, iglu, aws, state, guard)
 
     for {
       blocker <- Blocker[F]
       messages <- Resource.eval(Ref.of[F, List[String]](List.empty[String]))
       tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
       logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
-      (cache, iglu, aws, state) <- Resource.eval(init)
-    } yield new Environment(cache, logging, iglu, aws, state, blocker)
+      (cache, iglu, aws, state, guard) <- Resource.eval(init)
+    } yield new Environment(cache, logging, iglu, aws, state, blocker, guard)
   }
 
   def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =

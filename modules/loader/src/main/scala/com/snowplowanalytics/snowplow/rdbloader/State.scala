@@ -15,10 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.effect.Concurrent
 import cats.effect.concurrent.{ Ref => CERef }
 
-import cats.implicits._
-
-import fs2.concurrent.SignallingRef
-
 /**
  * Primary (mutable) state of the loader
  * Every Loader's action has two input parameters: message and current state
@@ -26,14 +22,10 @@ import fs2.concurrent.SignallingRef
  *
  * @param attempts amount of attempts the Loader took to load **current** folder
  *                 zero'ed after every message ack'ed
- * @param busy whether Loader is ready to accept new message at the moment
- *             if Loader is busy - it must be retrying until fubr, then it must
- *             set `busy` back to `false`
  * @param loaded amount of folders the loader managed to load
  * @param messages total amount of message received
  */
 case class State[F[_]](attempts: Int,
-                       busy: SignallingRef[F,  Boolean],
                        loaded: Int,
                        messages: Int) {
   def incrementAttempts: State[F] =
@@ -54,8 +46,5 @@ object State {
 
   /** Initiate state for a fresh app */
   def mk[F[_]: Concurrent]: F[CERef[F, State[F]]] =
-    for {
-      busy <- SignallingRef[F, Boolean](false)
-      ref <- CERef.of[F, State[F]](State(0, busy, 0, 0))
-    } yield ref
+    CERef.of[F, State[F]](State(0, 0, 0))
 }
