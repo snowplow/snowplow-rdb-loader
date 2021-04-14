@@ -19,38 +19,44 @@ import cats.effect.{IOApp, IO, ExitCode, Resource}
 
 import fs2.Stream
 
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import io.sentry.Sentry
+
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
-import io.sentry.Sentry
-
 object Main extends IOApp {
+
+  private val logger: Logger[IO] =
+    Slf4jLogger.getLogger[IO]
 
   def run(argv: List[String]): IO[ExitCode] =
     CliConfig.parse(argv) match {
       case Valid(cli) =>
         Environment.initialize[IO](cli).use { env =>
-          env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+          logger.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
             process(cli, env)
               .compile
               .drain
               .attempt
               .flatMap {
                 case Left(e) =>
-                  Sentry.captureException(e)
-                  e.printStackTrace(System.err)
-                  env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
+                  IO(Sentry.captureException(e)) *>
+                  logger.error(e)("An error happened in loading process") *>
+                  env.monitoringF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
                 case Right(_) =>
                   IO.pure(ExitCode.Success)
               }
         }
       case Invalid(errors) =>
-        IO.delay(System.err.println("Configuration error")) *>
-          errors.traverse_(message => IO.delay(System.err.println(message))).as(ExitCode(2))
+        logger.error("Configuration error") *>
+          errors.traverse_(message => logger.error(message)).as(ExitCode(2))
     }
 
   /**
@@ -77,7 +83,7 @@ object Main extends IOApp {
               case Right(_) =>
                 env.incrementLoaded
               case Left(error) =>
-                Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
+                logger.error(error)(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command") *>
                   discovery.ack *> IO.raiseError(error)
             }
           }

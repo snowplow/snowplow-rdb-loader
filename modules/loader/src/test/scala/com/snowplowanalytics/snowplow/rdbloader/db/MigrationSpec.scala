@@ -33,15 +33,14 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureIglu, PureLogging}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureJDBC, PureLogging}
 
 class MigrationSpec extends Specification {
   "perform" should {
     "migrate tables with ShreddedType.Tabular" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
-
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val types =
         List(
           ShreddedType.Tabular(ShreddedType.Info(
@@ -93,7 +92,7 @@ class MigrationSpec extends Specification {
     "ignore atomic schema" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val types =
         List(
@@ -147,7 +146,7 @@ class MigrationSpec extends Specification {
   "updateTable" should {
     "not fail if executed with single schema" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val (state, result) = Migration.updateTable[Pure](
         "dbSchema",
@@ -165,7 +164,7 @@ class MigrationSpec extends Specification {
 
     "execute DDL transaction and log it" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val (state, result) = Migration.updateTable[Pure](
         "db_schema",
@@ -199,7 +198,7 @@ class MigrationSpec extends Specification {
 
     "fail if relevant migration is not found" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val (state, result) = Migration.updateTable[Pure](
         "dbSchema",

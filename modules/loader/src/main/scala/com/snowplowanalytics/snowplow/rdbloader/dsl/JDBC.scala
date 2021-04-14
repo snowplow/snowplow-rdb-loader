@@ -28,13 +28,14 @@ import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.free.connection.{ setAutoCommit, abort }
 
+import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
+
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
+
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-
-import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
 
 trait JDBC[F[_]] { self =>
 
@@ -133,7 +134,7 @@ object JDBC {
   }
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+  def jdbcRealInterpreter[F[_]: Logging: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     /**
      * Execute a single update-statement in provided Postgres connection
      *
@@ -151,9 +152,8 @@ object JDBC {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
             (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Int].pure[F]
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeUpdate")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
+            Logging[F].error(e, "RDB Loader unknown error in executeUpdate")
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
           case Right(result) =>
             result.asRight[LoaderError].pure[F]
         }
@@ -167,9 +167,8 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            Logging[F].error(e, "RDB Loader unknown error in executeQuery")
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
@@ -186,9 +185,8 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            Logging[F].error(e, "RDB Loader unknown error in executeQuery")
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
@@ -204,4 +202,3 @@ object JDBC {
     }
   }
 }
-

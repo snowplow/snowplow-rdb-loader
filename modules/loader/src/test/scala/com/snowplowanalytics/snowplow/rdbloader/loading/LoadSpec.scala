@@ -26,20 +26,21 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessa
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{isVacuum, failCommit, isFirstCommit, failVacuum}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureIglu, PureJDBC, PureOps, PureLogging, PureTimer}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureJDBC, PureLogging, PureMonitoring, PureOps, PureTimer, TestState}
 
 import org.specs2.mutable.Specification
 
 class LoadSpec extends Specification {
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -51,11 +52,15 @@ class LoadSpec extends Specification {
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.Analyze("atomic.events")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
+        LogEntry.Sql(Statement.Commit)
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
@@ -64,7 +69,8 @@ class LoadSpec extends Specification {
     }
 
     "perform COMMIT after writing to manifest, but before ack" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -76,12 +82,16 @@ class LoadSpec extends Specification {
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("ACK"),
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.Analyze("atomic.events")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
+        LogEntry.Sql(Statement.Commit)
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
@@ -90,7 +100,8 @@ class LoadSpec extends Specification {
     }
 
     "perform COMMIT even if ack failed with RuntimeException" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -102,11 +113,11 @@ class LoadSpec extends Specification {
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
-        LogEntry.Message("TICK REALTIME"),
+        LogEntry.Message("TICK REALTIME")
       )
 
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
@@ -115,7 +126,8 @@ class LoadSpec extends Specification {
     }
 
     "abort, sleep and start transaction again if first commit failed" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init.withExecuteUpdate(isFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -127,18 +139,22 @@ class LoadSpec extends Specification {
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Abort),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
+        LogEntry.Sql(Statement.Begin),
+        LogEntry.Sql(Statement.Analyze("atomic.events")),
+        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
+        LogEntry.Sql(Statement.Commit)
       )
       val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
 
@@ -154,7 +170,8 @@ class LoadSpec extends Specification {
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.noPrint)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(getResult))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -172,7 +189,8 @@ class LoadSpec extends Specification {
     }
 
     "not retry post-load actions (VACUUM and ANALYZE) if failed" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.withPredicate(_.toLowerCase.contains("vacuum")))
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(predicate = Some(_.toLowerCase.contains("vacuum")))
+      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init.withExecuteUpdate(isVacuum, failVacuum))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -184,8 +202,8 @@ class LoadSpec extends Specification {
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",1,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",1,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),

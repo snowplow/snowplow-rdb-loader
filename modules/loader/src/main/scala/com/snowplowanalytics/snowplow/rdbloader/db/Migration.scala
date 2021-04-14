@@ -76,7 +76,7 @@ object Migration {
         migrations.find(_.from == current.version) match {
           case Some(relevantMigration) =>
             val ddlFile = MigrationGenerator.generateMigration(relevantMigration, 4096, Some(dbSchema))
-            LoaderAction.liftF(ddlFile.warnings.traverse_(Logging[F].info)) *>
+            LoaderAction.liftF(ddlFile.warnings.traverse_(w => Logging[F].info(w))) *>
               LoaderAction.liftF(Logging[F].info(s"Executing migration DDL statement:\n${ddlFile.render}")) *>
               JDBC[F].executeUpdate(Statement.DdlFile(ddlFile)).void
           case None =>

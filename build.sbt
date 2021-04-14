@@ -64,6 +64,7 @@ lazy val loader = project.in(file("modules/loader"))
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
@@ -84,13 +85,14 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.http4sClient,
       Dependencies.doobie,
       Dependencies.catsRetry,
+      Dependencies.log4cats,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
     )
   )
-  .dependsOn(common, aws)
+  .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val shredder = project.in(file("modules/shredder"))

@@ -1,32 +1,38 @@
+/*
+ * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 
-case class PureLogging(print: String => Pure[Unit])
-
 object PureLogging {
-  val init: PureLogging = PureLogging(print)
-  val noPrint: PureLogging = init.copy(print = PureLogging.noop)
-  def withPredicate(p: String => Boolean): PureLogging =
-    init.copy(print = s => if (p(s)) PureLogging.print(s) else PureLogging.noop(s) )
+  def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =
+    new Logging[Pure] {
+      def info(message: String): Pure[Unit] =
+        (noop, predicate) match {
+          case (true, _) => Pure.pure(message).void
+          case (_, Some(p)) if (!p(message)) => Pure.pure(message).void
+          case (_, _) => Pure.modify(_.log(message))
+        }
 
-  def interpreter(results: PureLogging): Logging[Pure] = new Logging[Pure] {
-    def track(result: Either[LoaderError, Unit]): Pure[Unit] =
-      Pure.pure(())
-    def info(message: String): Pure[Unit] =
-      results.print(message)
-    def error(message: String): Pure[Unit] =
-      results.print(message)
-    def trackException(e: Throwable): Pure[Unit] =
-      results.print(s"EXCEPTION ${e.getMessage}")
-  }
+      def error(message: String): Pure[Unit] =
+        (noop, predicate) match {
+          case (true, _) => Pure.pure(message).void
+          case (_, Some(p)) if (!p(message)) => Pure.pure(message).void
+          case (_, _) => Pure.modify(_.log(message))
+        }
 
-  def print(message: String): Pure[Unit] =
-    Pure.modify(_.log(message))
-
-  def noop(message: String): Pure[Unit] =
-    Pure.pure(message).void
+      def error(t: Throwable, message: String): Pure[Unit] = Pure.pure(())
+    }
 }
