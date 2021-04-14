@@ -23,7 +23,6 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
 
-
 /**
  * Module containing specific for Redshift target loading
  * Works in three steps:

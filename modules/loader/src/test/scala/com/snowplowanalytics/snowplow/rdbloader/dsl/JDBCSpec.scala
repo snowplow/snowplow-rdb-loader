@@ -24,7 +24,7 @@ import org.specs2.mutable.Specification
 class JDBCSpec extends Specification {
   "log" should {
     "produce a sensible error message, mentioning retries" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val exception = new RuntimeException("Something went wrong")
       val details = RetryDetails.WillDelayAndRetry(2.seconds, 0, 5.seconds)
 
