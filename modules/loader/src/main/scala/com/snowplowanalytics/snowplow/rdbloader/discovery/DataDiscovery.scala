@@ -130,7 +130,7 @@ object DataDiscovery {
   }
 
   def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
-    Logging[F].error(error.show) *> ack *> MonadThrow[F].raiseError(error)
+    Logging[F].error(error)("A problem occured in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =

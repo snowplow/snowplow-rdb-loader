@@ -19,8 +19,10 @@ import cats.effect.{Resource, ExitCode, IOApp, IO, Sync}
 
 import fs2.Stream
 
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Environment}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
@@ -40,8 +42,9 @@ object Main extends IOApp {
               .flatMap(handleFailure[IO](env))
         }
       case Invalid(errors) =>
-        IO.delay(System.err.println("Configuration error")) *>
-          errors.traverse_(message => IO.delay(System.err.println(message))).as(ExitCode(2))
+        val logger = Slf4jLogger.getLogger[IO]
+        logger.error("Configuration error") *>
+          errors.traverse_(message => logger.error(message)).as(ExitCode(2))
     }
 
   /**
@@ -71,7 +74,7 @@ object Main extends IOApp {
           // Catches both connection acquisition and loading errors
           loading.handleErrorWith { error =>
             val msg = s"Could not load a folder (base ${discovery.data.discovery.base}), trying to ack the SQS command"
-            Logging[IO].info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
+            env.loggingF.info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
               discovery.ack *>
               IO.raiseError(error)
           }
@@ -89,9 +92,9 @@ object Main extends IOApp {
   def handleFailure[F[_]: Sync](env: Environment[F])(stop: Either[Throwable, Unit]): F[ExitCode] =
     stop match {
       case Left(e) =>
-        env.loggingF.error(s"Loading is shutting down with failure. ${e.getMessage}") *>    // Making sure we always have last ERROR printed
-          env.loggingF.trackException(e) *>
-          env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
+        env.loggingF.error(e)("Loader shutting down") *> // Making sure we always have last ERROR printed
+          env.monitoringF.trackException(e) *>
+          env.monitoringF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
       case Right(_) =>
         Sync[F].pure(ExitCode.Success)
     }
