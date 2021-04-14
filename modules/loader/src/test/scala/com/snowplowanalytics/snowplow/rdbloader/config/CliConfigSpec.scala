@@ -71,10 +71,12 @@ object CliConfigSpec {
       messageQueue = "messages"
 
       shredder = {
+        "type": "batch",
         "input": "s3://bucket/input/",
-        "output": "s3://bucket/shredded/",
-        "outputBad": "s3://bucket/shredded-bad/",
-        "compression": "GZIP"
+        "output" = {
+          "path": "s3://bucket/good/",
+          "compression": "GZIP"
+        }
       },
 
       storage = {

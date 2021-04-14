@@ -17,14 +17,16 @@ import java.util.UUID
 
 import scala.io.Source.fromInputStream
 
+import doobie.util.fragment.Fragment
+import doobie.util.update.Update0
+
 import io.circe.jawn.parse
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.{Shredder, Compression}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Config, LoaderMessage, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.SqlString
 
 object SpecHelpers {
 
@@ -42,7 +44,6 @@ object SpecHelpers {
     "admin",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
-    20000,
     None)
 
   val validConfig: Config[StorageTarget.Redshift] = Config(
@@ -55,11 +56,12 @@ object SpecHelpers {
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
-    Shredder(
+    Config.Shredder.Batch(
       URI.create("s3://bucket/input/"),
-      URI.create("s3://bucket/shredded/"),
-      URI.create("s3://bucket/shredded-bad/"),
-      Compression.Gzip
+      Config.Shredder.Output(
+        URI.create("s3://bucket/good/"),
+        Config.Shredder.Compression.Gzip
+      )
     ),
     validTarget,
     Config.Formats(
@@ -137,7 +139,8 @@ object SpecHelpers {
   }
 
   implicit class AsSql(s: String) {
-    def sql: SqlString = SqlString.unsafeCoerce(s)
+    def sql: Update0 = Fragment.const0(s).update
     def dir: S3.Folder = S3.Folder.coerce(s)
+    def key: S3.Key = S3.Key.coerce(s)
   }
 }

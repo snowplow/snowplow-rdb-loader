@@ -14,10 +14,10 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Monad, Functor}
+import cats.{Functor, Monad}
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, ConcurrentEffect, Sync}
+import cats.effect.{Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 import cats.effect.concurrent.Ref
 
 import fs2.Stream
@@ -33,7 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F]) {
+class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val igluF: Iglu[F] = iglu
@@ -54,12 +54,10 @@ class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws
 }
 
 object Environment {
-  def initialize[F[_] : ConcurrentEffect: Clock](cli: CliConfig): F[Environment[F]] =
-    for {
+  def initialize[F[_] : ConcurrentEffect: Clock: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
+    val init = for {
       _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      messages <- Ref.of[F, List[String]](List.empty[String])
-      tracker <- Logging.initializeTracking[F](cli.config.monitoring)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
       igluClient <- igluParsed match {
         case Right(client) => Sync[F].pure(client)
@@ -68,11 +66,19 @@ object Environment {
       amazonS3 <- AWS.getClient[F](cli.config.region)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
-      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
       iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
       state <- State.mk[F]
-    } yield new Environment[F](cache, logging, iglu, aws, state)
+    } yield (cache, iglu, aws, state)
+
+    for {
+      blocker <- Blocker[F]
+      messages <- Resource.eval(Ref.of[F, List[String]](List.empty[String]))
+      tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
+      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
+      (cache, iglu, aws, state) <- Resource.eval(init)
+    } yield new Environment(cache, logging, iglu, aws, state, blocker)
+  }
 
   def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =
     dsn match {

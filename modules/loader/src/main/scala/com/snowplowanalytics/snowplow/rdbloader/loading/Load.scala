@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
+import java.time.Duration
+
 import scala.concurrent.duration._
 
 import cats.{Applicative, Monad, MonadError}
@@ -20,14 +22,13 @@ import cats.implicits._
 import cats.effect.Timer
 
 import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
-import shapeless.tag
-import shapeless.tag._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, Config, Message }
+import com.snowplowanalytics.snowplow.rdbloader.common.{ Message, LoaderMessage }
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Iglu}
 
@@ -44,35 +45,37 @@ object Load {
    * @param cli RDB Loader app configuration
    * @param discovery discovered folder to load
    */
-  def load[F[_]: MonadThrow: JDBC: Iglu: Timer: Logging](cli: CliConfig, discovery: Message[F, DataDiscovery]): F[Unit] =
+  def load[F[_]: MonadThrow: JDBC: Iglu: Timer: Logging](cli: CliConfig, discovery: Message[F, DataDiscovery.WithOrigin]): LoaderAction[F, Unit] =
     cli.config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = cli.config.copy(storage = redshift)
 
         // The transaction can be retried several time as long as transaction is aborted
         val transaction = for {
-          _ <- JDBC[F].executeUpdate(RedshiftStatements.BeginTransaction)
-          _ <- Migration.perform[F](cli.config.storage.schema, discovery.data)
-          postLoad <- RedshiftLoader.run[F](redshiftConfig, discovery.data)
+          _ <- JDBC[F].executeUpdate(Statement.Begin)
+          state <- Manifest.get[F](redshiftConfig.storage.schema, discovery.data.discovery.base)
+          postLoad <- state match {
+            case Some(entry) =>
+              Logging[F].error(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+                JDBC[F].executeUpdate(Statement.Abort).as(LoaderAction.unit[F])
+            case None =>
+              Migration.perform[F](redshiftConfig.storage.schema, discovery.data.discovery) *>
+                RedshiftLoader.run[F](redshiftConfig, discovery.data.discovery) <*
+                Manifest.add[F](redshiftConfig.storage.schema, discovery.data.origin) <*
+                JDBC[F].executeUpdate(Statement.Commit) <*
+                congratulate[F](discovery.data.origin)
+          }
+
+          // With manifest protecting from double-loading it's safer to ack *after* commit
           _ <- discovery.ack.liftA
-          _ <- JDBC[F].executeUpdate(RedshiftStatements.CommitTransaction)
         } yield postLoad
 
-        val action = for {
+        for {
           postLoad <- retryLoad(transaction)
           _ <- postLoad.recoverWith {
-            case error => Logging[F].error(s"Post-loading actions failed, skipping. ${error.show}").liftA
+            case error => Logging[F].error(s"Post-loading actions failed, ignoring. ${error.show}").liftA
           }
         } yield ()
-
-        action.value.flatMap {
-          case Right(_) =>
-            Monad[F].unit
-          case Left(LoaderError.MigrationError(message)) =>
-            Logging[F].error(message)
-          case Left(other) =>
-            MonadError[F, Throwable].raiseError[Unit](other)
-        }
     }
 
   // Retry policy
@@ -92,7 +95,7 @@ object Load {
     retryingOnSomeErrors[A](retryPolicy[F], isWorth, abortAndLog[F])(fa)
 
   def abortAndLog[F[_]: Monad: JDBC: Logging](e: LoaderError, d: RetryDetails): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(RedshiftStatements.AbortTransaction) *>
+    JDBC[F].executeUpdate(Statement.Abort) *>
       Logging[F].error(show"$e Transaction aborted. Tried ${d.retriesSoFar} times, ${d.cumulativeDelay.toSeconds}sec total. ${d.upcomingDelay.fold("Giving up")(x => s"Waiting for $x")}").liftA
 
   /** Check if error is worth retrying */
@@ -116,15 +119,14 @@ object Load {
       .limitRetries[LoaderAction[F, *]](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
 
-  /**
-   * String representing valid SQL query/statement,
-   * ready to be executed
-   */
-  type SqlString = String @@ SqlStringTag
-
-  object SqlString extends tag.Tagger[SqlStringTag] {
-    def unsafeCoerce(s: String) = apply(s)
-  }
-
-  sealed trait SqlStringTag
+  private def congratulate[F[_]: Monad: Logging: Timer](message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
+    Timer[F].clock.instantNow.flatMap { now =>
+      val count = message.count.map(c => s"${c.good} events").getOrElse("volume is unknown")
+      val latency = message.timestamps.min match {
+        case Some(earliest) => s"${Duration.between(earliest, now).toSeconds} seconds"
+        case None => "unknown"
+      }
+      Logging[F].info(s"Folder [${message.base}] has been loaded and committed. Success!") *>
+        Logging[F].info(s"Folder [${message.base}] ($count) latency: $latency")
+    }.liftA
 }

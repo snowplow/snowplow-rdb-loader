@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.syntax.either._
 
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Encoder, Json, Decoder}
 
 import shapeless.tag
 import shapeless.tag._

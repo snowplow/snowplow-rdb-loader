@@ -24,7 +24,8 @@ import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 /** Common type of message RDB Loader can receive from Shredder or other apps */
 sealed trait LoaderMessage {
@@ -41,7 +42,7 @@ sealed trait LoaderMessage {
 object LoaderMessage {
 
   val ShreddingCompleteKey: SchemaKey =
-    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,0))
+    SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,1))
 
   /** Data format for shredded data */
   sealed trait Format extends Product with Serializable {
@@ -52,13 +53,18 @@ object LoaderMessage {
     final case object JSON extends Format
     // Another options can be Parquet and InAtomic for Snowflake-like structure
 
+    def fromString(str: String): Either[String, Format] =
+      str match {
+        case "TSV" => TSV.asRight
+        case "JSON" => JSON.asRight
+        case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
+      }
+
     implicit val loaderMessageFormatEncoder: Encoder[Format] =
       Encoder.instance(_.toString.asJson)
     implicit val loaderMessageFormatDecoder: Decoder[Format] =
       Decoder.instance { c => c.as[String].map(_.toUpperCase) match {
-        case Right("TSV") => Format.TSV.asRight
-        case Right("JSON") => Format.JSON.asRight
-        case Right(other) => DecodingFailure(s"$other is unexpected format", c.history).asLeft
+        case Right(str) => fromString(str).leftMap(err => DecodingFailure(err, c.history))
         case Left(error) => error.asLeft
       } }
   }
@@ -79,6 +85,8 @@ object LoaderMessage {
 
   final case class Processor(artifact: String, version: Semver)
 
+  final case class Count(good: Long)
+
   /**
    * Message signalling that shredder has finished and data ready to be loaded
    * @param base root of the shredded data
@@ -90,7 +98,8 @@ object LoaderMessage {
                                      types: List[ShreddedType],
                                      timestamps: Timestamps,
                                      compression: Compression,
-                                     processor: Processor) extends LoaderMessage
+                                     processor: Processor,
+                                     count: Option[Count]) extends LoaderMessage
 
   /** Parse raw string into self-describing JSON with [[LoaderMessage]] */
   def fromString(s: String): Either[String, LoaderMessage] =
@@ -114,6 +123,10 @@ object LoaderMessage {
     deriveEncoder[Processor]
   implicit val loaderMessageProcessorDecoder: Decoder[Processor] =
     deriveDecoder[Processor]
+  implicit val loaderMessageCountEncoder: Encoder[Count] =
+    deriveEncoder[Count]
+  implicit val loaderMessageCountDecoder: Decoder[Count] =
+    deriveDecoder[Count]
   implicit val loaderMessageShreddingCompleteEncoder: Encoder[LoaderMessage] =
     deriveEncoder[ShreddingComplete].contramap { case e: ShreddingComplete => e }
   implicit val loaderMessageShreddingCompleteDecoder: Decoder[ShreddingComplete] =
