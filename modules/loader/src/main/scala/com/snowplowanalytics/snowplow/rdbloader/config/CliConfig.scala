@@ -24,10 +24,10 @@ import com.snowplowanalytics.iglu.client.Client
 import io.circe.Json
 import io.circe.parser.{parse => parseJson}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config}
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.generated.ProjectMetadata
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
 /**
  * Validated and parsed result application config
@@ -53,7 +53,7 @@ object CliConfig {
     case (cfg, iglu, dry) => RawConfig(cfg, iglu, dry)
   }
 
-  val parser = Command[RawConfig](ProjectMetadata.name, ProjectMetadata.version)(rawConfig)
+  val parser = Command[RawConfig](BuildInfo.name, BuildInfo.version)(rawConfig)
 
   /**
    * Parse raw CLI arguments into validated and transformed application config

@@ -48,7 +48,7 @@ object BuildSettings {
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.3" cross CrossVersion.full)
   )
 
   // sbt-assembly settings
@@ -66,9 +66,22 @@ object BuildSettings {
 
     assembly / assemblyMergeStrategy := {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
-      case PathList("META-INF", _ @ _*) => MergeStrategy.discard
+      case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
+      case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+      case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
+      // case PathList("META-INF", _ @ _*) => MergeStrategy.discard    // Replaced with above for Stream Shredder
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
-      case _ => MergeStrategy.first
+      case PathList("codegen-resources", _ @ _*) => MergeStrategy.first // Part of AWS SDK v2
+      case "mime.types" => MergeStrategy.first // Part of AWS SDK v2
+      case "AUTHORS" => MergeStrategy.discard
+      case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
+      case PathList("buildinfo", _) => MergeStrategy.first
+      case x if x.contains("javax") => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class") => MergeStrategy.first // http4s, 2.13 shim
+      case x =>
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
+        oldStrategy(x)
+
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
@@ -108,7 +121,11 @@ object BuildSettings {
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
-    }
+    },
+
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+    )
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
@@ -124,27 +141,6 @@ object BuildSettings {
     unmanagedClasspath in Test += {
       baseDirectory.value.getParentFile.getParentFile / "config"
     }
-  )
-
-  /**
-   * Makes package (build) metadata available withing source code
-   */
-  def scalifySettings(shredderName: SettingKey[String], shredderVersion: SettingKey[String]) = Seq(
-    Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "settings.scala"
-      IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
-                       |object ProjectMetadata {
-                       |  val version = "%s"
-                       |  val name = "%s"
-                       |  val organization = "%s"
-                       |  val scalaVersion = "%s"
-                       |
-                       |  val shredderName = "%s"
-                       |}
-                       |""".stripMargin.format(
-        version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))
-      Seq(file)
-    }.taskValue
   )
 
   lazy val oneJvmPerTestSetting =
@@ -169,7 +165,7 @@ object BuildSettings {
 
   lazy val dockerSettings = Seq(
     maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "snowplow-docker-registry.bintray.io/snowplow/base-debian:0.2.1",
+    dockerBaseImage := "snowplow/base-debian:0.2.2",
     daemonUser in Docker := "snowplow",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),

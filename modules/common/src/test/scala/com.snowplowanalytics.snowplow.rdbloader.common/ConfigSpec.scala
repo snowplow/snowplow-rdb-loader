@@ -16,11 +16,15 @@ import java.net.URI
 import java.util.UUID
 import java.nio.file.{Paths, Files}
 
+import scala.concurrent.duration._
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config, Step}
 
 import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.InitPosition
 
 class ConfigSpec extends Specification {
   "fromString" should {
@@ -34,11 +38,13 @@ class ConfigSpec extends Specification {
           messageQueue = "messages"
 
           shredder = {
+            "type": "batch",
             "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
+            "output" = {
+              "path": "s3://bucket/good/",
+              "compression": "GZIP"
+            }
+          },
 
           storage = {
             "type":     "redshift",
@@ -89,11 +95,13 @@ class ConfigSpec extends Specification {
     "be able to parse config.hocon.sample" in {
       val configPath = Paths.get(getClass.getResource("/config.hocon.sample").toURI)
       val configContent = Files.readString(configPath)
+      val input = Config.Shredder.StreamInput.Kinesis("acme-rdb-shredder", "enriched-events", "us-east-1", InitPosition.Latest)
       val expected: Config[StorageTarget] =
         (identity[Config[StorageTarget]] _)
           .compose(Config.formats.set(Config.Formats.Default))
           .compose(Config.monitoring.set(Config.Monitoring(None, None)))
           .apply(ConfigSpec.configExample)
+          .copy(shredder = Config.Shredder.Stream(input, ConfigSpec.configExample.shredder.output, 10.minutes))
 
       val result = Config.fromString(configContent)
       result must beRight(expected)
@@ -107,11 +115,14 @@ class ConfigSpec extends Specification {
           region       = "us-east-1"
           messageQueue = "messages"
           shredder = {
+            "type": "batch",
             "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
+            "output" = {
+              "path": "s3://bucket/good/",
+              "bad": "s3://bucket/bad/",
+              "compression": "GZIP"
+            }
+          },
 
           storage = {
             "type":     "redshift",
@@ -215,11 +226,12 @@ object ConfigSpec {
       Some(Config.Sentry(URI.create("http://sentry.acme.com")))
     ),
     "messages",
-    Shredder(
+    Shredder.Batch(
       URI.create("s3://bucket/input/"),
-      URI.create("s3://bucket/good/"),
-      URI.create("s3://bucket/bad/"),
-      Config.Compression.Gzip,
+      Shredder.Output(
+        URI.create("s3://bucket/good/"),
+        Config.Shredder.Compression.Gzip
+      )
     ),
     StorageTarget.Redshift(
       "redshift.amazon.com",
@@ -231,7 +243,6 @@ object ConfigSpec {
       "storage-loader",
       StorageTarget.PasswordConfig.PlainText("secret"),
       10,
-      100000,
       None
     ),
     Config.Formats(

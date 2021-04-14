@@ -12,17 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import javax.jms.{TextMessage, Message => JMessage}
-import cats.syntax.either._
-
-import cats.effect.Sync
-
-final case class Message[F[_], A](data: A, ack: F[Unit])
-
-object Message {
-  implicit def messageDecoder[F[_]: Sync](message: JMessage): Either[Throwable, Message[F, String]] = {
-    val text = message.asInstanceOf[TextMessage].getText
-    val ack = Sync[F].delay(message.acknowledge())
-    Message(text, ack).asRight
-  }
+final case class Message[F[_], A](data: A, ack: F[Unit]) {
+  def map[B](f: A => B): Message[F, B] =
+    Message(f(data), ack)
 }

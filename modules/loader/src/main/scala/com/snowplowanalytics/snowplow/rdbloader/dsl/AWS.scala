@@ -12,26 +12,24 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import javax.jms.MessageListener
-
 import cats.implicits._
 
-import cats.effect.{Sync, ConcurrentEffect}
+import cats.effect.{Timer, Sync, ConcurrentEffect}
 
 import fs2.{Stream => FStream}
-import fs2.aws.sqsStream
-import fs2.aws.sqs.{SqsConfig, SQSConsumerBuilder, ConsumerBuilder}
 
-import com.amazonaws.AmazonServiceException
-import com.amazonaws.services.s3.model._
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
+import blobstore.s3.{S3Store, S3Path}
+
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.s3.S3AsyncClient
+
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder
 import com.amazonaws.services.simplesystemsmanagement.model.{GetParameterRequest, AWSSimpleSystemsManagementException}
 
-import eu.timepit.refined.types.all.TrimmedString
-
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, Cloud}
+import com.snowplowanalytics.aws.sqs.SQS
+
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 
 
@@ -62,18 +60,21 @@ object AWS {
    * @param region AWS region
    * @return Snowplow-specific S3 client
    */
-  def getClient[F[_]: Sync](region: String): F[AmazonS3] =
-    Sync[F].delay(AmazonS3ClientBuilder.standard().withRegion(region).build())
+  def getClient[F[_]: ConcurrentEffect](region: String): F[S3Store[F]] = {
+    S3Store(S3AsyncClient.builder().region(Region.of(region)).build())
+  }
 
-  def s3Interpreter[F[_]: ConcurrentEffect](client: AmazonS3): AWS[F] = new AWS[F] {
+  def s3Interpreter[F[_]: ConcurrentEffect: Timer](client: S3Store[F]): AWS[F] = new AWS[F] {
     /** * Transform S3 object summary into valid S3 key string */
-    def getKey(s3ObjectSummary: S3ObjectSummary): S3.BlobObject = {
-      val key = S3.Key.coerce(s"s3://${s3ObjectSummary.getBucketName}/${s3ObjectSummary.getKey}")
-      S3.BlobObject(key, s3ObjectSummary.getSize)
+    def getKey(path: S3Path): S3.BlobObject = {
+      val key = S3.Key.coerce(s"s3://${path.bucket}/${path.key}")
+      S3.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
     }
 
-    def listS3(bucket: S3.Folder): F[List[S3.BlobObject]] =
-      Sync[F].delay(Cloud.list(client, bucket)).map(summaries => summaries.map(getKey))
+    def listS3(folder: S3.Folder): F[List[S3.BlobObject]] = {
+      val (bucket, s3Key) = S3.splitS3Path(folder)
+      client.list(S3Path(bucket, s3Key, None)).map(getKey).compile.toList
+    }
 
     /**
      * Check if some `file` exists in S3 `path`
@@ -81,10 +82,10 @@ object AWS {
      * @param key valid S3 key (without trailing slash)
      * @return true if file exists, false if file doesn't exist or not available
      */
-    def keyExists(key: S3.Key): F[Boolean] =
-      Sync[F].delay(Cloud.keyExists(client, key)).recover {
-        case _: AmazonServiceException => false
-      }
+    def keyExists(key: S3.Key): F[Boolean] = {
+      val (bucket, s3Key) = S3.splitS3Key(key)
+      client.list(S3Path(bucket, s3Key, None)).compile.toList.map(_.nonEmpty)
+    }
 
     /**
      * Get value from AWS EC2 Parameter Store
@@ -104,12 +105,8 @@ object AWS {
       }
     }
 
-    def readSqs(name: String): FStream[F, Message[F, String]] = {
-      val builder: (SqsConfig, MessageListener) => ConsumerBuilder[F] =
-        (config, listener) => SQSConsumerBuilder[F](config, listener)
-
-      sqsStream[F, Message[F, String]](SqsConfig(TrimmedString.trim(name)), builder)
-    }
+    def readSqs(name: String): FStream[F, Message[F, String]] =
+      SQS.readQueue(name).map { case (msg, ack) => Message(msg.body(), ack) }
   }
 }
 
