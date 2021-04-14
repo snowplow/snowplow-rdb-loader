@@ -246,7 +246,6 @@ object ShredJobSpec {
     | "password": "Supersecret1",
     | "jdbc": { "ssl": true },
     | "maxError": 1,
-    | "compRows": 20000,
     | "sshTunnel": null
     |},
     |monitoring = {"snowplow": null, "sentry": null},

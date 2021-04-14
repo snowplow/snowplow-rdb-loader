@@ -44,7 +44,6 @@ object SpecHelpers {
     "admin",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
-    20000,
     None)
 
   val validConfig: Config[StorageTarget.Redshift] = Config(

@@ -66,7 +66,6 @@ object StorageTarget {
                             username: String,
                             password: PasswordConfig,
                             maxError: Int,
-                            compRows: Long,
                             sshTunnel: Option[TunnelConfig])
     extends StorageTarget
 

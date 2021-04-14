@@ -71,8 +71,7 @@
     # Custom JDBC configuration
     "jdbc": {"ssl": true},
     # MAXERROR, amount of acceptable loading errors
-    "maxError": 10,
-    "compRows": 100000
+    "maxError": 10
   },
 
   # Additional steps. analyze, vacuum and transit_load are valid values

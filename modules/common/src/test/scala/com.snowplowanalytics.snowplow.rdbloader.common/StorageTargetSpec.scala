@@ -48,7 +48,6 @@ class StorageTargetSpec extends Specification {
         "ADD HERE",
         StorageTarget.PasswordConfig.PlainText("ADD HERE"),
         1,
-        20000,
         None)
 
       config.as[StorageTarget] must beRight(expected)
@@ -66,7 +65,6 @@ class StorageTargetSpec extends Specification {
         "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
         "schema": "atomic",
         "maxError": 1,
-        "compRows": 20000,
         "purpose": "ENRICHED_EVENTS"
       }"""
 

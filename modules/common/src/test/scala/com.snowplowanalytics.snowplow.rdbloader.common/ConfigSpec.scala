@@ -243,7 +243,6 @@ object ConfigSpec {
       "storage-loader",
       StorageTarget.PasswordConfig.PlainText("secret"),
       10,
-      100000,
       None
     ),
     Config.Formats(
