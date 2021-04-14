@@ -29,6 +29,7 @@ import doobie.util.transactor.Strategy
 import doobie.free.connection.{abort, setAutoCommit}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
+
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
@@ -76,7 +77,7 @@ object JDBC {
 
   def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
     if (d.givingUp)
-      Logging[F].error(s"Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
+      Logging[F].error(e)(s"Cannot acquire connection. ${retriesMessage(d)}")
     else
       Logging[F].info(s"Warning. Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
 
@@ -97,7 +98,7 @@ object JDBC {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: Async: ContextShift: Logging: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): Resource[F, JDBC[F]] =
+  def interpreter[F[_]: Async: ContextShift: Logging: Monitoring: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): Resource[F, JDBC[F]] =
     getConnection[F](target, blocker).map { xa =>
       if (dryRun) JDBC.jdbcDryRunInterpreter[F](xa) else JDBC.jdbcRealInterpreter[F](xa)
     }
@@ -142,7 +143,7 @@ object JDBC {
   }
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Sync: Logging](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+  def jdbcRealInterpreter[F[_]: Logging: Monitoring: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     /**
      * Execute a single update-statement in provided Postgres connection
      *
@@ -160,8 +161,7 @@ object JDBC {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
             (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Int].pure[F]
           case Left(e) =>
-            Logging[F]
-              .trackException(e)
+            Monitoring[F].trackException(e)
               .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
           case Right(result) =>
             result.asRight[LoaderError].pure[F]
@@ -176,8 +176,7 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            Logging[F]
-              .trackException(e)
+            Monitoring[F].trackException(e)
               .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
@@ -185,7 +184,7 @@ object JDBC {
   }
 
   /** Dry run interpreter, not performing any *destructive* statements */
-  def jdbcDryRunInterpreter[F[_]: Sync: Logging](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+  def jdbcDryRunInterpreter[F[_]: Sync: Logging: Monitoring](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     def executeUpdate(sql: Statement): LoaderAction[F, Int] =
       LoaderAction.liftF(Logging[F].info(sql.toFragment.toString)).as(1)
 
@@ -195,8 +194,7 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            Logging[F]
-              .trackException(e)
+            Monitoring[F].trackException(e)
               .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
@@ -213,4 +211,3 @@ object JDBC {
     }
   }
 }
-

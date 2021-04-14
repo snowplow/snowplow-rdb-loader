@@ -89,8 +89,9 @@ object CommonSpec {
     "us-east-1",
     None,
     Config.Monitoring(
-      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
+      None,
+      None,
+      None
     ),
     "messages",
     shredder,
