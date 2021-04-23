@@ -26,7 +26,7 @@ object Dependencies {
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
-    val fs2              = "2.5.1"
+    val fs2              = "2.5.5"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
     val doobie           = "0.12.1"
