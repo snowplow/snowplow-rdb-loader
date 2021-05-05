@@ -44,7 +44,7 @@ object Dependencies {
     // Java (Loader)
     val slf4j            = "1.7.30"
     val redshift         = "1.2.51.1078"
-    val aws              = "1.11.990"
+    val aws              = "1.11.1011"
     val aws2             = "2.16.23"
     val jSch             = "0.1.55"
     val sentry           = "3.2.0"
