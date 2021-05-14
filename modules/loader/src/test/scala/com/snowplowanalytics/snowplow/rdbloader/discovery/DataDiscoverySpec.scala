@@ -95,7 +95,7 @@ class DataDiscoverySpec extends Specification {
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
 
       result must beRight(None)
-      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json"), LogEntry.Message("GET com.acme/event_b_1.json"), LogEntry.Message("ack"))
+      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json (miss)"), LogEntry.Message("GET com.acme/event_b_1.json (miss)"), LogEntry.Message("ack"))
     }
 
     "not ack message if it can be handled" >> {
@@ -118,8 +118,10 @@ class DataDiscoverySpec extends Specification {
 
       result.map(_.map(_.data.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
-        LogEntry.Message("GET com.acme/event_a_1.json"),
-        LogEntry.Message("GET com.acme/event_b_1.json"),
+        LogEntry.Message("GET com.acme/event_a_1.json (miss)"),
+        LogEntry.Message("PUT com.acme/event_a_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json)"),
+        LogEntry.Message("GET com.acme/event_b_1.json (miss)"),
+        LogEntry.Message("PUT com.acme/event_b_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)"),
         LogEntry.Message("New data discovery at folder with following shredded types: * iglu:com.acme/event-a/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json) * iglu:com.acme/event-b/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)")
       ))
     }
