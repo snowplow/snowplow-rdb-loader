@@ -26,7 +26,7 @@ import cats.effect.{ContextShift, Async, Blocker, Resource, Timer, Sync}
 import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
-import doobie.free.connection.{ setAutoCommit, abort }
+import doobie.free.connection.{abort, setAutoCommit}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
@@ -74,8 +74,12 @@ object JDBC {
 
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
 
-  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(s"Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
+  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] = {
+    if (d.givingUp)
+      Logging[F].error(s"Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
+    else
+      Logging[F].info(s"Warning. Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
+  }
 
   def retriesMessage(details: RetryDetails): String = {
     val wait = (d: Option[FiniteDuration]) => d.fold("Giving up")(x => s"waiting for ${x.toSeconds} seconds until the next one")
@@ -139,7 +143,7 @@ object JDBC {
   }
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+  def jdbcRealInterpreter[F[_]: Sync: Logging](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     /**
      * Execute a single update-statement in provided Postgres connection
      *
@@ -157,9 +161,9 @@ object JDBC {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
             (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Int].pure[F]
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeUpdate")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
+            Logging[F]
+              .trackException(e)
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
           case Right(result) =>
             result.asRight[LoaderError].pure[F]
         }
@@ -173,9 +177,9 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            Logging[F]
+              .trackException(e)
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
@@ -192,9 +196,9 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            val log = Sync[F].delay(println("RDB Loader unknown error in executeQuery")) *>
-              Sync[F].delay(e.printStackTrace(System.out))
-            log.as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            Logging[F]
+              .trackException(e)
+              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }

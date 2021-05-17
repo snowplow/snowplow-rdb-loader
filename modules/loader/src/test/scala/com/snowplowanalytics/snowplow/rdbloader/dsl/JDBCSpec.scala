@@ -30,7 +30,7 @@ class JDBCSpec extends Specification {
 
       val (state, _) = JDBC.log[Pure](exception, details).value.run(TestState.init).value
       state.getLog must beEqualTo(List(
-        LogEntry.Message("Cannot acquire connection: Something went wrong. One attempt has been made, waiting for 2 seconds until the next one")
+        LogEntry.Message("Warning. Cannot acquire connection: Something went wrong. One attempt has been made, waiting for 2 seconds until the next one")
       ))
     }
   }
