@@ -65,21 +65,24 @@ object Main extends IOApp {
     import env._
 
     Stream.eval_(Manifest.initialize[IO](cli.config.storage, cli.dryRun, env.blocker)) ++
-      DataDiscovery.discover[IO](cli.config, env.state)
+      DataDiscovery
+        .discover[IO](cli.config, env.state)
         .pauseWhen[IO](env.isBusy)
         .evalMap { discovery =>
           val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
             SSH.resource[IO](cli.config.storage.sshTunnel) *>
             JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
 
-          jdbc.use { implicit conn =>
+          val loading = jdbc.use { implicit conn =>
             load[IO](cli, discovery).value.flatMap {
-              case Right(_) =>
-                env.incrementLoaded
-              case Left(error) =>
-                Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
-                  discovery.ack *> IO.raiseError(error)
+              case Right(_) => env.incrementLoaded
+              case Left(error) => IO.raiseError(error)
             }
+          }
+
+          loading.handleErrorWith { error =>
+            Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
+              discovery.ack
           }
         }
   }
