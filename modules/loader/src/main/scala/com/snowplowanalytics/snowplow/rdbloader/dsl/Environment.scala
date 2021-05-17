@@ -73,9 +73,8 @@ object Environment {
 
     for {
       blocker <- Blocker[F]
-      messages <- Resource.eval(Ref.of[F, List[String]](List.empty[String]))
       tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
-      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
+      logging = Logging.loggingInterpreter[F](cli.config.storage, tracker)
       (cache, iglu, aws, state) <- Resource.eval(init)
     } yield new Environment(cache, logging, iglu, aws, state, blocker)
   }

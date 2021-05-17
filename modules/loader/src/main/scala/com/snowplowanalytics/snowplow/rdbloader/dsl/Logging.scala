@@ -22,7 +22,6 @@ import cats.data.NonEmptyList
 import cats.implicits._
 
 import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
-import cats.effect.concurrent.Ref
 
 import io.circe.Json
 
@@ -66,7 +65,6 @@ object Logging {
     DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
 
   def loggingInterpreter[F[_]: Sync](targetConfig: StorageTarget,
-                                     messages: Ref[F, List[String]],
                                      tracker: Option[Tracker[F]]): Logging[F] =
     new Logging[F] {
 
@@ -85,14 +83,14 @@ object Logging {
         for {
           time <- Sync[F].delay(dateFormatter.format(Instant.now()))
           timestamped = sanitize(s"INFO $time: $message")
-          _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
+          _ <- Sync[F].delay(System.out.println(timestamped))
         } yield ()
 
       def error(message: String): F[Unit] =
         for {
           time <- Sync[F].delay(dateFormatter.format(Instant.now()))
           timestamped = sanitize(s"ERROR $time: $message")
-          _ <- Sync[F].delay(System.out.println(timestamped)) *> log(timestamped)
+          _ <- Sync[F].delay(System.out.println(timestamped))
         } yield ()
 
       def trackException(e: Throwable): F[Unit] =
@@ -102,9 +100,6 @@ object Logging {
 
       private def sanitize(string: String): String =
         Common.sanitize(string, List(targetConfig.password.getUnencrypted, targetConfig.username))
-
-      private def log(message: String): F[Unit] =
-        messages.update(buf => message :: buf)
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
