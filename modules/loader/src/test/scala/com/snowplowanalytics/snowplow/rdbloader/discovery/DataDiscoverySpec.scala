@@ -85,7 +85,7 @@ class DataDiscoverySpec extends Specification {
   }
 
   "handle" should {
-    "ack message if JSONPath cannot be found" >> {
+    "raise an error and ack a message if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
@@ -94,7 +94,10 @@ class DataDiscoverySpec extends Specification {
 
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
 
-      result must beRight(None)
+      result must beLeft(LoaderError.DiscoveryError(NonEmptyList.of(
+        DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
+        DiscoveryFailure.JsonpathDiscoveryFailure(("com.acme/event_b_1.json")))
+      ))
       state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json (miss)"), LogEntry.Message("GET com.acme/event_b_1.json (miss)"), LogEntry.Message("ack"))
     }
 
