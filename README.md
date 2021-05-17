@@ -34,10 +34,10 @@ should be used.
 
 ## Find out more
 
-| Technical Docs              | Setup Guide           | Roadmap & Contributing   |         
-|-----------------------------|-----------------------|--------------------------|
-| ![i1][techdocs-image]      | ![i2][setup-image]   | ![i3][roadmap-image]       |
-| [Technical Docs][techdocs] | [Setup Guide][setup] | _coming soon_              |
+| Technical Docs             | Setup Guide          | Roadmap & Contributing |
+|----------------------------|----------------------|------------------------|
+| ![i1][techdocs-image]      | ![i2][setup-image]   | ![i3][roadmap-image]   |
+| [Technical Docs][techdocs] | [Setup Guide][setup] | [Roadmap][roadmap]     |
 
 ## Copyright and License
 
@@ -58,6 +58,7 @@ limitations under the License.
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
 [setup]: https://docs.snowplowanalytics.com/docs/getting-started-on-snowplow-open-source/setup-snowplow-on-aws/setup-destinations/setup-redshift/
 [techdocs]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/
+[roadmap]: https://github.com/snowplow/snowplow/projects/7
 
 [spark]: http://spark.apache.org/
 [enrich]: https://github.com/snowplow/snowplow/enrich
