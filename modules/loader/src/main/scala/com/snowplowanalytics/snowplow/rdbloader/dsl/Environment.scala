@@ -25,7 +25,8 @@ import fs2.concurrent.SignallingRef
 
 import com.snowplowanalytics.iglu.client.Client
 
-import io.sentry.{Sentry, SentryOptions}
+import io.sentry.{Sentry, SentryOptions, SentryClient}
+
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
@@ -56,7 +57,6 @@ class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws
 object Environment {
   def initialize[F[_] : ConcurrentEffect: Clock: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
-      _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
       igluClient <- igluParsed match {
@@ -72,20 +72,27 @@ object Environment {
     } yield (cache, iglu, aws, state)
 
     for {
+      sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       blocker <- Blocker[F]
       tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
-      logging = Logging.loggingInterpreter[F](cli.config.storage, tracker)
+      logging = Logging.loggingInterpreter[F](cli.config.storage, tracker, sentry)
       (cache, iglu, aws, state) <- Resource.eval(init)
     } yield new Environment(cache, logging, iglu, aws, state, blocker)
   }
 
-  def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =
+  def initSentry[F[_]: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
       case Some(uri) =>
-        val options = new SentryOptions()
-        options.setDsn(uri.toString)
-        Sync[F].delay(Sentry.init(options))
+        implicit val C: Clock[F] = Clock.create[F]
+        val acquire = Sync[F].delay(Sentry.init(SentryOptions.defaults(uri.toString)))
+        Resource
+          .make(acquire)(client => Sync[F].delay(client.closeConnection()))
+          .map(_.some)
+          .evalTap { _ =>
+            Logging.mkMessage[F, String](false, s"Sentry has been initialised at $uri").flatMap(Logging.print[F, String])
+          }
+
       case None =>
-        Sync[F].unit
+        Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 }

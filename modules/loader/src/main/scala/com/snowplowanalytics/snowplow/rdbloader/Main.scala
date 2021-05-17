@@ -20,13 +20,11 @@ import cats.effect.{Resource, ExitCode, IOApp, IO, Sync}
 import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Environment}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
-
-import io.sentry.Sentry
 
 object Main extends IOApp {
 
@@ -34,7 +32,7 @@ object Main extends IOApp {
     CliConfig.parse(argv) match {
       case Valid(cli) =>
         Environment.initialize[IO](cli).use { env =>
-          env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+          env.loggingF.info(s"RDB Loader ${generated.BuildInfo.version} [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
             process(cli, env)
               .compile
               .drain
@@ -85,14 +83,14 @@ object Main extends IOApp {
    * rethrown and sent downstream. This function makes sure that every exception
    * resulting into Loader restart is:
    * 1. We always print ERROR in the end
-   * 2. We always send a Sentry exception or print the stacktrace
+   * 2. We send a Sentry exception if Sentry is configured
    * 3. We attempt to send the failure via tracker
    */
   def handleFailure[F[_]: Sync](env: Environment[F])(stop: Either[Throwable, Unit]): F[ExitCode] =
     stop match {
       case Left(e) =>
-        env.loggingF.error(s"Loading is shutting down with failure: ${e.getMessage}") *>    // Making sure we always have last ERROR
-          Sync[F].delay(Sentry.captureException(e)) *>
+        env.loggingF.error(s"Loading is shutting down with failure. ${e.getMessage}") *>    // Making sure we always have last ERROR printed
+          env.loggingF.trackException(e) *>
           env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
       case Right(_) =>
         Sync[F].pure(ExitCode.Success)

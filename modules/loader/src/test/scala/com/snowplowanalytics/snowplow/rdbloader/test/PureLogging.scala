@@ -14,6 +14,8 @@ object PureLogging {
     init.copy(print = s => if (p(s)) PureLogging.print(s) else PureLogging.noop(s) )
 
   def interpreter(results: PureLogging): Logging[Pure] = new Logging[Pure] {
+    val sentry = None
+
     def track(result: Either[LoaderError, Unit]): Pure[Unit] =
       Pure.pure(())
     def info(message: String): Pure[Unit] =

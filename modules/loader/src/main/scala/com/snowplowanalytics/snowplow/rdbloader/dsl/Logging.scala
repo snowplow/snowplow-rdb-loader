@@ -12,18 +12,20 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{ZoneId, Instant}
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 import scala.concurrent.ExecutionContext
-import scala.util.control.NonFatal
 
+import cats.{Show, Functor}
 import cats.data.NonEmptyList
 import cats.implicits._
 
 import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 
 import io.circe.Json
+
+import io.sentry.SentryClient
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
@@ -37,10 +39,14 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
 
-import io.sentry.Sentry
-
 
 trait Logging[F[_]] {
+
+  /**
+   * A sentry client, exposed as an impure member
+   * to handle the very final exception in Main class
+   */
+  def sentry: Option[SentryClient]
 
   /** Track result via Snowplow tracker */
   def track(result: Either[LoaderError, Unit]): F[Unit]
@@ -64,39 +70,35 @@ object Logging {
   private val dateFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("YYYY-MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
 
+  /**
+   * Format a message into a typical ERROR message
+   * WARNING: doesn't remove sensitive info
+   */
+  def mkMessage[F[_]: Clock: Functor, S: Show](isError: Boolean, message: S) =
+    Clock[F].instantNow.map { now => show"${ if (isError) "ERROR" else "INFO" } ${dateFormatter.format(now)}: $message" }
+
   def loggingInterpreter[F[_]: Sync](targetConfig: StorageTarget,
-                                     tracker: Option[Tracker[F]]): Logging[F] =
+                                     tracker: Option[Tracker[F]],
+                                     sentryClient: Option[SentryClient]): Logging[F] =
     new Logging[F] {
 
+      implicit val C: Clock[F] = Clock.create[F]
+
+      val sentry = sentryClient
+
       /** Track result via Snowplow tracker */
-      def track(result: Either[LoaderError, Unit]): F[Unit] = {
-        result match {
-          case Right(_) =>
-            trackEmpty(LoadSucceededSchema)
-          case Left(error) =>
-            trackEmpty(LoadFailedSchema) *> this.error(error.show)
-        }
-      }
+      def track(result: Either[LoaderError, Unit]): F[Unit] =
+        trackEmpty(result.fold(_ => LoadFailedSchema, _ => LoadSucceededSchema))
 
       /** Print message to stdout */
       def info(message: String): F[Unit] =
-        for {
-          time <- Sync[F].delay(dateFormatter.format(Instant.now()))
-          timestamped = sanitize(s"INFO $time: $message")
-          _ <- Sync[F].delay(System.out.println(timestamped))
-        } yield ()
+        mkMessage[F, String](false, sanitize(message)).flatMap(print[F, String])
 
       def error(message: String): F[Unit] =
-        for {
-          time <- Sync[F].delay(dateFormatter.format(Instant.now()))
-          timestamped = sanitize(s"ERROR $time: $message")
-          _ <- Sync[F].delay(System.out.println(timestamped))
-        } yield ()
+        mkMessage[F, String](true, sanitize(message)).flatMap(print[F, String])
 
       def trackException(e: Throwable): F[Unit] =
-        Sync[F].delay(Sentry.captureException(e)).void.recover {
-          case NonFatal(_) => ()
-        }
+        sentry.fold(Sync[F].unit)(s => Sync[F].delay(s.sendException(e)))
 
       private def sanitize(string: String): String =
         Common.sanitize(string, List(targetConfig.password.getUnencrypted, targetConfig.username))
@@ -148,6 +150,8 @@ object Logging {
     if (message.isEmpty) Sync[F].unit else Sync[F].delay(System.out.println(message))
   }
 
+  def print[F[_]: Sync, S: Show](message: S) =
+    Sync[F].delay(System.out.println(Show[S].show(message)))
 
   /**
    * Config helper functions
