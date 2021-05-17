@@ -82,7 +82,8 @@ object Main extends IOApp {
 
           loading.handleErrorWith { error =>
             Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
-              discovery.ack
+              discovery.ack *>
+              Logging[IO].trackException(error)
           }
         }
   }
