@@ -75,7 +75,13 @@ object JDBC {
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
 
   def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(s"Cannot acquire connection ${e.getMessage}. Tried ${d.retriesSoFar} times, ${d.cumulativeDelay} total. ${d.upcomingDelay.fold("Giving up")(x => s"Waiting for $x")}")
+    Logging[F].error(s"Cannot acquire connection: ${e.getMessage}. ${retriesMessage(d)}")
+
+  def retriesMessage(details: RetryDetails): String = {
+    val wait = (d: Option[FiniteDuration]) => d.fold("Giving up")(x => s"waiting for ${x.toSeconds} seconds until the next one")
+    if (details.retriesSoFar == 0) s"One attempt has been made, ${wait(details.upcomingDelay)}"
+    else s"${details.retriesSoFar} retries so far, ${details.cumulativeDelay.toSeconds} seconds total. ${details.upcomingDelay.fold("Giving up")(x => s"waiting for ${x.toSeconds} seconds until the next one")}"
+  }
 
   // 2 + 4 + 8 + 16 + 32 = 62
   def retryPolicy[F[_]: Monad]: RetryPolicy[F] =

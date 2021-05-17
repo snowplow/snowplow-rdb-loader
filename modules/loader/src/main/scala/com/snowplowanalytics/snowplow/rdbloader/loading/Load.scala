@@ -96,7 +96,7 @@ object Load {
 
   def abortAndLog[F[_]: Monad: JDBC: Logging](e: LoaderError, d: RetryDetails): LoaderAction[F, Unit] =
     JDBC[F].executeUpdate(Statement.Abort) *>
-      Logging[F].error(show"$e Transaction aborted. Tried ${d.retriesSoFar} times, ${d.cumulativeDelay.toSeconds}sec total. ${d.upcomingDelay.fold("Giving up")(x => s"Waiting for $x")}").liftA
+      Logging[F].error(show"$e Transaction aborted. ${JDBC.retriesMessage(d)}").liftA
 
   /** Check if error is worth retrying */
   def isWorth(e: LoaderError): Boolean =
