@@ -45,7 +45,7 @@ object Main extends IOApp {
                   e.printStackTrace(System.err)
                   env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
                 case Right(_) =>
-                  IO.pure(ExitCode.Success)
+                  env.loggingF.info("Shutting down").as(ExitCode.Success)
               }
         }
       case Invalid(errors) =>

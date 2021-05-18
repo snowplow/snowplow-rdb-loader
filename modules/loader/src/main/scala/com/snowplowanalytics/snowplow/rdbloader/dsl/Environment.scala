@@ -82,9 +82,12 @@ object Environment {
   def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =
     dsn match {
       case Some(uri) =>
-        val options = new SentryOptions()
-        options.setDsn(uri.toString)
-        Sync[F].delay(Sentry.init(options))
+        implicit val C: Clock[F] = Clock.create[F]
+        Sync[F].delay {
+          val options = new SentryOptions()
+          options.setDsn(uri.toString)
+          Sentry.init(options)
+        } *> Logging.mkMessage[F, String](false, s"Sentry has been initialised at $uri").flatMap(Logging.print[F, String])
       case None =>
         Sync[F].unit
     }
