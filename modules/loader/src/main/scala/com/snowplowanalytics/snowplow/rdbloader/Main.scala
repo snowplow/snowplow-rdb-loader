@@ -42,10 +42,11 @@ object Main extends IOApp {
               .flatMap {
                 case Left(e) =>
                   Sentry.captureException(e)
+                  Thread.sleep(500)
                   e.printStackTrace(System.err)
                   env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
                 case Right(_) =>
-                  IO.pure(ExitCode.Success)
+                  env.loggingF.info("Shutting down").as(ExitCode.Success)
               }
         }
       case Invalid(errors) =>
