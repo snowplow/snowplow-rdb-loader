@@ -57,15 +57,15 @@ object DataDiscovery {
    * App entrypoint, a generic discovery stream reading from message queue (like SQS)
    * The plain text queue will be parsed into known message types (`LoaderMessage`) and
    * handled appropriately - transformed either into action or into [[DataDiscovery]]
-   * In case of any error (parsing or transformation) the error will be raised, the message dropped,
-   * but stream will keep awaiting for a next message
+   * In case of any error (parsing or transformation) the error will be raised
+   * Empty folder will be reported, but stream will keep running
    *
    * The stream is responsible for state changing as well
    *
    * @param config generic storage target configuration
    * @param state mutable state to keep logging information
    */
-  def discover[F[_]: Monad: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
     AWS[F]
       .readSqs(config.messageQueue)
       .evalMapFilter { message =>
@@ -73,8 +73,7 @@ object DataDiscovery {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
             handle(config.region, config.jsonpaths, parsed, message.ack)
           case Left(error) =>
-            Logging[F].error(s"Error during message queue reading. $error") *>
-              message.ack.as(none[Message[F, WithOrigin]])
+            ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }
 
         state.updateAndGet(_.incrementMessages).flatMap { state =>
@@ -90,10 +89,10 @@ object DataDiscovery {
    * @param message payload coming from shredder
    * @tparam F effect type to perform AWS interactions
    */
-  def handle[F[_]: Monad: AWS: Cache: Logging](region: String,
-                                               assets: Option[S3.Folder],
-                                               message: LoaderMessage.ShreddingComplete,
-                                               ack: F[Unit]) =
+  def handle[F[_]: MonadThrow: AWS: Cache: Logging](region: String,
+                                                    assets: Option[S3.Folder],
+                                                    message: LoaderMessage.ShreddingComplete,
+                                                    ack: F[Unit]) =
     fromLoaderMessage[F](region, assets, message)
       .value
       .flatMap[Option[Message[F, WithOrigin]]] {
@@ -105,8 +104,7 @@ object DataDiscovery {
             .info(s"New data discovery at ${discovery.show}")
             .as(Some(Message(WithOrigin(discovery, message), ack)))
         case Left(error) =>
-          Logging[F].error(error.show) *>
-            ack.as(none[Message[F, WithOrigin]])
+          ackAndRaise[F](error, ack)
       }
 
   /**
@@ -131,7 +129,10 @@ object DataDiscovery {
     }
   }
 
+  def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
+    Logging[F].error(error.show) *> ack *> MonadThrow[F].raiseError(error)
+
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
-    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty && message.count.contains(0)
 }

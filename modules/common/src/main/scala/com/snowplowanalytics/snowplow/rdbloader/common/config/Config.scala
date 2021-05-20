@@ -243,4 +243,5 @@ object Config {
 
   val formats: Lens[Config[StorageTarget], Formats] = GenLens[Config[StorageTarget]](_.formats)
   val monitoring: Lens[Config[StorageTarget], Monitoring] = GenLens[Config[StorageTarget]](_.monitoring)
+  val jsonpaths: Lens[Config[StorageTarget], Option[S3.Folder]] = GenLens[Config[StorageTarget]](_.jsonpaths)
 }

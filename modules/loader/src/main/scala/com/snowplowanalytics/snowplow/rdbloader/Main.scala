@@ -15,18 +15,16 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.data.Validated._
 import cats.implicits._
 
-import cats.effect.{IOApp, IO, ExitCode, Resource}
+import cats.effect.{Resource, ExitCode, IOApp, IO, Sync}
 
 import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Environment}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
-
-import io.sentry.Sentry
 
 object Main extends IOApp {
 
@@ -34,19 +32,12 @@ object Main extends IOApp {
     CliConfig.parse(argv) match {
       case Valid(cli) =>
         Environment.initialize[IO](cli).use { env =>
-          env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+          env.loggingF.info(s"RDB Loader ${generated.BuildInfo.version} [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
             process(cli, env)
               .compile
               .drain
               .attempt
-              .flatMap {
-                case Left(e) =>
-                  Sentry.captureException(e)
-                  e.printStackTrace(System.err)
-                  env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
-                case Right(_) =>
-                  IO.pure(ExitCode.Success)
-              }
+              .flatMap(handleFailure[IO](env))
         }
       case Invalid(errors) =>
         IO.delay(System.err.println("Configuration error")) *>
@@ -65,22 +56,43 @@ object Main extends IOApp {
     import env._
 
     Stream.eval_(Manifest.initialize[IO](cli.config.storage, cli.dryRun, env.blocker)) ++
-      DataDiscovery.discover[IO](cli.config, env.state)
+      DataDiscovery
+        .discover[IO](cli.config, env.state)
         .pauseWhen[IO](env.isBusy)
         .evalMap { discovery =>
           val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
             SSH.resource[IO](cli.config.storage.sshTunnel) *>
             JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
 
-          jdbc.use { implicit conn =>
-            load[IO](cli, discovery).value.flatMap {
-              case Right(_) =>
-                env.incrementLoaded
-              case Left(error) =>
-                Logging[IO].error(s"Fatal failure during message processing (base ${discovery.data.discovery.base}), trying to ack the command. ${error.getMessage}") *>
-                  discovery.ack *> IO.raiseError(error)
-            }
+          val loading = jdbc.use { implicit conn =>
+            load[IO](cli, discovery).rethrowT *> env.incrementLoaded
+          }
+
+          // Catches both connection acquisition and loading errors
+          loading.handleErrorWith { error =>
+            val msg = s"Could not load a folder (base ${discovery.data.discovery.base}), trying to ack the SQS command"
+            Logging[IO].info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
+              discovery.ack *>
+              IO.raiseError(error)
           }
         }
   }
+
+  /**
+   * The application can throw in several places and all those exceptions must be
+   * rethrown and sent downstream. This function makes sure that every exception
+   * resulting into Loader restart is:
+   * 1. We always print ERROR in the end
+   * 2. We send a Sentry exception if Sentry is configured
+   * 3. We attempt to send the failure via tracker
+   */
+  def handleFailure[F[_]: Sync](env: Environment[F])(stop: Either[Throwable, Unit]): F[ExitCode] =
+    stop match {
+      case Left(e) =>
+        env.loggingF.error(s"Loading is shutting down with failure. ${e.getMessage}") *>    // Making sure we always have last ERROR printed
+          env.loggingF.trackException(e) *>
+          env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
+      case Right(_) =>
+        Sync[F].pure(ExitCode.Success)
+    }
 }

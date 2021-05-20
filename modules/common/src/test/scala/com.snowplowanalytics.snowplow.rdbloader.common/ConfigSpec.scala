@@ -100,6 +100,7 @@ class ConfigSpec extends Specification {
         (identity[Config[StorageTarget]] _)
           .compose(Config.formats.set(Config.Formats.Default))
           .compose(Config.monitoring.set(Config.Monitoring(None, None)))
+          .compose(Config.jsonpaths.set(Some(S3.Folder.coerce("s3://bucket/jsonpaths/"))))
           .apply(ConfigSpec.configExample)
           .copy(shredder = Config.Shredder.Stream(input, ConfigSpec.configExample.shredder.output, 10.minutes))
 

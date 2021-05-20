@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.util.matching.Regex
 
-import cats.{Apply, Monad}
+import cats.Monad
 import cats.implicits._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -193,11 +193,11 @@ object ShreddedType {
    * @param key vendor dir and filename, e.g. `com.acme/event_1`
    * @return full S3 key if file exists, discovery error otherwise
    */
-  def getSnowplowJsonPath[F[_]: Apply: AWS: Cache](s3Region: String,
+  def getSnowplowJsonPath[F[_]: Monad: AWS: Cache](s3Region: String,
                                                    key: String): DiscoveryAction[F, S3.Key] = {
     val fullDir = S3.Folder.append(getHostedAssetsBucket(s3Region), JsonpathsPath)
     val s3Key = S3.Key.coerce(fullDir + key)
-    AWS[F].keyExists(s3Key).ifA(
+    AWS[F].keyExists(s3Key).ifM(
       Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight[DiscoveryFailure]),
       Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft[S3.Key])
     )

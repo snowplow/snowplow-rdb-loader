@@ -48,7 +48,7 @@ object BuildSettings {
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.3" cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full)
   )
 
   // sbt-assembly settings
@@ -83,7 +83,7 @@ object BuildSettings {
         oldStrategy(x)
 
     }
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
@@ -126,19 +126,19 @@ object BuildSettings {
     assembly / assemblyShadeRules := Seq(
       ShadeRule.rename("cats.**" -> "shade.@1").inAll
     )
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
     coverageMinimum := 50,
     coverageFailOnMinimum := false,
-    (test in Test) := {
-      (coverageReport dependsOn (test in Test)).value
+    (Test / test) := {
+      (coverageReport dependsOn (Test / test)).value
     }
   )
 
   /** Add `config` directory as a resource */
   lazy val addExampleConfToTestCp = Seq(
-    unmanagedClasspath in Test += {
+    Test / unmanagedClasspath += {
       baseDirectory.value.getParentFile.getParentFile / "config"
     }
   )
@@ -157,19 +157,19 @@ object BuildSettings {
     }
 
   lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(compile in Test).value,
-    test in Test := (test in Test).dependsOn(startDynamoDBLocal).value,
-    testOnly in Test := (testOnly in Test).dependsOn(startDynamoDBLocal).evaluated,
-    testOptions in Test += dynamoDBLocalTestCleanup.value
+    startDynamoDBLocal := startDynamoDBLocal.dependsOn(Test / compile).value,
+    Test / test := (Test / test).dependsOn(startDynamoDBLocal).value,
+    Test / testOnly := (Test / testOnly).dependsOn(startDynamoDBLocal).evaluated,
+    Test / testOptions += dynamoDBLocalTestCleanup.value
   )
 
   lazy val dockerSettings = Seq(
-    maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
     dockerBaseImage := "snowplow/base-debian:0.2.2",
-    daemonUser in Docker := "snowplow",
+    Docker / daemonUser := "snowplow",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
-    daemonUserUid in Docker := None,
-    defaultLinuxInstallLocation in Docker := "/home/snowplow" // must be home directory of daemonUser
+    Docker / daemonUserUid := None,
+    Docker / defaultLinuxInstallLocation := "/home/snowplow" // must be home directory of daemonUser
   )
 }
