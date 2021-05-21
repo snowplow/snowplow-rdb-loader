@@ -43,11 +43,10 @@ object Metrics {
 
     def toHumanReadableString =
       s"""${countGood.value} good events were loaded.
-         | It took minimum ${collectorLatencyMin.map(_.value).getOrElse("unknown")} seconds and maximum
-         | ${collectorLatencyMax.map(_.value).getOrElse("unknown")} seconds between the collector and Redshift for these events.
-         | It took ${shredderStartLatency.value} seconds between the start of shredder and Redshift
-         | and ${shredderEndLatency.value} seconds between the completion of shredder and Redshift
-      """.stripMargin
+        | It took minimum ${collectorLatencyMin.map(_.value).getOrElse("unknown")} seconds and maximum
+        | ${collectorLatencyMax.map(_.value).getOrElse("unknown")} seconds between the collector and Redshift for these events.
+        | It took ${shredderStartLatency.value} seconds between the start of shredder and Redshift
+        | and ${shredderEndLatency.value} seconds between the completion of shredder and Redshift""".stripMargin.replaceAll("\n", " ")
   }
 
   def getMetrics[F[_]: Clock: Functor](loaded: LoaderMessage.ShreddingComplete): F[KVMetrics] =
