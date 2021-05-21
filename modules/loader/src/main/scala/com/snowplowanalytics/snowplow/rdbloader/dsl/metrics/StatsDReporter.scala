@@ -54,7 +54,7 @@ object StatsDReporter {
   ): F[Unit] = {
     val bytes = metric.getBytes(UTF_8)
     val packet = new DatagramPacket(bytes, bytes.length, addr, port)
-    blocker.delay(socket.send(packet))
+    Sync[F].delay(println(s"Sending $metric to statsd")) >> blocker.delay(socket.send(packet))
   }
 
   private def statsDFormat(config: Config.StatsD)(metric: Metrics.KVMetric): String = {
