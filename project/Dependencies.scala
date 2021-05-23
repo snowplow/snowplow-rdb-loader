@@ -29,7 +29,7 @@ object Dependencies {
     val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
-    val doobie           = "0.12.1"
+    val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
     val log4cats         = "1.2.0"
