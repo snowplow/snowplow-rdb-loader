@@ -59,7 +59,7 @@ object StatsDReporter {
 
   private def statsDFormat(config: Config.StatsD)(metric: Metrics.KVMetric): String = {
     val tagStr = config.tags.map { case (k, v) => s"$k:$v" }.mkString(",")
-    val prefix = config.prefix.getOrElse(Config.DefaultPrefix)
-    s"${prefix}${metric.key}:${metric.value}|g|#$tagStr"
+    val prefix = config.prefix.getOrElse(Config.DefaultPrefix).stripSuffix(".")
+    s"${prefix}.${metric.key}:${metric.value}|g|#$tagStr".stripPrefix(".")
   }
 }
