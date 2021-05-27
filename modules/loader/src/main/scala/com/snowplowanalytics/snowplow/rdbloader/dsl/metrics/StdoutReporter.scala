@@ -29,7 +29,7 @@ object StdoutReporter {
             for {
               logger <- Slf4jLogger.fromName[F]("rdbloader.metrics")
               _ <- metrics.traverse_ { m =>
-                val formatted = formatMetric(config.prefix.getOrElse(Config.MetricsDefaultPrefix).stripSuffix("."), m).stripPrefix(".")
+                val formatted = formatMetric(config.prefix, m)
                 logger.info(formatted)
               }
             } yield ()
@@ -38,6 +38,6 @@ object StdoutReporter {
         Reporter.noop[F]
     }
 
-  private def formatMetric(prefix: String, metric: Metrics.KVMetric): String =
-    s"$prefix${metric.key} = ${metric.value}"
+  private def formatMetric(prefix: Option[String], metric: Metrics.KVMetric): String =
+    s"${prefix.getOrElse(Config.MetricsDefaultPrefix).stripSuffix(".")}.${metric.key} = ${metric.value}".stripPrefix(".")
 }
