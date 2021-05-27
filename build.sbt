@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-ThisBuild / version := "1.1.0-rc5"
+ThisBuild / version := "1.1.0-rc6"
 
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
