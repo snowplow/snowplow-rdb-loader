@@ -130,7 +130,7 @@ object BuildSettings {
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
-    coverageMinimum := 50,
+    coverageMinimumStmtTotal := 50,
     coverageFailOnMinimum := false,
     (Test / test) := {
       (coverageReport dependsOn (Test / test)).value
