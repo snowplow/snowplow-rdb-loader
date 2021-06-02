@@ -18,8 +18,6 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 object PureMonitoring {
   def interpreter: Monitoring[Pure] = new Monitoring[Pure] {
-    val sentry = None
-
     def track(result: Either[LoaderError, Unit]): Pure[Unit] =
       Pure.pure(())
 

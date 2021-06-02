@@ -28,9 +28,9 @@ object StatsDReporter {
       case Some(config) =>
         new Reporter[F] {
           def report(metrics: List[Metrics.KVMetric]): F[Unit] = {
+            val formatted = metrics.map(statsDFormat(config))
             mkSocket[F](blocker).use { socket =>
               for {
-                formatted <- Sync[F].pure(metrics.map(statsDFormat(config)))
                 ip <- blocker.delay(InetAddress.getByName(config.hostname))
                 _ <- formatted.traverse_(sendMetric[F](blocker, socket, ip, config.port))
               } yield ()

@@ -14,7 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import scala.concurrent.ExecutionContext
 
-import cats.Applicative
 import cats.data.NonEmptyList
 import cats.implicits._
 
@@ -37,12 +36,6 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
 trait Monitoring[F[_]] {
 
-  /**
-   * A sentry client, exposed as an impure member
-   * to handle the very final exception in Main class
-   */
-  def sentry: Option[SentryClient]
-
   /** Track result via Snowplow tracker */
   def track(result: Either[LoaderError, Unit]): F[Unit]
 
@@ -59,24 +52,22 @@ object Monitoring {
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
 
-  def monitoringInterpreter[F[_]: Applicative: Sync](
+  def monitoringInterpreter[F[_]: Sync](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
     reporters: List[Reporter[F]]
   ): Monitoring[F] =
     new Monitoring[F] {
 
-      val sentry = sentryClient
-
       /** Track result via Snowplow tracker */
       def track(result: Either[LoaderError, Unit]): F[Unit] =
         trackEmpty(result.fold(_ => LoadFailedSchema, _ => LoadSucceededSchema))
 
       def trackException(e: Throwable): F[Unit] =
-        sentry.fold(Sync[F].unit)(s => Sync[F].delay(s.sendException(e)))
+        sentryClient.fold(Sync[F].unit)(s => Sync[F].delay(s.sendException(e)))
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
-        reporters.map(r => r.report(metrics.toList)).sequence_
+        reporters.traverse_(r => r.report(metrics.toList))
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
