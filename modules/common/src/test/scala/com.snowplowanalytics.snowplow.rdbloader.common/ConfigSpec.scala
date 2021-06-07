@@ -162,7 +162,7 @@ object ConfigSpec {
       )
     ),
     StorageTarget.Redshift(
-      "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+      "redshift.amazonaws.com",
       "snowplow",
       5439,
       StorageTarget.RedshiftJdbc(None, None, None, None, None, None, None, Some(true),None,None,None,None),

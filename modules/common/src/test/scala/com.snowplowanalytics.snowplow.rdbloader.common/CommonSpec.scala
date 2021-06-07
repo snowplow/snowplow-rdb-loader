@@ -54,7 +54,7 @@ object CommonSpec {
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validTarget = StorageTarget.Redshift(
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    "redshift.amazonaws.com",
     "snowplow",
     5439,
     disableSsl,

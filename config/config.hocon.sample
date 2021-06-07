@@ -64,7 +64,7 @@
     # Database, redshift is the only acceptable option
     "type": "redshift",
     # Redshift hostname
-    "host": "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    "host": "redshift.amazonaws.com",
     # Database name
     "database": "snowplow",
     # Database port
