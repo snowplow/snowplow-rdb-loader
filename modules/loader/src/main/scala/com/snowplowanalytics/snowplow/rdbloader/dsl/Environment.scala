@@ -76,7 +76,8 @@ object Environment {
       blocker <- Blocker[F]
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
-      sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn), logging)
+      implicit0(l: Logging[F]) = logging
+      sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
       monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
@@ -84,7 +85,7 @@ object Environment {
     } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
   }
 
-  def initSentry[F[_]: Sync](dsn: Option[URI], logging: Logging[F]): Resource[F, Option[SentryClient]] =
+  def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
       case Some(uri) =>
         val acquire = Sync[F].delay(Sentry.init(SentryOptions.defaults(uri.toString)))
@@ -92,7 +93,7 @@ object Environment {
           .make(acquire)(client => Sync[F].delay(client.closeConnection()))
           .map(_.some)
           .evalTap { _ =>
-            logging.info(s"Sentry has been initialised at $uri")
+            Logging[F].info(s"Sentry has been initialised at $uri")
           }
 
       case None =>
