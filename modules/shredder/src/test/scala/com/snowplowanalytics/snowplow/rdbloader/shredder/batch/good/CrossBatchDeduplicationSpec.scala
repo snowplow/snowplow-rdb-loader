@@ -224,11 +224,9 @@ object CrossBatchDeduplicationSpec {
  * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html
  */
 class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
-  args(skipAll = true)
-
   override def appName = "cross-batch-deduplication"
   CrossBatchDeduplicationSpec.Storage.prepareLocalTable()
-  sequential
+  skipAll
   "A job which is provided with a two events with same event_id" should {
 
     runShredJob(CrossBatchDeduplicationSpec.lines, true)
