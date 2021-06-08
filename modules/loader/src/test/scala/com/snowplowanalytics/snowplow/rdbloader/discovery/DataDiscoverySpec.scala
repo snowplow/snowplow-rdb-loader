@@ -28,7 +28,6 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
-
 class DataDiscoverySpec extends Specification {
   "show" should {
     "should DataDiscovery with several shredded types" >> {
@@ -88,7 +87,7 @@ class DataDiscoverySpec extends Specification {
     "raise an error and ack a message if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val message = DataDiscoverySpec.shreddingComplete
 
@@ -104,7 +103,7 @@ class DataDiscoverySpec extends Specification {
     "not ack message if it can be handled" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val message = DataDiscoverySpec.shreddingComplete
 

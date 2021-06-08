@@ -54,7 +54,7 @@ object CommonSpec {
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validTarget = StorageTarget.Redshift(
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    "redshift.amazonaws.com",
     "snowplow",
     5439,
     disableSsl,
@@ -89,8 +89,9 @@ object CommonSpec {
     "us-east-1",
     None,
     Config.Monitoring(
-      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
+      None,
+      None,
+      None
     ),
     "messages",
     shredder,

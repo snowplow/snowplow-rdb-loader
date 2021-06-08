@@ -237,7 +237,7 @@ object ShredJobSpec {
     |},
     |storage = {
     | "type": "redshift",
-    | "host": "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    | "host": "redshift.amazonaws.com",
     | "database": "snowplow",
     | "port": 5439,
     | "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",

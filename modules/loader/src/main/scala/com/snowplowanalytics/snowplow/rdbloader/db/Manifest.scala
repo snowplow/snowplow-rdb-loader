@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, AWS}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Monitoring, JDBC, AWS}
 
 object Manifest {
 
@@ -59,7 +59,7 @@ object Manifest {
       Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))
     )
 
-  def initialize[F[_]: Async: ContextShift: Logging: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): F[Unit] = {
+  def initialize[F[_]: Async: ContextShift: Logging: Monitoring: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): F[Unit] = {
     JDBC.interpreter[F](target, dryRun, blocker).use { implicit jdbc =>
       Control.withTransaction(setup[F](target.schema)).value.flatMap {
         case Right(InitStatus.Created) =>
@@ -69,7 +69,7 @@ object Manifest {
         case Right(InitStatus.NoChanges) =>
           Monad[F].unit
         case Left(error) =>
-          Logging[F].error(s"Fatal error has happened during manifest table initialization") *>
+          Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
             Async[F].raiseError(new IllegalStateException(error.show))
       }
     }

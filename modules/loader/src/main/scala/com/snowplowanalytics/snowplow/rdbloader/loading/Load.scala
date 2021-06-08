@@ -12,26 +12,24 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import java.time.Duration
-
 import scala.concurrent.duration._
 
 import cats.{Applicative, Monad, MonadError}
 import cats.implicits._
 
-import cats.effect.Timer
+import cats.effect.{Clock, Timer}
 
 import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.{ Message, LoaderMessage }
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, Iglu}
-
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 /** Entry-point for loading-related logic */
 object Load {
@@ -45,7 +43,10 @@ object Load {
    * @param cli RDB Loader app configuration
    * @param discovery discovered folder to load
    */
-  def load[F[_]: MonadThrow: JDBC: Iglu: Timer: Logging](cli: CliConfig, discovery: Message[F, DataDiscovery.WithOrigin]): LoaderAction[F, Unit] =
+  def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](
+    cli: CliConfig,
+    discovery: Message[F, DataDiscovery.WithOrigin]
+  ): LoaderAction[F, Unit] =
     cli.config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = cli.config.copy(storage = redshift)
@@ -63,7 +64,7 @@ object Load {
                 RedshiftLoader.run[F](redshiftConfig, discovery.data.discovery) <*
                 Manifest.add[F](redshiftConfig.storage.schema, discovery.data.origin) <*
                 JDBC[F].executeUpdate(Statement.Commit) <*
-                congratulate[F](discovery.data.origin)
+                congratulate[F](discovery.data.origin).liftA
           }
 
           // With manifest protecting from double-loading it's safer to ack *after* commit
@@ -73,7 +74,7 @@ object Load {
         for {
           postLoad <- retryLoad(transaction)
           _ <- postLoad.recoverWith {
-            case error => Logging[F].error(s"Post-loading actions failed, ignoring. ${error.show}").liftA
+            case error => Logging[F].error(error)("Post-loading actions failed, ignoring").liftA
           }
         } yield ()
     }
@@ -119,14 +120,15 @@ object Load {
       .limitRetries[LoaderAction[F, *]](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
 
-  private def congratulate[F[_]: Monad: Logging: Timer](message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
-    Timer[F].clock.instantNow.flatMap { now =>
-      val count = message.count.map(c => s"${c.good} events").getOrElse("volume is unknown")
-      val latency = message.timestamps.min match {
-        case Some(earliest) => s"${Duration.between(earliest, now).toSeconds} seconds"
-        case None => "unknown"
-      }
-      Logging[F].info(s"Folder [${message.base}] has been loaded and committed. Success!") *>
-        Logging[F].info(s"Folder [${message.base}] ($count) latency: $latency")
-    }.liftA
+  private def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
+    loaded: LoaderMessage.ShreddingComplete
+  ): F[Unit] = {
+    val reportMetrics: F[Unit] =
+      for {
+        metrics <- Metrics.getMetrics[F](loaded)
+        _ <- Monitoring[F].reportMetrics(metrics)
+        _ <- Logging[F].info(metrics.toHumanReadableString)
+      } yield ()
+    Logging[F].info(s"Folder ${loaded.base} loaded successfully") >> reportMetrics
+  }
 }

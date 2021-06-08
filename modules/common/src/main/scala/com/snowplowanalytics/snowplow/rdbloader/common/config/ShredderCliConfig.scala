@@ -39,7 +39,7 @@ case class ShredderCliConfig(igluConfig: Json,
 
 object ShredderCliConfig {
 
-  private val Base64Decoder = Base64.getUrlDecoder
+  private val Base64Decoder = Base64.getDecoder
 
   def base64decode(str: String): Either[String, String] =
     Either
