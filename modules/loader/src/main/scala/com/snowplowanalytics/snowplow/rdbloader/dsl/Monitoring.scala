@@ -16,21 +16,25 @@ import scala.concurrent.ExecutionContext
 
 import cats.data.NonEmptyList
 import cats.implicits._
+import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
 
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
+import io.circe._
+import io.circe.generic.semiauto._
 
-import io.circe.Json
-
-import io.sentry.SentryClient
+import fs2.{ Stream, Pure }
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
+import io.sentry.SentryClient
+
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
@@ -52,10 +56,19 @@ object Monitoring {
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
 
-  def monitoringInterpreter[F[_]: Sync](
+  val AlertSchemaKey = SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
+
+  case class AlertPayload(loaderVersion: String, folderName: S3.Folder, message: String, tags: Map[String, String]) {
+    def toByteStream: Stream[Pure, Byte] =
+      Stream.emits(SelfDescribingData(AlertSchemaKey, alertPayloadEncoder.apply(this)).normalize.noSpaces.getBytes)
+  }
+
+  implicit val alertPayloadEncoder: Encoder[AlertPayload] = deriveEncoder[AlertPayload]
+
+  def monitoringInterpreter[F[_]: Sync: Logging](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
-    reporters: List[Reporter[F]]
+    reporters: List[Reporter[F]],
   ): Monitoring[F] =
     new Monitoring[F] {
 

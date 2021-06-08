@@ -22,10 +22,11 @@ import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
+
 
 object Main extends IOApp {
 

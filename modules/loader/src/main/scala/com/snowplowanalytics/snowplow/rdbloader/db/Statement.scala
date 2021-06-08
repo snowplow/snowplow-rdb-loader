@@ -66,6 +66,19 @@ object Statement {
     def toFragment: Fragment = sql"VACUUM SORT ONLY ${Fragment.const0(tableName)}"
   }
 
+  // Alerting
+  val AlertingScanResultSeparator = "\n"
+  val AlertingTempTableName = "rdb_folder_monitoring"
+  case object CreateAlertingTempTable extends Statement {
+    def toFragment: Fragment = Fragment.const0(s"CREATE TEMPORARY TABLE ${AlertingTempTableName} ( run_id VARCHAR(512) )")
+  }
+  case class FoldersMinusManifest(schema: String) extends Statement {
+    def toFragment: Fragment = Fragment.const0(s"SELECT run_id FROM ${AlertingTempTableName} MINUS SELECT base FROM ${schema}.manifest")
+  }
+  case class FoldersCopy(source: S3.Folder, roleArn: String) extends Statement {
+    def toFragment: Fragment = Fragment.const0(s"COPY ${AlertingTempTableName} FROM '${source}' IAM_ROLE '${roleArn}' DELIMITER '$AlertingScanResultSeparator'")
+  }
+
   // Loading
   case class EventsCopy(schema: String, transitCopy: Boolean, path: S3.Folder, region: String, maxError: Int, roleArn: String, compression: Compression) extends Statement {
     def toFragment: Fragment = {
