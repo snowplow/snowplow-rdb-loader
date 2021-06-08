@@ -14,9 +14,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import io.sentry.{Sentry, SentryOptions}
+
 import org.apache.spark.SparkConf
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
+
+import cats.syntax.either._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, ShredderCliConfig}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.Serialization
@@ -38,7 +42,10 @@ object Main {
             val spark = SparkSession.builder()
               .config(sparkConfig)
               .getOrCreate()
-            ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config.formats, b, cli.config.messageQueue, cli.config.region)
+            val sentryClient = cli.config.monitoring.sentry.map(s => Sentry.init(SentryOptions.defaults(s.dsn.toString)))
+            Either
+              .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config, b))
+              .leftMap(throwable => sentryClient.fold(())(_.sendException(throwable)))
             spark.stop()
           case other =>
             System.err.println(s"Shredder configuration $other is not for Spark")
