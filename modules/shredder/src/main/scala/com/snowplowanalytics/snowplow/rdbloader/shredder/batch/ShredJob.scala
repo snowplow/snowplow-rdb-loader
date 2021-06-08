@@ -18,10 +18,11 @@ import cats.Id
 import cats.implicits._
 
 import io.circe.Json
+
 import java.util.UUID
 import java.time.Instant
 
-import scala.concurrent.{Future, Await, TimeoutException}
+import scala.concurrent.{Await, Future, TimeoutException}
 import scala.concurrent.duration._
 
 // Spark
@@ -39,6 +40,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Shredded}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.{Formats, Shredder}
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.Discovery.MessageProcessor
@@ -188,10 +190,8 @@ object ShredJob {
     spark: SparkSession,
     igluConfig: Json,
     duplicateStorageConfig: Option[Json],
-    formats: Formats,
-    shredderConfig: Shredder.Batch,
-    sqsQueue: String,
-    region: String
+    config: Config[StorageTarget],
+    shredderConfig: Shredder.Batch
   ): Unit = {
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
 
@@ -199,7 +199,7 @@ object ShredJob {
     val shreddedFolder = Folder.coerce(shredderConfig.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
-      .getState(region, enrichedFolder, shreddedFolder)
+      .getState(config.region, enrichedFolder, shreddedFolder)
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
       val config = EventsManifestConfig
@@ -211,9 +211,9 @@ object ShredJob {
 
     unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
-      val job = new ShredJob(spark, igluConfig, formats, shredderConfig)
+      val job = new ShredJob(spark, igluConfig, config.formats, shredderConfig)
       val completed = job.run(folder.folderName, atomicLengths, eventsManifest)
-      Discovery.seal(completed, region, sqsQueue)
+      Discovery.seal(completed, config.region, config.messageQueue)
     }
 
     Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {

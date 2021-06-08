@@ -116,6 +116,7 @@ lazy val shredder = project.in(file("modules/shredder"))
       Dependencies.sqs,
       Dependencies.dynamodb,
       Dependencies.slf4j,
+      Dependencies.sentry,
       // Scala
       Dependencies.eventsManifest,
       Dependencies.sparkCore,
