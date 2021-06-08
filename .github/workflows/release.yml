@@ -1,0 +1,52 @@
+name: Prepare PR for release
+
+on:
+  create
+
+jobs:
+  prepare_release_pr:
+    if: ${{ contains(github.ref, 'refs/heads/release/') }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Github
+      uses: actions/checkout@v2
+
+    - name: Extract release version
+      id: version
+      run: |
+        export VERSION=$(basename ${{ github.ref }})
+        echo "::set-output name=release_version::$VERSION"
+
+    - name: Create prepare for release commit
+      run: |
+        set -x
+        echo $(git log --pretty=format:%s | grep -n -m1 "Prepare")
+        echo $(git log --pretty=format:%s | grep -n -m1 "Prepare for .* release" | cut -d':' -f1)
+        nbNewCommits=$(echo "$(git log --pretty=format:%s | grep -n -m1 "Prepare for .* release" | cut -d':' -f1) - 1" | bc)
+        newCommits=$(git log --pretty=format:%s | head -$nbNewCommits | sed 's/close #/#/;s/closes #/#/')
+        newVersion=${{ steps.version.outputs.release_version }}
+        headLine="$newVersion ($(date +%Y-%m-%d))"
+        nbDashes=$(expr length "$headLine")
+        dashes=$(printf "%0.s-" $(seq 1 $nbDashes))
+        { echo -e "$headLine\n$dashes\n$newCommits\n"; cat CHANGELOG; } > CHANGELOG.new
+        mv CHANGELOG.new CHANGELOG
+        sed -i -E "s/([ ]+version[ ]+:= )\"[0-9]+\.[0-9]+\.[0-9]+.*/\1\"$newVersion\"/g" build.sbt
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git status
+        git commit -m "Prepare for $newVersion release" CHANGELOG build.sbt
+        git status
+  
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.ref }}
+
+    - name: Create PR
+      uses: repo-sync/pull-request@v2
+      with:
+        destination_branch: "master"
+        pr_title: "Release ${{ steps.version.outputs.release_version }}"
+        pr_body: "Created by Github Actions"
+        github_token: ${{ secrets.GITHUB_TOKEN }}
