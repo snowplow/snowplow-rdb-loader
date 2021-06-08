@@ -23,6 +23,8 @@ import io.circe.Json
 
 import io.sentry.SentryClient
 
+import com.ifountain.opsgenie.client.OpsGenieClient
+
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
@@ -32,6 +34,7 @@ import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
 trait Monitoring[F[_]] {
@@ -44,6 +47,13 @@ trait Monitoring[F[_]] {
 
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
+
+  /** Send OpsGenie alerts */
+  def alertUnloadedBatches(folders: List[Folder]): F[Unit]
+
+  def alertCorruptedBatches(folders: List[Folder]): F[Unit]
+
+  def alertBadData(folders: List[Folder]): F[Unit]
 }
 
 object Monitoring {
@@ -55,9 +65,12 @@ object Monitoring {
   def monitoringInterpreter[F[_]: Sync](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
-    reporters: List[Reporter[F]]
+    reporters: List[Reporter[F]],
+    opsGenieClient: Option[OpsGenieClient]
   ): Monitoring[F] =
     new Monitoring[F] {
+
+      val _ = opsGenieClient
 
       /** Track result via Snowplow tracker */
       def track(result: Either[LoaderError, Unit]): F[Unit] =
@@ -68,6 +81,12 @@ object Monitoring {
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
+
+      def alertUnloadedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
+
+      def alertCorruptedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
+
+      def alertBadData(folders: List[Folder]): F[Unit]= Sync[F].unit
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {

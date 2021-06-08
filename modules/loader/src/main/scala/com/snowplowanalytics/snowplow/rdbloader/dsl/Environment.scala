@@ -27,8 +27,11 @@ import com.snowplowanalytics.iglu.client.Client
 
 import io.sentry.{Sentry, SentryOptions, SentryClient}
 
+import com.ifountain.opsgenie.client.OpsGenieClient
+
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 
@@ -78,9 +81,10 @@ object Environment {
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       implicit0(l: Logging[F]) = logging
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
+      opsGenie <- initOpsGenie[F](cli.config.monitoring.alerts)
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
+      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), opsGenie)
       (cache, iglu, aws, state) <- Resource.eval(init)
     } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
   }
@@ -99,4 +103,6 @@ object Environment {
       case None =>
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
+
+  def initOpsGenie[F[_]](config: Option[Config.OpsGenie]): Resource[F, Option[OpsGenieClient]] = ???
 }
