@@ -26,28 +26,28 @@ object Dependencies {
     val circeOptics      = "0.13.0"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
-    val fs2              = "2.5.1"
+    val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
     val doobie           = "0.12.1"
     val monocle          = "2.0.3"
-    val catsRetry        = "2.1.1"
-    val log4cats         = "1.2.0"
+    val catsRetry        = "2.1.0"
+    val log4cats         = "1.3.0"
     val http4s           = "0.21.21"
     val scalaTracker     = "1.0.0"
 
     // Scala (Shredder)
     val spark            = "3.0.1"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.12.0"
+    val schemaDdl        = "0.13.0"
 
     // Java (Loader)
     val slf4j            = "1.7.30"
-    val redshift         = "1.2.51.1078"
-    val aws              = "1.11.990"
+    val redshift         = "1.2.54.1082"
+    val aws              = "1.11.1019"
     val aws2             = "2.16.23"
     val jSch             = "0.1.55"
-    val sentry           = "3.2.0"
+    val sentry           = "1.7.30"
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -56,7 +56,7 @@ object Dependencies {
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
+    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
   )
 
   // Scala (Loader)

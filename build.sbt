@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-version in ThisBuild := "1.0.0"
+ThisBuild / version := "1.1.0"
 
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
@@ -59,11 +59,12 @@ lazy val common: Project = project.in(file("modules/common"))
 lazy val loader = project.in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
-    packageName in Docker := "snowplow/snowplow-rdb-loader",
+    Docker / packageName := "snowplow/snowplow-rdb-loader",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
@@ -84,13 +85,14 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.http4sClient,
       Dependencies.doobie,
       Dependencies.catsRetry,
+      Dependencies.log4cats,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
     )
   )
-  .dependsOn(common, aws)
+  .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val shredder = project.in(file("modules/shredder"))
@@ -131,7 +133,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
     description := "Stream Shredding job",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated",
     buildInfoKeys := List(name, version, description),
-    packageName in Docker := "snowplow/snowplow-rdb-stream-shredder",
+    Docker / packageName := "snowplow/snowplow-rdb-stream-shredder",
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
   )
   .settings(BuildSettings.buildSettings)

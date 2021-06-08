@@ -54,6 +54,8 @@ final case class Config[+D <: StorageTarget](name: String,
 
 object Config {
 
+  val MetricsDefaultPrefix = "snowplow.rdbloader"
+
   def fromString(s: String): Either[String, Config[StorageTarget]] =
     Either
       .catchNonFatal(ConfigSource.fromConfig(ConfigFactory.parseString(s)))
@@ -127,9 +129,6 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry])
-  final case class SnowplowMonitoring(appId: String, collector: String)
-
   final case class Formats(default: LoaderMessage.Format,
                            tsv: List[SchemaCriterion],
                            json: List[SchemaCriterion],
@@ -169,7 +168,12 @@ object Config {
     }
   }
 
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics])
+  final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
+  final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
+  final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
+  final case class Stdout(prefix: Option[String])
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
@@ -221,14 +225,23 @@ object Config {
   implicit val uriDecoder: Decoder[URI] =
     Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
 
-  implicit val sentryDecoder: Decoder[Sentry] =
-    deriveDecoder[Sentry]
-
   implicit val formatsDecoder: Decoder[Formats] =
     deriveDecoder[Formats]
 
   implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
     deriveDecoder[SnowplowMonitoring]
+
+  implicit val sentryDecoder: Decoder[Sentry] =
+    deriveDecoder[Sentry]
+
+  implicit val statsdDecoder: Decoder[StatsD] =
+    deriveDecoder[StatsD]
+
+  implicit val stdoutDecoder: Decoder[Stdout] =
+    deriveDecoder[Stdout]
+
+  implicit val metricsDecoder: Decoder[Metrics] =
+    deriveDecoder[Metrics]
 
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]
@@ -243,4 +256,5 @@ object Config {
 
   val formats: Lens[Config[StorageTarget], Formats] = GenLens[Config[StorageTarget]](_.formats)
   val monitoring: Lens[Config[StorageTarget], Monitoring] = GenLens[Config[StorageTarget]](_.monitoring)
+  val jsonpaths: Lens[Config[StorageTarget], Option[S3.Folder]] = GenLens[Config[StorageTarget]](_.jsonpaths)
 }

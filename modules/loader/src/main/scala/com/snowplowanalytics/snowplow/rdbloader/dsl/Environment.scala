@@ -17,7 +17,7 @@ import java.net.URI
 import cats.{Functor, Monad}
 import cats.implicits._
 
-import cats.effect.{Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import cats.effect.concurrent.Ref
 
 import fs2.Stream
@@ -25,17 +25,20 @@ import fs2.concurrent.SignallingRef
 
 import com.snowplowanalytics.iglu.client.Client
 
-import io.sentry.{Sentry, SentryOptions}
+import io.sentry.{Sentry, SentryOptions, SentryClient}
+
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
+class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
+  implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
 
@@ -50,13 +53,11 @@ class Environment[F[_]](cache: Cache[F], logging: Logging[F], iglu: Iglu[F], aws
 
   private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
     state.get.map(_.busy)
-
 }
 
 object Environment {
-  def initialize[F[_] : ConcurrentEffect: Clock: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
-      _ <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
       igluClient <- igluParsed match {
@@ -73,20 +74,29 @@ object Environment {
 
     for {
       blocker <- Blocker[F]
-      messages <- Resource.eval(Ref.of[F, List[String]](List.empty[String]))
-      tracker <- Logging.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
-      logging = Logging.loggingInterpreter[F](cli.config.storage, messages, tracker)
+      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
+      logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      implicit0(l: Logging[F]) = logging
+      sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
+      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
+      stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
+      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
       (cache, iglu, aws, state) <- Resource.eval(init)
-    } yield new Environment(cache, logging, iglu, aws, state, blocker)
+    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
   }
 
-  def initSentry[F[_]: Sync](dsn: Option[URI]): F[Unit] =
+  def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
       case Some(uri) =>
-        val options = new SentryOptions()
-        options.setDsn(uri.toString)
-        Sync[F].delay(Sentry.init(options))
+        val acquire = Sync[F].delay(Sentry.init(SentryOptions.defaults(uri.toString)))
+        Resource
+          .make(acquire)(client => Sync[F].delay(client.closeConnection()))
+          .map(_.some)
+          .evalTap { _ =>
+            Logging[F].info(s"Sentry has been initialised at $uri")
+          }
+
       case None =>
-        Sync[F].unit
+        Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 }
