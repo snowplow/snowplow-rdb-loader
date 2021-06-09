@@ -12,30 +12,38 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.ExecutionContext
-
 import cats.data.NonEmptyList
 import cats.implicits._
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import cats.Parallel
 
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
+import fs2.Stream
 
-import io.circe.Json
+import io.circe._
+import io.circe.syntax._
+import io.circe.generic.semiauto._
+
+import org.http4s.{Method, Uri}
+import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.client.Client
+import org.http4s.headers.`Content-Type`
+import org.http4s.{MediaType, Request}
+
+import scala.concurrent.ExecutionContext
+
+import com.snowplowanalytics.iglu.core.circe.implicits._
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
 import io.sentry.SentryClient
-
-import com.ifountain.opsgenie.client.OpsGenieClient
-
-import org.http4s.client.blaze.BlazeClientBuilder
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
-
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
-import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Webhook
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
 trait Monitoring[F[_]] {
 
@@ -48,13 +56,13 @@ trait Monitoring[F[_]] {
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
 
-  /** Send OpsGenie alerts */
-  def alertUnloadedBatches(folders: List[Folder]): F[Unit]
-
-  def alertCorruptedBatches(folders: List[Folder]): F[Unit]
-
-  def alertBadData(folders: List[Folder]): F[Unit]
+  /** Send OpsGenie alert */
+  def alert(alert: Alert): F[Unit]
 }
+
+sealed trait Alert
+case class UnloadedBatchAlert(folders: List[Folder]) extends Alert
+case class CorruptedBatchAlert(folders: List[Folder]) extends Alert
 
 object Monitoring {
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
@@ -62,15 +70,21 @@ object Monitoring {
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
 
-  def monitoringInterpreter[F[_]: Sync](
+  val AlertSchemaKey = SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
+
+  case class AlertPayload(loaderVersion: String, folderName: String, message: String, tags: Map[String, String])
+
+  implicit val AlertPayloadEncoder: Encoder[AlertPayload] = deriveEncoder[AlertPayload]
+
+  def monitoringInterpreter[F[_]: ContextShift: Sync: Parallel](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
     reporters: List[Reporter[F]],
-    opsGenieClient: Option[OpsGenieClient]
+    optWebhook: Option[Webhook],
+    httpClient: Client[F],
+    blocker: Blocker
   ): Monitoring[F] =
     new Monitoring[F] {
-
-      val _ = opsGenieClient
 
       /** Track result via Snowplow tracker */
       def track(result: Either[LoaderError, Unit]): F[Unit] =
@@ -82,18 +96,39 @@ object Monitoring {
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
 
-      def alertUnloadedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
-
-      def alertCorruptedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
-
-      def alertBadData(folders: List[Folder]): F[Unit]= Sync[F].unit
-
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
           case Some(t) =>
             t.trackSelfDescribingEvent(SelfDescribingData(schema, Json.obj()))
           case None =>
             Sync[F].unit
+        }
+
+      private def postPayload(payload: AlertPayload): String =
+        SelfDescribingData[Json](AlertSchemaKey, payload.asJson).normalize.noSpaces
+
+      private def createAlertPayloads(folders: List[Folder], message: String, tags: Map[String, String]): List[AlertPayload] =
+        folders.map(folder => AlertPayload(BuildInfo.version, folder.folderName, message, tags))
+
+      /** Send alert payloads to the webhook endpoint provided in config */
+      override def alert(alert: Alert): F[Unit] =
+        optWebhook.fold(Sync[F].unit){ webhook =>
+          val payloads = alert match {
+            case UnloadedBatchAlert(folders) => createAlertPayloads(folders, "Unloaded Batch", webhook.tags)
+            case CorruptedBatchAlert(folders) => createAlertPayloads(folders, "Corrupted Batch", webhook.tags)
+          }
+          blocker.blockOn(
+            payloads
+              .map(p => postPayload(p).getBytes)
+              .map(bytes => Stream.emit(bytes).covary[F])
+              .map{ body =>
+                Request[F](Method.POST, Uri.unsafeFromString(webhook.endpoint))
+                  .withEntity(body)
+                  .withContentType(`Content-Type`(MediaType.application.json))
+              }
+              .parTraverse(httpClient.status)
+              .void
+          )
         }
     }
 

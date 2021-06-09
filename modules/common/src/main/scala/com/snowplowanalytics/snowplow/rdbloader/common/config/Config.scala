@@ -168,14 +168,13 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], alerts: Option[OpsGenie])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
-  // TODO: Refer to https://docs.opsgenie.com/docs/opsgenie-java-api#create-alert for what needs to be configurable
-  final case class OpsGenie(apiKey: String, aliasPrefix: String)
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
+  final case class Webhook(endpoint: String, tags: Map[String, String])
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
@@ -245,8 +244,8 @@ object Config {
   implicit val metricsDecoder: Decoder[Metrics] =
     deriveDecoder[Metrics]
 
-  implicit val opsGenieDecoder: Decoder[OpsGenie] =
-    deriveDecoder[OpsGenie]
+  implicit val webhookDecoder: Decoder[Webhook] =
+    deriveDecoder[Webhook]
 
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]
