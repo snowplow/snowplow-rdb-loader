@@ -14,19 +14,16 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.data.Validated._
 import cats.implicits._
-
-import cats.effect.{Resource, ExitCode, IOApp, IO, Sync}
-
+import cats.effect.{ExitCode, IO, IOApp, Resource, Sync}
 import fs2.Stream
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Environment, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
-import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+import com.snowplowanalytics.snowplow.rdbloader.utils.{Alerting, SSH}
+
 
 object Main extends IOApp {
 
@@ -79,6 +76,7 @@ object Main extends IOApp {
               IO.raiseError(error)
           }
         }
+        .merge(Alerting.alertStream[IO](cli, env))
   }
 
   /**

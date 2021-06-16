@@ -16,28 +16,24 @@ import cats.implicits._
 import cats.{Functor, Monad, Parallel}
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-
 import fs2.Stream
 import fs2.concurrent.SignallingRef
-
-import org.http4s.client.blaze.BlazeClientBuilder
-
 import com.snowplowanalytics.iglu.client.Client
-
 import io.sentry.{Sentry, SentryClient, SentryOptions}
 
 import java.net.URI
-
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.dsl.alerts.{Alerter, WebhookAlerter}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
+import org.http4s.client.blaze.BlazeClientBuilder
 
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
+class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker, val alerter: Alerter[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -80,13 +76,13 @@ object Environment {
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       implicit0(l: Logging[F]) = logging
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
-      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
-      webhookConfig = cli.config.monitoring.webhook
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), webhookConfig, httpClient, blocker)
+      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
+      webhookAlerter = WebhookAlerter.build[F](cli.config.monitoring.webhook, blocker, httpClient)
+      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
       (cache, iglu, aws, state) <- Resource.eval(init)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
+    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker, webhookAlerter)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =

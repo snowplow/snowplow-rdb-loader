@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Alert, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 object PureMonitoring {
@@ -26,7 +26,5 @@ object PureMonitoring {
 
     def reportMetrics(metrics: Metrics.KVMetrics): Pure[Unit] =
       Pure.pure(())
-
-    override def alert(alert: Alert): Pure[Unit] = Pure.pure(())
   }
 }
