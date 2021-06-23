@@ -37,7 +37,7 @@ object Dependencies {
     val scalaTracker     = "1.0.0"
 
     // Scala (Shredder)
-    val spark            = "3.0.1"
+    val spark            = "3.0.3"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.13.0"
 
