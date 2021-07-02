@@ -15,16 +15,12 @@ package com.snowplowanalytics.snowplow.rdbloader.common.config
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
-
-import scala.concurrent.duration.Duration
-
+import scala.concurrent.duration.{Duration, FiniteDuration, MINUTES}
 import cats.syntax.either._
 import cats.syntax.show._
-
 import io.circe._
 import io.circe.syntax._
 import io.circe.generic.semiauto._
-
 import com.typesafe.config.ConfigFactory
 import pureconfig._
 import pureconfig.module.circe._
@@ -32,10 +28,10 @@ import pureconfig.error.{CannotParse, ConfigReaderFailures}
 import monocle.Lens
 import monocle.macros.GenLens
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config._
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import org.http4s.{ParseFailure, Uri}
 
 /**
  * Main config file parsed from HOCON
@@ -168,14 +164,13 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], alerts: Option[OpsGenie])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
-  // TODO: Refer to https://docs.opsgenie.com/docs/opsgenie-java-api#create-alert for what needs to be configurable
-  final case class OpsGenie(apiKey: String, aliasPrefix: String)
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
+  final case class Webhook(endpoint: Uri, tags: Map[String, String], period: FiniteDuration)
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
@@ -245,8 +240,14 @@ object Config {
   implicit val metricsDecoder: Decoder[Metrics] =
     deriveDecoder[Metrics]
 
-  implicit val opsGenieDecoder: Decoder[OpsGenie] =
-    deriveDecoder[OpsGenie]
+  implicit val http4sUriDecoder: Decoder[Uri] =
+    Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
+
+  implicit val minuteDecoder: Decoder[FiniteDuration] =
+    Decoder[Long].emap(d => Either.catchNonFatal(FiniteDuration(d, MINUTES)).leftMap(_.toString))
+
+  implicit val webhookDecoder: Decoder[Webhook] =
+    deriveDecoder[Webhook]
 
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]

@@ -91,6 +91,7 @@ object CommonSpec {
     Config.Monitoring(
       None,
       None,
+      None,
       None
     ),
     "messages",

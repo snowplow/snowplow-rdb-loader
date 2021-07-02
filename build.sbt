@@ -48,6 +48,7 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
+      Dependencies.http4sCore,
 
       Dependencies.specs2,
       Dependencies.monocle,
@@ -78,7 +79,6 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
-      Dependencies.opsgenie,
 
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,

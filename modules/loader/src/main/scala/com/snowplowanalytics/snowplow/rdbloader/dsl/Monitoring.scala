@@ -12,29 +12,21 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.ExecutionContext
-
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
-
-import io.circe.Json
-
-import io.sentry.SentryClient
-
-import com.ifountain.opsgenie.client.OpsGenieClient
-
+import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
+import io.circe._
+import io.circe.generic.semiauto._
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
-
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import scala.concurrent.ExecutionContext
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
-
+import io.sentry.SentryClient
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
 trait Monitoring[F[_]] {
@@ -47,14 +39,9 @@ trait Monitoring[F[_]] {
 
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
-
-  /** Send OpsGenie alerts */
-  def alertUnloadedBatches(folders: List[Folder]): F[Unit]
-
-  def alertCorruptedBatches(folders: List[Folder]): F[Unit]
-
-  def alertBadData(folders: List[Folder]): F[Unit]
 }
+
+sealed trait Alert extends Product with Serializable
 
 object Monitoring {
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
@@ -62,15 +49,18 @@ object Monitoring {
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
 
-  def monitoringInterpreter[F[_]: Sync](
+  val AlertSchemaKey = SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
+
+  case class AlertPayload(loaderVersion: String, folderName: S3.Folder , message: String, tags: Map[String, String])
+
+  implicit val alertPayloadEncoder: Encoder[AlertPayload] = deriveEncoder[AlertPayload]
+
+  def monitoringInterpreter[F[_]: Sync: Logging](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
     reporters: List[Reporter[F]],
-    opsGenieClient: Option[OpsGenieClient]
   ): Monitoring[F] =
     new Monitoring[F] {
-
-      val _ = opsGenieClient
 
       /** Track result via Snowplow tracker */
       def track(result: Either[LoaderError, Unit]): F[Unit] =
@@ -81,12 +71,6 @@ object Monitoring {
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
-
-      def alertUnloadedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
-
-      def alertCorruptedBatches(folders: List[Folder]): F[Unit] = Sync[F].unit
-
-      def alertBadData(folders: List[Folder]): F[Unit]= Sync[F].unit
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {

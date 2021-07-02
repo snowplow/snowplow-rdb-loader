@@ -12,33 +12,28 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.net.URI
-
-import cats.{Functor, Monad}
 import cats.implicits._
-
-import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import cats.{Functor, Monad, Parallel}
 import cats.effect.concurrent.Ref
-
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import fs2.Stream
 import fs2.concurrent.SignallingRef
-
 import com.snowplowanalytics.iglu.client.Client
+import io.sentry.{Sentry, SentryClient, SentryOptions}
 
-import io.sentry.{Sentry, SentryOptions, SentryClient}
-
-import com.ifountain.opsgenie.client.OpsGenieClient
-
+import java.net.URI
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.dsl.alerts.{Alerter, WebhookAlerter}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
+import org.http4s.client.blaze.BlazeClientBuilder
+
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
+class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker, val alerter: Alerter[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -59,7 +54,7 @@ class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monito
 }
 
 object Environment {
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
@@ -81,12 +76,13 @@ object Environment {
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       implicit0(l: Logging[F]) = logging
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
-      opsGenie <- initOpsGenie[F](cli.config.monitoring.alerts)
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), opsGenie)
+      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
+      webhookAlerter = WebhookAlerter.build[F](cli.config.monitoring.webhook, blocker, httpClient)
+      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
       (cache, iglu, aws, state) <- Resource.eval(init)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
+    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker, webhookAlerter)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
@@ -103,6 +99,4 @@ object Environment {
       case None =>
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
-
-  def initOpsGenie[F[_]](config: Option[Config.OpsGenie]): Resource[F, Option[OpsGenieClient]] = ???
 }
