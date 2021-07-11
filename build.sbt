@@ -89,7 +89,8 @@ lazy val loader = project.in(file("modules/loader"))
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
+      Dependencies.scalaCheck,
+      Dependencies.catsTesting,
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)

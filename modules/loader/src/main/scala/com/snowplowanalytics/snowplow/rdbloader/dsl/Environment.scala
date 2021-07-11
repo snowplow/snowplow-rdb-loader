@@ -31,16 +31,25 @@ import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
+import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F], logging: Logging[F], monitoring: Monitoring[F], iglu: Iglu[F], aws: AWS[F], val state: State.Ref[F], val blocker: Blocker) {
+class Environment[F[_]](cache: Cache[F],
+                        logging: Logging[F],
+                        monitoring: Monitoring[F],
+                        iglu: Iglu[F],
+                        aws: AWS[F],
+                        jdbc: JDBC[F],
+                        val state: State.Ref[F],
+                        val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
+  implicit val jdbcF: JDBC[F] = jdbc
 
   def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
     Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
@@ -78,11 +87,22 @@ object Environment {
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       implicit0(l: Logging[F]) = logging
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
+
+
+
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
       monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
       (cache, iglu, aws, state) <- Resource.eval(init)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, state, blocker)
+      implicit0(a: AWS[F]) = aws
+      implicit0(m: Monitoring[F]) = monitoring
+
+      // TODO: if something can drop SSH while the Loader is working
+      //       we'd need to integrate its lifecycle into Pool or maintain
+      //       it as a background check
+      _ <- SSH.resource(cli.config.storage.sshTunnel)
+      jdbc <- JDBC.interpreter[F](cli.config.storage, cli.dryRun, blocker)
+    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, blocker)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
