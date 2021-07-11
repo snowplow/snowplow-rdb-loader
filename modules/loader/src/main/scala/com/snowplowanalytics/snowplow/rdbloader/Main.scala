@@ -15,18 +15,17 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.data.Validated._
 import cats.implicits._
 
-import cats.effect.{Resource, ExitCode, IOApp, IO, Sync}
+import cats.effect.{ExitCode, IOApp, IO, Sync}
 
 import fs2.Stream
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
-import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
 object Main extends IOApp {
 
@@ -58,16 +57,12 @@ object Main extends IOApp {
   def process(cli: CliConfig, env: Environment[IO]): Stream[IO, Unit] = {
     import env._
 
-    Stream.eval_(Manifest.initialize[IO](cli.config.storage, cli.dryRun, env.blocker)) ++
+    Stream.eval_(Manifest.initialize[IO](cli.config.storage)) ++
       DataDiscovery
         .discover[IO](cli.config, env.state)
         .pauseWhen[IO](env.isBusy)
         .evalMap { discovery =>
-          val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
-            SSH.resource[IO](cli.config.storage.sshTunnel) *>
-            JDBC.interpreter[IO](cli.config.storage, cli.dryRun, env.blocker)
-
-          val loading = jdbc.use { implicit conn =>
+          val loading: IO[Unit] = env.makeBusy.use { _ =>
             load[IO](cli, discovery).rethrowT *> env.incrementLoaded
           }
 
