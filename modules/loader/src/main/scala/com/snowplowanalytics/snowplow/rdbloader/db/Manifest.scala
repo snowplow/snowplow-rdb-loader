@@ -2,11 +2,11 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import java.time.Instant
 
-import cats.{Functor, Monad}
+import cats.{Functor, Monad, MonadError}
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Timer, Async, Blocker, ContextShift}
+import cats.effect.{Timer, MonadThrow}
 
 import doobie.Read
 import doobie.implicits.javasql._
@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Monitoring, JDBC, AWS}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, AWS, Monitoring}
 
 object Manifest {
 
@@ -59,21 +59,18 @@ object Manifest {
       Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))
     )
 
-  def initialize[F[_]: Async: ContextShift: Logging: Monitoring: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): F[Unit] = {
-    JDBC.interpreter[F](target, dryRun, blocker).use { implicit jdbc =>
-      Control.withTransaction(setup[F](target.schema)).value.flatMap {
-        case Right(InitStatus.Created) =>
-          Logging[F].info("The manifest table has been created")
-        case Right(InitStatus.Migrated) =>
-          Logging[F].info(s"The new manifest table has been created, legacy 0.1.0 manifest can be found at $LegacyName and can be deleted manually")
-        case Right(InitStatus.NoChanges) =>
-          Monad[F].unit
-        case Left(error) =>
-          Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
-            Async[F].raiseError(new IllegalStateException(error.show))
-      }
+  def initialize[F[_]: MonadThrow: Logging: Monitoring: Timer: AWS: JDBC](target: StorageTarget): F[Unit] =
+    Control.withTransaction(setup[F](target.schema)).value.flatMap {
+      case Right(InitStatus.Created) =>
+        Logging[F].info("The manifest table has been created")
+      case Right(InitStatus.Migrated) =>
+        Logging[F].info(s"The new manifest table has been created, legacy 0.1.0 manifest can be found at $LegacyName and can be deleted manually")
+      case Right(InitStatus.NoChanges) =>
+        Monad[F].unit
+      case Left(error) =>
+        Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
+          MonadError[F, Throwable].raiseError(new IllegalStateException(error.show))
     }
-  }
 
   def setup[F[_]: Monad: JDBC](schema: String): LoaderAction[F, InitStatus] =
     for {
