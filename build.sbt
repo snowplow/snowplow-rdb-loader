@@ -70,6 +70,7 @@ lazy val loader = project.in(file("modules/loader"))
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    Compile / scalacOptions ~= filterConsoleScalacOptions,      // TODO: REMOVE
     libraryDependencies ++= Seq(
       Dependencies.slf4j,
       Dependencies.redshift,
@@ -89,7 +90,8 @@ lazy val loader = project.in(file("modules/loader"))
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
+      Dependencies.scalaCheck,
+      Dependencies.catsTesting,
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)
