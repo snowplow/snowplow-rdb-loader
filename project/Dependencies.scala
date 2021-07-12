@@ -51,6 +51,7 @@ object Dependencies {
 
     // Scala (test only)
     val specs2           = "4.10.5"
+    val catsTesting      = "0.5.3"
     val scalaCheck       = "1.14.3"
   }
 
@@ -111,7 +112,8 @@ object Dependencies {
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"             % V.specs2         % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"       % V.specs2         % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"              % V.scalaCheck     % Test
+  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
+  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
 }
