@@ -44,7 +44,7 @@ class Environment[F[_]](cache: Cache[F],
                         iglu: Iglu[F],
                         aws: AWS[F],
                         jdbc: JDBC[F],
-                        val state: State.Ref[F],
+                        state: State.Ref[F],
                         val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
@@ -53,13 +53,16 @@ class Environment[F[_]](cache: Cache[F],
   implicit val awsF: AWS[F] = aws
   implicit val jdbcF: JDBC[F] = jdbc
 
-  def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
+  def control(implicit F: Monad[F]): Environment.Control[F] =
+    Environment.Control(state, makeBusy, isBusy, incrementLoaded)
+
+  private def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
     Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
 
-  def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
+  private def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
     Stream.eval[F, SignallingRef[F, Boolean]](busy).flatMap[F, Boolean](_.discrete)
 
-  def incrementLoaded: F[Unit] =
+  private def incrementLoaded: F[Unit] =
     state.update(_.incrementLoaded)
 
   private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
@@ -67,6 +70,12 @@ class Environment[F[_]](cache: Cache[F],
 }
 
 object Environment {
+
+  case class Control[F[_]](state: State.Ref[F],
+                           makeBusy: Resource[F, SignallingRef[F, Boolean]],
+                           isBusy: Stream[F, Boolean],
+                           incrementLoaded: F[Unit])
+
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
