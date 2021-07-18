@@ -21,7 +21,6 @@ import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 
 import io.circe._
 import io.circe.generic.semiauto._
-import fs2.{Stream, Pure}
 
 import org.http4s.{Request, EntityEncoder, Method}
 import org.http4s.client.Client
@@ -91,6 +90,11 @@ object Monitoring {
 
     private val derivedEncoder: Encoder[AlertPayload] =
       deriveEncoder[AlertPayload]
+
+    implicit val alertPayloadEncoder: Encoder[AlertPayload] =
+      Encoder[Json].contramap { alert: AlertPayload =>
+        SelfDescribingData(AlertSchema, derivedEncoder.apply(alert)).normalize
+      }
 
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]

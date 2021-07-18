@@ -16,7 +16,7 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
-import scala.concurrent.duration.{Duration, FiniteDuration, MINUTES}
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 import cats.syntax.either._
 import cats.syntax.show._
@@ -172,13 +172,14 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
+  final case class Folders(period: FiniteDuration, staging: S3.Folder)
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
@@ -252,10 +253,20 @@ object Config {
     Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
 
   implicit val minuteDecoder: Decoder[FiniteDuration] =
-    Decoder[Long].emap(d => Either.catchNonFatal(FiniteDuration(d, MINUTES)).leftMap(_.toString))
+    Decoder[String].emap { str =>
+      Either
+        .catchOnly[NumberFormatException](Duration.create(str))
+        .leftMap(_.toString)
+        .flatMap { duration =>
+          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+          else Left(s"Cannot convert Duration $duration to FiniteDuration")
+        }
+    }
 
   implicit val webhookDecoder: Decoder[Webhook] =
     deriveDecoder[Webhook]
+  implicit val foldersDecoder: Decoder[Folders] =
+    deriveDecoder[Folders]
 
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]
