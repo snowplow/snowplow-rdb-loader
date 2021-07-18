@@ -92,7 +92,7 @@
     "snowplow": {
       "appId": "redshift-loader",
       "collector": "snplow.acme.com",
-    }
+    },
 
     # Optional, for tracking runtime exceptions
     "sentry": {
@@ -118,6 +118,15 @@
         # Optional, override the default metric prefix
         # "prefix": "snowplow.rdbloader."
       }
+    },
+
+    # Optional, configuration for periodic unloaded/corrupted folders checks
+    "folders": {
+      # Path where Loader could store auxiliary logs
+      # Loader should be able to write here, Redshift should be able to load from here
+      "staging": "s3://acme-snowplow/loader/logs/",
+      # How often to check
+      "period": "1 hour"
     }
   }
 }
