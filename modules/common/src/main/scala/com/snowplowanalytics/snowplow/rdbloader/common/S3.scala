@@ -114,6 +114,11 @@ object S3 {
     }
   }
 
+  implicit class KeyOps(k: Key) {
+    def getParent: S3.Folder =
+      S3.Key.getParent(k)
+  }
+
   // Tags for refined types
   sealed trait S3FolderTag
   sealed trait S3KeyTag

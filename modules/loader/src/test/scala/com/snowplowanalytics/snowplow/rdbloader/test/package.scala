@@ -13,6 +13,7 @@ package object test {
     def pure[A](a: A): Pure[A] = EitherT.pure(a)
     def modify(f: TestState => TestState): Pure[Unit] = EitherT.right(CState.modify(f))
     def fail[A](a: Throwable): Pure[A] = EitherT.leftT(a)
+    def unit: Pure[Unit] = pure(())
   }
 
   type EitherThrow[A] = Either[Throwable, A]
