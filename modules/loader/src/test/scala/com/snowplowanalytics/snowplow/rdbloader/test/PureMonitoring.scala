@@ -19,12 +19,15 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 object PureMonitoring {
   def interpreter: Monitoring[Pure] = new Monitoring[Pure] {
     def track(result: Either[LoaderError, Unit]): Pure[Unit] =
-      Pure.pure(())
+      Pure.unit
 
     def trackException(e: Throwable): Pure[Unit] =
-      Pure.pure(())
+      Pure.unit
 
     def reportMetrics(metrics: Metrics.KVMetrics): Pure[Unit] =
-      Pure.pure(())
+      Pure.unit
+
+    def alert(payload: Monitoring.AlertPayload): Pure[Unit] =
+      Pure.unit
   }
 }
