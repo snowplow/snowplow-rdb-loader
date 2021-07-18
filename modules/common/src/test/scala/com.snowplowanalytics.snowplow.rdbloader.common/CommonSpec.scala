@@ -92,6 +92,7 @@ object CommonSpec {
       None,
       None,
       None,
+      None,
       None
     ),
     "messages",

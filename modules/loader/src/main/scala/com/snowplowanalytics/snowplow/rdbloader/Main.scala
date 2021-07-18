@@ -22,7 +22,7 @@ import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Environment, Alerting}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
@@ -58,6 +58,9 @@ object Main extends IOApp {
   def process(cli: CliConfig, env: Environment[IO]): Stream[IO, Unit] = {
     import env._
 
+    val alertingStream: Stream[IO, Unit] =
+      Alerting.run[IO](cli.config.monitoring.logs, cli.config.monitoring.webhook, cli.config.storage, cli.config.shredder.output.path)
+
     Stream.eval_(Manifest.initialize[IO](cli.config.storage)) ++
       DataDiscovery
         .discover[IO](cli.config, env.state)
@@ -75,6 +78,7 @@ object Main extends IOApp {
               IO.raiseError(error)
           }
         }
+        .merge(alertingStream)
   }
 
   /**

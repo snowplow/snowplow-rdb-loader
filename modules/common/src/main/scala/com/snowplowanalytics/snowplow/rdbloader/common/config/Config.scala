@@ -172,7 +172,7 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], logs: Option[S3.Folder])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
