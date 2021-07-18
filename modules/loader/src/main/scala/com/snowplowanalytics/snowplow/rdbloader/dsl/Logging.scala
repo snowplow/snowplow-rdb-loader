@@ -34,9 +34,7 @@ trait Logging[F[_]] {
 object Logging {
   def apply[F[_]](implicit ev: Logging[F]): Logging[F] = ev
 
-  def loggingInterpreter[F[_]: Sync](
-    stopWords: List[String]
-  ): Logging[F] =
+  def loggingInterpreter[F[_]: Sync](stopWords: List[String]): Logging[F] =
     new Logging[F] {
       val logger: Logger[F] = Slf4jLogger.getLogger[F]
 

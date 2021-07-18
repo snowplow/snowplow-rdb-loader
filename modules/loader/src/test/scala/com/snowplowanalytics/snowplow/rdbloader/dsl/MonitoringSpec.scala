@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.net.URI
-
 import cats.data.EitherT
 
 import cats.effect.{IO, Clock}
@@ -27,8 +25,7 @@ import io.circe.parser.parse
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.iglu.client.{Resolver, Client, CirceValidator}
-import com.snowplowanalytics.iglu.client.resolver.registries.Registry
+import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
@@ -41,10 +38,6 @@ class MonitoringSpec extends Specification {
   "AlertPayload" should {
     "be valid against its schema" in {
       implicit val C: Clock[IO] = Clock.create[IO]
-      val testRegistryConfig = Registry.Config("Iglu Central PR", 0, List("com.snowplowanalytics.monitoring.batch"))
-      val testRegistryConnection = Registry.HttpConnection(URI.create("http://iglucentral-dev.com.s3-website-us-east-1.amazonaws.com/feature/rdb-loader-alerting"), None)
-      val testRegistry = Registry.Http(testRegistryConfig, testRegistryConnection)
-      val client = Client[IO, Json](Resolver(List(testRegistry), None), CirceValidator)
 
       val payload = AlertPayload(
         BuildInfo.version,
@@ -64,7 +57,7 @@ class MonitoringSpec extends Specification {
           .map { string => parse(string).flatMap(_.as[SelfDescribingData[Json]]).leftMap(_.show) }
 
       val result = EitherT(json)
-        .flatMap(data => client.check(data).leftMap(_.show))
+        .flatMap(data => Client.IgluCentral.check(data).leftMap(_.show))
         .value
         .unsafeRunSync()
 
