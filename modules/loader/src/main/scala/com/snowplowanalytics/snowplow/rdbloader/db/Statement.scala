@@ -67,16 +67,28 @@ object Statement {
   }
 
   // Alerting
-  val AlertingScanResultSeparator = "\n"
   val AlertingTempTableName = "rdb_folder_monitoring"
   case object CreateAlertingTempTable extends Statement {
-    def toFragment: Fragment = Fragment.const0(s"CREATE TEMPORARY TABLE ${AlertingTempTableName} ( run_id VARCHAR(512) )")
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      sql"CREATE TEMPORARY TABLE IF NOT EXISTS $frTableName ( run_id VARCHAR(512), alert_group VARCHAR(1024) )"
+    }
   }
-  case class FoldersMinusManifest(schema: String) extends Statement {
-    def toFragment: Fragment = Fragment.const0(s"SELECT run_id FROM ${AlertingTempTableName} MINUS SELECT base FROM ${schema}.manifest")
+  case class FoldersMinusManifest(schema: String, group: S3.Folder) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      val frManifest = Fragment.const(s"$schema.manifest")
+      val frGroup = Fragment.const(group)
+      sql"SELECT run_id FROM $frTableName WHERE alert_group = '$frGroup' MINUS SELECT base FROM $frManifest"
+    }
   }
   case class FoldersCopy(source: S3.Folder, roleArn: String) extends Statement {
-    def toFragment: Fragment = Fragment.const0(s"COPY ${AlertingTempTableName} FROM '${source}' IAM_ROLE '${roleArn}' DELIMITER '$AlertingScanResultSeparator'")
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+      val frPath = Fragment.const0(source)
+      sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
+    }
   }
 
   // Loading

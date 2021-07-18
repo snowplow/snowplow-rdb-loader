@@ -21,7 +21,6 @@ import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 
 import io.circe._
 import io.circe.generic.semiauto._
-import fs2.{Stream, Pure}
 
 import org.http4s.{Request, EntityEncoder, Method}
 import org.http4s.client.Client
@@ -60,7 +59,7 @@ trait Monitoring[F[_]] {
   def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
     // Note tags are added by Monitoring later
-    val payload = Monitoring.AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Error, message, Map.empty)
+    val payload = Monitoring.AlertPayload(Monitoring.Application, folder, Monitoring.AlertPayload.Severity.Error, message, Map.empty)
     alert(payload)
   }
 }
@@ -72,8 +71,11 @@ object Monitoring {
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  final case class AlertPayload(version: String,
-                                folder: S3.Folder,
+  val Application: String =
+    s"snowplow-rdb-loader-${BuildInfo.version}"
+
+  final case class AlertPayload(application: String,
+                                base: S3.Folder,
                                 severity: AlertPayload.Severity,
                                 message: String,
                                 tags: Map[String, String])
@@ -92,8 +94,16 @@ object Monitoring {
     private val derivedEncoder: Encoder[AlertPayload] =
       deriveEncoder[AlertPayload]
 
+    implicit val alertPayloadEncoder: Encoder[AlertPayload] =
+      Encoder[Json].contramap { alert: AlertPayload =>
+        SelfDescribingData(AlertSchema, derivedEncoder.apply(alert)).normalize
+      }
+
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]
+
+    def info(message: String, folder: S3.Folder): AlertPayload =
+      Monitoring.AlertPayload(Application, folder, Monitoring.AlertPayload.Severity.Info, message, Map.empty)
   }
 
   def monitoringInterpreter[F[_]: Sync: Logging](
