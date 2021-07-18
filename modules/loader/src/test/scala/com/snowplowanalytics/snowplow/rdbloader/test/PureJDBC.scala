@@ -33,6 +33,7 @@ object PureJDBC {
       case Statement.TableExists(_, _) => false
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_, _) => None
+      case Statement.FoldersMinusManifest(_) => List()
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 

@@ -67,7 +67,6 @@ object Statement {
   }
 
   // Alerting
-  val AlertingScanResultSeparator = "\n"
   val AlertingTempTableName = "rdb_folder_monitoring"
   case object CreateAlertingTempTable extends Statement {
     def toFragment: Fragment = Fragment.const0(s"CREATE TEMPORARY TABLE ${AlertingTempTableName} ( run_id VARCHAR(512) )")
@@ -76,7 +75,10 @@ object Statement {
     def toFragment: Fragment = Fragment.const0(s"SELECT run_id FROM ${AlertingTempTableName} MINUS SELECT base FROM ${schema}.manifest")
   }
   case class FoldersCopy(source: S3.Folder, roleArn: String) extends Statement {
-    def toFragment: Fragment = Fragment.const0(s"COPY ${AlertingTempTableName} FROM '${source}' IAM_ROLE '${roleArn}' DELIMITER '$AlertingScanResultSeparator'")
+    def toFragment: Fragment = {
+      val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+      Fragment.const0(s"COPY ${AlertingTempTableName} FROM '${source}' CREDENTIALS '${frRoleArn}'")
+    }
   }
 
   // Loading
