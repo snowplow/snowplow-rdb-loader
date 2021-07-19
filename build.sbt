@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-ThisBuild / version := "1.1.0"
+ThisBuild / version := "1.2.0"
 
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
@@ -48,6 +48,7 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
+      Dependencies.http4sCore,
 
       Dependencies.specs2,
       Dependencies.monocle,
@@ -89,7 +90,8 @@ lazy val loader = project.in(file("modules/loader"))
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
+      Dependencies.scalaCheck,
+      Dependencies.catsTesting,
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)

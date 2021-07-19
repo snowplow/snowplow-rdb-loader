@@ -16,7 +16,7 @@ import cats.implicits._
 
 import cats.effect.{Timer, Sync, ConcurrentEffect}
 
-import fs2.{Stream => FStream}
+import fs2.{ Stream, Pipe }
 
 import blobstore.s3.{S3Store, S3Path}
 
@@ -36,10 +36,11 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 trait AWS[F[_]] {
 
   /**
-   * Recursively list S3 folder
-   * @note not used at the moment, but in future we can monitor S3 for inconsistencies
+   * List S3 folder
    */
-  def listS3(bucket: S3.Folder): F[List[S3.BlobObject]]
+  def listS3(bucket: S3.Folder, recursive: Boolean): Stream[F, S3.BlobObject]
+
+  def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): F[Boolean]
@@ -48,7 +49,7 @@ trait AWS[F[_]] {
   def getEc2Property(name: String): F[Array[Byte]]
 
   /** Read text payloads from SQS string */
-  def readSqs(name: String): FStream[F, Message[F, String]]
+  def readSqs(name: String): Stream[F, Message[F, String]]
 }
 
 object AWS {
@@ -71,10 +72,12 @@ object AWS {
       S3.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
     }
 
-    def listS3(folder: S3.Folder): F[List[S3.BlobObject]] = {
+    def listS3(folder: S3.Folder, recursive: Boolean): Stream[F, S3.BlobObject] = {
       val (bucket, s3Key) = S3.splitS3Path(folder)
-      client.list(S3Path(bucket, s3Key, None)).map(getKey).compile.toList
+      client.list(S3Path(bucket, s3Key, None), recursive).map(getKey)
     }
+
+    def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = s => s.void
 
     /**
      * Check if some `file` exists in S3 `path`
@@ -105,7 +108,7 @@ object AWS {
       }
     }
 
-    def readSqs(name: String): FStream[F, Message[F, String]] =
+    def readSqs(name: String): Stream[F, Message[F, String]] =
       SQS.readQueue(name).map { case (msg, ack) => Message(msg.body(), ack) }
   }
 }

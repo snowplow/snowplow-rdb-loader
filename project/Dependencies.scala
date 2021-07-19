@@ -51,6 +51,7 @@ object Dependencies {
 
     // Scala (test only)
     val specs2           = "4.10.5"
+    val catsTesting      = "0.5.3"
     val scalaCheck       = "1.14.3"
   }
 
@@ -58,6 +59,9 @@ object Dependencies {
     // Redshift native driver
     ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
   )
+
+  // Scala (Common)
+  val http4sCore      = "org.http4s"                 %% "http4s-core"               % V.http4s
 
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
@@ -111,7 +115,8 @@ object Dependencies {
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"             % V.specs2         % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"       % V.specs2         % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"              % V.scalaCheck     % Test
+  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
+  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
 }

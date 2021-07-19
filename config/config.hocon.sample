@@ -92,7 +92,7 @@
     "snowplow": {
       "appId": "redshift-loader",
       "collector": "snplow.acme.com",
-    }
+    },
 
     # Optional, for tracking runtime exceptions
     "sentry": {
@@ -118,6 +118,9 @@
         # Optional, override the default metric prefix
         # "prefix": "snowplow.rdbloader."
       }
-    }
+    },
+
+    # Optional, a path for storing temporary data, necessary for corrupted folders monitoring
+    "logs": "s3://acme-snowplow/loader/logs/"
   }
 }

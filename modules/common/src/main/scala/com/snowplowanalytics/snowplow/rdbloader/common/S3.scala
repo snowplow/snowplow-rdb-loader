@@ -42,6 +42,14 @@ object S3 {
 
     def bucketName: String =
       f.split("://").last.split("/").head
+
+    def keyName: String =
+      f.split("://").last.split("/").tail.mkString("/")
+
+    def up(n: Int): Folder = {
+      val newKey = f.split("://").last.split("/").tail.dropRight(n).mkString("/")
+      Folder.coerce(s"s3://${f.bucketName}/${newKey}")
+    }
   }
 
 
@@ -97,6 +105,12 @@ object S3 {
 
     def join(folder: Folder, name: String): Key =
       coerce(folder + name)
+
+    def bucketName(key: Key): String =
+      key.split("://").last.split("/").head
+
+    def keyName(key: Key): String =
+      key.split("://").last.split("/").tail.mkString("/")
 
     def getParent(key: Key): Folder = {
       val string = key.split("/").dropRight(1).mkString("/")
