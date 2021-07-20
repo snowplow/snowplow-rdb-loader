@@ -41,7 +41,7 @@ object Dependencies {
     val schemaDdl        = "0.14.1"
 
     // Java (Loader)
-    val slf4j            = "1.7.30"
+    val slf4j            = "1.7.32"
     val redshift         = "1.2.54.1082"
     val aws              = "1.11.1019"
     val aws2             = "2.16.23"
