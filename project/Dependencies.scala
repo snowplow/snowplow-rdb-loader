@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "2.1.0"
-    val igluClient       = "1.1.1"
+    val igluClient       = "1.1.1-rc1"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
@@ -38,7 +38,7 @@ object Dependencies {
     // Scala (Shredder)
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.14.0"
+    val schemaDdl        = "0.14.0-M2"
 
     // Java (Loader)
     val slf4j            = "1.7.32"
