@@ -14,19 +14,18 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Monad, Parallel}
+import cats.{Functor, Parallel, Monad}
 import cats.implicits._
+
 import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import io.sentry.{Sentry, SentryClient, SentryOptions}
-
-import com.snowplowanalytics.iglu.client.Client
+import io.sentry.{SentryClient, Sentry, SentryOptions}
 
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
@@ -79,32 +78,25 @@ object Environment {
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
-      igluClient <- igluParsed match {
-        case Right(client) => Sync[F].pure(client)
-        case Left(error) => Sync[F].raiseError(error) // Should never happen because we already validated it
-      }
       amazonS3 <- AWS.getClient[F](cli.config.region)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
-      iglu = Iglu.igluInterpreter[F](igluClient)
       aws = AWS.s3Interpreter[F](amazonS3)
       state <- State.mk[F]
-    } yield (cache, iglu, aws, state)
+    } yield (cache, aws, state)
 
     for {
       blocker <- Blocker[F]
-      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, blocker.blockingContext)
-      logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
-      implicit0(l: Logging[F]) = logging
+      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
+      implicit0(iglu: Iglu[F]) <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
+      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
+      implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
-      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), cli.config.monitoring.webhook, httpClient)
-      (cache, iglu, aws, state) <- Resource.eval(init)
-      implicit0(a: AWS[F]) = aws
-      implicit0(m: Monitoring[F]) = monitoring
+      (cache, awsF, state) <- Resource.eval(init)
+      implicit0(aws: AWS[F]) = awsF
+      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), cli.config.monitoring.webhook, httpClient)
 
       // TODO: if something can drop SSH while the Loader is working
       //       we'd need to integrate its lifecycle into Pool or maintain
