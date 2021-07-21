@@ -17,7 +17,7 @@ import scala.concurrent.duration._
 import cats.{Applicative, Monad, MonadError}
 import cats.implicits._
 
-import cats.effect.{Clock, Timer}
+import cats.effect.{Timer, Clock}
 
 import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
 
@@ -57,7 +57,7 @@ object Load {
           state <- Manifest.get[F](redshiftConfig.storage.schema, discovery.data.discovery.base)
           postLoad <- state match {
             case Some(entry) =>
-              Logging[F].error(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+              Logging[F].info(s"Warning: folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
                 JDBC[F].executeUpdate(Statement.Abort).as(LoaderAction.unit[F])
             case None =>
               Migration.perform[F](redshiftConfig.storage.schema, discovery.data.discovery) *>
@@ -74,7 +74,7 @@ object Load {
         for {
           postLoad <- retryLoad(transaction)
           _ <- postLoad.recoverWith {
-            case error => Logging[F].error(error)("Post-loading actions failed, ignoring").liftA
+            case error => Logging[F].info(s"Post-loading actions failed, ignoring. ${error.show}").liftA
           }
         } yield ()
     }
