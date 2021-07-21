@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "1.4.0"
-    val igluClient       = "1.0.2"
+    val igluClient       = "1.1.0"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
@@ -67,6 +67,7 @@ object Dependencies {
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
   val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
+  val igluClientHttp4s  = "com.snowplowanalytics"      %% "iglu-scala-client-http4s"          % V.igluClient
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"              %% "cats"                              % V.cats
