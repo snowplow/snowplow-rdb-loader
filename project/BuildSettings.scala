@@ -27,8 +27,6 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
-// DynamoDB Local
-import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -157,13 +155,6 @@ object BuildSettings {
       val runPolicy = Tests.SubProcess(forkOptions)
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
-
-  lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(Test / compile).value,
-    Test / test := (Test / test).dependsOn(startDynamoDBLocal).value,
-    Test / testOnly := (Test / testOnly).dependsOn(startDynamoDBLocal).evaluated,
-    Test / testOptions += dynamoDBLocalTestCleanup.value
-  )
 
   lazy val dockerSettings = Seq(
     Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
