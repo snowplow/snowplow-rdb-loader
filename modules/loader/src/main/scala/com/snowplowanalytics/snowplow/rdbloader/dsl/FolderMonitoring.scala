@@ -51,11 +51,15 @@ object FolderMonitoring {
   val ShreddingComplete = "shredding_complete.json"
 
   /** Sink all processed folders in `input` into `output` */
-  def sinkFolders[F[_]: AWS](input: S3.Folder, output: S3.Key): Stream[F, Unit] =
-    AWS[F].listS3(input, recursive = false).map(_.key)
-      .intersperse(AlertingScanResultSeparator)
-      .through(utf8Encode[F])
-      .through(AWS[F].sinkS3(output, true))
+  def sinkFolders[F[_]: Sync: AWS](input: S3.Folder, output: S3.Key): Stream[F, Unit] =
+    Stream.eval(cats.effect.concurrent.Ref.of(List.empty[String])).flatMap { ref =>
+      AWS[F].listS3(input, recursive = false).map(_.key)
+        .evalTap(key => ref.update(keys => key :: keys))
+        .intersperse(AlertingScanResultSeparator)
+        .through(utf8Encode[F])
+        .through(AWS[F].sinkS3(output, true))
+        .onFinalize(ref.get.flatMap(keys => Sync[F].delay(println(keys))))    // TODO: fix
+    }
 
 
   /**
@@ -119,7 +123,7 @@ object FolderMonitoring {
             Stream.raiseError[F](new IllegalArgumentException(s"Shredder output could not be parsed into S3 URI $error"))
         }
       case (None, _: StorageTarget.Redshift) =>
-        Stream.eval[F, Unit](Logging[F].info("Both monitoring.folders has to be provided to enable monitoring for corrupted and unloaded folders"))
+        Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been providing - monitoring is disabled"))
     }
 
   /** Same as [[run]], but without parsing preparation */
@@ -132,16 +136,20 @@ object FolderMonitoring {
           .value
           .flatMap {
             case Left(loaderError) =>
-              Logging[F].error(loaderError)("Folder monitoring has failed") *> Monitoring[F].trackException(loaderError)
+              Logging[F].error(loaderError)("Folder monitoring has failed") *>
+                Monitoring[F].trackException(loaderError)
             case Right(alerts) =>
               alerts.traverse_ { payload =>
                 Monitoring[F].alert(payload) *> Logging[F].info(s"WARNING: ${payload.message} ${payload.folder}")
               }
           }
 
-      sinkAndCheck.recoverWith {
-        case NonFatal(error) =>
-          Logging[F].error(error)("Folder monitoring has failed") *> Monitoring[F].trackException(error)
-      }
+      Logging[F].info("Monitoring shredded folders") *>
+        sinkAndCheck.recoverWith {
+          case NonFatal(error) =>
+            Logging[F].error(error)("Folder monitoring has failed with unhandled exception") *>
+              Monitoring[F].trackException(error) *>
+              Sync[F].raiseError(error)
+        }
     }
 }
