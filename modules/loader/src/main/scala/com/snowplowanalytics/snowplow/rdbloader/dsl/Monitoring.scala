@@ -95,6 +95,9 @@ object Monitoring {
 
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]
+
+    def info(message: String, folder: S3.Folder): AlertPayload =
+      Monitoring.AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Info, message, Map.empty)
   }
 
   def monitoringInterpreter[F[_]: Sync: Logging](
