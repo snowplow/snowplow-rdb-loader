@@ -111,7 +111,6 @@ lazy val shredder = project.in(file("modules/shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
-  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
@@ -146,7 +145,6 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
