@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.ExecutionContext
-
 import cats.data.NonEmptyList
 import cats.implicits._
 
@@ -24,7 +22,6 @@ import io.circe.generic.semiauto._
 
 import org.http4s.{Request, EntityEncoder, Method}
 import org.http4s.client.Client
-import org.http4s.client.blaze.BlazeClientBuilder
 import org.http4s.circe.jsonEncoderOf
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
@@ -156,15 +153,13 @@ object Monitoring {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Config.Monitoring, ec: ExecutionContext): Resource[F, Option[Tracker[F]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
-        for {
-          client <- BlazeClientBuilder[F](ec).resource
-          emitter <- Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F]))
-          tracker = new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader"))
-        } yield Some(tracker)
+        Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F])).map { emitter =>
+          Some(new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader")))
+        }
       case None => Resource.pure[F, Option[Tracker[F]]](none[Tracker[F]])
     }
 
