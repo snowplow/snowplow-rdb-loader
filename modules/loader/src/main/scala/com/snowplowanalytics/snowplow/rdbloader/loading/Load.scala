@@ -30,6 +30,8 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manif
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+
 
 /** Entry-point for loading-related logic */
 object Load {
@@ -58,6 +60,7 @@ object Load {
           postLoad <- state match {
             case Some(entry) =>
               Logging[F].info(s"Warning: folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+                Monitoring[F].alert(AlertPayload.info("Folder is already loaded", entry.meta.base)).liftA *>
                 JDBC[F].executeUpdate(Statement.Abort).as(LoaderAction.unit[F])
             case None =>
               Migration.perform[F](redshiftConfig.storage.schema, discovery.data.discovery) *>
