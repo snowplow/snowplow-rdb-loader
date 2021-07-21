@@ -124,7 +124,8 @@ object BuildSettings {
     },
 
     assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+      ShadeRule.rename("cats.**" -> "shadecats.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "shadeshapeless.@1").inAll
     )
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
