@@ -17,13 +17,12 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "1.4.0"
-    val igluClient       = "1.0.2"
+    val igluClient       = "1.1.1"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
-    val pureconfig       = "0.14.1"
-    val circe            = "0.13.0"
-    val circeOptics      = "0.13.0"
+    val pureconfig       = "0.16.0"
+    val circe            = "0.14.1"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
     val fs2              = "2.5.6"
@@ -67,6 +66,7 @@ object Dependencies {
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
   val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
+  val igluClientHttp4s  = "com.snowplowanalytics"      %% "iglu-scala-client-http4s"          % V.igluClient
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"              %% "cats"                              % V.cats
@@ -94,7 +94,7 @@ object Dependencies {
   val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
   val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
   val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
-  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circeOptics     % Test
+  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circe           % Test
   val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
   val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
