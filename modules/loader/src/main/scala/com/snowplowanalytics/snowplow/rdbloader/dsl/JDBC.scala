@@ -164,6 +164,7 @@ object JDBC {
      * @return number of updated rows in case of success, failure otherwise
      */
     def executeUpdate(sql: Statement): LoaderAction[F, Int] = {
+      println(sql.toFragment.toString())
       val update = sql
         .toFragment
         .update
