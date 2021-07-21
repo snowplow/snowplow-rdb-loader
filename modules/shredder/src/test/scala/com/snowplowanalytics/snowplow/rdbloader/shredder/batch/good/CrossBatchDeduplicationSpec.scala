@@ -16,10 +16,9 @@ import java.time.Instant
 import java.util.UUID
 
 import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
 
 import cats.syntax.either._
-
-import com.snowplowanalytics.snowplow.eventsmanifest.{ EventsManifestConfig, EventsManifest, DynamoDbManifest }
 
 // AWS SDK
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
@@ -30,6 +29,8 @@ import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanR
 
 // Specs2
 import org.specs2.mutable.Specification
+
+import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec._
@@ -140,7 +141,7 @@ object CrossBatchDeduplicationSpec {
   /** Logic required to connect to duplicate storage and mock data */
   object Storage {
 
-    private val client = AmazonDynamoDBClientBuilder
+    private lazy val client = AmazonDynamoDBClientBuilder
       .standard()
       .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", dynamodbDuplicateStorageRegion))
       .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("local", "local")))
@@ -184,6 +185,8 @@ object CrossBatchDeduplicationSpec {
         } catch {
           case _: ResourceNotFoundException =>
             println("The table didn't exist, skipping")
+          case NonFatal(e) =>
+            println(s"Not-fatal exception $e. Ignoring")
         }
 
         EventsManifestConfig.DynamoDb(
@@ -224,12 +227,10 @@ object CrossBatchDeduplicationSpec {
  * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html
  */
 class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
-  override def appName = "cross-batch-deduplication"
-  CrossBatchDeduplicationSpec.Storage.prepareLocalTable()
-  sequential
-  "A job which is provided with a two events with same event_id" should {
+  args(skipAll = true)
 
-    runShredJob(CrossBatchDeduplicationSpec.lines, true)
+  override def appName = "cross-batch-deduplication"
+  "A job which is provided with a two events with same event_id" should {
 
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
