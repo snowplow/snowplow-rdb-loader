@@ -164,11 +164,8 @@ object JDBC {
      * @return number of updated rows in case of success, failure otherwise
      */
     def executeUpdate(sql: Statement): LoaderAction[F, Int] = {
-      val update = sql
-        .toFragment
-        .update
-        .run
-        .transact(conn)
+      val q = conn.rawTrans.apply(sql.toFragment.update.run)
+      val update = q
         .attemptSql
         .flatMap[Either[LoaderError, Int]] {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
@@ -180,10 +177,12 @@ object JDBC {
             result.asRight[LoaderError].pure[F]
         }
 
-      LoaderAction[F, Int](update)
+
+      LoaderAction[F, Int](Logging[F].info(s"DEBUG ${sql.toFragment.update.sql}") *> update)
     }
 
-    def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
+    def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] = {
+      Logging[F].info(s"DEBUG ${sql.sql}")
       get(sql)
         .transact(conn)
         .attemptSql
@@ -194,6 +193,7 @@ object JDBC {
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
+    }
   }
 
   /** Dry run interpreter, not performing any *destructive* statements */
