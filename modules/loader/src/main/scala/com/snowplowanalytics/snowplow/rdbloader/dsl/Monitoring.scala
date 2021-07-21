@@ -19,18 +19,26 @@ import cats.implicits._
 
 import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 
-import io.circe.Json
+import io.circe._
+import io.circe.generic.semiauto._
+import fs2.{Stream, Pure}
 
-import io.sentry.SentryClient
-
+import org.http4s.{Request, EntityEncoder, Method}
+import org.http4s.client.Client
 import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.circe.jsonEncoderOf
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
+import io.sentry.SentryClient
+
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
@@ -44,6 +52,17 @@ trait Monitoring[F[_]] {
 
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
+
+  /** Send an alert to a HTTP endpoint */
+  def alert(payload: Monitoring.AlertPayload): F[Unit]
+
+  /** Helper method specifically for exceptions */
+  def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
+    val message = Option(error.getMessage).getOrElse(error.toString)
+    // Note tags are added by Monitoring later
+    val payload = Monitoring.AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Error, message, Map.empty)
+    alert(payload)
+  }
 }
 
 object Monitoring {
@@ -51,11 +70,38 @@ object Monitoring {
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
+  val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  def monitoringInterpreter[F[_]: Sync](
+  final case class AlertPayload(version: String,
+                                folder: S3.Folder,
+                                severity: AlertPayload.Severity,
+                                message: String,
+                                tags: Map[String, String])
+
+  object AlertPayload {
+    sealed trait Severity
+    object Severity {
+      final case object Info extends Severity
+      final case object Warning extends Severity
+      final case object Error extends Severity
+
+      implicit val severityEncoder: Encoder[Severity] =
+        Encoder[String].contramap[Severity](_.toString.toUpperCase)
+    }
+
+    private val derivedEncoder: Encoder[AlertPayload] =
+      deriveEncoder[AlertPayload]
+
+    implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
+      jsonEncoderOf[F, AlertPayload]
+  }
+
+  def monitoringInterpreter[F[_]: Sync: Logging](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
-    reporters: List[Reporter[F]]
+    reporters: List[Reporter[F]],
+    webhookConfig: Option[Config.Webhook],
+    httpClient: Client[F]
   ): Monitoring[F] =
     new Monitoring[F] {
 
@@ -68,6 +114,22 @@ object Monitoring {
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
+
+      def alert(payload: AlertPayload): F[Unit] =
+        webhookConfig match {
+          case Some(webhook) =>
+            val request: Request[F] =
+              Request[F](Method.POST, webhook.endpoint)
+                .withEntity(payload.copy(tags = payload.tags ++ webhook.tags))
+
+            httpClient
+              .run(request)
+              .use { response =>
+                if (response.status.isSuccess) Sync[F].unit
+                else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+              }
+          case None => Sync[F].unit
+        }
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
@@ -115,7 +177,6 @@ object Monitoring {
     // The only place in interpreters where println used instead of logger as this is async function
     if (message.isEmpty) Sync[F].unit else Sync[F].delay(System.out.println(message))
   }
-
 
   /**
    * Config helper functions

@@ -27,6 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 
+
 object Main extends IOApp {
 
   def run(argv: List[String]): IO[ExitCode] =
@@ -69,7 +70,8 @@ object Main extends IOApp {
           // Catches both connection acquisition and loading errors
           loading.handleErrorWith { error =>
             val msg = s"Could not load a folder (base ${discovery.data.discovery.base}), trying to ack the SQS command"
-            env.loggingF.info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
+            env.monitoringF.alert(error, discovery.data.discovery.base) *>
+              env.loggingF.info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
               discovery.ack *>
               IO.raiseError(error)
           }
