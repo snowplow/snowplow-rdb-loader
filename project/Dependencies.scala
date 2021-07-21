@@ -60,6 +60,10 @@ object Dependencies {
     ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
   )
 
+  // Scala (Common)
+  val http4sCore        = "org.http4s"                 %% "http4s-core"               % V.http4s
+  val http4sCirce       = "org.http4s"                 %% "http4s-circe"              % V.http4s
+
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
   val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
