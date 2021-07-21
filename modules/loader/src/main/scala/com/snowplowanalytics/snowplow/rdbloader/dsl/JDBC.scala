@@ -110,15 +110,20 @@ object JDBC {
             case Left(error) =>
               Sync[F].raiseError[Connection](new IllegalArgumentException(error.message)) // Should never happen
             case Right(propertyUpdaters) =>
-              Sync[F].delay {
-                val props = new Properties()
-                props.setProperty("user", target.username)
-                props.setProperty("password", password)
-                propertyUpdaters.foreach(f => f(props))
-                val conn = new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props)
-                conn.setAutoCommit(false)
-                conn
-              }
+              val props = new Properties()
+              props.setProperty("user", target.username)
+              props.setProperty("password", password)
+              propertyUpdaters.foreach(f => f(props))
+              Sync[F]
+                .delay(new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props))
+                .flatMap { conn => Sync[F].delay { conn.setAutoCommit(false); conn } }
+                .attempt
+                .flatMap {
+                  case Right(conn) =>
+                    Sync[F].pure(conn)
+                  case Left(e) =>
+                    Logging[F].error("Failed to acquire DB connection. Check your cluster is accessible") *> Sync[F].raiseError[Connection](e)
+                }
           }
       }
       conn <- retryingOnAllErrors(retryPolicy[F], log[F])(jdbcConnection)
