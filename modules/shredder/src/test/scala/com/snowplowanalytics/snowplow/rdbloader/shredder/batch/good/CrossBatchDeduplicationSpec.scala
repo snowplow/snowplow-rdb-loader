@@ -224,6 +224,8 @@ object CrossBatchDeduplicationSpec {
  * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html
  */
 class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
+  args(skipAll = true)
+  
   override def appName = "cross-batch-deduplication"
   CrossBatchDeduplicationSpec.Storage.prepareLocalTable()
   sequential
