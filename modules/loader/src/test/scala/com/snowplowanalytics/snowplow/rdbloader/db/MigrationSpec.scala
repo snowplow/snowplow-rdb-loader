@@ -18,7 +18,7 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SelfDescribingSchema, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
-import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.ObjectProperty
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{ObjectProperty, CommonProperties, StringProperty}
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
@@ -32,7 +32,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Co
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureIglu, PureLogging}
 
 class MigrationSpec extends Specification {
@@ -214,6 +213,40 @@ class MigrationSpec extends Specification {
           message startsWith("Warning: Table's schema key 'iglu:com.acme/context/jsonschema/1-0-2' cannot be found in fetched schemas")
       }
     }
+
+    "extend VARCHAR column length" in {
+      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
+
+      val (state, result) = Migration.updateTable[Pure](
+        "db_schema",
+        SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,0)),
+        List("one"),
+        MigrationSpec.schemaListThree
+      ).run
+
+      val expectedDdl =
+        """|Executing migration DDL statement:
+           |BEGIN TRANSACTION;
+           |  ALTER TABLE com_acme_context_2
+           |    ALTER "one" TYPE VARCHAR(64);
+           |  COMMENT ON TABLE db_schema.com_acme_context_2 IS 'iglu:com.acme/context/jsonschema/2-0-1';
+           |END TRANSACTION;""".stripMargin
+      val expectedResult = ().asRight
+
+      def clean(entry: LogEntry): Option[String] = entry match {
+        case LogEntry.Message(content) =>
+          Some(content.split("\n").toList.flatMap { line =>
+            if (line.trim.isBlank) Nil
+            else if (line.startsWith("--")) Nil
+            else List(line)
+          }.mkString("\n"))
+        case LogEntry.Sql(_) => None
+      }
+
+      state.getLogUntrimmed.flatMap(clean) must contain(exactly(expectedDdl))
+      result must beRight(expectedResult)
+    }
   }
 }
 
@@ -239,5 +272,23 @@ object MigrationSpec {
     .getOrElse(throw new RuntimeException("Cannot create SchemaList"))
   val schemaListTwo = SchemaList
     .unsafeBuildWithReorder(ModelGroupSet.groupSchemas(NonEmptyList.of(schema100, schema101)).head)
+    .getOrElse(throw new RuntimeException("Cannot create SchemaList"))
+
+
+  val schema200 = SelfDescribingSchema(
+    SchemaMap(SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,0))),
+    Schema(properties = Some(ObjectProperty.Properties(Map(
+      "one" -> Schema(`type` = Some(CommonProperties.Type.String), maxLength = Some(StringProperty.MaxLength(32))),
+    ))) )
+  )
+  val schema201 = SelfDescribingSchema(
+    SchemaMap(SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,1))),
+    Schema(properties = Some(ObjectProperty.Properties(Map(
+      "one" -> Schema(`type` = Some(CommonProperties.Type.String), maxLength = Some(StringProperty.MaxLength(64))),
+    ))))
+  )
+
+  val schemaListThree = SchemaList
+    .unsafeBuildWithReorder(ModelGroupSet.groupSchemas(NonEmptyList.of(schema200, schema201)).head)
     .getOrElse(throw new RuntimeException("Cannot create SchemaList"))
 }
