@@ -14,24 +14,26 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Monad}
+import cats.{Functor, Monad, Parallel}
 import cats.implicits._
-
-import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import cats.effect.concurrent.Ref
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 
-import com.snowplowanalytics.iglu.client.Client
+import org.http4s.client.blaze.BlazeClientBuilder
 
-import io.sentry.{Sentry, SentryOptions, SentryClient}
+import io.sentry.{Sentry, SentryClient, SentryOptions}
+
+import com.snowplowanalytics.iglu.client.Client
 
 import com.snowplowanalytics.snowplow.rdbloader.State
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+
 
 /** Container for most of interepreters to be used in Main
  * JDBC will be instantiated only when necessary, and as a `Reousrce`
@@ -65,7 +67,7 @@ class Environment[F[_]](cache: Cache[F],
 }
 
 object Environment {
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer](cli: CliConfig): Resource[F, Environment[F]] = {
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       igluParsed <- Client.parseDefault[F](cli.resolverConfig).value
@@ -87,12 +89,10 @@ object Environment {
       logging = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       implicit0(l: Logging[F]) = logging
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
-
-
-
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter))
+      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
+      monitoring = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), cli.config.monitoring.webhook, httpClient)
       (cache, iglu, aws, state) <- Resource.eval(init)
       implicit0(a: AWS[F]) = aws
       implicit0(m: Monitoring[F]) = monitoring
