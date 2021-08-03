@@ -13,30 +13,31 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import cats.data.NonEmptyList
-import cats.syntax.either._
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SelfDescribingSchema, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
-import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{ObjectProperty, CommonProperties, StringProperty}
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{ObjectProperty, StringProperty, CommonProperties}
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
+
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureIglu, PureLogging}
 
 class MigrationSpec extends Specification {
-  "perform" should {
-    "migrate tables with ShreddedType.Tabular" in {
+  "build" should {
+    "build Migration with table creation for ShreddedType.Tabular" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
@@ -78,14 +79,24 @@ class MigrationSpec extends Specification {
       val expected = List(
         LogEntry.Message("Fetch iglu:com.acme/some_context/jsonschema/2-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_context_2")),
+      )
+
+      val expectedMigration = List(
         LogEntry.Message("Creating public.com_acme_some_context_2 table for iglu:com.acme/some_context/jsonschema/2-0-0"),
         LogEntry.Sql(Statement.CreateTable(create)),
         LogEntry.Sql(Statement.CommentOn(CommentOn("public.com_acme_some_context_2","iglu:com.acme/some_context/jsonschema/2-0-0"))),
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.perform[Pure]("public", input).run
-      (state.getLog must beEqualTo(expected)).and(value must beRight)
+      val (state, value) = Migration.build[Pure]("public", input).run
+
+      state.getLog must beEqualTo(expected)
+      value must beRight.like {
+        case Right(Migration(preTransaction, inTransaction)) =>
+          preTransaction.runS.getLog must beEmpty
+          inTransaction.runS.getLog must beEqualTo(expectedMigration)
+        case Left(error) => ko(s"Unexpected error $error")
+      }
     }
 
     "ignore atomic schema" in {
@@ -131,120 +142,85 @@ class MigrationSpec extends Specification {
       val expected = List(
         LogEntry.Message("Fetch iglu:com.acme/some_event/jsonschema/1-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_event_1")),
+      )
+
+      val expectedMigration = List(
         LogEntry.Message("Creating public.com_acme_some_event_1 table for iglu:com.acme/some_event/jsonschema/1-0-0"),
         LogEntry.Sql(Statement.CreateTable(create)),
         LogEntry.Sql(Statement.CommentOn(CommentOn("public.com_acme_some_event_1","iglu:com.acme/some_event/jsonschema/1-0-0"))),
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.perform[Pure]("public", input).run
-      (state.getLog must beEqualTo(expected)).and(value must beRight)
+      val (state, value) = Migration.build[Pure]("public", input).run
+      state.getLog must beEqualTo(expected)
+      value must beRight.like {
+        case Right(Migration(preTransaction, inTransaction)) =>
+          preTransaction.runS.getLog must beEmpty
+          inTransaction.runS.getLog must beEqualTo(expectedMigration)
+        case Left(error) => ko(s"Unexpected error $error")
+      }
     }
   }
 
   "updateTable" should {
-    "not fail if executed with single schema" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-
-      val (state, result) = Migration.updateTable[Pure](
+    "fail if executed with single schema" in {
+      val result = Migration.updateTable(
         "dbSchema",
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,0)),
         List("one", "two"),
         MigrationSpec.schemaListSingle
-      ).run
+      )
 
-      val expectedWarning = "Warning: updateTable executed for a table with known single schema [iglu:com.acme/context/jsonschema/1-0-0]"
-      val expectedResult = ().asRight
-
-      state.getLog.collect { case LogEntry.Message(m) => m } must contain(exactly(startingWith(expectedWarning)))
-      result must beRight(expectedResult)
+      result must beLeft.like {
+        case LoaderError.MigrationError(message) => message must startWith("Illegal State")
+        case _ => ko("Error doesn't mention illegal state")
+      }
     }
 
-    "execute DDL transaction and log it" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-
-      val (state, result) = Migration.updateTable[Pure](
+    "create a Block with in-transaction migration" in {
+      val result = Migration.updateTable(
         "db_schema",
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,0)),
         List("one", "two"),
         MigrationSpec.schemaListTwo
-      ).run
+      )
 
-      val expectedDdl =
-      """|Executing migration DDL statement:
-         |BEGIN TRANSACTION;
-         |  ALTER TABLE db_schema.com_acme_context_1
-         |    ADD COLUMN "three" VARCHAR(4096) ENCODE ZSTD;
-         |  COMMENT ON TABLE db_schema.com_acme_context_1 IS 'iglu:com.acme/context/jsonschema/1-0-1';
-         |END TRANSACTION;""".stripMargin
-      val expectedResult = ().asRight
+      val alterTable = AlterTable(
+        "db_schema.com_acme_context_1",
+        AddColumn("three", RedshiftVarchar(4096), None, Some(CompressionEncoding(ZstdEncoding)), None)
+      )
+      val expectedResult = Migration.Block(List(), List(Migration.Item.AddColumn(alterTable, Nil)), "db_schema", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,1)))
 
-      def clean(entry: LogEntry): Option[String] = entry match {
-        case LogEntry.Message(content) =>
-          Some(content.split("\n").toList.flatMap { line =>
-            if (line.trim.isBlank) Nil
-            else if (line.startsWith("--")) Nil
-            else List(line)
-          }.mkString("\n"))
-        case LogEntry.Sql(_) => None
-      }
-
-      state.getLogUntrimmed.flatMap(clean) must contain(exactly(expectedDdl))
       result must beRight(expectedResult)
     }
 
     "fail if relevant migration is not found" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-
-      val (state, result) = Migration.updateTable[Pure](
+      val result = Migration.updateTable(
         "dbSchema",
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,2)),
         List("one", "two"),
         MigrationSpec.schemaListTwo
-      ).run
+      )
 
-
-      state.getLog must beEmpty
-      result must beRight.like {
-        case Left(LoaderError.DiscoveryError(NonEmptyList(DiscoveryFailure.IgluError(message), Nil))) =>
-          message startsWith("Warning: Table's schema key 'iglu:com.acme/context/jsonschema/1-0-2' cannot be found in fetched schemas")
-      }
+      result must beLeft
     }
 
-    "extend VARCHAR column length" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-
-      val (state, result) = Migration.updateTable[Pure](
+    "create a Block with pre-transaction migration" in {
+      val result = Migration.updateTable(
         "db_schema",
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,0)),
         List("one"),
         MigrationSpec.schemaListThree
-      ).run
+      )
 
-      val expectedDdl =
-        """|Executing migration DDL statement:
-           |BEGIN TRANSACTION;
-           |  ALTER TABLE com_acme_context_2
-           |    ALTER "one" TYPE VARCHAR(64);
-           |  COMMENT ON TABLE db_schema.com_acme_context_2 IS 'iglu:com.acme/context/jsonschema/2-0-1';
-           |END TRANSACTION;""".stripMargin
-      val expectedResult = ().asRight
+      val alterTable = AlterTable(
+        "db_schema.com_acme_context_2",
+        AlterType("one", RedshiftVarchar(64))
+      )
+      val expectedResult = Migration.Block(
+        List(Migration.Item.AlterColumn(alterTable)), List(), "db_schema", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,1)),
+      )
 
-      def clean(entry: LogEntry): Option[String] = entry match {
-        case LogEntry.Message(content) =>
-          Some(content.split("\n").toList.flatMap { line =>
-            if (line.trim.isBlank) Nil
-            else if (line.startsWith("--")) Nil
-            else List(line)
-          }.mkString("\n"))
-        case LogEntry.Sql(_) => None
-      }
-
-      state.getLogUntrimmed.flatMap(clean) must contain(exactly(expectedDdl))
       result must beRight(expectedResult)
     }
   }

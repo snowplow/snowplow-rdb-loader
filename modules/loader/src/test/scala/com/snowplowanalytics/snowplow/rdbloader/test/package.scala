@@ -35,6 +35,8 @@ package object test {
   implicit class PureActionOps[A](st: LoaderAction[Pure, A]) {
     def run =
       st.value.value.run(TestState.init).value
+    def runS =
+      st.value.value.runS(TestState.init).value
   }
 
   implicit class PureOps[A](st: Pure[A]) {

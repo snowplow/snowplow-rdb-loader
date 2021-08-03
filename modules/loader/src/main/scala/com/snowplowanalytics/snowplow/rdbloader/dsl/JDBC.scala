@@ -26,7 +26,7 @@ import cats.effect.{ContextShift, Async, Blocker, Resource, Timer, Concurrent, S
 import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
-import doobie.free.connection.{abort, setAutoCommit}
+import doobie.free.connection.{abort, setAutoCommit => autoCommit, unit}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
@@ -42,6 +42,8 @@ trait JDBC[F[_]] { self =>
   def executeUpdate(sql: Statement): LoaderAction[F, Int]
 
   def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]]
+
+  def setAutoCommit(a: Boolean): F[Unit]
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
@@ -73,7 +75,7 @@ object JDBC {
   /** Maximum amount of connections maintained in parallel */
   val MaxConnections: Int = 2
 
-  val NoCommitStrategy = Strategy.void.copy(before = setAutoCommit(false), oops = abort(concurrent.ExecutionContext.global))
+  val NoCommitStrategy = Strategy.void.copy(before = unit, oops = abort(concurrent.ExecutionContext.global))
 
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
 
@@ -183,6 +185,9 @@ object JDBC {
       LoaderAction[F, Int](update)
     }
 
+    def setAutoCommit(a: Boolean): F[Unit] =
+      conn.rawTrans.apply(autoCommit(a))
+
     def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
       get(sql)
         .transact(conn)
@@ -200,6 +205,9 @@ object JDBC {
   def jdbcDryRunInterpreter[F[_]: Sync: Logging: Monitoring](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     def executeUpdate(sql: Statement): LoaderAction[F, Int] =
       LoaderAction.liftF(Logging[F].info(sql.toFragment.toString)).as(1)
+
+    def setAutoCommit(a: Boolean): F[Unit] =
+      conn.rawTrans.apply(autoCommit(a))
 
     def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
       get(sql)
