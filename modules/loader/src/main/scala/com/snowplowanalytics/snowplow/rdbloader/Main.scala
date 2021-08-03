@@ -67,16 +67,15 @@ object Main extends IOApp {
         .pauseWhen[F](control.isBusy)
         .evalMap { discovery =>
           val loading: F[Unit] = control.makeBusy.use { _ =>
-            load[F](cli, discovery).rethrowT *> control.incrementLoaded
+            load[F](cli.config, discovery).rethrowT *> control.incrementLoaded
           }
 
           // Catches both connection acquisition and loading errors
-          loading.handleErrorWith { error =>
+          loading.onError { case error =>
             val msg = s"Could not load a folder (base ${discovery.data.discovery.base}), trying to ack the SQS command"
             Monitoring[F].alert(error, discovery.data.discovery.base) *>
               Logging[F].info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
-              discovery.ack *>
-              Concurrent[F].raiseError(error)
+              discovery.ack
           }
         }
         .merge(folderMonitoring)

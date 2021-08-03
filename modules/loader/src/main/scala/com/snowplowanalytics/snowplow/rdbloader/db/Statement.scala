@@ -243,11 +243,14 @@ object Statement {
     def toFragment: Fragment =
       Fragment.const0(ddl.toDdl)
   }
-  case class DdlFile(ddl: redshift.generators.DdlFile) extends Statement {
+  case class DdlFile(ddl: redshift.generators.DdlFile) extends Statement {    // TODO: DELETE
     def toFragment: Fragment = {
       val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
       Fragment.const0(str)
     }
+  }
+  case class AlterTable(ddl: redshift.AlterTable) extends Statement {
+    def toFragment: Fragment = Fragment.const0(ddl.render)
   }
 
   private def getCompressionFormat(compression: Config.Shredder.Compression): Fragment =

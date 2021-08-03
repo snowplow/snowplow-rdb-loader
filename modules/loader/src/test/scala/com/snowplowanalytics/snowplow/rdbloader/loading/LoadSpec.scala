@@ -63,7 +63,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -94,7 +94,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -120,7 +120,7 @@ class LoadSpec extends Specification {
         LogEntry.Message("TICK REALTIME")
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -156,7 +156,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
         LogEntry.Sql(Statement.Commit)
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -183,7 +183,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.Abort),
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -211,7 +211,7 @@ class LoadSpec extends Specification {
         LogEntry.Message("Post-loading actions failed, ignoring. Database error: Vacuum failed")
       )
       val configWithPostLoad = SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum))
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.copy(config = configWithPostLoad), message).value.runS
+      val result = Load.load[Pure](configWithPostLoad, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
