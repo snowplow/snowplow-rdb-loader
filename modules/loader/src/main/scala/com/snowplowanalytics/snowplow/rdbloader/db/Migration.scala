@@ -111,7 +111,11 @@ object Migration {
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
   def build[F[_]: Monad: Logging: Iglu: JDBC](dbSchema: String, discovery: DataDiscovery): LoaderAction[F, Migration[F]] =
-    prepare[F](dbSchema, discovery).map(Migration.fromBlocks[F])
+    prepare[F](dbSchema, discovery).map(Migration.fromBlocks[F]).map {
+      case Migration(preTransaction, inTransaction) =>
+        val withCommit = JDBC[F].setAutoCommit(true).liftA *> preTransaction *> JDBC[F].setAutoCommit(false).liftA
+        Migration(withCommit, inTransaction)
+    }
 
   /**
    * Inspect DB state and check what migrations are necessary to load the current `discovery`
