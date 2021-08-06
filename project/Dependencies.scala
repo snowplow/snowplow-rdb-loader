@@ -47,6 +47,7 @@ object Dependencies {
     val aws2             = "2.16.23"
     val jSch             = "0.1.55"
     val sentry           = "1.7.30"
+    val cbor             = "2.11.4"
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -100,10 +101,11 @@ object Dependencies {
   val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
 
   // Java (Loader)
-  val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
-  val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
-  val sentry            = "io.sentry"             % "sentry"                    % V.sentry
+  val slf4j             = "org.slf4j"                        % "slf4j-simple"              % V.slf4j
+  val redshift          = "com.amazon.redshift"              % "redshift-jdbc42-no-awssdk" % V.redshift
+  val jSch              = "com.jcraft"                       % "jsch"                      % V.jSch
+  val sentry            = "io.sentry"                        % "sentry"                    % V.sentry
+  val cbor              = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.cbor
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
