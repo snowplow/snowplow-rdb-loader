@@ -80,6 +80,7 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
+      Dependencies.cbor,
 
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
@@ -118,6 +119,7 @@ lazy val shredder = project.in(file("modules/shredder"))
       Dependencies.dynamodb,
       Dependencies.slf4j,
       Dependencies.sentry,
+      Dependencies.cbor,
       // Scala
       Dependencies.eventsManifest,
       Dependencies.sparkCore,
