@@ -1,3 +1,8 @@
+Version 1.2.1 (2021-09-06)
+--------------------------
+Common: Bump jackson-scala-module to 2.11.4 (#566)
+Common: bump jackson-dataformat-cbor to 2.11.4 (#550)
+
 Version 1.2.0 (2021-09-03)
 --------------------------
 Common: bump sbt-scoverage from 1.6.1 to 1.8.2 (#487)
