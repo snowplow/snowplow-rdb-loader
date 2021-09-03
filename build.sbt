@@ -95,6 +95,10 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck,
       Dependencies.catsTesting,
+    ),
+    excludeDependencies ++= Seq(
+      // Unrequired transitive dependency with potential security vulnerability
+      ExclusionRule("com.fasterxml.jackson.dataformat", "jackson-dataformat-cbor")
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)
@@ -127,6 +131,10 @@ lazy val shredder = project.in(file("modules/shredder"))
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
+    ),
+    excludeDependencies ++= Seq(
+      // Unrequired transitive dependency with potential security vulnerability
+      ExclusionRule("com.fasterxml.jackson.dataformat", "jackson-dataformat-cbor")
     )
   )
   .dependsOn(common)
