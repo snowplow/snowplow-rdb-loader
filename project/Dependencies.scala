@@ -39,6 +39,7 @@ object Dependencies {
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.1"
+    val jacksonModule    = "2.12.3" // Override incompatible version in spark runtime
 
     // Java (Loader)
     val slf4j            = "1.7.32"
@@ -90,14 +91,15 @@ object Dependencies {
   val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
 
   // Scala (Shredder)
-  val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
-  val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
-  val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
-  val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
-  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circe           % Test
-  val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
-  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
-  val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
+  val eventsManifest    = "com.snowplowanalytics"        %% "snowplow-events-manifest" % V.eventsManifest
+  val schemaDdl         = "com.snowplowanalytics"        %% "schema-ddl"               % V.schemaDdl
+  val circeJawn         = "io.circe"                     %% "circe-jawn"               % V.circe
+  val circeLiteral      = "io.circe"                     %% "circe-literal"            % V.circe
+  val circeOptics       = "io.circe"                     %% "circe-optics"             % V.circe           % Test
+  val sparkCore         = "org.apache.spark"             %% "spark-core"               % V.spark           % Provided
+  val sparkSQL          = "org.apache.spark"             %% "spark-sql"                % V.spark           % Provided
+  val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
+  val jacksonModule     = "com.fasterxml.jackson.module" %% "jackson-module-scala"     % V.jacksonModule
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
