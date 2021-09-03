@@ -50,7 +50,7 @@ object Dependencies {
 
     // Scala (test only)
     val specs2           = "4.10.5"
-    val catsTesting      = "0.5.3"
+    val catsTesting      = "0.5.4"
     val scalaCheck       = "1.14.3"
   }
 
