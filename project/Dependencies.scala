@@ -16,52 +16,57 @@ object Dependencies {
 
   object V {
     // Scala (Loader)
-    val decline          = "1.4.0"
-    val igluClient       = "1.0.2"
+    val decline          = "2.1.0"
+    val igluClient       = "1.1.1"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
-    val pureconfig       = "0.14.1"
-    val circe            = "0.13.0"
-    val circeOptics      = "0.13.0"
+    val pureconfig       = "0.16.0"
+    val circe            = "0.14.1"
     val cats             = "2.2.0"
     val manifest         = "0.3.0"
-    val fs2              = "2.5.1"
+    val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
-    val doobie           = "0.12.1"
+    val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
-    val log4cats         = "1.2.0"
-    val http4s           = "0.21.21"
+    val log4cats         = "1.3.0"
+    val http4s           = "0.21.25"
     val scalaTracker     = "1.0.0"
 
     // Scala (Shredder)
-    val spark            = "3.0.1"
+    val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.12.0"
+    val schemaDdl        = "0.14.1"
 
     // Java (Loader)
-    val slf4j            = "1.7.30"
-    val redshift         = "1.2.51.1078"
-    val aws              = "1.11.990"
+    val slf4j            = "1.7.32"
+    val redshift         = "1.2.55.1083"
+    val aws              = "1.11.1019"
     val aws2             = "2.16.23"
     val jSch             = "0.1.55"
-    val sentry           = "3.2.0"
+    val sentry           = "1.7.30"
 
     // Scala (test only)
     val specs2           = "4.10.5"
+    val catsTesting      = "0.5.3"
     val scalaCheck       = "1.14.3"
   }
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
+    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
   )
+
+  // Scala (Common)
+  val http4sCore        = "org.http4s"                 %% "http4s-core"               % V.http4s
+  val http4sCirce       = "org.http4s"                 %% "http4s-circe"              % V.http4s
 
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
   val igluClient        = "com.snowplowanalytics"      %% "iglu-scala-client"                 % V.igluClient
+  val igluClientHttp4s  = "com.snowplowanalytics"      %% "iglu-scala-client-http4s"          % V.igluClient
   val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                  % V.badrows
   val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"              %% "cats"                              % V.cats
@@ -89,7 +94,7 @@ object Dependencies {
   val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
   val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
   val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
-  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circeOptics     % Test
+  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circe           % Test
   val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
   val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
   val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
@@ -111,7 +116,8 @@ object Dependencies {
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"             % V.specs2         % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"       % V.specs2         % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"              % V.scalaCheck     % Test
+  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
+  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
 }

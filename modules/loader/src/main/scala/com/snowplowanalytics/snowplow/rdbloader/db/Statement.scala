@@ -66,6 +66,38 @@ object Statement {
     def toFragment: Fragment = sql"VACUUM SORT ONLY ${Fragment.const0(tableName)}"
   }
 
+  // Alerting
+
+  val AlertingTempTableName = "rdb_folder_monitoring"
+
+  case object CreateAlertingTempTable extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
+    }
+  }
+  case object DropAlertingTempTable extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      sql"DROP TABLE IF EXISTS $frTableName"
+    }
+  }
+  case class FoldersMinusManifest(schema: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      val frManifest = Fragment.const(s"$schema.manifest")
+      sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
+    }
+  }
+  case class FoldersCopy(source: S3.Folder, roleArn: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(AlertingTempTableName)
+      val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+      val frPath = Fragment.const0(source)
+      sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
+    }
+  }
+
   // Loading
   case class EventsCopy(schema: String, transitCopy: Boolean, path: S3.Folder, region: String, maxError: Int, roleArn: String, compression: Compression) extends Statement {
     def toFragment: Fragment = {
@@ -211,11 +243,14 @@ object Statement {
     def toFragment: Fragment =
       Fragment.const0(ddl.toDdl)
   }
-  case class DdlFile(ddl: redshift.generators.DdlFile) extends Statement {
+  case class DdlFile(ddl: redshift.generators.DdlFile) extends Statement {    // TODO: DELETE
     def toFragment: Fragment = {
       val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
       Fragment.const0(str)
     }
+  }
+  case class AlterTable(ddl: redshift.AlterTable) extends Statement {
+    def toFragment: Fragment = Fragment.const0(ddl.render)
   }
 
   private def getCompressionFormat(compression: Config.Shredder.Compression): Fragment =

@@ -27,8 +27,6 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
-// DynamoDB Local
-import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -41,14 +39,14 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.12",
+    scalaVersion := "2.12.14",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.11.3" cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full)
   )
 
   // sbt-assembly settings
@@ -77,13 +75,13 @@ object BuildSettings {
       case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
       case PathList("buildinfo", _) => MergeStrategy.first
       case x if x.contains("javax") => MergeStrategy.first
-      case PathList("scala", "annotation", "nowarn.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
 
     }
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
@@ -118,27 +116,30 @@ object BuildSettings {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("com", "snowplowanalytics", "snowplow", "rdbloader", "generated", "ProjectMetadata.class" | "ProjectMetadata$.class") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     },
 
     assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+      ShadeRule.rename("cats.**" -> "shadecats.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "shadeshapeless.@1").inAll
     )
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
-    coverageMinimum := 50,
+    coverageMinimumStmtTotal := 50,
     coverageFailOnMinimum := false,
-    (test in Test) := {
-      (coverageReport dependsOn (test in Test)).value
+    (Test / test) := {
+      (coverageReport dependsOn (Test / test)).value
     }
   )
 
   /** Add `config` directory as a resource */
   lazy val addExampleConfToTestCp = Seq(
-    unmanagedClasspath in Test += {
+    Test / unmanagedClasspath += {
       baseDirectory.value.getParentFile.getParentFile / "config"
     }
   )
@@ -156,20 +157,13 @@ object BuildSettings {
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 
-  lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(compile in Test).value,
-    test in Test := (test in Test).dependsOn(startDynamoDBLocal).value,
-    testOnly in Test := (testOnly in Test).dependsOn(startDynamoDBLocal).evaluated,
-    testOptions in Test += dynamoDBLocalTestCleanup.value
-  )
-
   lazy val dockerSettings = Seq(
-    maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "snowplow/base-debian:0.2.2",
-    daemonUser in Docker := "snowplow",
+    dockerBaseImage := "adoptopenjdk:11-jre-hotspot-focal",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
-    daemonUserUid in Docker := None,
-    defaultLinuxInstallLocation in Docker := "/home/snowplow" // must be home directory of daemonUser
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    Docker / daemonUser := "daemon",
+    Docker / daemonUserUid := None,
+    Docker / defaultLinuxInstallLocation := "/opt/snowplow"
   )
 }
