@@ -27,7 +27,7 @@ object Dependencies {
     val manifest         = "0.3.0"
     val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
-    val fs2Blobstore     = "0.7.3"
+    val fs2Blobstore     = "0.9.4"
     val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
