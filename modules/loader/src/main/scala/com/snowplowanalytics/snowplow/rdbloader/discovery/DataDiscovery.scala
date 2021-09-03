@@ -15,10 +15,11 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import cats._
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Compression
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
-import com.snowplowanalytics.snowplow.rdbloader.common.{Config, Message, LoaderMessage, S3, Common}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
 /**
   * Result of data discovery in shredded.good folder
@@ -31,10 +32,6 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
   /** ETL id */
   def runId: String = base.split("/").last
-
-  /** `atomic-events` directory full path */
-  def atomicEvents: S3.Folder =
-    S3.Folder.append(base, Common.AtomicPath)
 
   def show: String = {
     val shreddedTypesList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
@@ -54,28 +51,29 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
  */
 object DataDiscovery {
 
+  case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
+
   /**
    * App entrypoint, a generic discovery stream reading from message queue (like SQS)
    * The plain text queue will be parsed into known message types (`LoaderMessage`) and
    * handled appropriately - transformed either into action or into [[DataDiscovery]]
-   * In case of any error (parsing or transformation) the error will be raised, the message dropped,
-   * but stream will keep awaiting for a next message
+   * In case of any error (parsing or transformation) the error will be raised
+   * Empty folder will be reported, but stream will keep running
    *
    * The stream is responsible for state changing as well
    *
    * @param config generic storage target configuration
    * @param state mutable state to keep logging information
    */
-  def discover[F[_]: Monad: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
     AWS[F]
       .readSqs(config.messageQueue)
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.data) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle(config.region, config.jsonpaths, Message(parsed, message.ack))
+            handle(config.region, config.jsonpaths, parsed, message.ack)
           case Left(error) =>
-            Logging[F].error(s"Error during message queue reading. $error") *>
-              message.ack.as(none[Message[F, DataDiscovery]])
+            ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }
 
         state.updateAndGet(_.incrementMessages).flatMap { state =>
@@ -91,18 +89,22 @@ object DataDiscovery {
    * @param message payload coming from shredder
    * @tparam F effect type to perform AWS interactions
    */
-  def handle[F[_]: Monad: AWS: Cache: Logging](region: String,
-                                               assets: Option[S3.Folder],
-                                               message: Message[F, LoaderMessage.ShreddingComplete]) =
-    fromLoaderMessage[F](region, assets, message.data)
-      .map(discovery => Message(discovery, message.ack))
+  def handle[F[_]: MonadThrow: AWS: Cache: Logging](region: String,
+                                                    assets: Option[S3.Folder],
+                                                    message: LoaderMessage.ShreddingComplete,
+                                                    ack: F[Unit]) =
+    fromLoaderMessage[F](region, assets, message)
       .value
-      .flatMap[Option[Message[F, DataDiscovery]]] {
-        case Right(message) =>
-          Logging[F].info(s"New data discovery at ${message.data.show}").as(Some(message))
+      .flatMap[Option[Message[F, WithOrigin]]] {
+        case Right(_) if isEmpty(message) =>
+          Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt") *>
+            ack.as(none[Message[F, WithOrigin]])
+        case Right(discovery) =>
+          Logging[F]
+            .info(s"New data discovery at ${discovery.show}")
+            .as(Some(Message(WithOrigin(discovery, message), ack)))
         case Left(error) =>
-          Logging[F].error(error.show) *>
-            message.ack.as(none[Message[F, DataDiscovery]])
+          ackAndRaise[F](error, ack)
       }
 
   /**
@@ -126,4 +128,11 @@ object DataDiscovery {
       DataDiscovery(message.base, types.distinct, message.compression)
     }
   }
+
+  def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
+    Logging[F].error(error)("A problem occured in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
+
+  /** Check if discovery contains no data */
+  def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty && message.count.contains(0)
 }

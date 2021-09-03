@@ -17,11 +17,11 @@ import cats.implicits._
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.common.{ StorageTarget, Config }
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
 import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
-
 
 /**
  * Module containing specific for Redshift target loading
@@ -46,31 +46,27 @@ object RedshiftLoader {
       _ <- Logging[F].info(s"Loading ${discovery.base}").liftA
       statements = getStatements(config, discovery)
       _ <- loadFolder[F](statements)
-      _ <- Logging[F].info(s"Loading finished for ${discovery.base}").liftA
+      _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)").liftA
     } yield vacuum[F](statements) *> analyze[F](statements)
 
   /** Perform data-loading for a single run folder */
   def loadFolder[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements): LoaderAction[F, Unit] =
     loadAtomic[F](statements.dbSchema, statements.atomicCopy) *>
       statements.shredded.traverse_ { statement =>
-        Logging[F].info(statement.split(" ").take(4).mkString(" ").trim).liftA *>
+        Logging[F].info(statement.title).liftA *>
           JDBC[F].executeUpdate(statement).void
       }
 
   /** Get COPY action, either straight or transit (along with load manifest check) atomic.events copy */
-  def loadAtomic[F[_]: Monad: Logging: JDBC](dbSchema: String, copy: AtomicCopy): LoaderAction[F, Unit] =
-    copy match {
-      case AtomicCopy.Straight(copyStatement) =>
-        Logging[F].info(s"COPY $dbSchema.events").liftA *>
-          JDBC[F].executeUpdate(copyStatement).void
-      case AtomicCopy.Transit(copyStatement) =>
-        val create = RedshiftStatements.createTransitTable(dbSchema)
-        val destroy = RedshiftStatements.destroyTransitTable(dbSchema)
-        Logging[F].info(s"COPY $dbSchema.events (transit)").liftA *>
-        JDBC[F].executeUpdate(create) *>
-          JDBC[F].executeUpdate(copyStatement) *>
-          JDBC[F].executeUpdate(destroy).void
-    }
+  def loadAtomic[F[_]: Monad: Logging: JDBC](dbSchema: String, copy: Statement.EventsCopy): LoaderAction[F, Unit] =
+    if (copy.transitCopy)
+      Logging[F].info(s"COPY $dbSchema.events (transit)").liftA *>
+        JDBC[F].executeUpdate(Statement.CreateTransient(dbSchema)) *>
+        JDBC[F].executeUpdate(copy) *>
+        JDBC[F].executeUpdate(Statement.DropTransient(dbSchema)).void
+    else
+      Logging[F].info(s"COPY $dbSchema.events").liftA *>
+        JDBC[F].executeUpdate(copy).void
 
   /**
    * Return action executing VACUUM statements if there's any vacuum statements,
@@ -92,14 +88,12 @@ object RedshiftLoader {
    */
   def vacuum[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements): LoaderAction[F, Unit] = {
     statements.vacuum match {
-      case Some(vacuum) =>
-        val actions = for {
-          statement <- vacuum
-        } yield for {
-          _ <- Logging[F].info(statement).liftA
-          _ <- JDBC[F].executeUpdate(statement)
-        } yield ()
-        actions.sequence.void
+      case Some(vacuums) =>
+        vacuums.traverse_ {
+          case v @ Statement.Vacuum(tableName) =>
+            Logging[F].info(s"VACUUM $tableName").liftA *>
+              JDBC[F].executeUpdate(v)
+        }
       case None => Logging[F].info("VACUUM queries skipped").liftA
     }
   }

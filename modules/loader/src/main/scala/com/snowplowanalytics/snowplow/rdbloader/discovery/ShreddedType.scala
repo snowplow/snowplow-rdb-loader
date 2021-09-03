@@ -14,16 +14,25 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.util.matching.Regex
 
-import cats.{Apply, Monad}
+import cats.Monad
 import cats.implicits._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Semver, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
+/**
+ * Generally same as `LoaderMessage.ShreddedType`, but for JSON types
+ * holds an information about discovered JSONPath file and does NOT
+ * contain full SchemaVer
+ *
+ * Can be converted from `LoaderMessage.ShreddedType`
+ * using `DataDiscover.fromLoaderMessage`
+ */
 sealed trait ShreddedType {
   /** raw metadata extracted from S3 Key */
   def info: ShreddedType.Info
@@ -40,6 +49,10 @@ sealed trait ShreddedType {
       false
   }
 
+  /** Build valid table name for the shredded type */
+  def getTableName: String =
+    s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
+
 }
 
 /**
@@ -55,7 +68,7 @@ object ShreddedType {
     */
   final case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -68,7 +81,7 @@ object ShreddedType {
     */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
@@ -174,26 +187,17 @@ object ShreddedType {
   }
 
   /**
-   * Build valid table name for some shredded type
-   *
-   * @param shreddedType shredded type for self-describing event or context
-   * @return valid table name
-   */
-  def getTableName(shreddedType: ShreddedType): String =
-    s"${toSnakeCase(shreddedType.info.vendor)}_${toSnakeCase(shreddedType.info.name)}_${shreddedType.info.model}"
-
-  /**
    * Check that JSONPaths file exists in Snowplow hosted assets bucket
    *
    * @param s3Region hosted assets region
    * @param key vendor dir and filename, e.g. `com.acme/event_1`
    * @return full S3 key if file exists, discovery error otherwise
    */
-  def getSnowplowJsonPath[F[_]: Apply: AWS: Cache](s3Region: String,
+  def getSnowplowJsonPath[F[_]: Monad: AWS: Cache](s3Region: String,
                                                    key: String): DiscoveryAction[F, S3.Key] = {
     val fullDir = S3.Folder.append(getHostedAssetsBucket(s3Region), JsonpathsPath)
     val s3Key = S3.Key.coerce(fullDir + key)
-    AWS[F].keyExists(s3Key).ifA(
+    AWS[F].keyExists(s3Key).ifM(
       Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight[DiscoveryFailure]),
       Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft[S3.Key])
     )

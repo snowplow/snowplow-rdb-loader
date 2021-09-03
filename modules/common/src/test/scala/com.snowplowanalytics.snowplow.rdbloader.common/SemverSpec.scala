@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.implicits._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+
 // specs2
 import org.specs2.Specification
 

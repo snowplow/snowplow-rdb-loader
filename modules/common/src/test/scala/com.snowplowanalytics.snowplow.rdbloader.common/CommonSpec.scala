@@ -15,7 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import java.net.URI
 import java.util.UUID
 
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 
 import org.specs2.mutable.Specification
 
@@ -52,7 +54,7 @@ object CommonSpec {
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validTarget = StorageTarget.Redshift(
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
+    "redshift.amazonaws.com",
     "snowplow",
     5439,
     disableSsl,
@@ -61,7 +63,6 @@ object CommonSpec {
     "admin",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     1,
-    20000,
     None)
 
   val formats = Config.Formats(
@@ -74,11 +75,12 @@ object CommonSpec {
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
 
-  val shredder = Config.Shredder(
+  val shredder = Config.Shredder.Batch(
     URI.create("s3://bucket/input/"),
-    URI.create("s3://bucket/good/"),
-    URI.create("s3://bucket/bad/"),
-    Config.Compression.Gzip,
+    Config.Shredder.Output(
+      URI.create("s3://bucket/good/"),
+      Config.Shredder.Compression.Gzip
+    )
   )
 
   val validConfig: Config[StorageTarget.Redshift] = Config(
@@ -87,8 +89,11 @@ object CommonSpec {
     "us-east-1",
     None,
     Config.Monitoring(
-      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
+      None,
+      None,
+      None,
+      None,
+      None
     ),
     "messages",
     shredder,

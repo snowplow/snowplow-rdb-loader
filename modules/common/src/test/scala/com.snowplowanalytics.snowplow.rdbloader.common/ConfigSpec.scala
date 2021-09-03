@@ -16,87 +16,22 @@ import java.net.URI
 import java.util.UUID
 import java.nio.file.{Paths, Files}
 
+import scala.concurrent.duration._
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{StorageTarget, Config, Step}
 
 import org.specs2.mutable.Specification
 
 class ConfigSpec extends Specification {
+  import ConfigSpec._
+
   "fromString" should {
-    "be able to parse minimal configuration HOCON" in {
-      val input = """
-        {
-          name         = "Acme Redshift"
-          id           = "123e4567-e89b-12d3-a456-426655440000"
-          region       = "us-east-1"
-          jsonpaths    = null
-          messageQueue = "messages"
-
-          shredder = {
-            "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
-
-          storage = {
-            "type":     "redshift",
-
-            "host":     "redshift.amazon.com",
-            "database": "snowplow",
-            "port":     5439,
-            "roleArn":  "arn:aws:iam::123456789012:role/RedshiftLoadRole",
-            "schema":   "atomic",
-            "username": "storage-loader",
-            "password": "secret",
-            "jdbc": { "ssl": true },
-            "maxError":  10,
-            "compRows":  100000,
-            "sshTunnel": null
-          },
-
-          monitoring = {
-            "snowplow": {
-              "collector": "snplow.acme.com",
-              "appId": "redshift-loader"
-            },
-            "sentry": {
-              "dsn": "http://sentry.acme.com"
-            }
-          },
-
-          formats = {
-            "default": "TSV",
-            "json": [
-              "iglu:com.acme/json-event/jsonschema/1-0-0"
-            ],
-            "tsv": [
-              "iglu:com.acme/tsv-event/jsonschema/1-*-*",
-              "iglu:com.acme/tsv-event/jsonschema/2-*-*"
-            ],
-            "skip": [
-              "iglu:com.acme/skip-event/jsonschema/1-*-*"
-            ],
-          },
-          "steps": ["analyze"]
-        }"""
-
-      val result = Config.fromString(input)
-      result must beRight(ConfigSpec.configExample)
-    }
-
     "be able to parse config.hocon.sample" in {
-      val configPath = Paths.get(getClass.getResource("/config.hocon.sample").toURI)
-      val configContent = Files.readString(configPath)
-      val expected: Config[StorageTarget] =
-        (identity[Config[StorageTarget]] _)
-          .compose(Config.formats.set(Config.Formats.Default))
-          .compose(Config.monitoring.set(Config.Monitoring(None, None)))
-          .apply(ConfigSpec.configExample)
-
-      val result = Config.fromString(configContent)
-      result must beRight(expected)
+      val result = Config.fromString(configExamplePlain)
+      result must beRight(configExampleParsed)
     }
 
     "fail if there are overlapping schema criterions" in {
@@ -107,13 +42,16 @@ class ConfigSpec extends Specification {
           region       = "us-east-1"
           messageQueue = "messages"
           shredder = {
+            "type": "batch",
             "input": "s3://bucket/input/",
-            "output": "s3://bucket/good/",
-            "outputBad": "s3://bucket/bad/",
-            "compression": "GZIP"
-          }
+            "output" = {
+              "path": "s3://bucket/good/",
+              "bad": "s3://bucket/bad/",
+              "compression": "GZIP"
+            }
+          },
 
-          storage = {
+          storage : {
             "type":     "redshift",
             "host":     "redshift.amazon.com",
             "database": "snowplow",
@@ -126,8 +64,8 @@ class ConfigSpec extends Specification {
             "maxError":  10,
             "compRows":  100000
           },
-          monitoring = { },
-          formats = {
+          monitoring : { },
+          formats : {
             "default": "TSV",
             "json": [ "iglu:com.acme/overlap/jsonschema/1-0-0" ],
             "tsv": [ ],
@@ -205,42 +143,47 @@ class ConfigSpec extends Specification {
 }
 
 object ConfigSpec {
-  val configExample: Config[StorageTarget] = Config(
+  val configExamplePath = Paths.get(getClass.getResource("/config.hocon.sample").toURI)
+  val configExamplePlain = Files.readString(configExamplePath)
+  val configExampleParsed: Config[StorageTarget.Redshift] = Config(
     "Acme Redshift",
     UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
     "us-east-1",
     None,
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
+      Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
+      Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
+      None,
+      Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/")))
     ),
     "messages",
-    Shredder(
+    Shredder.Batch(
       URI.create("s3://bucket/input/"),
-      URI.create("s3://bucket/good/"),
-      URI.create("s3://bucket/bad/"),
-      Config.Compression.Gzip,
+      Shredder.Output(
+        URI.create("s3://bucket/shredded/"),
+        Config.Shredder.Compression.Gzip
+      )
     ),
     StorageTarget.Redshift(
-      "redshift.amazon.com",
+      "redshift.amazonaws.com",
       "snowplow",
       5439,
       StorageTarget.RedshiftJdbc(None, None, None, None, None, None, None, Some(true),None,None,None,None),
-      "arn:aws:iam::123456789012:role/RedshiftLoadRole",
+      "arn:aws:iam::123456789876:role/RedshiftLoadRole",
       "atomic",
-      "storage-loader",
-      StorageTarget.PasswordConfig.PlainText("secret"),
+      "admin",
+      StorageTarget.PasswordConfig.PlainText("Supersecret1"),
       10,
-      100000,
       None
     ),
     Config.Formats(
       LoaderMessage.Format.TSV,
+      Nil,
       List(
-        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
-        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
+        SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0)),
+        SchemaCriterion("com.acme","json-event","jsonschema",Some(2),None,None)
       ),
-      List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
       List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
     ),
     Set(Step.Analyze)

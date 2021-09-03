@@ -26,13 +26,18 @@ It is designed to be run downstream of the [Enrich][enrich] job.
 
 RDB Loader (previously known as StorageLoader) is a Scala application that runs in background, discovering [data][shred], produced by RDB Shredder from SQS queue and loading it into one of possible [storage targets][targets].
 
+### RDB Stream Shredder (experimental)
+
+An application similar to RDB Shredder, but working without Apache Spark or EMR
+and reading directly from Kinesis Stream. Only Shredder or Stream Shredder
+should be used.
 
 ## Find out more
 
-| Technical Docs              | Setup Guide           | Roadmap & Contributing   |         
-|-----------------------------|-----------------------|--------------------------|
-| ![i1][techdocs-image]      | ![i2][setup-image]   | ![i3][roadmap-image]       |
-| [Technical Docs][techdocs] | [Setup Guide][setup] | _coming soon_              |
+| Technical Docs             | Setup Guide          | Roadmap & Contributing |
+|----------------------------|----------------------|------------------------|
+| ![i1][techdocs-image]      | ![i2][setup-image]   | ![i3][roadmap-image]   |
+| [Technical Docs][techdocs] | [Setup Guide][setup] | [Roadmap][roadmap]     |
 
 ## Copyright and License
 
@@ -53,6 +58,7 @@ limitations under the License.
 [roadmap-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/roadmap.png
 [setup]: https://docs.snowplowanalytics.com/docs/getting-started-on-snowplow-open-source/setup-snowplow-on-aws/setup-destinations/setup-redshift/
 [techdocs]: https://docs.snowplowanalytics.com/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/
+[roadmap]: https://github.com/snowplow/snowplow/projects/7
 
 [spark]: http://spark.apache.org/
 [enrich]: https://github.com/snowplow/snowplow/enrich
@@ -63,7 +69,7 @@ limitations under the License.
 [build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
 [build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
 
-[release-image]: https://img.shields.io/badge/release-r35-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-1.2.0-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat

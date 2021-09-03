@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import java.util.UUID
-
 import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
 
 import io.circe._
@@ -26,8 +24,6 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
 
-import com.snowplowanalytics.snowplow.scalatracker.UUIDProvider
-
 package object common {
 
   implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
@@ -36,10 +32,6 @@ package object common {
 
     override def monotonic(unit: TimeUnit): Id[Long] =
       unit.convert(System.nanoTime(), NANOSECONDS)
-  }
-
-  implicit val snowplowUuidIdInstance: UUIDProvider[Id] = new UUIDProvider[Id] {
-    def generateUUID: Id[UUID] = UUID.randomUUID()
   }
 
   /**

@@ -27,8 +27,6 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
-// DynamoDB Local
-import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -41,14 +39,14 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.12",
+    scalaVersion := "2.12.14",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.spire-math" % "kind-projector" % "0.9.10" cross CrossVersion.binary)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full)
   )
 
   // sbt-assembly settings
@@ -66,11 +64,24 @@ object BuildSettings {
 
     assembly / assemblyMergeStrategy := {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
-      case PathList("META-INF", _ @ _*) => MergeStrategy.discard
+      case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
+      case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+      case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
+      // case PathList("META-INF", _ @ _*) => MergeStrategy.discard    // Replaced with above for Stream Shredder
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
-      case _ => MergeStrategy.first
+      case PathList("codegen-resources", _ @ _*) => MergeStrategy.first // Part of AWS SDK v2
+      case "mime.types" => MergeStrategy.first // Part of AWS SDK v2
+      case "AUTHORS" => MergeStrategy.discard
+      case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
+      case PathList("buildinfo", _) => MergeStrategy.first
+      case x if x.contains("javax") => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case x =>
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
+        oldStrategy(x)
+
     }
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val shredderAssemblySettings = Seq(
     jarName,
@@ -105,46 +116,32 @@ object BuildSettings {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("com", "snowplowanalytics", "snowplow", "rdbloader", "generated", "ProjectMetadata.class" | "ProjectMetadata$.class") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
-    }
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(test in assembly := {}) else Seq())
+    },
+
+    assembly / assemblyShadeRules := Seq(
+      ShadeRule.rename("cats.**" -> "shadecats.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "shadeshapeless.@1").inAll
+    )
+  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
-    coverageMinimum := 50,
+    coverageMinimumStmtTotal := 50,
     coverageFailOnMinimum := false,
-    (test in Test) := {
-      (coverageReport dependsOn (test in Test)).value
+    (Test / test) := {
+      (coverageReport dependsOn (Test / test)).value
     }
   )
 
   /** Add `config` directory as a resource */
   lazy val addExampleConfToTestCp = Seq(
-    unmanagedClasspath in Test += {
+    Test / unmanagedClasspath += {
       baseDirectory.value.getParentFile.getParentFile / "config"
     }
-  )
-
-  /**
-   * Makes package (build) metadata available withing source code
-   */
-  def scalifySettings(shredderName: SettingKey[String], shredderVersion: SettingKey[String]) = Seq(
-    Compile / sourceGenerators += Def.task {
-      val file = (Compile / sourceManaged).value / "settings.scala"
-      IO.write(file, """package com.snowplowanalytics.snowplow.rdbloader.generated
-                       |object ProjectMetadata {
-                       |  val version = "%s"
-                       |  val name = "%s"
-                       |  val organization = "%s"
-                       |  val scalaVersion = "%s"
-                       |
-                       |  val shredderName = "%s"
-                       |}
-                       |""".stripMargin.format(
-        version.value,name.value, organization.value, scalaVersion.value, shredderName.value, shredderVersion.value))
-      Seq(file)
-    }.taskValue
   )
 
   lazy val oneJvmPerTestSetting =
@@ -160,20 +157,13 @@ object BuildSettings {
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 
-  lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(compile in Test).value,
-    test in Test := (test in Test).dependsOn(startDynamoDBLocal).value,
-    testOnly in Test := (testOnly in Test).dependsOn(startDynamoDBLocal).evaluated,
-    testOptions in Test += dynamoDBLocalTestCleanup.value
-  )
-
   lazy val dockerSettings = Seq(
-    maintainer in Docker := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "snowplow-docker-registry.bintray.io/snowplow/base-debian:0.2.1",
-    daemonUser in Docker := "snowplow",
+    dockerBaseImage := "adoptopenjdk:11-jre-hotspot-focal",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
-    daemonUserUid in Docker := None,
-    defaultLinuxInstallLocation in Docker := "/home/snowplow" // must be home directory of daemonUser
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    Docker / daemonUser := "daemon",
+    Docker / daemonUserUid := None,
+    Docker / defaultLinuxInstallLocation := "/opt/snowplow"
   )
 }

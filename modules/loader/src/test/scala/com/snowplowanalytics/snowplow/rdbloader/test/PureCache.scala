@@ -7,12 +7,17 @@ object PureCache {
   def interpreter: Cache[Pure] = new Cache[Pure] {
     def putCache(key: String, value: Option[S3.Key]): Pure[Unit] =
       Pure { testState: TestState =>
-        (testState.cachePut(key, value), ())
+        (testState.cachePut(key, value).log(s"PUT $key: $value"), ())
       }
 
     def getCache(key: String): Pure[Option[Option[S3.Key]]] =
       Pure { testState: TestState =>
-        (testState.log(s"GET $key"), testState.cache.get(key))
+        val result = testState.cache.get(key)
+        result match {
+          case Some(_) => (testState.log(s"GET $key"), result)
+          case None => (testState.log(s"GET $key (miss)"), result)
+        }
+
       }
   }
 }

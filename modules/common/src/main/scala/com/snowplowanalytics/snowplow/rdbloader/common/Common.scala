@@ -16,7 +16,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Config.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format}
 
 /**
@@ -24,13 +24,18 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedTy
  */
 object Common {
 
+  val GoodPrefix = "output=good"
+
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
   val AtomicType = ShreddedType(AtomicSchema, Format.TSV)
   val AtomicPath: String = entityPath(AtomicType)
 
   def entityPath(entity: ShreddedType) =
-    s"vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
+    s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
+
+  def entityPathFull(base: S3.Folder, entity: ShreddedType): S3.Folder =
+    S3.Folder.append(base, entityPath(entity))
 
   /**
    * Remove all occurrences of access key id and secret access key from message

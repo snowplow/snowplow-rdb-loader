@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.syntax.either._
 
-import io.circe.{Decoder, Encoder, Json}
+import io.circe.{Encoder, Json, Decoder}
 
 import shapeless.tag
 import shapeless.tag._
@@ -112,6 +112,11 @@ object S3 {
       case _ if s.endsWith("/")       => "S3 key cannot have trailing slash".asLeft
       case _                          => coerce(s).asRight
     }
+  }
+
+  implicit class KeyOps(k: Key) {
+    def getParent: S3.Folder =
+      S3.Key.getParent(k)
   }
 
   // Tags for refined types

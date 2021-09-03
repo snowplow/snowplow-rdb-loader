@@ -12,46 +12,41 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.util.control.NonFatal
-
+import cats.Applicative
 import cats.data.Validated._
 import cats.implicits._
 
-import cats.effect.{IOApp, IO, ExitCode, Resource}
+import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer}
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{JDBC, Environment, Logging}
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
-import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
-import io.sentry.Sentry
 
 object Main extends IOApp {
 
   def run(argv: List[String]): IO[ExitCode] =
     CliConfig.parse(argv) match {
       case Valid(cli) =>
-        Environment.initialize[IO](cli).flatMap { env =>
-          env.loggingF.info(s"RDB Loader [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
-            process(cli, env)
+        Environment.initialize[IO](cli).use { env =>
+          import env._
+
+          loggingF.info(s"RDB Loader ${generated.BuildInfo.version} [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+            process[IO](cli, control)
               .compile
               .drain
-              .attempt
-              .flatMap {
-                case Left(e) =>
-                  Sentry.captureException(e)
-                  e.printStackTrace(System.err)
-                  env.loggingF.track(LoaderError.RuntimeError(e.getMessage).asLeft).as(ExitCode.Error)
-                case Right(_) =>
-                  IO.pure(ExitCode.Success)
-              }
+              .as(ExitCode.Success)
+              .handleErrorWith(handleFailure[IO])
         }
       case Invalid(errors) =>
-        IO.delay(System.err.println("Configuration error")) *>
-          errors.traverse_(message => IO.delay(System.err.println(message))).as(ExitCode(2))
+        val logger = Slf4jLogger.getLogger[IO]
+        logger.error("Configuration error") *>
+          errors.traverse_(message => logger.error(message)).as(ExitCode(2))
     }
 
   /**
@@ -59,27 +54,44 @@ object Main extends IOApp {
    * and processing this data with loaders
    *
    * @param cli whole app configuration
-   * @param env initialised environment containing resources and effect interpreters
+   * @param control various stateful controllers
    * @return endless stream waiting for messages
    */
-  def process(cli: CliConfig, env: Environment[IO]): Stream[IO, Unit] = {
-    import env._
+  def process[F[_]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
+    val folderMonitoring: Stream[F, Unit] =
+      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path)
 
-    DataDiscovery.discover[IO](cli.config, env.state)
-      .pauseWhen[IO](env.isBusy)
-      .evalMap { message =>
-        val jdbc: Resource[IO, JDBC[IO]] = env.makeBusy *>
-          SSH.resource[IO](cli.config.storage.sshTunnel) *>
-          JDBC.interpreter[IO](cli.config.storage, cli.dryRun)
+    Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
+      DataDiscovery
+        .discover[F](cli.config, control.state)
+        .pauseWhen[F](control.isBusy)
+        .evalMap { discovery =>
+          val loading: F[Unit] = control.makeBusy.use { _ =>
+            load[F](cli.config, discovery).rethrowT *> control.incrementLoaded
+          }
 
-        val action = jdbc.use { implicit conn => load[IO](cli, message) *> env.incrementLoaded }
-
-        // Make sure that stream is never interrupted
-        action.recoverWith {
-          case NonFatal(e) =>
-            Sentry.captureException(e)
-            Logging[IO].error(s"Fatal failure during message processing (base ${message.data.base}), message hasn't been ack'ed. ${e.getMessage}")
+          // Catches both connection acquisition and loading errors
+          loading.onError { case error =>
+            val msg = s"Could not load a folder (base ${discovery.data.discovery.base}), trying to ack the SQS command"
+            Monitoring[F].alert(error, discovery.data.discovery.base) *>
+              Logging[F].info(msg) *>  // No need for ERROR - it will be printed downstream in handleFailure
+              discovery.ack
+          }
         }
-      }
+        .merge(folderMonitoring)
   }
+
+  /**
+   * The application can throw in several places and all those exceptions must be
+   * rethrown and sent downstream. This function makes sure that every exception
+   * resulting into Loader restart is:
+   * 1. We always print ERROR in the end
+   * 2. We send a Sentry exception if Sentry is configured
+   * 3. We attempt to send the failure via tracker
+   */
+  def handleFailure[F[_]: Applicative: Logging: Monitoring](error: Throwable): F[ExitCode] =
+    Logging[F].error(error)("Loader shutting down") *> // Making sure we always have last ERROR printed
+      Monitoring[F].trackException(error) *>
+      Monitoring[F].track(LoaderError.RuntimeError(error.getMessage).asLeft).as(ExitCode.Error)
+
 }
