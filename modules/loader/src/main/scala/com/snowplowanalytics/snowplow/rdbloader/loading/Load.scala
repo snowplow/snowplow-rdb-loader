@@ -25,11 +25,12 @@ import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDeta
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+
 
 /** Entry-point for loading-related logic */
 object Load {
@@ -40,44 +41,60 @@ object Load {
    * Process discovered data with specified storage target (load it)
    * The function is responsible for transactional load nature and retries
    *
-   * @param cli RDB Loader app configuration
+   * @param config RDB Loader app configuration
    * @param discovery discovered folder to load
    */
   def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](
-    cli: CliConfig,
+    config: Config[StorageTarget],
     discovery: Message[F, DataDiscovery.WithOrigin]
   ): LoaderAction[F, Unit] =
-    cli.config.storage match {
+    config.storage match {
       case redshift: StorageTarget.Redshift =>
-        val redshiftConfig: Config[StorageTarget.Redshift] = cli.config.copy(storage = redshift)
-
-        // The transaction can be retried several time as long as transaction is aborted
-        val transaction = for {
-          _ <- JDBC[F].executeUpdate(Statement.Begin)
-          state <- Manifest.get[F](redshiftConfig.storage.schema, discovery.data.discovery.base)
-          postLoad <- state match {
-            case Some(entry) =>
-              Logging[F].info(s"Warning: folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
-                JDBC[F].executeUpdate(Statement.Abort).as(LoaderAction.unit[F])
-            case None =>
-              Migration.perform[F](redshiftConfig.storage.schema, discovery.data.discovery) *>
-                RedshiftLoader.run[F](redshiftConfig, discovery.data.discovery) <*
-                Manifest.add[F](redshiftConfig.storage.schema, discovery.data.origin) <*
-                JDBC[F].executeUpdate(Statement.Commit) <*
-                congratulate[F](discovery.data.origin).liftA
-          }
-
-          // With manifest protecting from double-loading it's safer to ack *after* commit
-          _ <- discovery.ack.liftA
-        } yield postLoad
-
+        val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
         for {
-          postLoad <- retryLoad(transaction)
-          _ <- postLoad.recoverWith {
-            case error => Logging[F].info(s"Post-loading actions failed, ignoring. ${error.show}").liftA
-          }
+          migrations <- Migration.build[F](redshiftConfig.storage.schema, discovery.data.discovery)
+          _          <- migrations.preTransaction
+          transaction = getTransaction(redshiftConfig, discovery)(migrations.inTransaction)
+          postLoad   <- retryLoad(transaction)
+          _          <- postLoad.recoverWith { case error => Logging[F].info(s"Post-loading actions failed, ignoring. ${error.show}").liftA }
         } yield ()
     }
+
+
+  /**
+   * Run a transaction with all load statements and with in-transaction migrations if necessary
+   * and acknowledge the discovery message after transaction is successful.
+   * If successful it returns a post-load action, such as VACUUM and ANALYZE.
+   * If the main transaction fails it will be retried several times by a caller,
+   * ff post-load action fails - we can ignore it
+   * @param config DB information
+   * @param discovery metadata about batch
+   * @param inTransactionMigrations sequence of migration actions such as ALTER TABLE
+   *                                that have to run before the batch is loaded
+   * @return post-load action
+   */
+  def getTransaction[F[_]: JDBC: Logging: Monitoring: Monad: Clock](config: Config[StorageTarget.Redshift], discovery: Message[F, DataDiscovery.WithOrigin])
+                                                                   (inTransactionMigrations: LoaderAction[F, Unit]): LoaderAction[F, LoaderAction[F, Unit]] =
+    for {
+      _ <- JDBC[F].executeUpdate(Statement.Begin)
+      state <- Manifest.get[F](config.storage.schema, discovery.data.discovery.base)
+      postLoad <- state match {
+        case Some(entry) =>
+          val noPostLoad = LoaderAction.unit[F]
+          Logging[F].info(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+            Monitoring[F].alert(AlertPayload.info("Folder is already loaded", entry.meta.base)).liftA *>
+            JDBC[F].executeUpdate(Statement.Abort).as(noPostLoad)
+        case None =>
+          inTransactionMigrations *>
+            RedshiftLoader.run[F](config, discovery.data.discovery) <*
+            Manifest.add[F](config.storage.schema, discovery.data.origin) <*
+            JDBC[F].executeUpdate(Statement.Commit) <*
+            congratulate[F](discovery.data.origin).liftA
+      }
+
+      // With manifest protecting from double-loading it's safer to ack *after* commit
+      _ <- discovery.ack.liftA
+    } yield postLoad
 
   // Retry policy
 

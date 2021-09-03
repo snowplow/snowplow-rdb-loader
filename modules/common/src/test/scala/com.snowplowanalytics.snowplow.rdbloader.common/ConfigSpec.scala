@@ -16,6 +16,8 @@ import java.net.URI
 import java.util.UUID
 import java.nio.file.{Paths, Files}
 
+import scala.concurrent.duration._
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
@@ -151,7 +153,9 @@ object ConfigSpec {
     Config.Monitoring(
       Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
       Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
-      Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None))))
+      Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
+      None,
+      Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/")))
     ),
     "messages",
     Shredder.Batch(

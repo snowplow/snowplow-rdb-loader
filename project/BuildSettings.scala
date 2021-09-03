@@ -27,8 +27,6 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
-// DynamoDB Local
-import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -41,7 +39,7 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.12",
+    scalaVersion := "2.12.14",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
@@ -77,7 +75,7 @@ object BuildSettings {
       case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
       case PathList("buildinfo", _) => MergeStrategy.first
       case x if x.contains("javax") => MergeStrategy.first
-      case PathList("scala", "annotation", "nowarn.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
@@ -118,18 +116,21 @@ object BuildSettings {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("com", "snowplowanalytics", "snowplow", "rdbloader", "generated", "ProjectMetadata.class" | "ProjectMetadata$.class") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     },
 
     assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+      ShadeRule.rename("cats.**" -> "shadecats.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "shadeshapeless.@1").inAll
     )
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
-    coverageMinimum := 50,
+    coverageMinimumStmtTotal := 50,
     coverageFailOnMinimum := false,
     (Test / test) := {
       (coverageReport dependsOn (Test / test)).value
@@ -156,20 +157,13 @@ object BuildSettings {
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 
-  lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(Test / compile).value,
-    Test / test := (Test / test).dependsOn(startDynamoDBLocal).value,
-    Test / testOnly := (Test / testOnly).dependsOn(startDynamoDBLocal).evaluated,
-    Test / testOptions += dynamoDBLocalTestCleanup.value
-  )
-
   lazy val dockerSettings = Seq(
-    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "snowplow/base-debian:0.2.2",
-    Docker / daemonUser := "snowplow",
+    dockerBaseImage := "adoptopenjdk:11-jre-hotspot-focal",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    Docker / daemonUser := "daemon",
     Docker / daemonUserUid := None,
-    Docker / defaultLinuxInstallLocation := "/home/snowplow" // must be home directory of daemonUser
+    Docker / defaultLinuxInstallLocation := "/opt/snowplow"
   )
 }

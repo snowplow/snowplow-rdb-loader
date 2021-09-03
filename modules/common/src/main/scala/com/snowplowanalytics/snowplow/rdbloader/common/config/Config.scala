@@ -16,7 +16,7 @@ import java.net.URI
 import java.time.Instant
 import java.util.UUID
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 import cats.syntax.either._
 import cats.syntax.show._
@@ -26,16 +26,20 @@ import io.circe.syntax._
 import io.circe.generic.semiauto._
 
 import com.typesafe.config.ConfigFactory
+
+import org.http4s.{ParseFailure, Uri}
+
 import pureconfig._
 import pureconfig.module.circe._
 import pureconfig.error.{CannotParse, ConfigReaderFailures}
+
 import monocle.Lens
 import monocle.macros.GenLens
-import com.snowplowanalytics.iglu.core.SchemaCriterion
 
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config._
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 
 /**
  * Main config file parsed from HOCON
@@ -168,12 +172,14 @@ object Config {
     }
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
+  final case class Webhook(endpoint: Uri, tags: Map[String, String])
+  final case class Folders(period: FiniteDuration, staging: S3.Folder)
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
@@ -242,6 +248,25 @@ object Config {
 
   implicit val metricsDecoder: Decoder[Metrics] =
     deriveDecoder[Metrics]
+
+  implicit val http4sUriDecoder: Decoder[Uri] =
+    Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
+
+  implicit val minuteDecoder: Decoder[FiniteDuration] =
+    Decoder[String].emap { str =>
+      Either
+        .catchOnly[NumberFormatException](Duration.create(str))
+        .leftMap(_.toString)
+        .flatMap { duration =>
+          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+          else Left(s"Cannot convert Duration $duration to FiniteDuration")
+        }
+    }
+
+  implicit val webhookDecoder: Decoder[Webhook] =
+    deriveDecoder[Webhook]
+  implicit val foldersDecoder: Decoder[Folders] =
+    deriveDecoder[Folders]
 
   implicit val monitoringDecoder: Decoder[Monitoring] =
     deriveDecoder[Monitoring]

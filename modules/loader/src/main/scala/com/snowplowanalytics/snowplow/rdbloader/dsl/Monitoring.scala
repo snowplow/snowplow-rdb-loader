@@ -12,25 +12,29 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.ExecutionContext
-
 import cats.data.NonEmptyList
 import cats.implicits._
 
 import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
 
-import io.circe.Json
+import io.circe._
+import io.circe.generic.semiauto._
 
-import io.sentry.SentryClient
-
-import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.{Request, EntityEncoder, Method}
+import org.http4s.client.Client
+import org.http4s.circe.jsonEncoderOf
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
+import io.sentry.SentryClient
+
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
@@ -44,6 +48,17 @@ trait Monitoring[F[_]] {
 
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
+
+  /** Send an alert to a HTTP endpoint */
+  def alert(payload: Monitoring.AlertPayload): F[Unit]
+
+  /** Helper method specifically for exceptions */
+  def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
+    val message = Option(error.getMessage).getOrElse(error.toString)
+    // Note tags are added by Monitoring later
+    val payload = Monitoring.AlertPayload(Monitoring.Application, folder, Monitoring.AlertPayload.Severity.Error, message, Map.empty)
+    alert(payload)
+  }
 }
 
 object Monitoring {
@@ -51,11 +66,49 @@ object Monitoring {
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
   val LoadFailedSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_failed", "jsonschema", SchemaVer.Full(1,0,0))
+  val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  def monitoringInterpreter[F[_]: Sync](
+  val Application: String =
+    s"snowplow-rdb-loader-${BuildInfo.version}"
+
+  final case class AlertPayload(application: String,
+                                base: S3.Folder,
+                                severity: AlertPayload.Severity,
+                                message: String,
+                                tags: Map[String, String])
+
+  object AlertPayload {
+    sealed trait Severity
+    object Severity {
+      final case object Info extends Severity
+      final case object Warning extends Severity
+      final case object Error extends Severity
+
+      implicit val severityEncoder: Encoder[Severity] =
+        Encoder[String].contramap[Severity](_.toString.toUpperCase)
+    }
+
+    private val derivedEncoder: Encoder[AlertPayload] =
+      deriveEncoder[AlertPayload]
+
+    implicit val alertPayloadEncoder: Encoder[AlertPayload] =
+      Encoder[Json].contramap { alert: AlertPayload =>
+        SelfDescribingData(AlertSchema, derivedEncoder.apply(alert)).normalize
+      }
+
+    implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
+      jsonEncoderOf[F, AlertPayload]
+
+    def info(message: String, folder: S3.Folder): AlertPayload =
+      Monitoring.AlertPayload(Application, folder, Monitoring.AlertPayload.Severity.Info, message, Map.empty)
+  }
+
+  def monitoringInterpreter[F[_]: Sync: Logging](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
-    reporters: List[Reporter[F]]
+    reporters: List[Reporter[F]],
+    webhookConfig: Option[Config.Webhook],
+    httpClient: Client[F]
   ): Monitoring[F] =
     new Monitoring[F] {
 
@@ -68,6 +121,22 @@ object Monitoring {
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
+
+      def alert(payload: AlertPayload): F[Unit] =
+        webhookConfig match {
+          case Some(webhook) =>
+            val request: Request[F] =
+              Request[F](Method.POST, webhook.endpoint)
+                .withEntity(payload.copy(tags = payload.tags ++ webhook.tags))
+
+            httpClient
+              .run(request)
+              .use { response =>
+                if (response.status.isSuccess) Sync[F].unit
+                else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+              }
+          case None => Sync[F].unit
+        }
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
@@ -84,15 +153,13 @@ object Monitoring {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Config.Monitoring, ec: ExecutionContext): Resource[F, Option[Tracker[F]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
-        for {
-          client <- BlazeClientBuilder[F](ec).resource
-          emitter <- Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F]))
-          tracker = new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader"))
-        } yield Some(tracker)
+        Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F])).map { emitter =>
+          Some(new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader")))
+        }
       case None => Resource.pure[F, Option[Tracker[F]]](none[Tracker[F]])
     }
 
@@ -115,7 +182,6 @@ object Monitoring {
     // The only place in interpreters where println used instead of logger as this is async function
     if (message.isEmpty) Sync[F].unit else Sync[F].delay(System.out.println(message))
   }
-
 
   /**
    * Config helper functions
