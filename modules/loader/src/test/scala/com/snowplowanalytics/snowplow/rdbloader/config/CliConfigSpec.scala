@@ -20,9 +20,11 @@ import cats.data.Validated
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.common.ConfigSpec
 
 class CliConfigSpec extends Specification {
-  import CliConfigSpec._
+  val configB64 = new String(Base64.getEncoder.encode(ConfigSpec.configExamplePlain.getBytes))
+
   "parse" should {
     "parse minimal valid configuration" in {
       val cli = Array(
@@ -59,69 +61,4 @@ class CliConfigSpec extends Specification {
       result must beEqualTo(Validated.Valid(expected))
     }
   }
-}
-
-object CliConfigSpec {
-  val configPlain = """
-    {
-      name         = "Acme Redshift"
-      id           = "123e4567-e89b-12d3-a456-426655440000"
-      region       = "us-east-1"
-      jsonpaths    = null
-      messageQueue = "messages"
-
-      shredder = {
-        "type": "batch",
-        "input": "s3://bucket/input/",
-        "output" = {
-          "path": "s3://bucket/good/",
-          "compression": "GZIP"
-        }
-      },
-
-      storage = {
-        "type":     "redshift",
-
-        "host":     "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
-        "database": "snowplow",
-        "port":     5439,
-        "roleArn":  "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-        "schema":   "atomic",
-        "username": "admin",
-        "password": "Supersecret1",
-        "jdbc": { "ssl": true },
-        "maxError":  1,
-        "compRows":  20000,
-        "sshTunnel": null
-      },
-
-      monitoring = {
-        "snowplow": {
-          "collector": "snplow.acme.com",
-          "appId": "redshift-loader"
-        },
-        "sentry": {
-          "dsn": "http://sentry.acme.com"
-        }
-      },
-
-      formats = {
-        "default": "TSV",
-        "json": [
-          "iglu:com.acme/json-event/jsonschema/1-0-0"
-        ],
-        "tsv": [
-          "iglu:com.acme/tsv-event/jsonschema/1-*-*",
-          "iglu:com.acme/tsv-event/jsonschema/2-*-*"
-        ],
-        "skip": [
-          "iglu:com.acme/skip-event/jsonschema/1-*-*"
-        ]
-      },
-
-      steps = []
-    }"""
-
-  val configB64 = new String(Base64.getEncoder.encode(configPlain.getBytes))
-
 }
