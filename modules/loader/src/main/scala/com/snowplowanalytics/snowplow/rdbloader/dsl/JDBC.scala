@@ -21,19 +21,18 @@ import cats.{Id, Monad}
 import cats.data.EitherT
 import cats.implicits._
 
-import cats.effect.{ContextShift, Async, Blocker, Resource, Timer, Sync}
+import cats.effect.{ContextShift, Async, Blocker, Resource, Timer, Concurrent, Sync}
 
 import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
-import doobie.free.connection.{abort, setAutoCommit}
+import doobie.free.connection.{abort, setAutoCommit => autoCommit, unit}
 
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
-
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Pool}
 
 import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}
 
@@ -43,6 +42,8 @@ trait JDBC[F[_]] { self =>
   def executeUpdate(sql: Statement): LoaderAction[F, Int]
 
   def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]]
+
+  def setAutoCommit(a: Boolean): F[Unit]
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: Statement)(implicit A: Read[A]): LoaderAction[F, A] =
@@ -71,7 +72,10 @@ object JDBC {
   /** Maximum amount of times the loading will be attempted */
   val MaxRetries: Int = 5
 
-  val NoCommitStrategy = Strategy.void.copy(before = setAutoCommit(false), oops = abort(concurrent.ExecutionContext.global))
+  /** Maximum amount of connections maintained in parallel */
+  val MaxConnections: Int = 2
+
+  val NoCommitStrategy = Strategy.void.copy(before = unit, oops = abort(concurrent.ExecutionContext.global))
 
   def apply[F[_]](implicit ev: JDBC[F]): JDBC[F] = ev
 
@@ -93,54 +97,61 @@ object JDBC {
       .limitRetries[F](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
 
-  /**
-   * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`,
-   * which guarantees to close a JDBC connection.
-   * If connection could not be acquired, it will retry several times according to `retryPolicy`
-   */
-  def interpreter[F[_]: Async: ContextShift: Logging: Monitoring: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): Resource[F, JDBC[F]] =
-    getConnection[F](target, blocker).map { xa =>
-      if (dryRun) JDBC.jdbcDryRunInterpreter[F](xa) else JDBC.jdbcRealInterpreter[F](xa)
-    }
-
-  /**
-   * Acquire JDBC connection. In case of failure - sleep 1 minute and retry again
-   * @param target Redshift storage target configuration
-   * @tparam F effect type with `S3I` DSL to get encrypted password
-   * @return JDBC connection type
-   */
-  def getConnection[F[_]: Async: ContextShift: Logging: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] = {
-    val password: F[String] = target.password match {
-      case StorageTarget.PasswordConfig.PlainText(text) =>
-        Sync[F].pure(text)
-      case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-        AWS[F].getEc2Property(key.parameterName).map(b => new String(b))
-    }
-
-    for {
-      p <- Resource.eval(password)
+  /** Build a `Pool` for DB connections */
+  def buildPool[F[_]: Concurrent: ContextShift: Logging: Timer: AWS](target: StorageTarget): Resource[F, Pool[F, Connection]] = {
+    val acquire = for {
+      password <- target.password match {
+        case StorageTarget.PasswordConfig.PlainText(text) =>
+          Sync[F].pure(text)
+        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+          AWS[F].getEc2Property(key.parameterName).map(b => new String(b))
+      }
       jdbcConnection = target match {
         case r: StorageTarget.Redshift =>
           r.jdbc.validation match {
             case Left(error) =>
               Sync[F].raiseError[Connection](new IllegalArgumentException(error.message)) // Should never happen
             case Right(propertyUpdaters) =>
-              Sync[F].delay {
-                val props = new Properties()
-                props.setProperty("user", target.username)
-                props.setProperty("password", p)
-                propertyUpdaters.foreach(f => f(props))
-                val conn = new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props)
-                conn.setAutoCommit(false)
-                conn
-              }
+              val props = new Properties()
+              props.setProperty("user", target.username)
+              props.setProperty("password", password)
+              propertyUpdaters.foreach(f => f(props))
+              Sync[F]
+                .delay(new RedshiftDriver().connect(s"jdbc:redshift://${target.host}:${target.port}/${target.database}", props))
+                .flatMap { conn => Sync[F].delay { conn.setAutoCommit(false); conn } }
+                .onError { case _ =>
+                  Logging[F].error("Failed to acquire DB connection. Check your cluster is accessible")
+                }
           }
       }
-      transactor <- Resource
-        .make(retryingOnAllErrors(retryPolicy[F], log[F])(jdbcConnection))(conn => Sync[F].delay(conn.close()))
-        .map(conn => Transactor.fromConnection[F](conn, blocker).copy(strategy0 = NoCommitStrategy))
-    } yield transactor
+      conn <- retryingOnAllErrors(retryPolicy[F], log[F])(jdbcConnection)
+    } yield conn
+
+    val release = (conn: Connection) => Logging[F].info("Releasing connection") *> Sync[F].delay(conn.close())
+
+    Pool.create[F, Connection](acquire, release, MaxConnections).onFinalize(Logging[F].info("RDB Pool has been destroyed"))
   }
+
+  /**
+   * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`,
+   * which guarantees to close a JDBC connection.
+   * If connection could not be acquired, it will retry several times according to `retryPolicy`
+   */
+  def interpreter[F[_]: Concurrent: ContextShift: Logging: Monitoring: Timer: AWS](target: StorageTarget, dryRun: Boolean, blocker: Blocker): Resource[F, JDBC[F]] =
+    buildPool[F](target)
+      .map { pool => poolTransactor(blocker, pool) }
+      .map { xa =>
+        if (dryRun) JDBC.jdbcDryRunInterpreter[F](xa) else JDBC.jdbcRealInterpreter[F](xa)
+      }
+
+  /** Build a `Pool`-backed `Transactor` that never commits automatically */
+  def poolTransactor[F[_]: Async: ContextShift](blocker: Blocker, pool: Pool[F, Connection]): Transactor[F] =
+    Transactor.apply[F, Pool[F, Connection]](
+      kernel0 = pool,
+      connect0 = pool => pool.resource,
+      interpret0 = KleisliInterpreter[F](blocker).ConnectionInterpreter,
+      strategy0 = NoCommitStrategy
+    )
 
   /** Real-world (opposed to dry-run) interpreter */
   def jdbcRealInterpreter[F[_]: Logging: Monitoring: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
@@ -170,6 +181,9 @@ object JDBC {
       LoaderAction[F, Int](update)
     }
 
+    def setAutoCommit(a: Boolean): F[Unit] =
+      conn.rawTrans.apply(autoCommit(a))
+
     def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
       get(sql)
         .transact(conn)
@@ -187,6 +201,9 @@ object JDBC {
   def jdbcDryRunInterpreter[F[_]: Sync: Logging: Monitoring](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
     def executeUpdate(sql: Statement): LoaderAction[F, Int] =
       LoaderAction.liftF(Logging[F].info(sql.toFragment.toString)).as(1)
+
+    def setAutoCommit(a: Boolean): F[Unit] =
+      conn.rawTrans.apply(autoCommit(a))
 
     def query[G[_], A](get: Query0[A] => ConnectionIO[G[A]], sql: Query0[A]): F[Either[LoaderError, G[A]]] =
       get(sql)

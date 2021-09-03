@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-ThisBuild / version := "1.1.0"
+ThisBuild / version := "1.2.0"
 
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
@@ -42,12 +42,14 @@ lazy val common: Project = project.in(file("modules/common"))
     libraryDependencies ++= Seq(
       Dependencies.decline,
       Dependencies.badrows,
+      Dependencies.igluClient,
       Dependencies.circeGeneric,
       Dependencies.circeGenericExtra,
       Dependencies.circeLiteral,
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
+      Dependencies.http4sCore,
 
       Dependencies.specs2,
       Dependencies.monocle,
@@ -82,14 +84,17 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
+      Dependencies.http4sCirce,
       Dependencies.http4sClient,
+      Dependencies.igluClientHttp4s,
       Dependencies.doobie,
       Dependencies.catsRetry,
       Dependencies.log4cats,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
+      Dependencies.scalaCheck,
+      Dependencies.catsTesting,
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)
@@ -106,13 +111,13 @@ lazy val shredder = project.in(file("modules/shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
-  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
       Dependencies.sqs,
       Dependencies.dynamodb,
       Dependencies.slf4j,
+      Dependencies.sentry,
       // Scala
       Dependencies.eventsManifest,
       Dependencies.sparkCore,
@@ -140,7 +145,6 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
