@@ -28,7 +28,6 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
-
 class DataDiscoverySpec extends Specification {
   "show" should {
     "should DataDiscovery with several shredded types" >> {
@@ -85,23 +84,26 @@ class DataDiscoverySpec extends Specification {
   }
 
   "handle" should {
-    "ack message if JSONPath cannot be found" >> {
+    "raise an error and ack a message if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val message = DataDiscoverySpec.shreddingComplete
 
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
 
-      result must beRight(None)
-      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json"), LogEntry.Message("GET com.acme/event_b_1.json"), LogEntry.Message("ack"))
+      result must beLeft(LoaderError.DiscoveryError(NonEmptyList.of(
+        DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
+        DiscoveryFailure.JsonpathDiscoveryFailure(("com.acme/event_b_1.json")))
+      ))
+      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json (miss)"), LogEntry.Message("GET com.acme/event_b_1.json (miss)"), LogEntry.Message("ack"))
     }
 
     "not ack message if it can be handled" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(PureLogging.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val message = DataDiscoverySpec.shreddingComplete
 
@@ -118,8 +120,10 @@ class DataDiscoverySpec extends Specification {
 
       result.map(_.map(_.data.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
-        LogEntry.Message("GET com.acme/event_a_1.json"),
-        LogEntry.Message("GET com.acme/event_b_1.json"),
+        LogEntry.Message("GET com.acme/event_a_1.json (miss)"),
+        LogEntry.Message("PUT com.acme/event_a_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json)"),
+        LogEntry.Message("GET com.acme/event_b_1.json (miss)"),
+        LogEntry.Message("PUT com.acme/event_b_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)"),
         LogEntry.Message("New data discovery at folder with following shredded types: * iglu:com.acme/event-a/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json) * iglu:com.acme/event-b/jsonschema/1-*-* (s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json)")
       ))
     }

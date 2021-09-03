@@ -16,76 +16,109 @@ package discovery
 import cats.implicits._
 
 import org.scalacheck.Gen
-import org.specs2.{ScalaCheck, Specification}
+import org.specs2.ScalaCheck
+import org.specs2.mutable.Specification
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType._
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{ Cache, AWS }
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
+import com.snowplowanalytics.snowplow.rdbloader.test.{ Pure, PureCache, PureAWS, TestState }
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
-class ShreddedTypeSpec extends Specification with ScalaCheck { def is = s2"""
-  Fail to transform path without valid vendor $e1
-  Fail to transform path without file $e2
-  Transform correct S3 path for Shred job $e3
-  Transform full modern shredded key $e4
-  extractedSchemaKey parsed a path for tabular output $e5
-  Transform correct tabular S3 path $e6
-  """
 
-  def e1 = {
-    val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/submit_form/jsonschema/1-0-0/part-00000-00001"
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-    val result = ShreddedType.transformPath(key, Semver(0,10,0))
-    result must beLeft
+
+class ShreddedTypeSpec extends Specification with ScalaCheck {
+  "transformPath" should {
+    "fail to transform path without valid vendor" >> {
+      val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/submit_form/jsonschema/1-0-0/part-00000-00001"
+      val key = S3.Key.coerce(s"s3://rdb-test/$path")
+      val result = ShreddedType.transformPath(key, Semver(0,10,0))
+      result must beLeft
+    }
+
+    "fail to transform path without file" >> {
+      val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0"
+      val key = S3.Key.coerce(s"s3://rdb-test/$path")
+      val result = ShreddedType.transformPath(key, Semver(0,12,0))
+      result must beLeft
+    }
+
+    "transform correct S3 path for Shred job" >> {
+      val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001"
+      val key = S3.Key.coerce(s"s3://rdb-test/$path")
+      val result = ShreddedType.transformPath(key, Semver(0,13,0))
+      val expected = (LoaderMessage.Format.JSON, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+      result must beRight(expected)
+    }
+
+    "transform full modern shredded key" >> {
+      val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001")
+
+      val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
+      val expected = (LoaderMessage.Format.JSON, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+
+      val result = ShreddedType.transformPath(key, Semver(0,13,0))
+      result must beRight(expected)
+    }
+
+    "transform correct tabular S3 path" >> {
+      val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=tsv/model=1/part-00000-00001")
+
+      val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
+      val expected = (LoaderMessage.Format.TSV, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
+
+      val result = ShreddedType.transformPath(key, Semver(0,16,0))
+      result must beRight(expected)
+    }
   }
 
-  def e2 = {
-    val path = "cross-batch-test/shredded-archive/run%3D2017-04-27-14-39-42/com.snowplowanalytics.snowplow/submit_form/jsonschema/1-0-0"
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-    val result = ShreddedType.transformPath(key, Semver(0,12,0))
-    result must beLeft
+  "extractSchemaKey" should {
+    "parse a path for tabular output" >> {
+      val input = "vendor=com.snowplow/name=event/format=tsv/model=1"
+      ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, LoaderMessage.Format.TSV))
+    }
   }
 
-  def e3 = {
-    val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001"
-    val key = S3.Key.coerce(s"s3://rdb-test/$path")
-    val result = ShreddedType.transformPath(key, Semver(0,13,0))
-    val expected = (LoaderMessage.Format.JSON, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
-    result must beRight(expected)
+  "getSnowplowJsonPath" should {
+    "put a result into cache only once" >> {
+      implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
+
+      val discoveryAction = ShreddedType.getSnowplowJsonPath[Pure]("eu-central-1", "foo_1.json")
+
+      val (state, _) = discoveryAction.value.run(TestState.init).value
+
+      state.getLog must beEqualTo(List(
+        LogEntry.Message("PUT foo_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/foo_1.json)"),
+      ))
+    }
   }
 
-  def e4 = {
-    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001")
+  "discoverJsonPath" should {
+    "respect the cache" >> {
+      implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
 
-    val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-    val expected = (LoaderMessage.Format.JSON, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0))
+      val discoveryAction = ShreddedType.discoverJsonPath[Pure]("eu-west-1", None, info)
 
-    val result = ShreddedType.transformPath(key, Semver(0,13,0))
-    result must beRight(expected)
-  }
+      val (state, _) = (discoveryAction.flatMap(_ => discoveryAction)).value.run(TestState.init).value
 
-  def e5 = {
-    val input = "vendor=com.snowplow/name=event/format=tsv/model=1"
-    ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, LoaderMessage.Format.TSV))
-  }
-
-  def e6 = {
-    val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=tsv/model=1/part-00000-00001")
-
-    val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-    val expected = (LoaderMessage.Format.TSV, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
-
-    val result = ShreddedType.transformPath(key, Semver(0,16,0))
-    result must beRight(expected)
+      state.getLog must beEqualTo(List(
+        LogEntry.Message("GET com.acme/entity_1.json (miss)"),
+        LogEntry.Message("PUT com.acme/entity_1.json: Some(s3://snowplow-hosted-assets/4-storage/redshift-storage/jsonpaths/com.acme/entity_1.json)"),
+        LogEntry.Message("GET com.acme/entity_1.json")
+      ))
+    }
   }
 }
 
 object ShreddedTypeSpec {
 
-  /**
-    * `Gen` instance for a vendor/name-like string
-    */
+  /** `Gen` instance for a vendor/name-like string */
   implicit val alphaNum: Gen[String] = for {
     n <- Gen.chooseNum(1, 5)
     d <- Gen.oneOf('_', '.', '-')
