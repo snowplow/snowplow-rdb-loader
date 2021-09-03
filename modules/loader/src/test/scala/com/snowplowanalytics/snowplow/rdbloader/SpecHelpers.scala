@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import java.net.URI
-import java.util.UUID
-
 import scala.io.Source.fromInputStream
 
 import doobie.util.fragment.Fragment
@@ -22,11 +19,11 @@ import doobie.util.update.Update0
 
 import io.circe.jawn.parse
 
-import com.snowplowanalytics.iglu.core.SchemaCriterion
-
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+
+import com.snowplowanalytics.snowplow.rdbloader.common.ConfigSpec
 
 object SpecHelpers {
 
@@ -34,47 +31,7 @@ object SpecHelpers {
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
-  val validTarget = StorageTarget.Redshift(
-    "angkor-wat-final.ccxvdpz01xnr.us-east-1.redshift.amazonaws.com",
-    "snowplow",
-    5439,
-    disableSsl,
-    "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-    "atomic",
-    "admin",
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    1,
-    None)
-
-  val validConfig: Config[StorageTarget.Redshift] = Config(
-    "Acme Redshift",
-    UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
-    "us-east-1",
-    None,
-    Config.Monitoring(
-      Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
-      Some(Config.Sentry(URI.create("http://sentry.acme.com")))
-    ),
-    "messages",
-    Config.Shredder.Batch(
-      URI.create("s3://bucket/input/"),
-      Config.Shredder.Output(
-        URI.create("s3://bucket/good/"),
-        Config.Shredder.Compression.Gzip
-      )
-    ),
-    validTarget,
-    Config.Formats(
-      LoaderMessage.Format.TSV,
-      List(
-        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
-        SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
-      ),
-      List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
-      List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
-    ),
-    Set.empty
-  )
+  val validConfig: Config[StorageTarget.Redshift] = ConfigSpec.configExampleParsed
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
   /**

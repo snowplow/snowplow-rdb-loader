@@ -109,6 +109,8 @@ object LoaderMessage {
       .flatMap {
         case SelfDescribingData(SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", _, SchemaVer.Full(1, _, _)), data) =>
           data.as[ShreddingComplete].leftMap(e => s"Cannot decode valid ShreddingComplete payload from [${data.noSpaces}], ${e.show}")
+        case SelfDescribingData(key, data) =>
+          s"Cannot extract a LoaderMessage from ${data.noSpaces} with ${key.toSchemaUri}".asLeft
       }
 
   implicit val loaderMessageTimestampsEncoder: Encoder[Timestamps] =
