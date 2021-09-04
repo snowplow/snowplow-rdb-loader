@@ -46,7 +46,7 @@ object BuildSettings {
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full)
   )
 
   // sbt-assembly settings
