@@ -1,12 +1,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import java.time.Instant
+import java.sql.Timestamp
 
 import cats.{Functor, Monad, MonadError}
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Timer, MonadThrow}
+import cats.effect.{Timer, MonadThrow, Clock}
 
 import doobie.Read
 import doobie.implicits.javasql._
@@ -92,8 +93,31 @@ object Manifest {
       }
     } yield status
 
-  def add[F[_]: Functor: JDBC](schema: String, message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(Statement.ManifestAdd(schema, message)).void
+  /**
+   * Query the events table for latest load_tstamp and then insert info from `message`
+   * into the manifest table. If for some reasons no timestamp was found, the current
+   * time is used
+   */
+  def add[F[_]: Monad: Clock: Logging: JDBC](schema: String, message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
+    for {
+      _          <- Logging[F].info("Querying for latest load_tstamp").liftA
+      tstamp     <- message.timestamps.max match {
+        case Some(timestamp) =>
+          JDBC[F].executeQueryOption[Timestamp](Statement.GetLoadTstamp(schema, Timestamp.from(timestamp))).flatMap {
+            case Some(loadTstamp) =>
+              Logging[F].info(s"Latest found load_tstamp in $schema.events is $loadTstamp").as(loadTstamp).liftA
+            case None =>
+              Clock[F].instantNow.map(Timestamp.from).flatMap { now =>
+                Logging[F].info(s"No load_tstamp is found in $schema.events; Using $now").as(now)
+              }.liftA
+          }
+        case None =>
+          Clock[F].instantNow.map(Timestamp.from).flatMap { now =>
+            Logging[F].info(s"No load_tstamp is found in the batch; Using $now").as(now)
+          }.liftA
+      }
+      _          <- JDBC[F].executeUpdate(Statement.ManifestAdd(schema, message, tstamp))
+    } yield ()
 
   def get[F[_]: Functor: JDBC](schema: String, base: S3.Folder): LoaderAction[F, Option[Entry]] = {
     JDBC[F].executeQueryOption[Entry](Statement.ManifestGet(schema, base))(Entry.entryRead)
@@ -109,7 +133,7 @@ object Manifest {
     import com.snowplowanalytics.snowplow.rdbloader.readTimestamps
 
     implicit val entryRead: Read[Entry] =
-      (Read[java.sql.Timestamp], Read[LoaderMessage.ShreddingComplete]).mapN { case (ingestion, meta) =>
+      (Read[Timestamp], Read[LoaderMessage.ShreddingComplete]).mapN { case (ingestion, meta) =>
         Entry(ingestion.toInstant, meta)
       }
   }

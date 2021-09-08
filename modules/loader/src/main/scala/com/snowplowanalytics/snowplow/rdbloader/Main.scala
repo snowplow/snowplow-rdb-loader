@@ -21,11 +21,13 @@ import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer}
 import fs2.Stream
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
+import com.snowplowanalytics.snowplow.rdbloader.common.TableDefinitions.AtomicDefaultColumns
 
 
 object Main extends IOApp {
@@ -61,7 +63,12 @@ object Main extends IOApp {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path)
 
-    Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
+    val addLoadTstamp = Migration.addColumn[F](
+      cli.config.storage.schema,
+      "events",
+      Common.toAddColumn(AtomicDefaultColumns.loadTstamp, Some("GETDATE()")))
+
+    Stream.eval_(Manifest.initialize[F](cli.config.storage) *> addLoadTstamp.rethrowT) ++
       DataDiscovery
         .discover[F](cli.config, control.state)
         .pauseWhen[F](control.isBusy)

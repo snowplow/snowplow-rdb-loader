@@ -22,7 +22,7 @@ import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.schemaddl.redshift
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common, TableDefinitions}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
@@ -111,8 +111,11 @@ object Statement {
       val frRegion = Fragment.const0(region)
       val frMaxError = Fragment.const0(maxError.toString)
       val frCompression = getCompressionFormat(compression)
+      val frColumns = Fragment.const0(TableDefinitions.atomicColumns.map(_.columnName).mkString(","))
 
-      sql"""COPY $frTableName FROM '$frPath'
+      // Columns need to be listed in here in order to make Redshift to load
+      // default values to specified columns such as load_tstamp
+      sql"""COPY $frTableName ($frColumns) FROM '$frPath'
            | CREDENTIALS '$frRoleArn'
            | REGION '$frRegion'
            | MAXERROR $frMaxError
@@ -197,7 +200,7 @@ object Statement {
       """.stripMargin
   }
 
-
+  // Metadata
   case class SetSchema(schema: String) extends Statement {
     def toFragment: Fragment =
       Fragment.const0(s"SET search_path TO $schema")
@@ -206,9 +209,15 @@ object Statement {
     def toFragment: Fragment =
       sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName"""
   }
+  case class GetLoadTstamp(schema: String, collectorTstamp: Timestamp) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(EventsTable.withSchema(schema))
+      sql"""SELECT max(load_tstamp) FROM ${frTableName} WHERE collector_tstamp >= $collectorTstamp - interval '1 hour'"""
+    }
+  }
 
   // Manifest
-  case class ManifestAdd(schema: String, message: LoaderMessage.ShreddingComplete) extends Statement {
+  case class ManifestAdd(schema: String, message: LoaderMessage.ShreddingComplete, loadTstamp: Timestamp) extends Statement {
     def toFragment: Fragment = {
       val tableName = Fragment.const(s"$schema.manifest")
       val types = message.types.asJson.noSpaces
@@ -220,7 +229,7 @@ object Statement {
         VALUES (${message.base}, $types,
         ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
         ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
-        getdate(),
+        $loadTstamp,
         ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
     }
   }
