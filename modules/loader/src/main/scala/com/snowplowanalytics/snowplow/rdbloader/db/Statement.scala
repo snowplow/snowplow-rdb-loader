@@ -22,7 +22,7 @@ import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.schemaddl.redshift
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common, TableDefinitions}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
@@ -111,8 +111,11 @@ object Statement {
       val frRegion = Fragment.const0(region)
       val frMaxError = Fragment.const0(maxError.toString)
       val frCompression = getCompressionFormat(compression)
+      val frColumns = Fragment.const0(TableDefinitions.atomicColumns.map(_.columnName).mkString(","))
 
-      sql"""COPY $frTableName FROM '$frPath'
+      // Columns need to be listed in here in order to make Redshift to load
+      // default values to specified columns such as load_tstamp
+      sql"""COPY $frTableName ($frColumns) FROM '$frPath'
            | CREDENTIALS '$frRoleArn'
            | REGION '$frRegion'
            | MAXERROR $frMaxError
