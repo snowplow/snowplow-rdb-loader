@@ -1,5 +1,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import java.time.Instant
+import java.sql.Timestamp
+
 import cats.implicits._
 
 import doobie.{Query0, Read, ConnectionIO}
@@ -32,6 +35,7 @@ object PureJDBC {
       case Statement.GetVersion(_, _) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
       case Statement.TableExists(_, _) => false
       case Statement.GetColumns(_) => List("some_column")
+      case Statement.GetLoadTstamp(_, _) => Some(Timestamp.from(Instant.ofEpochMilli(s.time)))
       case Statement.ManifestGet(_, _) => None
       case Statement.FoldersMinusManifest(_) => List()
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")

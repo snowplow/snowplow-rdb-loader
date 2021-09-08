@@ -20,7 +20,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => DMigration, SchemaList => DSchemaList}
-import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable}
+import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable, AddColumn => DAddColumn}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
 
 import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction, ActionOps}
@@ -251,4 +251,20 @@ object Migration {
         val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
         LoaderError.MigrationError(message).asLeft
     }
+
+  /**
+   * Add new column to table
+   * @param schemaName Name of the schema table belongs to
+   * @param tableName Name of the table
+   * @param ddlAddColumn AddColumn statement for new column
+   */
+  def addColumn[F[_]: Monad: JDBC](schemaName: String, tableName: String, ddlAddColumn: DAddColumn): LoaderAction[F, Unit] = {
+    val alterTable = AlterTable(s"$schemaName.$tableName", ddlAddColumn)
+    val addColumn = Item.AddColumn(alterTable, Nil)
+    val transaction = Control.withTransaction(JDBC[F].executeUpdate(addColumn.statement))
+    for {
+      columns <- Control.getColumns[F](schemaName, tableName)
+      _ <- if (columns.contains(ddlAddColumn.columnName)) LoaderAction.unit[F] else transaction
+    } yield ()
+  }
 }

@@ -17,6 +17,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format}
 
 /**
@@ -86,4 +87,18 @@ object Common {
     def unapply(s: String): Option[Int] =
       try { Some(s.toInt) } catch { case _: NumberFormatException => None }
   }
+
+  /**
+   * Create AddColumn statement from given column
+   * @param column Column to add
+   * @param default optional default value for column
+   * @return AddColumn statement created from given column
+   */
+  def toAddColumn(column: Column, default: Option[String]): AddColumn =
+    column match {
+      case Column(columnName, dataType, columnAttributes, columnConstraints) =>
+        val encoding: Option[CompressionEncoding] = columnAttributes.collectFirst { case c: CompressionEncoding => c }
+        val nullability: Option[Nullability] = columnConstraints.collectFirst { case n: Nullability => n}
+        AddColumn(columnName, dataType, default.map(Default.apply), encoding, nullability)
+    }
 }

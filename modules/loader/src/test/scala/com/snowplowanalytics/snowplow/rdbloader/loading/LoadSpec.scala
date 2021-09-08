@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
+import java.sql.Timestamp
 
 import cats.syntax.option._
 
@@ -23,14 +24,15 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
-import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{isVacuum, failCommit, isFirstCommit, failVacuum}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
+
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
+import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{isVacuum, failCommit, isFirstCommit, failVacuum}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureJDBC, PureLogging, PureMonitoring, PureOps, PureTimer, TestState}
 
@@ -47,6 +49,7 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
 
+      val tstamp = Timestamp.from(Instant.ofEpochMilli(4L))
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -54,7 +57,8 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstamp)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Sql(Statement.Begin),
@@ -77,6 +81,7 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.modify(_.log("ACK")))
 
+      val tstamp = Timestamp.from(Instant.ofEpochMilli(4L))
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -84,7 +89,8 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstamp)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("ACK"),
@@ -108,6 +114,7 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.fail[Unit](new RuntimeException("Failed ack")))
 
+      val tstamp = Timestamp.from(Instant.ofEpochMilli(4L))
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -115,7 +122,8 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstamp)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME")
       )
@@ -134,6 +142,8 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
 
+      val tstampAbort = Timestamp.from(Instant.ofEpochMilli(4L))
+      val tstampCommit = Timestamp.from(Instant.ofEpochMilli(12L))
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -141,14 +151,16 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstampAbort)),
         LogEntry.Sql(Statement.Abort),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstampCommit)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Sql(Statement.Begin),
@@ -197,6 +209,7 @@ class LoadSpec extends Specification {
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
 
+      val tstamp = Timestamp.from(Instant.ofEpochMilli(4L))
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -204,7 +217,8 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.GetLoadTstamp("atomic",Timestamp.from(message.data.origin.timestamps.max.get))),
+        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin, tstamp)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("VACUUM atomic.events"),
@@ -257,7 +271,7 @@ object LoadSpec {
 
   def isFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.Commit => ts.getLog.length == 5
+      case Statement.Commit => ts.getLog.filter(entry => entry == LogEntry.Sql(Statement.Begin)).size == 1
       case _ => false
     }
 
