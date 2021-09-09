@@ -264,7 +264,7 @@ object Migration {
     val transaction = Control.withTransaction(JDBC[F].executeUpdate(addColumn.statement))
     for {
       columns <- Control.getColumns[F](schemaName, tableName)
-      _ <- if (!columns.contains(ddlAddColumn.columnName)) transaction else LoaderAction.pure[F, Unit](())
+      _ <- if (columns.contains(ddlAddColumn.columnName)) LoaderAction.unit[F] else transaction
     } yield ()
   }
 }

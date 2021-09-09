@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
+import cats.data.NonEmptyList
+
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 
 object TableDefinitions {
@@ -188,5 +190,11 @@ object TableDefinitions {
     // True timestamp
     Column("true_tstamp", RedshiftTimestamp, zstdEncoding, Set.empty),
   )
+
+  def createAtomicEventsTable(schemaName: String): CreateTable = {
+    val tableConstraints: Set[TableConstraint] = Set(PrimaryKeyTable(NonEmptyList.one("event_id")))
+    val tableAttributes: Set[TableAttribute] = Set(Diststyle(Key), DistKeyTable("event_id"), SortKeyTable(None,NonEmptyList.one("collector_tstamp")))
+    CreateTable(s"$schemaName.events", atomicColumns, tableConstraints, tableAttributes)
+  }
 
 }
