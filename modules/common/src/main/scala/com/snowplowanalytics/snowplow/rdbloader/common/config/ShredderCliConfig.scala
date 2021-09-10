@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common.config
 
 import java.util.Base64
 import java.nio.charset.StandardCharsets.UTF_8
+import java.time.Instant
 
 import cats.data.ValidatedNel
 import cats.implicits._
@@ -24,6 +25,7 @@ import io.circe.parser.parse
 
 import com.monovore.decline.{Command, Opts}
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
 /**
@@ -35,7 +37,9 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
  */
 case class ShredderCliConfig(igluConfig: Json,
                              duplicateStorageConfig: Option[Json],
-                             config: Config[StorageTarget])
+                             config: Config[StorageTarget],
+                             since: Option[Instant],
+                             until: Option[Instant])
 
 object ShredderCliConfig {
 
@@ -64,9 +68,15 @@ object ShredderCliConfig {
   val config = Opts.option[String]("config",
     "base64-encoded config HOCON", "c", "config.hocon")
     .mapValidated(x => base64decode(x).flatMap(Config.fromString).toValidatedNel)
+  val since = Opts.option[String]("since",
+  "Start time of enriched archive the shredder will look")
+    .mapValidated(parseTime).orNone
+  val until = Opts.option[String]("until",
+    "End time of enriched archive the shredder will look")
+    .mapValidated(parseTime).orNone
 
-  val shredJobConfig = (igluConfig, duplicateStorageConfig, config).mapN {
-    (iglu, dupeStorage, target) => ShredderCliConfig(iglu, dupeStorage, target)
+  val shredJobConfig = (igluConfig, duplicateStorageConfig, config, since, until).mapN {
+    (iglu, dupeStorage, target, since, until) => ShredderCliConfig(iglu, dupeStorage, target, since, until)
   }
 
   def command(name: String, description: String): Command[ShredderCliConfig] =
@@ -79,4 +89,7 @@ object ShredderCliConfig {
    */
   def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, ShredderCliConfig] =
     command(name, description).parse(args).leftMap(_.toString())
+
+  def parseTime(t: String): ValidatedNel[String, Instant] =
+    Common.parseFolderTime(t).leftMap(_.toString).toValidatedNel
 }

@@ -30,7 +30,7 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     ShredderCliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args: Seq[String]) match {
-      case Right(ShredderCliConfig(iglu, _, Config(_, _, region, _, _, queueUrl, s: Shredder.Stream, _, formats, _))) =>
+      case Right(ShredderCliConfig(iglu, _, Config(_, _, region, _, _, queueUrl, s: Shredder.Stream, _, formats, _), _ ,_)) =>
         Resources.mk[IO](iglu, region).use { resources =>
           logger[IO].info(s"Starting RDB Shredder with $s config") *>
             Processing.run[IO](resources, s, formats, queueUrl).as(ExitCode.Success)
