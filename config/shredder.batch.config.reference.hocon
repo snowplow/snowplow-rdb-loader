@@ -68,6 +68,18 @@
     ]
   },
 
+  # Specifies interval shredder will work on
+  "runInterval": {
+    # Optional, shredder will start to process after given timestamp
+    "sinceTimestamp": "2021-10-12-14-55-22",
+    # Optional, sinceAge is a duration that specifies the maximum age of folders that
+    # should get processed. If sinceAge and sinceTimestamp are both specified, then the
+    # latest value of the two determines the earliest folder that will be processed.
+    "sinceAge": "14 days",
+    # Optional, shredder will process until given timestamp
+    "until": "2021-12-10-18-34-52"
+  }
+
   # Observability and reporting options
   "monitoring": {
     # Optional, for tracking runtime exceptions
