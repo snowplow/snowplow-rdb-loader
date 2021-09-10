@@ -181,14 +181,13 @@ object ShredJob {
     config: ShredderConfig.Batch
   ): Unit = {
     val s3Client = Cloud.createS3Client(config.output.region)
-
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(config.input.toString)
     val shreddedFolder = Folder.coerce(config.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
-      .getState(config.output.region, enrichedFolder, shreddedFolder)
+      .getState(enrichedFolder, shreddedFolder, config.runInterval, Instant.now, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
       val config = EventsManifestConfig

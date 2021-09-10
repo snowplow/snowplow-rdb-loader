@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 import java.net.URI
 import java.time.Instant
@@ -35,7 +35,7 @@ sealed trait ShredderConfig {
 
 object ShredderConfig {
 
-  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring, deduplication: Deduplication) extends ShredderConfig
+  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring, deduplication: Deduplication, runInterval: RunInterval) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -171,6 +171,11 @@ object ShredderConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
+  final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
+  object RunInterval {
+    final case class IntervalInstant(value: Instant)
+  }
+
   /**
    * All config implicits are put into case class because we want to make region decoder
    * replaceable to write unit tests for config parsing.
@@ -266,11 +271,28 @@ object ShredderConfig {
     implicit val sentryConfigDecoder: Decoder[Sentry] =
       deriveDecoder[Sentry]
 
+    implicit val runIntervalConfigDecoder: Decoder[RunInterval] =
+      deriveDecoder[RunInterval]
+
+    implicit val runIntervalInstantConfigDecoder: Decoder[RunInterval.IntervalInstant] =
+      Decoder[String].emap(v => Common.parseFolderTime(v).leftMap(_.toString).map(RunInterval.IntervalInstant))
+
     implicit val durationDecoder: Decoder[Duration] =
       Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))
 
     implicit val uriDecoder: Decoder[URI] =
       Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
+
+    implicit val finiteDurationDecoder: Decoder[FiniteDuration] =
+      Decoder[String].emap { str =>
+        Either
+          .catchOnly[NumberFormatException](Duration.create(str))
+          .leftMap(_.toString)
+          .flatMap { duration =>
+            if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+            else Left(s"Cannot convert Duration $duration to FiniteDuration")
+          }
+      }
   }
 
   def configCheck[A <: ShredderConfig](config: A): Either[String, A] = {

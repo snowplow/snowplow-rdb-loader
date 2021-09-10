@@ -12,17 +12,17 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import java.time.Instant
+
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.global
 
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated.BuildInfo
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.RunInterval
 
 object Discovery {
 
@@ -38,16 +38,20 @@ object Discovery {
   final val MessageProcessor: LoaderMessage.Processor =
     LoaderMessage.Processor(BuildInfo.name, MessageProcessorVersion)
 
-
   /**
    * Get an async computation, looking for incomplete folders
    * (ones where shredding hasn't completed successfully) and
    * list of folders ready to be shredded
    */
-  def getState(region: Region, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
-    val client = Cloud.createS3Client(region)
-    val enrichedDirs = Cloud.listDirs(client, enrichedFolder)
-    val shreddedDirs = Cloud.listDirs(client, shreddedFolder)
+  def getState(enrichedFolder: Folder,
+               shreddedFolder: Folder,
+               runInterval: RunInterval,
+               now: Instant,
+               listDirs: Folder => List[Folder],
+               keyExists: S3.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
+    val since = getConcrete(runInterval, now)
+    val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
+    val shreddedDirs = listDirs(shreddedFolder)
 
     val enrichedFolderNames = enrichedDirs.map(Folder.coerce).map(_.folderName)
     val shreddedFolderNames = shreddedDirs.map(Folder.coerce).map(_.folderName)
@@ -60,7 +64,7 @@ object Discovery {
 
     val incomplete = Future {
       intersecting.collect {
-        case folder if !Cloud.keyExists(client, shreddedFolder.append(folder).withKey(FinalKeyName)) =>
+        case folder if !keyExists(shreddedFolder.append(folder).withKey(FinalKeyName)) =>
           enrichedFolder.append(folder)
       }
     }(global)
@@ -69,6 +73,36 @@ object Discovery {
     (incomplete, unshredded)
   }
 
+  def getConcrete(runInterval: RunInterval, now: Instant): Option[Instant] = {
+    val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
+    (runInterval.sinceTimestamp.map(_.value), instantForDuration) match {
+      case (None, None) => None
+      case (i1@Some(v1), i2@Some(v2)) => if (v1.isAfter(v2)) i1 else i2
+      case (v1, None) => v1
+      case (None, v2) => v2
+    }
+  }
+
+  /**
+   * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format.
+   * This function extracts timestamp in the folder names and returns the ones in the
+   * given interval. Folders that does not have this format are included in the result also.
+   */
+  def findIntervalFolders(folders: List[Folder], since: Option[Instant], until: Option[Instant]): List[Folder] =
+    (since, until) match {
+      case (None, None) => folders
+      case _ =>
+        folders.filter { f =>
+          val folderName = f.folderName
+          !folderName.startsWith("run=") || {
+            val time = folderName.stripPrefix("run=")
+            Common.parseFolderTime(time).fold(
+              _ => true,
+              time => since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time))
+            )
+          }
+        }
+    }
 
   /**
    * Send message to queue and save thumb file on S3, signalising that the folder
