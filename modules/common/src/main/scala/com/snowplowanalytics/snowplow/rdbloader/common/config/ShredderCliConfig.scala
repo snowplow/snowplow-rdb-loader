@@ -13,19 +13,25 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
+import java.time.Instant
+
+import cats.data.ValidatedNel
 import cats.implicits._
 
 import io.circe.Json
 
 import com.monovore.decline.{Command, Opts}
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
 object ShredderCliConfig {
 
   case class Batch(igluConfig: Json,
                    duplicateStorageConfig: Option[Json],
-                   config: ShredderConfig.Batch)
+                   config: ShredderConfig.Batch,
+                   since: Option[Instant],
+                   until: Option[Instant])
   object Batch {
     val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
       "Base64-encoded Events Manifest JSON config",
@@ -33,13 +39,21 @@ object ShredderCliConfig {
     val batchConfig = Opts.option[String]("config",
       "base64-encoded config HOCON", "c", "config.hocon")
       .mapValidated(x => ConfigUtils.base64decode(x).flatMap(ShredderConfig.Batch.fromString).toValidatedNel)
-    val batchShredderConfig = (igluConfig, duplicateStorageConfig, batchConfig).mapN {
-      (iglu, dupeStorage, target) => Batch(iglu, dupeStorage, target)
+    val since = Opts.option[String]("since",
+      "Start time of enriched archive the shredder will look")
+      .mapValidated(parseTime).orNone
+    val until = Opts.option[String]("until",
+      "End time of enriched archive the shredder will look")
+      .mapValidated(parseTime).orNone
+    val batchShredderConfig = (igluConfig, duplicateStorageConfig, batchConfig, since, until).mapN {
+      (iglu, dupeStorage, target, since, until) => Batch(iglu, dupeStorage, target, since, until)
     }
     def command(name: String, description: String): Command[Batch] =
       Command(s"$name-${BuildInfo.version}", description)(batchShredderConfig)
     def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, Batch] =
       command(name, description).parse(args).leftMap(_.toString())
+    def parseTime(t: String): ValidatedNel[String, Instant] =
+      Common.parseFolderTime(t).leftMap(_.toString).toValidatedNel
   }
 
   case class Stream(igluConfig: Json, config: ShredderConfig.Stream)
