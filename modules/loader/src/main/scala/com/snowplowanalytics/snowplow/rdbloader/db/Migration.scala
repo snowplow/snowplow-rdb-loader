@@ -247,8 +247,8 @@ object Migration {
             val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $state. Migration cannot be created"
             DiscoveryFailure.IgluError(message).toLoaderError.asLeft
         }
-      case s: DSchemaList.Single =>
-        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
+      case _: DSchemaList.Single =>
+        val message = s"Illegal State: updateTable called for a table with known single schema [${current.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
         LoaderError.MigrationError(message).asLeft
     }
 
