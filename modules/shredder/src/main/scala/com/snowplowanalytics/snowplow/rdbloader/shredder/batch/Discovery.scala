@@ -103,19 +103,16 @@ object Discovery {
     (since, until) match {
       case (None, None) => folders
       case _ =>
-        val (nonTimeFormatted, inInterval) = folders.foldLeft[(List[Folder], List[Folder])]((Nil, Nil)) {
-          case ((l, r), f) =>
-            val folderName = f.folderName
-            if (folderName.startsWith("run=")) {
-              val time = folderName.stripPrefix("run=")
-              Common.parseFolderTime(time)
-                .fold(_ => (f::l, r), {
-                  case time if since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time)) => (l, f::r)
-                  case _ => (l, r)
-                })
-            } else (f::l, r)
+        folders.filter { f =>
+          val folderName = f.folderName
+          !folderName.startsWith("run=") || {
+            val time = folderName.stripPrefix("run=")
+            Common.parseFolderTime(time).fold(
+              _ => true,
+              time => since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time))
+            )
+          }
         }
-        inInterval.reverse ++ nonTimeFormatted.reverse
     }
 
   /**

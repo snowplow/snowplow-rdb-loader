@@ -9,17 +9,17 @@ class TableDefinitionsSpec extends Specification {
     "have correct atomic columns" in {
       val referenceStream = getClass.getResourceAsStream("/sql/atomic-def.sql")
       val expectedLines = Source.fromInputStream(referenceStream).getLines().toList
-      val expected = AtomicDefSpec.normalizeSql(expectedLines)
+      val expected = TableDefinitionsSpec.normalizeSql(expectedLines)
 
       val resultLines = TableDefinitions.createAtomicEventsTable("atomic").toDdl.split("\n").toList
-      val result = AtomicDefSpec.normalizeSql(resultLines)
+      val result = TableDefinitionsSpec.normalizeSql(resultLines)
 
       result must beEqualTo(expected)
     }
   }
 }
 
-object AtomicDefSpec {
+object TableDefinitionsSpec {
   /** Remove comments and formatting */
   def normalizeSql(lines: List[String]) = lines
     .map(_.dropWhile(_.isSpaceChar)

@@ -37,10 +37,10 @@ class DiscoverySpec extends Specification {
       }
 
       val expectedUnshredded = List(
-        s"${enrichedFolder}enriched1",
-        s"${enrichedFolder}enriched2",
-        s"${enrichedFolder}enriched3",
-      ).map(Folder.coerce)
+        s"enriched1",
+        s"enriched2",
+        s"enriched3",
+      ).map(enrichedFolder.append)
 
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs)
 
@@ -55,15 +55,15 @@ class DiscoverySpec extends Specification {
       }
 
       val expectedUnshredded = List(
-        s"${enrichedFolder}enriched1",
-        s"${enrichedFolder}enriched2",
-        s"${enrichedFolder}enriched3",
-      ).map(Folder.coerce)
+        s"enriched1",
+        s"enriched2",
+        s"enriched3",
+      ).map(enrichedFolder.append)
 
       val expectedIncomplete = List(
-        s"${enrichedFolder}common-incomplete1",
-        s"${enrichedFolder}common-incomplete2",
-      ).map(Folder.coerce)
+        s"common-incomplete1",
+        s"common-incomplete2",
+      ).map(enrichedFolder.append)
 
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs)
 
@@ -91,10 +91,10 @@ class DiscoverySpec extends Specification {
         ).map(f.append)
       }
       val expectedUnshredded = List(
-        s"${enrichedFolder}run=2021-09-07-13-41-27",
-        s"${enrichedFolder}run=2021-09-08-13-41-27",
-        s"${enrichedFolder}run=2021-09-09-13-41-27",
-      ).map(Folder.coerce)
+        s"run=2021-09-07-13-41-27",
+        s"run=2021-09-08-13-41-27",
+        s"run=2021-09-09-13-41-27",
+      ).map(enrichedFolder.append)
 
       val start = Instant.parse("2021-09-06T13:15:00.00Z")
       val end = Instant.parse("2021-09-10T13:15:00.00Z")
@@ -127,15 +127,15 @@ class DiscoverySpec extends Specification {
         ).map(f.append)
       }
       val expectedUnshredded = List(
-        s"${enrichedFolder}run=2021-08-06-13-41-27",
-        s"${enrichedFolder}run=2021-08-07-13-41-27",
-        s"${enrichedFolder}run=2021-08-08-13-41-27",
-        s"${enrichedFolder}run=2021-08-09-13-41-27",
-      ).map(Folder.coerce)
+        s"run=2021-08-06-13-41-27",
+        s"run=2021-08-07-13-41-27",
+        s"run=2021-08-08-13-41-27",
+        s"run=2021-08-09-13-41-27",
+      ).map(enrichedFolder.append)
       val expectedIncomplete = List(
-        s"${enrichedFolder}run=2021-08-05-12-41-27",
-        s"${enrichedFolder}run=2021-08-05-13-41-27",
-      ).map(Folder.coerce)
+        s"run=2021-08-05-12-41-27",
+        s"run=2021-08-05-13-41-27",
+      ).map(enrichedFolder.append)
 
       val end = Instant.parse("2021-08-10T13:15:00.00Z")
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, None, Some(end))
@@ -144,7 +144,7 @@ class DiscoverySpec extends Specification {
       unshredded must beEqualTo(expectedUnshredded)
     }
 
-    "include all the folders that does not have date format" in {
+    "include all the folders that does not have correct date format" in {
       def listDirs(f: Folder): List[Folder] = f match {
         case `enrichedFolder` => List(
           "run=2021-08-04-10-41-27",
@@ -177,17 +177,17 @@ class DiscoverySpec extends Specification {
         ).map(f.append)
       }
       val expectedUnshredded = List(
-        s"${enrichedFolder}run=2021-08-07-13-41-27",
-        s"${enrichedFolder}run=2021-08-08-13-41-27",
-        s"${enrichedFolder}run=2021-08-09-13-41-27",
-        s"${enrichedFolder}run=2021-08-11-13-41-27",
-        s"${enrichedFolder}unformatted-folder1",
-        s"${enrichedFolder}unformatted-folder2",
-      ).map(Folder.coerce)
+        s"run=2021-08-07-13-41-27",
+        s"run=2021-08-08-13-41-27",
+        s"run=2021-08-09-13-41-27",
+        s"run=2021-08-11-13-41-27",
+        s"unformatted-folder1",
+        s"unformatted-folder2",
+      ).map(enrichedFolder.append)
       val expectedIncomplete = List(
-        s"${enrichedFolder}unformatted-common-incomplete-1",
-        s"${enrichedFolder}unformatted-common-incomplete-2",
-      ).map(Folder.coerce)
+        s"unformatted-common-incomplete-1",
+        s"unformatted-common-incomplete-2",
+      ).map(enrichedFolder.append)
 
       val start = Instant.parse("2021-08-06T14:15:00.00Z")
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, Some(start), None)
@@ -197,7 +197,112 @@ class DiscoverySpec extends Specification {
     }
   }
 
-  def getState(enrichedFolder: Folder,
+  "Discovery.findIntervalFolders" should {
+    "return folders correctly according to given interval" in {
+      val enrichedFolders = List(
+        "run=2021-08-07-18-41-27",
+        "run=2021-08-04-10-41-27",
+        "run=2021-08-04-12-41-27",
+        "run=2021-08-05-12-41-27",
+        "run=2021-08-05-13-41-27",
+        "run=2021-08-06-13-41-27",
+        "run=2021-08-07-13-41-27",
+        "run=2021-08-08-13-41-27",
+        "run=2021-09-09-13-41-27",
+        "run=2021-09-09-18-41-27",
+        "run=2021-09-11-13-41-27",
+        "run=2021-09-12-13-41-27",
+        "run=2021-09-13-13-41-27",
+        "run=2021-09-14-13-41-27",
+      ).map(enrichedFolder.append)
+
+      Discovery.findIntervalFolders(
+        enrichedFolders,
+        Some(Instant.parse("2021-08-05T13:15:00.00Z")),
+        Some(Instant.parse("2021-09-09T14:15:00.00Z"))
+      ) must beEqualTo(
+        List(
+          "run=2021-08-07-18-41-27",
+          "run=2021-08-05-13-41-27",
+          "run=2021-08-06-13-41-27",
+          "run=2021-08-07-13-41-27",
+          "run=2021-08-08-13-41-27",
+          "run=2021-09-09-13-41-27",
+        ).map(enrichedFolder.append)
+      )
+
+      Discovery.findIntervalFolders(
+        enrichedFolders,
+        Some(Instant.parse("2021-08-04T13:15:00.00Z")),
+        Some(Instant.parse("2021-09-12T14:15:00.00Z"))
+      ) must beEqualTo(
+        List(
+          "run=2021-08-07-18-41-27",
+          "run=2021-08-05-12-41-27",
+          "run=2021-08-05-13-41-27",
+          "run=2021-08-06-13-41-27",
+          "run=2021-08-07-13-41-27",
+          "run=2021-08-08-13-41-27",
+          "run=2021-09-09-13-41-27",
+          "run=2021-09-09-18-41-27",
+          "run=2021-09-11-13-41-27",
+          "run=2021-09-12-13-41-27",
+        ).map(enrichedFolder.append)
+      )
+
+      Discovery.findIntervalFolders(
+        enrichedFolders,
+        Some(Instant.parse("2021-08-06T14:15:00.00Z")),
+        Some(Instant.parse("2021-08-07T12:15:00.00Z")),
+      ) must beEqualTo(List.empty)
+    }
+
+    "include all the folders that does not have correct date format" in {
+      val enrichedFolders = List(
+        "run=2021-08-04-10-41-27",
+        "run=2021-08-04-12-41-27",
+        "run=2021-08-05-12-41-27",
+        "run=2021-08-05-13-41-27",
+        "run=2021-08-06-13-41-27",
+        "2021-09-14-13-41-27",
+        "2021-08-14-13-41-27",
+        "run=2021-08-07-13-41-27",
+        "run=2021:09:14:13:41:27",
+        "run=2021:09:14:13:41:27",
+        "run=2021-08-08-13-41-27",
+        "unformatted-run1",
+        "unformatted-run2",
+        "run=2021-09-09-13-41-27",
+        "run=2021-09-09-18-41-27",
+        "run=2021-09-11-13-41-27",
+        "run=2021-09-12-13-41-27",
+        "run=2021-09-13-13-41-27",
+        "run=2021-09-14-13-41-27",
+      ).map(enrichedFolder.append)
+
+      Discovery.findIntervalFolders(
+        enrichedFolders,
+        Some(Instant.parse("2021-08-05T13:15:00.00Z")),
+        Some(Instant.parse("2021-09-09T14:15:00.00Z"))
+      ) must beEqualTo(
+        List(
+          "run=2021-08-05-13-41-27",
+          "run=2021-08-06-13-41-27",
+          "2021-09-14-13-41-27",
+          "2021-08-14-13-41-27",
+          "run=2021-08-07-13-41-27",
+          "run=2021:09:14:13:41:27",
+          "run=2021:09:14:13:41:27",
+          "run=2021-08-08-13-41-27",
+          "unformatted-run1",
+          "unformatted-run2",
+          "run=2021-09-09-13-41-27",
+        ).map(enrichedFolder.append)
+      )
+    }
+  }
+
+    def getState(enrichedFolder: Folder,
                shreddedFolder: Folder,
                listDirs: Folder => List[Folder],
                since: Option[Instant] = None,
