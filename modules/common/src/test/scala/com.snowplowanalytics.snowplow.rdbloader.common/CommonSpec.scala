@@ -18,6 +18,7 @@ import java.util.UUID
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
 
 import org.specs2.mutable.Specification
 
@@ -25,27 +26,27 @@ class CommonSpec extends Specification {
   "isTabular" should {
     "respect default TSV even if SchemaKey is not listed" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
-      result should beTrue
+      val result = Common.getFormat(CommonSpec.validConfig.formats)(input)
+      result should beSome(Format.TSV)
     }
 
     "respect default JSON" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
       val jsonFormat = CommonSpec.formats.copy(default = LoaderMessage.Format.JSON)
-      val result = Common.isTabular(jsonFormat)(input)
-      result should beFalse
+      val result = Common.getFormat(jsonFormat)(input)
+      result should beSome(Format.JSON)
     }
 
     "respect keys listed in json" in {
       val input = SchemaKey("com.acme","json-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
-      result should beFalse
+      val result = Common.getFormat(CommonSpec.validConfig.formats)(input)
+      result should beSome(Format.JSON)
     }
 
     "respect keys listed in skip" in {
       val input = SchemaKey("com.acme","skip-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
-      result should beFalse
+      val result = Common.getFormat(CommonSpec.validConfig.formats)(input)
+      result should beNone
     }
   }
 }
@@ -72,7 +73,8 @@ object CommonSpec {
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
     ),
     List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
-    List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+    List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None)),
+    Nil
   )
 
   val shredder = Config.Shredder.Batch(

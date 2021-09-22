@@ -136,17 +136,19 @@ object Config {
   final case class Formats(default: LoaderMessage.Format,
                            tsv: List[SchemaCriterion],
                            json: List[SchemaCriterion],
-                           skip: List[SchemaCriterion]) {
+                           skip: List[SchemaCriterion],
+                           parquet: List[SchemaCriterion]) {
     /** Find if there are overlapping criterions in any two of known three groups */
     def findOverlaps: Set[SchemaCriterion] =
       Formats.findOverlaps(tsv, json) ++
         Formats.findOverlaps(json, skip) ++
-        Formats.findOverlaps(skip, tsv)
+        Formats.findOverlaps(skip, tsv) ++
+        Formats.findOverlaps(tsv, parquet)
   }
 
   object Formats {
 
-    val Default: Formats = Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil)
+    val Default: Formats = Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil, Nil)
 
     /** Find all criterion overlaps in two lists */
     def findOverlaps(as: List[SchemaCriterion], bs: List[SchemaCriterion]): Set[SchemaCriterion] =

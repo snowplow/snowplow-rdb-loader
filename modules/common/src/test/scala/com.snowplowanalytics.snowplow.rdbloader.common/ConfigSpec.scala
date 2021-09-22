@@ -69,6 +69,7 @@ class ConfigSpec extends Specification {
             "default": "TSV",
             "json": [ "iglu:com.acme/overlap/jsonschema/1-0-0" ],
             "tsv": [ ],
+            "parquet": [ ],
             "skip": [ "iglu:com.acme/overlap/jsonschema/1-*-*" ]
           },
           steps = []
@@ -117,27 +118,27 @@ class ConfigSpec extends Specification {
   "Formats.findOverlaps" should {
     "find overlapping TSV and JSON" in {
       val criterion = SchemaCriterion("com.acme", "ev", "jsonschema", None)
-      Config.Formats(LoaderMessage.Format.TSV, List(criterion), List(criterion), List()).findOverlaps must beEqualTo(Set(criterion))
+      Config.Formats(LoaderMessage.Format.TSV, List(criterion), List(criterion), List(), List()).findOverlaps must beEqualTo(Set(criterion))
     }
 
     "find overlapping JSON and skip" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
-      Config.Formats(LoaderMessage.Format.TSV, List(), List(criterionA), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      Config.Formats(LoaderMessage.Format.TSV, List(), List(criterionA), List(criterionB), List()).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "find overlapping skip and TSV" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionC = SchemaCriterion("com.acme", "unique", "jsonschema", Some(1))
-      Config.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionC), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      Config.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionC), List(criterionB), List()).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "not find anything if not overlaps" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(2))
       val criterionC = SchemaCriterion("com.acme", "ev", "jsonschema", Some(3))
-      Config.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionB), List(criterionC)).findOverlaps must beEmpty
+      Config.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionB), List(criterionC), List()).findOverlaps must beEmpty
     }
   }
 }
@@ -184,7 +185,8 @@ object ConfigSpec {
         SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0)),
         SchemaCriterion("com.acme","json-event","jsonschema",Some(2),None,None)
       ),
-      List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+      List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None)),
+      Nil,
     ),
     Set(Step.Analyze)
   )

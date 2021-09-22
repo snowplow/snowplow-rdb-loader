@@ -53,7 +53,8 @@
     # Schemas that won't be loaded
     "skip": [
       "iglu:com.acme/skip-event/jsonschema/1-*-*"
-    ]
+    ],
+    "parquet": [ ]
   },
 
   # Optional. S3 path that holds JSONPaths

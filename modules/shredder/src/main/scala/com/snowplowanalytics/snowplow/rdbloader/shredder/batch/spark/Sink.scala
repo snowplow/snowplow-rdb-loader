@@ -17,6 +17,9 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, SaveMode, DataFrameWriter}
 
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
 object Sink {
@@ -30,6 +33,27 @@ object Sink {
       .partitionBy("output", "vendor", "name", "format", "model")
       .mode(SaveMode.Append)
       .text(outFolder)
+  }
+
+  // The problem
+  // We have RDD. And this RDD represents the whole heterogenius dataset
+  // But when we write to Parquet - we need to know the schema upfront
+
+  def writeParquet(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, String, Int, String)], outFolder: String, types: List[ShreddedType]): Unit = {
+    println(spark)
+    println(compression)
+    println(data)
+    println(outFolder)
+    types.map(_.schemaKey).foreach {
+     case SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) =>
+       val ordered = Flattening.getOrdered(IgluSingleton.get(shredConfig.igluConfig).resolver, vendor, name, model).value.right.get
+       val sparkSchema = Columnar.getSparkSchema(ordered)
+       ???
+   }
+
+
+
+    ???
   }
 
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {

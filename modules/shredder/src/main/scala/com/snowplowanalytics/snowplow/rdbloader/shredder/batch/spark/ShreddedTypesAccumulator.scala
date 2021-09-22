@@ -62,13 +62,15 @@ object ShreddedTypesAccumulator {
 
   /** Save set of shredded types into accumulator, for master to send to SQS */
   def recordShreddedType(accumulator: ShreddedTypesAccumulator,
-                         isTabular: SchemaKey => Boolean)
+                         getFormat: SchemaKey => Option[Format])
                         (inventory: Set[SchemaKey]): Unit = {
     val withFormat: Set[ShreddedType] =
       inventory
-        .map { schemaKey =>
-          if (isTabular(schemaKey)) ShreddedType(schemaKey, Format.TSV)
-          else ShreddedType(schemaKey, Format.JSON)
+        .flatMap { schemaKey =>
+          getFormat(schemaKey) match {
+            case Some(format) => Some(ShreddedType(schemaKey, format))
+            case None => None
+          }
         }
     accumulator.add(withFormat)
   }

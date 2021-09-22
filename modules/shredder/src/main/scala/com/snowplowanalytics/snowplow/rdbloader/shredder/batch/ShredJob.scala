@@ -32,7 +32,7 @@ import org.apache.spark.sql.SparkSession
 // Snowplow
 import com.snowplowanalytics.snowplow.badrows.Processor
 
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{ SchemaKey }
 
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
@@ -69,8 +69,8 @@ class ShredJob(@transient val spark: SparkSession,
   sc.register(timestampsAccumulator)
 
   /** Check if `shredType` should be transformed into TSV */
-  def isTabular(shredType: SchemaKey): Boolean =
-    Common.isTabular(formats)(shredType)
+  def getFormat(shredType: SchemaKey): Option[Format] =
+    Common.getFormat(formats)(shredType)
 
   /**
    * Runs the shred job by:
@@ -142,11 +142,11 @@ class ShredJob(@transient val spark: SparkSession,
     // those that are synthetic duplicates
     val shredded = good.map { e =>
       e.flatMap { event =>
-        ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(event.inventory.map(_.schemaKey))
+        ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, getFormat)(event.inventory.map(_.schemaKey))
         timestampsAccumulator.add(event)
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
+        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), getFormat, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
       }
     }.cache()
 
@@ -166,11 +166,16 @@ class ShredJob(@transient val spark: SparkSession,
     Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
+    // Sink.writeParquet()
+
+
+
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
     val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()  // RDD.isEmpty called as last resort
     val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
+
 
     val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption
 
@@ -226,6 +231,7 @@ object ShredJob {
       case Left(_) =>
         System.err.println("Incomplete folders discovered has timed out")
     }
+
 
   }
 }

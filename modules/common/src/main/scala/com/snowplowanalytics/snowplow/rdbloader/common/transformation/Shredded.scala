@@ -96,16 +96,19 @@ object Shredded {
     * @param resolver Iglu resolver to request all necessary entities
     * @param hierarchy actual JSON hierarchy from an enriched event
     */
-  def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](tabular: Boolean, resolver: => Resolver[F])(hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Shredded] = {
+  def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](format: Option[Format], resolver: => Resolver[F])(hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Shredded] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
-    if (tabular) {
-      EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
-        val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
-        Tabular(vendor, name, hierarchy.entity.schema.version.model, (meta ++ columns).mkString("\t"))
-      }
-    } else
-      EitherT.pure[F, FailureDetails.LoaderIgluError](Json(true, vendor, name, hierarchy.entity.schema.version.model, hierarchy.dumpJson))
+    format match {
+      case Some(Format.TSV) =>
+        EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
+          val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
+          Tabular(vendor, name, hierarchy.entity.schema.version.model, (meta ++ columns).mkString("\t"))
+        }
+      case Some(Format.JSON) =>
+        EitherT.pure[F, FailureDetails.LoaderIgluError](Json(true, vendor, name, hierarchy.entity.schema.version.model, hierarchy.dumpJson))
+      case _ => ???
+    }
   }
 
   /**
@@ -119,13 +122,13 @@ object Shredded {
    * @return either bad row (in case of failed flattening) or list of shredded entities inside original event
    */
   def fromEvent[F[_]: Monad: RegistryLookup: Clock](igluClient: Client[F, CJson],
-                                                    isTabular: SchemaKey => Boolean,
+                                                    getFormat: SchemaKey => Option[Format],
                                                     atomicLengths: Map[String, Int],
                                                     processor: Processor)
                                                    (event: Event): EitherT[F, BadRow, List[Shredded]] =
     Hierarchy.fromEvent(event)
       .traverse { hierarchy =>
-        val tabular = isTabular(hierarchy.entity.schema)
+        val tabular = getFormat(hierarchy.entity.schema)
         fromHierarchy(tabular, igluClient.resolver)(hierarchy)
       }
       .leftMap { error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)) }

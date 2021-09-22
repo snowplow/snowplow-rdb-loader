@@ -12,6 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
+import cats.syntax.either._
+import cats.syntax.functor._
+
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
@@ -65,15 +68,20 @@ object Common {
       .replaceAll("""\.""", "_")
       .toLowerCase
 
-  def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
-    formats.default match {
-      case LoaderMessage.Format.TSV =>
-        val notJson = !formats.json.exists(c => c.matches(schemaKey))
-        val notSkip = !formats.skip.exists(c => c.matches(schemaKey))
-        notJson && notSkip
-      case LoaderMessage.Format.JSON =>
-        formats.tsv.exists(c => c.matches(schemaKey))
+
+
+  /** Return format the schema key should belong to, None if it needs to be dropped */
+  def getFormat(formats: Formats)(schemaKey: SchemaKey): Option[Format] = {
+    def isTsv = formats.tsv.find(c => c.matches(schemaKey)).as(Format.TSV.asRight[Unit])
+    def isJson = formats.json.find(c => c.matches(schemaKey)).as(Format.JSON.asRight[Unit])
+    def isParquet = formats.parquet.find(c => c.matches(schemaKey)).as(Format.PARQUET.asRight[Unit])
+    def toSkip = formats.skip.find(c => c.matches(schemaKey)).as(().asLeft[Format])
+    isTsv.orElse(isJson).orElse(isParquet).orElse(toSkip) match {
+      case Some(Right(format)) => Some(format)
+      case Some(Left(_)) => None
+      case None => Some(formats.default)
     }
+  }
 
   /** Registry embedded into RDB Loader jar */
   private val loaderRefConf = Registry.Config("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
