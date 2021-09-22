@@ -38,7 +38,7 @@ object Dependencies {
     // Scala (Shredder)
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.14.1"
+    val schemaDdl        = "0.14.2"
 
     // Java (Loader)
     val slf4j            = "1.7.32"
