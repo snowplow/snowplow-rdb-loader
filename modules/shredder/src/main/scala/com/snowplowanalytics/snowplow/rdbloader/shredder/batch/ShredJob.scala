@@ -123,7 +123,6 @@ class ShredJob(@transient val spark: SparkSession,
         }
       }
       .setName("good")
-      .cache()
 
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
     val syntheticDupes = good
@@ -157,11 +156,15 @@ class ShredJob(@transient val spark: SparkSession,
 
     val goodCount: Future[Long] = shredded.filter(_.isGood).countAsync()
 
-    // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.text), outFolder)
-
     val atomicType = ShreddedType(Common.AtomicSchema, getFormat(Common.AtomicSchema).getOrElse(Format.TSV))
     val shreddedTypes = shreddedTypesAccumulator.value.toList
+
+    // Final output
+    if (shreddedTypes.contains((t: ShreddedType) => t.format == Format.TSV || t.format == Format.JSON)) {
+      val shreddedText = shredded.flatMap(_.text)
+      Sink.writeShredded(spark, shredderConfig.output.compression, shreddedText, outFolder)
+      shreddedText.unpersist()
+    }
 
     val schemaMap = SparkSchema.buildSchemaMap(igluConfig, atomicType :: shreddedTypes)
     Sink.writeParquet(spark, schemaMap, shredded.flatMap(_.parquet), outFolder)
