@@ -141,7 +141,7 @@ class ShredJob(@transient val spark: SparkSession,
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val shredded = good.flatMap { e =>
+    val shredded = (good.flatMap { e =>
       e.flatMap { event =>
         ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, getFormat)(event.inventory.map(_.schemaKey))
         timestampsAccumulator.add(event)
@@ -153,7 +153,7 @@ class ShredJob(@transient val spark: SparkSession,
         case Right(shredded) => shredded
         case Left(row) => List(Shredded.fromBadRow(row))
       }
-    } ++ common.flatMap(_.swap.toOption.map(Shredded.fromBadRow))
+    } ++ common.flatMap(_.swap.toOption.map(Shredded.fromBadRow))).cache()
 
     val goodCount: Future[Long] = shredded.filter(_.isGood).countAsync()
 
