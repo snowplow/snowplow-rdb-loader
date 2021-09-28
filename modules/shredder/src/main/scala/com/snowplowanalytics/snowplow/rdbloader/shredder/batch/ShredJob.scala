@@ -141,7 +141,7 @@ class ShredJob(@transient val spark: SparkSession,
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val shredded = good.map { e =>
+    val shredded = good.flatMap { e =>
       e.flatMap { event =>
         ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, getFormat)(event.inventory.map(_.schemaKey))
         timestampsAccumulator.add(event)
@@ -149,34 +149,28 @@ class ShredJob(@transient val spark: SparkSession,
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
         val resolver = IgluSingleton.get(igluConfig).resolver
         Shredded.fromEvent[Id](resolver, getFormat, Columnar.shred(resolver), atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
+      } match {
+        case Right(shredded) => shredded
+        case Left(row) => List(Shredded.fromBadRow(row))
       }
-    }.cache()
+    } ++ common.flatMap(_.swap.toOption.map(Shredded.fromBadRow))
 
-    // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shreddedData = shredded.flatMap {
-      case Right(shredded) => shredded
-      case Left(row) => List(Shredded.fromBadRow(row))
-    }
-
-    val goodCount: Future[Long] = shredded.filter(_.isRight).countAsync()
-
-    // Data that failed TSV transformation
-    val shreddedBad = common.flatMap(_.swap.toOption.map(Shredded.fromBadRow).flatMap(_.json))
+    val goodCount: Future[Long] = shredded.filter(_.isGood).countAsync()
 
     // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.tsv), outFolder)
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.tsv), outFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.json), outFolder)
 
     val atomicType = ShreddedType(Common.AtomicSchema, getFormat(Common.AtomicSchema).getOrElse(Format.TSV))
     val shreddedTypes = shreddedTypesAccumulator.value.toList
 
     val schemaMap = SparkSchema.buildSchemaMap(igluConfig, atomicType :: shreddedTypes)
-    Sink.writeParquet(spark, schemaMap, shreddedData.flatMap(_.parquet), outFolder)
+    Sink.writeParquet(spark, schemaMap, shredded.flatMap(_.parquet), outFolder)
 
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()
+    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shredded.isEmpty()
     val finalShreddedTypes = if (isEmpty) Nil else atomicType :: shreddedTypes
 
     val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption

@@ -34,6 +34,8 @@ object Sink {
       .partitionBy("output", "vendor", "name", "format", "model")
       .mode(SaveMode.Append)
       .text(outFolder)
+
+    data.unpersist()
   }
 
   def writeParquet(spark: SparkSession, schemasMap: Map[SchemaKey, StructType], data: RDD[(String, String, String, String, Int, List[Any])], outFolder: String): Unit = {
@@ -50,20 +52,20 @@ object Sink {
           .write
           .mode(SaveMode.Append)
           .parquet(fullPath)
-      case (k @ SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), sparkSchema) =>
+        filtered.unpersist()
+      case (SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), sparkSchema) =>
         val fullPath = parquetPath(vendor, name, model, outFolder)
         val filtered = data.flatMap {
           case (_, v, n, _, m, data) if v == vendor && n == name && m == model =>
-            println(data)
             Some(Row.fromSeq(data))
           case _ =>
             None
         }
-        println(s"Writing ${k.toSchemaUri}")
         spark.createDataFrame(filtered, sparkSchema)
           .write
           .mode(SaveMode.Append)
           .parquet(fullPath)
+        filtered.unpersist()
     }
   }  
 

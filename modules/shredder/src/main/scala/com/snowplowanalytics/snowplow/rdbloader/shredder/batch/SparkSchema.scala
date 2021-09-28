@@ -164,6 +164,11 @@ object SparkSchema {
   )
 
   val Atomic = StructType(List(
+    StructField("schema_vendor",                 StringType,     true),
+    StructField("schema_name",                   StringType,     true),
+    StructField("schema_format",                 StringType,     true),
+    StructField("schema_version",                StringType,     true),
+
     StructField("app_id",                   StringType,     true),
     StructField("platform",                 StringType,     true),
     StructField("etl_tstamp",               TimestampType,  true),
