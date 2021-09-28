@@ -52,12 +52,18 @@ sealed trait Shredded {
     case _: Shredded.Json => None
   }
 
+  def text: Option[(String, String, String, String, Int, String)] = this match {
+    case _: Shredded.Json if isGood => Some(("good", vendor, name, format.path, model, data))
+    case _: Shredded.Tabular => Some(("good", vendor, name, format.path, model, data))
+    case _: Shredded.Json => Some(("bad", vendor, name, format.path, model, data))
+    case _: Shredded.Parquet => None
+  }
+
   def parquet: Option[(String, String, String, String, Int, List[Any])] = this match {
     case p: Shredded.Parquet => Some(("good", vendor, name, format.path, model, p.rows)) 
     case _: Shredded.Tabular => None
     case _: Shredded.Json => None
   }
-
 
   def split: (Shredded.Path, Shredded.Data) =
     (Shredded.Path(isGood, vendor, name, format, model), Shredded.Data(data))

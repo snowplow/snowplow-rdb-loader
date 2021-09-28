@@ -158,8 +158,7 @@ class ShredJob(@transient val spark: SparkSession,
     val goodCount: Future[Long] = shredded.filter(_.isGood).countAsync()
 
     // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.tsv), outFolder)
-    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.json), outFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shredded.flatMap(_.text), outFolder)
 
     val atomicType = ShreddedType(Common.AtomicSchema, getFormat(Common.AtomicSchema).getOrElse(Format.TSV))
     val shreddedTypes = shreddedTypesAccumulator.value.toList
