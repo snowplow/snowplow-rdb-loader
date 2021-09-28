@@ -16,8 +16,6 @@ import cats.{Monad, Applicative}
 import cats.data.EitherT
 import cats.implicits._
 
-import fs2.Stream
-
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils

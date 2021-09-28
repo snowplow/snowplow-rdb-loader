@@ -116,7 +116,6 @@ object Load {
         } yield ()
     }
 
-
   /**
    * Run a transaction with all load statements and with in-transaction migrations if necessary
    * and acknowledge the discovery message after transaction is successful.

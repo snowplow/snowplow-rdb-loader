@@ -14,16 +14,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
-import cats.Id
-import cats.implicits._
-
-import io.circe.Json
-
 import java.util.UUID
 import java.time.Instant
 
 import scala.concurrent.{Await, Future, TimeoutException}
 import scala.concurrent.duration._
+
+import cats.Id
+import cats.implicits._
+
+import io.circe.Json
 
 // Spark
 import org.apache.spark.SparkContext
@@ -59,6 +59,7 @@ class ShredJob(@transient val spark: SparkSession,
                formats: Formats,
                shredderConfig: Shredder.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
+  spark.conf.set("spark.sql.datetime.java8API.enabled", true)
 
   // Accumulator to track shredded types
   val shreddedTypesAccumulator = new ShreddedTypesAccumulator
@@ -146,7 +147,8 @@ class ShredJob(@transient val spark: SparkSession,
         timestampsAccumulator.add(event)
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), getFormat, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
+        val resolver = IgluSingleton.get(igluConfig).resolver
+        Shredded.fromEvent[Id](resolver, getFormat, Columnar.shred(resolver), atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
       }
     }.cache()
 
@@ -165,17 +167,17 @@ class ShredJob(@transient val spark: SparkSession,
     Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.tsv), outFolder)
     Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
 
+    val atomicType = ShreddedType(Common.AtomicSchema, getFormat(Common.AtomicSchema).getOrElse(Format.TSV))
     val shreddedTypes = shreddedTypesAccumulator.value.toList
-    // Sink.writeParquet()
 
-
+    val schemaMap = SparkSchema.buildSchemaMap(igluConfig, atomicType :: shreddedTypes)
+    Sink.writeParquet(spark, schemaMap, shreddedData.flatMap(_.parquet), outFolder)
 
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()  // RDD.isEmpty called as last resort
-    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
-
+    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()
+    val finalShreddedTypes = if (isEmpty) Nil else atomicType :: shreddedTypes
 
     val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption
 
@@ -231,7 +233,5 @@ object ShredJob {
       case Left(_) =>
         System.err.println("Incomplete folders discovered has timed out")
     }
-
-
   }
 }

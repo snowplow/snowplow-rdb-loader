@@ -42,7 +42,7 @@ object Processing {
                                                               formats: Formats,
                                                               queueName: String): F[Unit] = {
     val isTabular: SchemaKey => Boolean =
-      Common.isTabular(formats)
+      Common.getFormat(formats)
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =

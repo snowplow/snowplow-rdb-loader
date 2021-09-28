@@ -15,11 +15,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SparkSession, SaveMode, DataFrameWriter}
+import org.apache.spark.sql.{Row, SparkSession, SaveMode, DataFrameWriter}
+import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddedType
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 
 object Sink {
@@ -35,25 +36,40 @@ object Sink {
       .text(outFolder)
   }
 
-  // The problem
-  // We have RDD. And this RDD represents the whole heterogenius dataset
-  // But when we write to Parquet - we need to know the schema upfront
+  def writeParquet(spark: SparkSession, schemasMap: Map[SchemaKey, StructType], data: RDD[(String, String, String, String, Int, List[Any])], outFolder: String): Unit = {
+    schemasMap.foreach {
+      case (k @ SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), sparkSchema) if k == Common.AtomicSchema =>
+        val fullPath = parquetPath(vendor, name, model, outFolder)
+        val filtered = data.flatMap {
+          case (_, v, n, _, m, data) if v == Common.AtomicSchema.vendor && n == Common.AtomicSchema.name && m == Common.AtomicSchema.version.model =>
+            Some(Row.fromSeq(data))
+          case _ =>
+            None
+        }
+        spark.createDataFrame(filtered, sparkSchema)
+          .write
+          .mode(SaveMode.Append)
+          .parquet(fullPath)
+      case (k @ SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), sparkSchema) =>
+        val fullPath = parquetPath(vendor, name, model, outFolder)
+        val filtered = data.flatMap {
+          case (_, v, n, _, m, data) if v == vendor && n == name && m == model =>
+            println(data)
+            Some(Row.fromSeq(data))
+          case _ =>
+            None
+        }
+        println(s"Writing ${k.toSchemaUri}")
+        spark.createDataFrame(filtered, sparkSchema)
+          .write
+          .mode(SaveMode.Append)
+          .parquet(fullPath)
+    }
+  }  
 
-  def writeParquet(spark: SparkSession, compression: Compression, data: RDD[(String, String, String, String, Int, String)], outFolder: String, types: List[ShreddedType]): Unit = {
-    println(spark)
-    println(compression)
-    println(data)
-    println(outFolder)
-    types.map(_.schemaKey).foreach {
-     case SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) =>
-       val ordered = Flattening.getOrdered(IgluSingleton.get(shredConfig.igluConfig).resolver, vendor, name, model).value.right.get
-       val sparkSchema = Columnar.getSparkSchema(ordered)
-       ???
-   }
-
-
-
-    ???
+  def parquetPath(vendor: String, name: String, model: Int, folder: String): String = {
+    val withTrailing = if (folder.endsWith("/")) folder else s"$folder/"
+    withTrailing ++ s"/output=good/vendor=$vendor/name=$name/format=parquet/model=$model"
   }
 
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {

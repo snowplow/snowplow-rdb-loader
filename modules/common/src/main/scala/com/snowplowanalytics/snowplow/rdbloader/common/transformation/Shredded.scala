@@ -20,11 +20,9 @@ import cats.implicits._
 
 import cats.effect.Clock
 
-import io.circe.{Json => CJson}
-
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
-import com.snowplowanalytics.iglu.client.{Resolver, Client}
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -44,19 +42,31 @@ sealed trait Shredded {
   def json: Option[(String, String, String, String, Int, String)] = this match {
     case _: Shredded.Json if isGood => Some(("good", vendor, name, format.path, model, data))
     case _: Shredded.Json => Some(("bad", vendor, name, format.path, model, data))
+    case _: Shredded.Parquet => None
     case _: Shredded.Tabular => None
   }
 
   def tsv: Option[(String, String, String, String, Int, String)] = this match {
     case _: Shredded.Tabular => Some(("good", vendor, name, format.path, model, data))
+    case _: Shredded.Parquet => None
     case _: Shredded.Json => None
   }
+
+  def parquet: Option[(String, String, String, String, Int, List[Any])] = this match {
+    case p: Shredded.Parquet => Some(("good", vendor, name, format.path, model, p.rows)) 
+    case _: Shredded.Tabular => None
+    case _: Shredded.Json => None
+  }
+
 
   def split: (Shredded.Path, Shredded.Data) =
     (Shredded.Path(isGood, vendor, name, format, model), Shredded.Data(data))
 }
 
 object Shredded {
+
+  /** A custom shredding function, producing non-common format */
+  type Shred[F[_]] = Hierarchy => EitherT[F, FailureDetails.LoaderIgluError, Shredded]
 
   case class Data(value: String) extends AnyVal
 
@@ -87,16 +97,36 @@ object Shredded {
     val format: Format = Format.TSV
   }
 
+  // Where to put this Parquet?
+  // It needs to have Schema AND Row. Both coming from Spark
+
+  // We can keep it similar to Tabular, but caller has to make sure they provide
+  // all necessary schemas
+
+  case class Parquet(vendor: String, name: String, model: Int, rows: List[Any]) extends Shredded {
+    val data: String = ""
+    val isGood = true   // We don't support Parquet shredding for bad data
+    val format: Format = Format.PARQUET
+  }
+
   /**
     * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity,
     * specifying how it should look like in destination: JSON or TSV
-    * If flattening algorithm failed at any point - it will fallback to the JSON format
+    * JSON and TSV are common shredding formats, but if a particular shredder supports
+    * a format that others don't (e.g. Spark Shredder supports Parquet, while Stream
+    * Shredder does not) and the hierarcy has to be shredded into that foramt - a custom
+    * `Shred` function can be used.
     *
-    * @param tabular whether data should be transformed into TSV format
+    * @param format what format the hiearchy should be shredded into
     * @param resolver Iglu resolver to request all necessary entities
+    * @param shred a custom shredding funciton, producing non-conventional formats,
+    *        such as Parquet
     * @param hierarchy actual JSON hierarchy from an enriched event
     */
-  def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](format: Option[Format], resolver: => Resolver[F])(hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Shredded] = {
+  def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](format: Option[Format],
+                                                        resolver: Resolver[F],
+                                                        shred: Shred[F])
+                                                       (hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Shredded] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     format match {
@@ -107,7 +137,8 @@ object Shredded {
         }
       case Some(Format.JSON) =>
         EitherT.pure[F, FailureDetails.LoaderIgluError](Json(true, vendor, name, hierarchy.entity.schema.version.model, hierarchy.dumpJson))
-      case _ => ???
+      case _ =>
+        shred(hierarchy)
     }
   }
 
@@ -119,22 +150,31 @@ object Shredded {
    * @param isTabular predicate to decide whether output should be JSON or TSV
    * @param atomicLengths a map to trim atomic event columns
    * @param event enriched event
+   * @param shred a custom shredding funciton, producing non-conventional formats,
+   *        such as Parquet
    * @return either bad row (in case of failed flattening) or list of shredded entities inside original event
    */
-  def fromEvent[F[_]: Monad: RegistryLookup: Clock](igluClient: Client[F, CJson],
+  def fromEvent[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
                                                     getFormat: SchemaKey => Option[Format],
+                                                    shred: Shred[F],
                                                     atomicLengths: Map[String, Int],
                                                     processor: Processor)
                                                    (event: Event): EitherT[F, BadRow, List[Shredded]] =
     Hierarchy.fromEvent(event)
       .traverse { hierarchy =>
-        val tabular = getFormat(hierarchy.entity.schema)
-        fromHierarchy(tabular, igluClient.resolver)(hierarchy)
+        val format = getFormat(hierarchy.entity.schema)
+        fromHierarchy(format, resolver, shred)(hierarchy)
       }
       .leftMap { error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)) }
       .map { shredded =>
-        val data = EventUtils.alterEnrichedEvent(event, atomicLengths)
-        val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, data)
+        val atomic = getFormat(AtomicSchema) match {
+          case Some(Format.PARQUET) =>
+            val data = EventUtils.alterEnrichedEventAny(event, atomicLengths)
+            Shredded.Parquet(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, data)
+          case _ =>
+            val data = EventUtils.alterEnrichedEvent(event, atomicLengths).mkString("\t")
+            Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, data)
+        }
         atomic :: shredded
       }
 }

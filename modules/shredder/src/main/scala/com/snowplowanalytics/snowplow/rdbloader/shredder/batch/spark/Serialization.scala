@@ -51,6 +51,7 @@ object Serialization {
     classOf[java.util.ArrayList[_]],
     Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
     Class.forName("scala.math.Ordering$Reverse"),
+    classOf[org.apache.spark.sql.Row],
     classOf[org.apache.spark.sql.catalyst.InternalRow],
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils$$anonfun$1"),  // Ordering
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$TSV$"),

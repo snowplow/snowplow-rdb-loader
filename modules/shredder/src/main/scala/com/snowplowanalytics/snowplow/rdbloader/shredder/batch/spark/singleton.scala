@@ -20,12 +20,18 @@ import cats.syntax.show._
 import cats.syntax.option._
 
 import io.circe.Json
+import io.circe.syntax._
 
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
+
+import org.apache.spark.sql.types.StructType
+
+import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.client.Client
 
+import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.SparkSchema
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
 
 /** Singletons needed for unserializable or stateful classes. */
@@ -92,6 +98,38 @@ object singleton {
         }
       }
       instance
+    }
+  }
+
+  /** Singleton for DuplicateStorage to maintain one per node. */
+  object SparkSchemasSingleton {
+
+    @volatile private var instance: collection.mutable.Map[(String, String, Int), StructType] = _
+
+    def get(igluConfig: Json, schema: SchemaKey): StructType =
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = collection.mutable.Map.empty[(String, String, Int), StructType]
+          }
+          getOrBuild(igluConfig, schema)
+        }
+      } else getOrBuild(igluConfig, schema)
+
+    def getOrBuild(igluConfig: Json, schema: SchemaKey) = {
+      val key = (schema.vendor, schema.name, schema.version.model)
+      instance.get(key) match {
+        case Some(schema) => schema
+        case None =>
+          SparkSchema.fetchSchema(igluConfig, schema) match {
+            case Right(sparkSchema) =>
+              instance.put(key, sparkSchema)
+              sparkSchema
+            case Left(error) =>     // TODO: Make sure it crashes the whole Spark with explicit error
+              throw new RuntimeException(s"Failed to fetch schema list for ${schema.toSchemaUri} required to build a Parquet schema: ${error.asJson.noSpaces}")
+          }
+
+      }
     }
   }
 }

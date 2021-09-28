@@ -49,8 +49,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
 
-
-
 // Specs2
 import org.specs2.matcher.Matcher
 import org.specs2.matcher.Matchers._
@@ -216,10 +214,11 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: Shredder.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
+  private def storageConfig(shredder: Shredder.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion], parquetSchemas: List[SchemaCriterion]) = {
     val encoder = Base64.getUrlEncoder
-    val format = if (tsv) "TSV" else "JSON"
-    val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
+    println(if (tsv) "TSV" else "JSON")
+    println(jsonSchemas.map(x => s""""${x.asString}"""").mkString(","))
+    println(parquetSchemas.map(x => s""""${x.asString}"""").mkString(","))
     val configPlain = s"""|{
     |name = "Acme Redshift"
     |id = "123e4567-e89b-12d3-a456-426655440000"
@@ -249,7 +248,7 @@ object ShredJobSpec {
     | "sshTunnel": null
     |},
     |monitoring = {"snowplow": null, "sentry": null},
-    |formats = { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] },
+    |formats = { "default": "PARQUET", "json": [], "tsv": [ ], "skip": [ ], "parquet":[] },
     |steps = []
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
@@ -342,11 +341,15 @@ trait ShredJobSpec extends SparkSpec {
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false, tsv: Boolean = false, jsonSchemas: List[SchemaCriterion] = Nil): LoaderMessage.ShreddingComplete  = {
+  def runShredJob(lines: Lines,
+                  crossBatchDedupe: Boolean = false,
+                  tsv: Boolean = false,
+                  jsonSchemas: List[SchemaCriterion] = Nil,
+                  parquetSchemas: List[SchemaCriterion] = Nil): LoaderMessage.ShreddingComplete  = {
     val shredder = getShredder(lines, dirs)
     val config = Array(
       "--iglu-config", igluConfigWithLocal,
-      "--config", storageConfig(shredder, tsv, jsonSchemas)
+      "--config", storageConfig(shredder, tsv, jsonSchemas, parquetSchemas)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -362,7 +365,8 @@ trait ShredJobSpec extends SparkSpec {
       case Right(cli) =>
         cli.config.shredder match {
           case b: Shredder.Batch =>
-            val job = new ShredJob(spark,cli.igluConfig,  cli.config.formats, b)
+            val job = new ShredJob(spark,cli.igluConfig, cli.config.formats, b)
+            println(s"Job is about to write data to ${b.output.path}")
             val result = job.run("", Map.empty, dedupeConfig)
             deleteRecursively(new File(b.input))
             result

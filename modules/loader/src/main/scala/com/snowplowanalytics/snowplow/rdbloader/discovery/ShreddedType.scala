@@ -120,6 +120,8 @@ object ShreddedType {
             Json(info, jsonPath)
           }
         }
+      case _ => 
+        Monad[F].pure(DiscoveryFailure.IgluError("We're not quite ready to load Parquet").asLeft)
     }
 
   /**

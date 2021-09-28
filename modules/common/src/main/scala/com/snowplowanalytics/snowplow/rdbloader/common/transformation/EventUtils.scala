@@ -37,7 +37,7 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{ParsingError, Event}
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Failure, Payload, FailureDetails}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import Flattening.{NullCharacter, getOrdered}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Flattening.{NullCharacter, getOrdered}
 
 object EventUtils {
 
@@ -78,8 +78,8 @@ object EventUtils {
    * @param originalLine The original TSV line
    * @return The original line with the proper fields removed respecting the Postgres constaints
    */
-  def alterEnrichedEvent[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): String = {
-    def tranformDate(s: String): String =
+  def alterEnrichedEvent[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): List[String] = {
+    def transformDate(s: String): String =
       Either.catchOnly[DateTimeParseException](Instant.parse(s)).map(_.formatted).getOrElse(s)
     def truncate(key: String, value: String): String =
       lengths.get(key) match {
@@ -87,16 +87,35 @@ object EventUtils {
         case None => value
       }
 
-    val tabular = originalLine.ordered.flatMap {
+    originalLine.ordered.flatMap {
       case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
       case (key, Some(value)) if key.endsWith("_tstamp") =>
-        Some(value.fold("", transformBool, _ => value.show, tranformDate, _ => value.noSpaces, _ => value.noSpaces))
+        Some(value.fold("", transformBool, _ => value.show, transformDate, _ => value.noSpaces, _ => value.noSpaces))
       case (key, Some(value)) =>
         Some(value.fold("", transformBool, _ => truncate(key, value.show), identity, _ => value.noSpaces, _ => value.noSpaces))
       case (_, None) => Some("")
     }
+  }
 
-    tabular.mkString("\t")
+  def alterEnrichedEventAny[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): List[Any] = {
+    def transformDate(s: String): Instant =
+      Instant.parse(s)
+    def truncate(key: String, value: String): String =
+      lengths.get(key) match {
+        case Some(len) => value.take(len)
+        case None => value
+      }
+
+    originalLine.ordered.flatMap {
+      case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
+      case (key, Some(value)) if key.endsWith("_tstamp") =>
+        val any: Any = value.fold(null, b => b, n => n.toInt.getOrElse(n.toDouble), transformDate, _ => value.noSpaces, _ => value.noSpaces)
+        Some(any)
+      case (key, Some(value)) =>
+        val any: Any = value.fold(null, b => b, n => n.toInt.getOrElse(n.toDouble), s => truncate(key, s), _ => value.noSpaces, _ => value.noSpaces)
+        Some(any)
+      case (_, None) => Some("")
+    }
   }
 
   def validateEntities[F[_]: Clock: RegistryLookup: Monad](processor: Processor, client: Client[F, Json], event: Event): F[Either[BadRow, Unit]] =

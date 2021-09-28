@@ -79,6 +79,7 @@ object Common {
     isTsv.orElse(isJson).orElse(isParquet).orElse(toSkip) match {
       case Some(Right(format)) => Some(format)
       case Some(Left(_)) => None
+      case None if schemaKey == AtomicSchema && formats.default == Format.JSON => Some(Format.TSV)
       case None => Some(formats.default)
     }
   }

@@ -233,8 +233,14 @@ object Config {
   implicit val uriDecoder: Decoder[URI] =
     Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
 
-  implicit val formatsDecoder: Decoder[Formats] =
-    deriveDecoder[Formats]
+  // Custom decoder, making parquet optional for backward-compatibility
+  implicit val formatsDecoder: Decoder[Formats] = {
+    type Criterions = List[SchemaCriterion]
+    Decoder.forProduct5[Formats, LoaderMessage.Format, Criterions, Criterions, Criterions, Option[Criterions]]("default", "tsv", "json", "skip", "parquet") {
+      case (default, tsv, json, skip, parquet) =>
+        Formats(default, tsv, json, skip, parquet.getOrElse(Nil))
+    }
+  }
 
   implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
     deriveDecoder[SnowplowMonitoring]
