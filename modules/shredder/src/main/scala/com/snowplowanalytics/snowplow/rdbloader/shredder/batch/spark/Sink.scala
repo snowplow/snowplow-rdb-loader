@@ -37,7 +37,6 @@ object Sink {
   }
 
   def writeParquet(spark: SparkSession, schemasMap: Map[SchemaKey, StructType], data: RDD[(String, String, String, String, Int, List[Any])], outFolder: String): Unit = {
-    data.persist()
     schemasMap.foreach {
       case (k @ SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), sparkSchema) if k == Common.AtomicSchema =>
         val fullPath = parquetPath(vendor, name, model, outFolder)
