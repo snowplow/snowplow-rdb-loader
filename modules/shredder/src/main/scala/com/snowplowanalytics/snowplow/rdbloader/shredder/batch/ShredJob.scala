@@ -18,11 +18,10 @@ import cats.Id
 import cats.implicits._
 
 import io.circe.Json
-
 import java.util.UUID
 import java.time.Instant
 
-import scala.concurrent.{Await, Future, TimeoutException}
+import scala.concurrent.{Await, TimeoutException}
 import scala.concurrent.duration._
 
 // Spark
@@ -33,6 +32,8 @@ import org.apache.spark.sql.SparkSession
 import com.snowplowanalytics.snowplow.badrows.Processor
 
 import com.snowplowanalytics.iglu.core.SchemaKey
+
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
@@ -124,6 +125,11 @@ class ShredJob(@transient val spark: SparkSession,
       .setName("good")
       .cache()
 
+    // The events counter
+    // Using accumulators for counting is unreliable, but we don't
+    // need a precise value and chance of retry is very small
+    val eventsCounter = sc.longAccumulator("events")
+
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
     val syntheticDupes = good
       .flatMap {
@@ -138,43 +144,39 @@ class ShredJob(@transient val spark: SparkSession,
 
     val syntheticDupesBroadcasted = sc.broadcast(syntheticDupes.collect().toSet)
 
+    // Events that could not be parsed
+    val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
+
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val shredded = good.map { e =>
-      e.flatMap { event =>
-        ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(event.inventory.map(_.schemaKey))
-        timestampsAccumulator.add(event)
+    val shredded = (shreddedBad ++ good).flatMap {
+      case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value
-      }
-    }.cache()
-
-    // Update the shredded JSONs with the new deduplicated event IDs and stringify
-    val shreddedData = shredded.flatMap {
-      case Right(shredded) => shredded
-      case Left(row) => List(Shredded.fromBadRow(row))
+        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value match {
+          case Right(shredded) =>
+            ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(withDupeContext.inventory.map(_.schemaKey))
+            timestampsAccumulator.add(event)
+            eventsCounter.add(1L)
+            shredded.map(_.text)
+          case Left(badRow) =>
+            List(Shredded.fromBadRow(badRow).text)
+        }
+      case Left(badRow) =>
+        List(Shredded.fromBadRow(badRow).text)
     }
 
-    val goodCount: Future[Long] = shredded.filter(_.isRight).countAsync()
-
-    // Data that failed TSV transformation
-    val shreddedBad = common.flatMap(_.swap.toOption.map(Shredded.fromBadRow).flatMap(_.json))
-
     // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.tsv), outFolder)
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
+    Sink.writeShredded(spark, shredderConfig.output.compression, shredded, outFolder)
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shreddedData.isEmpty()  // RDD.isEmpty called as last resort
+    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shredded.isEmpty()  // RDD.isEmpty called as last resort
     val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
 
-    val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption
-
-    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredderConfig.output.compression, MessageProcessor, count)
+    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredderConfig.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
   }
 }
 
@@ -182,9 +184,6 @@ class ShredJob(@transient val spark: SparkSession,
 object ShredJob {
 
   val BadRowsProcessor: Processor = Processor(BuildInfo.name, BuildInfo.version)
-
-  /** Timeout to wait for `countAsync` for good events */
-  val CountTimeout: FiniteDuration = 5.minutes
 
   def run(
     spark: SparkSession,

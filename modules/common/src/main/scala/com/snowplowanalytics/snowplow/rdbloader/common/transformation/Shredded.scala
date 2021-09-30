@@ -41,6 +41,12 @@ sealed trait Shredded {
   def model: Int
   def data: String
 
+  def text: (String, String, String, String, Int, String) = this match {
+    case _: Shredded.Tabular => ("good", vendor, name, format.path, model, data)
+    case _: Shredded.Json if isGood => ("good", vendor, name, format.path, model, data)
+    case _: Shredded.Json => ("bad", vendor, name, format.path, model, data)
+  }
+
   def json: Option[(String, String, String, String, Int, String)] = this match {
     case _: Shredded.Json if isGood => Some(("good", vendor, name, format.path, model, data))
     case _: Shredded.Json => Some(("bad", vendor, name, format.path, model, data))
