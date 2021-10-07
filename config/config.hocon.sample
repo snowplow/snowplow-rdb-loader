@@ -37,6 +37,14 @@
       # Shredder output compression, GZIP or NONE
       "compression": "GZIP"
     }
+    "deduplication": {
+      "synthetic": {
+        # Can be BROADCAST, JOIN or NONE
+        "type": "BROADCAST"
+        # Only duplicates with higher cardinality will be deduplicates (applicable for BROADCAST only)
+        "cardinality": 1
+      }
+    }
   },
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)

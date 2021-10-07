@@ -85,7 +85,7 @@ object Config {
     def output: Shredder.Output
   }
   object Shredder {
-    final case class Batch(input: URI, output: Output) extends Shredder
+    final case class Batch(input: URI, output: Output, deduplication: Deduplication = Deduplication.Default) extends Shredder
     final case class Stream(input: StreamInput, output: Output, windowing: Duration) extends Shredder
 
     sealed trait InitPosition
@@ -130,6 +130,47 @@ object Config {
     object Compression {
       final case object None extends Compression { val asString = "NONE" }
       final case object Gzip extends Compression { val asString = "GZIP" }
+    }
+
+    final case class Deduplication(synthetic: Deduplication.Synthetic)
+
+    object Deduplication {
+
+      def Default = Deduplication(Deduplication.Synthetic.Broadcast(1))
+
+      /**
+       * Configuration for in-batch synthetic deduplication
+       */
+      sealed trait Synthetic
+      object Synthetic {
+        final case object Join extends Synthetic
+        final case class Broadcast(cardinality: Int) extends Synthetic
+        final case object None extends Synthetic
+
+        implicit val ioCirceSyntheticDecoder: Decoder[Synthetic] =
+          Decoder.instance { cur =>
+            val typeCur = cur.downField("type")
+            typeCur.as[String].map(_.toLowerCase) match {
+              case Right("none") =>
+                Right(None)
+              case Right("join") =>
+                Right(Join)
+              case Right("broadcast") =>
+                cur.downField("cardinality").as[Int].map(Broadcast.apply)
+              case Right(other) =>
+                Left(DecodingFailure(s"Type $other is unknown for synthetic deduplication", cur.history))
+              case Left(other) =>
+                Left(other)
+            }
+          }
+        implicit val ioCirceSyntheticEncoder: Encoder[Synthetic] =
+          deriveEncoder[Synthetic]
+      }
+
+      implicit val ioCirceDeduplicationDecoder: Decoder[Deduplication] =
+        deriveDecoder[Deduplication]
+      implicit val ioCirceDeduplicationEncoder: Encoder[Deduplication] =
+        deriveEncoder[Deduplication]
     }
   }
 
@@ -182,10 +223,15 @@ object Config {
   final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration])
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
-    deriveDecoder[Shredder.Batch]
+    Decoder.forProduct3[Shredder.Batch, URI, Shredder.Output, Option[Shredder.Deduplication]]("input", "output", "deduplication") { (uri, output, deduplication) =>
+      deduplication match {
+        case Some(d) => Shredder.Batch(uri, output, d)
+        case None => Shredder.Batch(uri, output, Shredder.Deduplication.Default)
+      }
+    }
   implicit val streamShredderDecoder: Decoder[Shredder.Stream] =
     deriveDecoder[Shredder.Stream]
-  implicit val shredderOutputDecoder: Decoder[Shredder.Output] =
+  implicit def shredderOutputDecoder: Decoder[Shredder.Output] =
     deriveDecoder[Shredder.Output]
   implicit val shredderFileInputDecoder: Decoder[Shredder.StreamInput.File] =
     deriveDecoder[Shredder.StreamInput.File]
@@ -228,7 +274,7 @@ object Config {
 
   implicit val durationDecoder: Decoder[Duration] =
     Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))
-  implicit val uriDecoder: Decoder[URI] =
+  implicit def uriDecoder: Decoder[URI] =
     Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
 
   implicit val formatsDecoder: Decoder[Formats] =

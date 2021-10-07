@@ -163,7 +163,8 @@ object ConfigSpec {
       Shredder.Output(
         URI.create("s3://bucket/shredded/"),
         Config.Shredder.Compression.Gzip
-      )
+      ),
+      Config.Shredder.Deduplication(Config.Shredder.Deduplication.Synthetic.Broadcast(1))
     ),
     StorageTarget.Redshift(
       "redshift.amazonaws.com",
