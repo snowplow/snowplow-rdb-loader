@@ -130,26 +130,16 @@ class ShredJob(@transient val spark: SparkSession,
     // need a precise value and chance of retry is very small
     val eventsCounter = sc.longAccumulator("events")
 
-    // Count synthetic duplicates, defined as events with the same id but different fingerprints
-    val syntheticDupes = good
-      .flatMap {
-        case Right(e) => Some((e.event_id, 1L))
-        case Left(_) => None
-      }
-      .reduceByKey(_ + _)
-      .flatMap {
-        case (id, count) if count > 1 => Some(id)
-        case _ => None
-      }
+    val result: Deduplication.Result = Deduplication.sytheticDeduplication(config.deduplication, good)
 
-    val syntheticDupesBroadcasted = sc.broadcast(syntheticDupes.collect().toSet)
+    val syntheticDupesBroadcasted = sc.broadcast(result.duplicates)
 
     // Events that could not be parsed
     val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val shredded = (shreddedBad ++ good).flatMap {
+    val shredded = (shreddedBad ++ result.events).flatMap {
       case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event

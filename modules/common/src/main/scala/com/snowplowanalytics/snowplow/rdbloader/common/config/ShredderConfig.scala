@@ -33,7 +33,7 @@ sealed trait ShredderConfig {
 
 object ShredderConfig {
 
-  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring) extends ShredderConfig
+  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring, deduplication: Deduplication) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -125,6 +125,47 @@ object ShredderConfig {
       case (acc, (a, b)) if predicate(a, b) => acc + a + b
       case (acc, _) => acc
     }
+  }
+
+  final case class Deduplication(synthetic: Deduplication.Synthetic)
+
+  object Deduplication {
+
+    def Default = Deduplication(Deduplication.Synthetic.Broadcast(1))
+
+    /**
+     * Configuration for in-batch synthetic deduplication
+     */
+    sealed trait Synthetic
+    object Synthetic {
+      final case object Join extends Synthetic
+      final case class Broadcast(cardinality: Int) extends Synthetic
+      final case object None extends Synthetic
+
+      implicit val ioCirceSyntheticDecoder: Decoder[Synthetic] =
+        Decoder.instance { cur =>
+          val typeCur = cur.downField("type")
+          typeCur.as[String].map(_.toLowerCase) match {
+            case Right("none") =>
+              Right(None)
+            case Right("join") =>
+              Right(Join)
+            case Right("broadcast") =>
+              cur.downField("cardinality").as[Int].map(Broadcast.apply)
+            case Right(other) =>
+              Left(DecodingFailure(s"Type $other is unknown for synthetic deduplication", cur.history))
+            case Left(other) =>
+              Left(other)
+          }
+        }
+      implicit val ioCirceSyntheticEncoder: Encoder[Synthetic] =
+        deriveEncoder[Synthetic]
+    }
+
+    implicit val ioCirceDeduplicationDecoder: Decoder[Deduplication] =
+      deriveDecoder[Deduplication]
+    implicit val ioCirceDeduplicationEncoder: Encoder[Deduplication] =
+      deriveEncoder[Deduplication]
   }
 
   final case class Monitoring(sentry: Option[Sentry])
