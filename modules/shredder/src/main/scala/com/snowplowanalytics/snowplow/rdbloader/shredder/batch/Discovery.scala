@@ -15,14 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.global
 
-import cats.syntax.either._
-
-import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConfiguration}
-import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
-import com.amazonaws.services.sqs.{AmazonSQSClientBuilder, AmazonSQS}
-import com.amazonaws.services.sqs.model.SendMessageRequest
-
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
@@ -35,22 +27,8 @@ object Discovery {
 
   final val FinalKeyName = "shredding_complete.json"
 
-  final val MaxRetries = 10
-  final val RetryBaseDelay = 1000 // milliseconds
-  final val RetryMaxDelay = 20 * 1000 // milliseconds
-
   /** Amount of folders at the end of archive that will be checked for corrupted state */
   final val FoldersToCheck = 512
-
-  /** Common retry policy for S3 and SQS (jitter) */
-  final val RetryPolicy =
-    new RetryPolicy(
-      (_: AmazonWebServiceRequest, _: AmazonClientException, retriesAttempted: Int) =>
-        retriesAttempted < MaxRetries,
-      new PredefinedBackoffStrategies.FullJitterBackoffStrategy(RetryBaseDelay, RetryMaxDelay),
-      MaxRetries,
-      true
-    )
 
   private final val MessageProcessorVersion = Semver
     .decodeSemver(BuildInfo.version)
@@ -66,7 +44,7 @@ object Discovery {
    * list of folders ready to be shredded
    */
   def getState(region: String, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
-    val client = createS3Client(region)
+    val client = Cloud.createS3Client(region)
     val enrichedDirs = Cloud.listDirs(client, enrichedFolder)
     val shreddedDirs = Cloud.listDirs(client, shreddedFolder)
 
@@ -92,55 +70,26 @@ object Discovery {
 
 
   /**
-   * Send SQS message and save thumb file on S3, signalising that the folder
+   * Send message to queue and save thumb file on S3, signalising that the folder
    * has been shredded and can be loaded now
-   *
-   * @param message final message produced by the shredder
-   * @param region AWS region
-   * @param queue SQS queue name
    */
   def seal(message: LoaderMessage.ShreddingComplete,
-           region: String,
-           queue: String): Unit = {
-    val sqsClient: AmazonSQS = createSqsClient(region)
-    val s3Client: AmazonS3 = createS3Client(region)
-
-    val sqsMessage: SendMessageRequest =
-      new SendMessageRequest()
-        .withQueueUrl(queue)
-        .withMessageBody(message.selfDescribingData.asString)
-        .withMessageGroupId("shredding")
-
+           sendToQueue: (String, String) => Either[Throwable, Unit],
+           putToS3: (String,String, String) => Either[Throwable, Unit]): Unit = {
     val (bucket, key) = S3.splitS3Key(message.base.withKey(FinalKeyName))
 
-    Either.catchNonFatal(sqsClient.sendMessage(sqsMessage)) match {
+    sendToQueue("shredding", message.selfDescribingData.asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to SQS for ${message.base}", e)
+        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to queue for ${message.base}", e)
       case _ =>
         ()
     }
 
-    Either.catchNonFatal(s3Client.putObject(bucket, key, message.selfDescribingData.asString)) match {
+    putToS3(bucket, key, message.selfDescribingData.asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to SQS but could not write ${message.base.withKey(FinalKeyName)}", e)
+        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to queue but could not write ${message.base.withKey(FinalKeyName)}", e)
       case _ =>
         ()
     }
   }
-
-  /** Create SQS client with built-in retry mechanism (jitter) */
-  def createSqsClient(region: String): AmazonSQS =
-    AmazonSQSClientBuilder
-      .standard()
-      .withRegion(region)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
-      .build()
-
-  /** Create S3 client with built-in retry mechanism (jitter) */
-  def createS3Client(region: String): AmazonS3 =
-    AmazonS3ClientBuilder
-      .standard()
-      .withRegion(region)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
-      .build()
 }

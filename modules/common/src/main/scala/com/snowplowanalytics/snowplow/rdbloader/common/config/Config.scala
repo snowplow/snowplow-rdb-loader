@@ -85,7 +85,7 @@ object Config {
     def output: Shredder.Output
   }
   object Shredder {
-    final case class Batch(input: URI, output: Output) extends Shredder
+    final case class Batch(input: URI, output: Output, snsTopic: Option[String]) extends Shredder
     final case class Stream(input: StreamInput, output: Output, windowing: Duration) extends Shredder
 
     sealed trait InitPosition

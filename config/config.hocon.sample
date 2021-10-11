@@ -37,6 +37,9 @@
       # Shredder output compression, GZIP or NONE
       "compression": "GZIP"
     }
+    # ARN of SNS topic used by Shredder.
+    # If it isn't set, messages will be sent to given SQS queue.
+    # "snsTopic": "sns-topic-arn"
   },
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)

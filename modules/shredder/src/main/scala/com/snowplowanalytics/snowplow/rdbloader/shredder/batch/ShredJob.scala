@@ -193,6 +193,8 @@ object ShredJob {
     config: Config[StorageTarget],
     shredderConfig: Shredder.Batch
   ): Unit = {
+    val s3Client = Cloud.createS3Client(config.region)
+
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(shredderConfig.input.toString)
@@ -209,11 +211,21 @@ object ShredJob {
       config
     }
 
+    val sendToQueue = shredderConfig.snsTopic match {
+        case None =>
+          val sqsClient = Cloud.createSqsClient(config.region)
+          Cloud.sendToSqs(sqsClient, config.messageQueue, _, _)
+        case Some(topic) =>
+          val snsClient = Cloud.creteSnsClient(config.region)
+          Cloud.sendToSns(snsClient, topic, _, _)
+      }
+    val putToS3 = Cloud.putToS3(s3Client, _, _, _)
+
     unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
       val job = new ShredJob(spark, igluConfig, config.formats, shredderConfig)
       val completed = job.run(folder.folderName, atomicLengths, eventsManifest)
-      Discovery.seal(completed, config.region, config.messageQueue)
+      Discovery.seal(completed, sendToQueue, putToS3)
     }
 
     Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {

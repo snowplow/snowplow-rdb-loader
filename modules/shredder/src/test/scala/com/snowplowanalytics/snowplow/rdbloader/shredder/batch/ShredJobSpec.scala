@@ -328,7 +328,7 @@ object ShredJobSpec {
 
   def getShredder(lines: Lines, dirs: OutputDirs): Shredder.Batch = {
     val input = mkTmpFile("input", createParents = true, containing = Some(lines))
-    Shredder.Batch(input.toURI, Shredder.Output(dirs.output.toURI, Shredder.Compression.None))
+    Shredder.Batch(input.toURI, Shredder.Output(dirs.output.toURI, Shredder.Compression.None), None)
   }
 }
 
