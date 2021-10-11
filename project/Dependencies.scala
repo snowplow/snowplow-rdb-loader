@@ -111,6 +111,7 @@ object Dependencies {
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
   val sqs               = "com.amazonaws"         % "aws-java-sdk-sqs"          % V.aws
+  val sns               = "com.amazonaws"         % "aws-java-sdk-sns"          % V.aws
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
 

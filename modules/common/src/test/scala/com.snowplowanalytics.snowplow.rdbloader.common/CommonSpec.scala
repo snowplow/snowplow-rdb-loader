@@ -80,7 +80,8 @@ object CommonSpec {
     Config.Shredder.Output(
       URI.create("s3://bucket/good/"),
       Config.Shredder.Compression.Gzip
-    )
+    ),
+    None
   )
 
   val validConfig: Config[StorageTarget.Redshift] = Config(
