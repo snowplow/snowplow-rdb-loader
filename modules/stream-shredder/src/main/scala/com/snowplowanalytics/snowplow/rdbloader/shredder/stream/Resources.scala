@@ -16,19 +16,17 @@ import io.circe.Json
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import software.amazon.awssdk.regions.Region
-import software.amazon.awssdk.services.sqs.SqsClient
-
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitSchemaCache, InitListCache}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
 
-import com.snowplowanalytics.aws.sqs.SQS
+import com.snowplowanalytics.aws.AWSQueue
 
 case class Resources[F[_]](iglu: Client[F, Json],
                            atomicLengths: Map[String, Int],
-                           sqsClient: SqsClient,
+                           awsQueue: AWSQueue[F],
                            instanceId: String,
                            blocker: Blocker,
                            halt: SignallingRef[F, Boolean],
@@ -39,7 +37,7 @@ object Resources {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json, region: String): Resource[F, Resources[F]] = {
+  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json, region: String, sqsQueueName: String, streamConf: Shredder.Stream): Resource[F, Resources[F]] = {
     val init = for {
       igluClient <- Client.parseDefault[F](igluConfig)
         .leftMap(e => new RuntimeException(s"Error while parsing Iglu config: ${e.getMessage()}"))
@@ -61,7 +59,10 @@ object Resources {
             logger.info(s"Final window state:\n${stack.mkString("\n")}")
         }
       }
-      sqsClient <- SQS.mkClientBuilder[F](_.region(Region.of(region)))
+      awsQueue <- streamConf.snsTopic match {
+        case None => AWSQueue.build(AWSQueue.QueueType.SQS, sqsQueueName, region)
+        case Some(snsTopicName) => AWSQueue.build(AWSQueue.QueueType.SNS, snsTopicName, region)
+      }
       sinks <- Resource.eval(Ref.of(0L))
       instanceId <- Resource
         .eval(Sync[F].delay(UUID.randomUUID()))
@@ -72,7 +73,7 @@ object Resources {
           Timer[F].sleep(5.seconds) *>
           logger[F].warn(s"Shutting down $instanceId instance")
       }
-    } yield Resources(client, lengths, sqsClient, instanceId.toString, blocker, halt, state, sinks)
+    } yield Resources(client, lengths, awsQueue, instanceId.toString, blocker, halt, state, sinks)
   }
 }
 

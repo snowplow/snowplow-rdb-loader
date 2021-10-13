@@ -30,10 +30,10 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     ShredderCliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args: Seq[String]) match {
-      case Right(ShredderCliConfig(iglu, _, Config(_, _, region, _, _, queueUrl, s: Shredder.Stream, _, formats, _))) =>
-        Resources.mk[IO](iglu, region).use { resources =>
+      case Right(ShredderCliConfig(iglu, _, Config(_, _, region, _, _, sqsQueueUrl, s: Shredder.Stream, _, formats, _))) =>
+        Resources.mk[IO](iglu, region, sqsQueueUrl, s).use { resources =>
           logger[IO].info(s"Starting RDB Shredder with $s config") *>
-            Processing.run[IO](resources, s, formats, queueUrl).as(ExitCode.Success)
+            Processing.run[IO](resources, s, formats).as(ExitCode.Success)
         }
       case Right(_) =>
         logger[IO].error(s"Trying to launch Stream Shredder with non-stream config").as(InvalidConfig)

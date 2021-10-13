@@ -23,6 +23,7 @@ lazy val aws = project.in(file("modules/aws"))
     libraryDependencies ++= Seq(
       Dependencies.aws2s3,
       Dependencies.aws2sqs,
+      Dependencies.aws2sns,
       Dependencies.fs2,
       Dependencies.catsRetry,
     )
