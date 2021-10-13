@@ -11,8 +11,6 @@ import fs2.{Stream, Pipe}
 
 import io.circe.Json
 
-import software.amazon.awssdk.services.sqs.SqsClient
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import com.snowplowanalytics.iglu.client.Client
@@ -28,6 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.generic.{Status, Record}
 
+import com.snowplowanalytics.aws.AWSQueue
 
 object Processing {
 
@@ -39,14 +38,13 @@ object Processing {
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
                                                               config: Shredder.Stream,
-                                                              formats: Formats,
-                                                              queueName: String): F[Unit] = {
+                                                              formats: Formats): F[Unit] = {
     val isTabular: SchemaKey => Boolean =
       Common.isTabular(formats)
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =
-      getOnComplete(config.output.compression, isTabular, config.output.path, queueName, resources.sqsClient, resources.windows)
+      getOnComplete(config.output.compression, isTabular, config.output.path, resources.awsQueue, resources.windows)
     val sinkId: Window => F[Int] =
       getSinkId(resources.windows)
 
@@ -68,8 +66,7 @@ object Processing {
   def getOnComplete[F[_]: Sync: Clock](compression: Compression,
                                        isTabular: SchemaKey => Boolean,
                                        root: URI,
-                                       queueName: String,
-                                       sqsClient: SqsClient,
+                                       awsQueue: AWSQueue[F],
                                        state: State.Windows[F])
                                       (window: Window): F[Unit] = {
     val find: State.WState => Boolean = {
@@ -80,7 +77,7 @@ object Processing {
     }
 
     state.modify(State.updateState(find, update, _._3)).flatMap { state =>
-      Completion.seal[F](compression, isTabular, root, queueName, sqsClient)(window, state)
+      Completion.seal[F](compression, isTabular, root, awsQueue)(window, state)
     } *> logger[F].debug(s"ShreddingComplete message for ${window.getDir} has been sent")
   }
 

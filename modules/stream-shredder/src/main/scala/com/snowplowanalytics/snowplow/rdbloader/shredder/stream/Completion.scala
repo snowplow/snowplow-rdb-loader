@@ -8,8 +8,6 @@ import cats.effect.{Sync, Clock}
 
 import io.circe.syntax.EncoderOps
 
-import software.amazon.awssdk.services.sqs.SqsClient
-
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
@@ -20,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.Window
 
-import com.snowplowanalytics.aws.sqs.SQS
+import com.snowplowanalytics.aws.AWSQueue
 
 object Completion {
 
@@ -38,16 +36,14 @@ object Completion {
    * @param compression a compression type used in the batch
    * @param isTabular a predicate to derive type of output for a schema key
    * @param root S3 batch root (with output=good and output=bad)
-   * @param queueName SQS queue name to send the message to
-   * @param sqsClient a long-living SQS client
+   * @param awsQueue AWSQueue instance to send the message to
    * @param window run id (when batch has been started)
    * @param state all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: Sync](compression: Compression,
                               isTabular: SchemaKey => Boolean,
                               root: URI,
-                              queueName: String,
-                              sqsClient: SqsClient)
+                              awsQueue: AWSQueue[F])
                              (window: Window, state: State): F[Unit] = {
     val shreddedTypes: List[ShreddedType] = state.types.toList.map { key =>
       if (isTabular(key)) ShreddedType(key, Format.TSV) else ShreddedType(key, Format.JSON)
@@ -60,7 +56,7 @@ object Completion {
       count = LoaderMessage.Count(state.total - state.bad)
       message = LoaderMessage.ShreddingComplete(base, shreddedTypes, timestamps, compression, MessageProcessor, Some(count))
       body = message.selfDescribingData.asJson.noSpaces
-      _ <- SQS.sendMessage[F](sqsClient)(queueName, Some(MessageGroupId), body)
+      _ <- awsQueue.sendMessage(Some(MessageGroupId), body)
     } yield ()
   }
 

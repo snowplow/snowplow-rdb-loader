@@ -86,7 +86,7 @@ object Config {
   }
   object Shredder {
     final case class Batch(input: URI, output: Output, snsTopic: Option[String]) extends Shredder
-    final case class Stream(input: StreamInput, output: Output, windowing: Duration) extends Shredder
+    final case class Stream(input: StreamInput, output: Output, windowing: Duration, snsTopic: Option[String]) extends Shredder
 
     sealed trait InitPosition
     object InitPosition {
