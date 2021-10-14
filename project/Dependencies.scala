@@ -100,6 +100,7 @@ object Dependencies {
   val sparkSQL          = "org.apache.spark"             %% "spark-sql"                % V.spark           % Provided
   val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
   val jacksonModule     = "com.fasterxml.jackson.module" %% "jackson-module-scala"     % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"   % "jackson-databind"          % V.jacksonModule
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
