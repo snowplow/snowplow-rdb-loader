@@ -46,7 +46,7 @@ object Dependencies {
     val aws              = "1.11.1019"
     val aws2             = "2.16.23"
     val jSch             = "0.1.55"
-    val sentry           = "1.7.30"
+    val sentry           = "5.2.4"
 
     // Scala (test only)
     val specs2           = "4.10.5"
