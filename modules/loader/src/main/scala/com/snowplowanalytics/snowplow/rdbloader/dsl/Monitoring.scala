@@ -55,6 +55,10 @@ trait Monitoring[F[_]] {
 }
 
 object Monitoring {
+
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))

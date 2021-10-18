@@ -15,9 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.effect.Concurrent
 import cats.effect.concurrent.{ Ref => CERef }
 
-import cats.implicits._
-
-import fs2.concurrent.SignallingRef
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 /**
  * Primary (mutable) state of the loader
@@ -26,21 +24,18 @@ import fs2.concurrent.SignallingRef
  *
  * @param attempts amount of attempts the Loader took to load **current** folder
  *                 zero'ed after every message ack'ed
- * @param busy whether Loader is ready to accept new message at the moment
- *             if Loader is busy - it must be retrying until fubr, then it must
- *             set `busy` back to `false`
  * @param loaded amount of folders the loader managed to load
  * @param messages total amount of message received
  */
-case class State[F[_]](attempts: Int,
-                       busy: SignallingRef[F,  Boolean],
+final case class State(attempts: Int,
                        loaded: Int,
-                       messages: Int) {
-  def incrementAttempts: State[F] =
+                       messages: Int,
+                       currentFolder: Option[S3.Folder]) {
+  def incrementAttempts: State =
     this.copy(attempts = attempts + 1)
-  def incrementMessages: State[F] =
+  def incrementMessages: State =
     this.copy(messages = messages + 1)
-  def incrementLoaded: State[F] =
+  def incrementLoaded: State =
     this.copy(loaded = loaded + 1)
 
   def show: String =
@@ -50,12 +45,9 @@ case class State[F[_]](attempts: Int,
 object State {
 
   /** Mutable state */
-  type Ref[F[_]] = CERef[F, State[F]]
+  type Ref[F[_]] = CERef[F, State]
 
   /** Initiate state for a fresh app */
-  def mk[F[_]: Concurrent]: F[CERef[F, State[F]]] =
-    for {
-      busy <- SignallingRef[F, Boolean](false)
-      ref <- CERef.of[F, State[F]](State(0, busy, 0, 0))
-    } yield ref
+  def mk[F[_]: Concurrent]: F[CERef[F, State]] =
+    CERef.of[F, State](State(0, 0, 0, None))
 }

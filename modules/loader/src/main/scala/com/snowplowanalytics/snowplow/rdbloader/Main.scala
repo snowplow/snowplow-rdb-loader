@@ -21,6 +21,7 @@ import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer}
 import fs2.Stream
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
@@ -32,13 +33,16 @@ import com.snowplowanalytics.snowplow.rdbloader.common.TableDefinitions.AtomicDe
 
 object Main extends IOApp {
 
-  def run(argv: List[String]): IO[ExitCode] =
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
+  def run(argv: List[String]): IO[ExitCode] = {
     CliConfig.parse(argv) match {
       case Valid(cli) =>
         Environment.initialize[IO](cli).use { env =>
           import env._
 
-          loggingF.info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
+          Logging[IO].info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
             process[IO](cli, control)
               .compile
               .drain
@@ -50,6 +54,7 @@ object Main extends IOApp {
         logger.error("Configuration error") *>
           errors.traverse_(message => logger.error(message)).as(ExitCode(2))
     }
+  }
 
   /**
    * Main application workflow, responsible for discovering new data via message queue
@@ -100,5 +105,4 @@ object Main extends IOApp {
     Logging[F].error(error)("Loader shutting down") *> // Making sure we always have last ERROR printed
       Monitoring[F].trackException(error) *>
       Monitoring[F].track(LoaderError.RuntimeError(error.getMessage).asLeft).as(ExitCode.Error)
-
 }
