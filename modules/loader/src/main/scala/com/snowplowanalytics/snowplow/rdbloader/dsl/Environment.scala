@@ -56,8 +56,10 @@ class Environment[F[_]](cache: Cache[F],
 
   private[this] def makeBusy(implicit F: Monad[F], C: Clock[F]): S3.Folder => Resource[F, Unit] = 
     folder => {
-      val allocate = C.instantNow.flatMap { now => state.update(_.start(folder).setUpdated(now)) }
-      val deallocate: F[Unit] = C.instantNow.flatMap { now => state.update(_.idle.setUpdated(now)) }
+      val allocate = loggingF.debug("Setting an environment lock") *>
+        C.instantNow.flatMap { now => state.update(_.start(folder).setUpdated(now)) }
+      val deallocate: F[Unit] = loggingF.debug("Releasing an environment lock") *>
+        C.instantNow.flatMap { now => state.update(_.idle.setUpdated(now)) }
       Resource.make(allocate)(_ => deallocate)
   }
 
@@ -71,6 +73,8 @@ object Environment {
   case class Control[F[_]](state: State.Ref[F],
                            makeBusy: S3.Folder => Resource[F, Unit],
                            isBusy: Stream[F, Boolean])
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
@@ -86,8 +90,8 @@ object Environment {
       blocker <- Blocker[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
-      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))

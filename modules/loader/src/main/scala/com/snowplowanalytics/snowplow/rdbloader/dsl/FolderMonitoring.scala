@@ -34,7 +34,6 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
-
 /**
  * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
  *
@@ -47,6 +46,9 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
  *   Everything with the file is "abandoned", everything without the file is "corrupted"
  */
 object FolderMonitoring {
+
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   implicit val s3FolderGet: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
@@ -170,7 +172,7 @@ object FolderMonitoring {
       case (Some(folders), redshift: StorageTarget.Redshift) =>
         stream[F](folders, redshift, isBusy)
       case (None, _: StorageTarget.Redshift) =>
-        Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been providing - monitoring is disabled"))
+        Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
 
   val FailBeforeAlarm = 3

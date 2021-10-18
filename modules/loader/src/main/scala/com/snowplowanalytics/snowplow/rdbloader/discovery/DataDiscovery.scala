@@ -53,6 +53,9 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
  */
 object DataDiscovery {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
 
   /**
@@ -78,9 +81,10 @@ object DataDiscovery {
             ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }
 
-        state.updateAndGet(_.incrementMessages).flatMap { state =>
-          Logging[F].info(s"Received new message. ${state.show}")
-        } *> action
+        Logging[F].info("Received a new message") *>
+          Logging[F].debug(message.data) *>
+          state.updateAndGet(_.incrementMessages).flatMap(state => Logging[F].info(state.show)) *> 
+          action
       }
 
   /**
