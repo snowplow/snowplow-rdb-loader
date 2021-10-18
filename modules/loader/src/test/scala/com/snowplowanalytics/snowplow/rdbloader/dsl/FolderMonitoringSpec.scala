@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import java.time.Instant
+
 import scala.concurrent.duration._
 
 import cats.effect.IO
@@ -59,7 +61,7 @@ class FolderMonitoringSpec extends Specification {
 
     "return a single element returned by MINUS statement (shredding_complete does exist)" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(jdbcResults))
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.copy(keyExists = _ => true))
+      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(List(
@@ -87,7 +89,7 @@ class FolderMonitoringSpec extends Specification {
     "produce new keys with interval" in {
       implicit val T = IO.timer(scala.concurrent.ExecutionContext.global)
       val result = FolderMonitoring
-        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/")))
+        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/"), None))
         .take(2)
         .compile
         .toList
@@ -95,6 +97,36 @@ class FolderMonitoringSpec extends Specification {
 
       result.distinct should haveSize(2)
       result.forall(_.startsWith("s3://acme/logs/shredded/")) must beTrue
+    }
+  }
+
+  "isRecent" should {
+    "return true if no duration is provided" in {
+      val input = S3.Key.parse("s3://bucket/key").getOrElse(throw new RuntimeException("Wrong key"))
+      val result = FolderMonitoring.isRecent(None, Instant.now())(input)
+      result must beTrue
+    }
+
+    "return true if invalid key is provided" in {
+      val duration = FiniteDuration.apply(1, "day")
+      val input = S3.Key.parse("s3://bucket/key").getOrElse(throw new RuntimeException("Wrong key"))
+      val result = FolderMonitoring.isRecent(Some(duration), Instant.now())(input)
+      result must beTrue
+    }
+
+    "return false if key is old enough" in {
+      val duration = FiniteDuration.apply(1, "day")
+      val input = S3.Key.parse("s3://bucket/run=2020-09-01-00-00-00").getOrElse(throw new RuntimeException("Wrong key"))
+      val result = FolderMonitoring.isRecent(Some(duration), Instant.now())(input)
+      result must beFalse
+    }
+
+    "return true if invalid key is fresh enough" in {
+      val duration = FiniteDuration.apply(1, "day")
+      val now = Instant.parse("2021-10-30T18:35:24.00Z")
+      val input = S3.Key.parse("s3://bucket/run=2021-10-30-00-00-00").getOrElse(throw new RuntimeException("Wrong key"))
+      val result = FolderMonitoring.isRecent(Some(duration), now)(input)
+      result must beTrue
     }
   }
 }
