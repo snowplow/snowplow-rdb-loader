@@ -79,15 +79,14 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if key is folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], now: Instant)(key: S3.Key): Boolean =
+  def isRecent(since: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
     since match {
       case Some(duration) =>
-        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(key.takeRight(TimePattern.size))) match {
+        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
           case Right(accessor) => 
             val oldest = now.minusMillis(duration.toMillis)
             accessor.query(Instant.from).isAfter(oldest)
           case Left(_) =>
-            // TODO: check if list returns keys without trailing slash
             true
         }
       case None => true
@@ -99,18 +98,21 @@ object FolderMonitoring {
    * @param since optional duration to ignore old folders
    * @param input shredded archive
    * @param output temp staging path to store the list
+   * @return whether the list was non-empty (false) or empty (true)
    */
-  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Unit] =
-    Stream.eval((Ref.of(0), Timer[F].clock.instantNow).tupled).flatMap { case (ref, now) =>
-      AWS[F].listS3(input, recursive = false)
-        .map(_.key)
-        .filter(isRecent(since, now))
-        .evalTap(_ => ref.update(size => size + 1))
-        .intersperse("\n")
-        .through(utf8Encode[F])
-        .through(AWS[F].sinkS3(output.withKey("keys"), true))
-        .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
-    }.compile.drain
+  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
+    Ref.of[F, Int](0).flatMap { ref =>
+      Stream.eval(Timer[F].clock.instantNow).flatMap { now =>
+        AWS[F].listS3(input, recursive = false)
+          .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) S3.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
+          .filter(isRecent(since, now))
+          .evalTap(_ => ref.update(size => size + 1))
+          .intersperse("\n")
+          .through(utf8Encode[F])
+          .through(AWS[F].sinkS3(output.withKey("keys"), true))
+          .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
+      }.compile.drain *> ref.get.map(size => size != 0)
+    }
 
 
   /**
@@ -192,14 +194,17 @@ object FolderMonitoring {
                                                                 archive: S3.Folder): Stream[F, Unit] =
     Stream.eval(Ref.of(false)).flatMap { failed =>
       getOutputKeys[F](folders).evalMap { outputFolder =>
-        val sinkAndCheck = sinkFolders[F](folders.since, archive, outputFolder) *>
-          check[F](outputFolder, storage)
-            .rethrowT
-            .flatMap { alerts =>
-              alerts.traverse_ { payload =>
-                Monitoring[F].alert(payload) *> Logging[F].warning(s"${payload.message} ${payload.base}")
-              }
-            } *> failed.set(false)
+        val sinkAndCheck = 
+          sinkFolders[F](folders.since, archive, outputFolder).ifM(
+            check[F](outputFolder, storage)
+              .rethrowT
+              .flatMap { alerts =>
+                alerts.traverse_ { payload =>
+                  Monitoring[F].alert(payload) *> Logging[F].warning(s"${payload.message} ${payload.base}")
+                }
+              },
+            Logging[F].info(s"No folders were found in ${archive}. Skipping manifest check")
+          ) *> failed.set(false)
 
         Logging[F].info("Monitoring shredded folders") *>
           sinkAndCheck.handleErrorWith { error =>
