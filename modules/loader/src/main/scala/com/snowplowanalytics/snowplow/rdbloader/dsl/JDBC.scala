@@ -64,7 +64,11 @@ trait JDBC[F[_]] { self =>
     executeUpdates((Statement.Begin :: updates) :+ Statement.Commit)
 }
 
+
 object JDBC {
+
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /** Base for retry backoff - every next retry will be doubled time */
   val Backoff: FiniteDuration = 2.minutes
@@ -192,8 +196,7 @@ object JDBC {
           case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
             (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Int].pure[F]
           case Left(e) =>
-            Monitoring[F].trackException(e)
-              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Int])
+            storageError[F, Int](e)
           case Right(result) =>
             result.asRight[LoaderError].pure[F]
         }
@@ -210,8 +213,7 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            Monitoring[F].trackException(e)
-              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            storageError[F, G[A]](e)
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
@@ -231,12 +233,14 @@ object JDBC {
         .attemptSql
         .flatMap[Either[LoaderError, G[A]]] {
           case Left(e) =>
-            Monitoring[F].trackException(e)
-              .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[G[A]])
+            storageError[F, G[A]](e)
           case Right(a) =>
             a.asRight[LoaderError].pure[F]
         }
   }
+
+  private def storageError[F[_]: Monad, R](error: Throwable) =
+    (StorageTargetError(Option(error.getMessage).getOrElse(error.toString)): LoaderError).asLeft[R].pure[F]
 
   implicit class SyncOps[F[_]: Sync, A](fa: F[A]) {
     def attemptA(handle: Throwable => LoaderError): LoaderAction[F, A] = {

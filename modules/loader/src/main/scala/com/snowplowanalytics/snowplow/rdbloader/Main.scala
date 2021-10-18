@@ -31,13 +31,17 @@ import com.snowplowanalytics.snowplow.rdbloader.State._
 
 object Main extends IOApp {
 
-  def run(argv: List[String]): IO[ExitCode] = {
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
+  def run(argv: List[String]): IO[ExitCode] =
     for {
       parsed <- CliConfig.parse[IO](argv).value
       res <- parsed match {
         case Right(cli) =>
           Environment.initialize[IO](cli).use { env =>
             import env._
+
             loggingF.info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
               process[IO](cli, control)
                 .compile
@@ -47,10 +51,9 @@ object Main extends IOApp {
           }
         case Left(error) =>
           val logger = Slf4jLogger.getLogger[IO]
-          logger.error("Configuration error") *>logger.error(error).as(ExitCode(2))
+          logger.error("Configuration error") *> logger.error(error).as(ExitCode(2))
       }
     } yield res
-  }
 
   /**
    * Main application workflow, responsible for discovering new data via message queue
@@ -104,5 +107,4 @@ object Main extends IOApp {
       Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
       Monitoring[F].trackException(error) *>
       Monitoring[F].track(LoaderError.RuntimeError(error.getMessage).asLeft).as(ExitCode.Error)
-
 }
