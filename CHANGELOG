@@ -1,3 +1,8 @@
+Version 1.2.1 (2021-10-20)
+--------------------------
+RDB Loader: add since option to folder monitoring (#600)
+RDB Loader: drop a root folder from folders monitoring (#602)
+
 Version 1.2.0 (2021-09-03)
 --------------------------
 Common: bump sbt-scoverage from 1.6.1 to 1.8.2 (#487)
