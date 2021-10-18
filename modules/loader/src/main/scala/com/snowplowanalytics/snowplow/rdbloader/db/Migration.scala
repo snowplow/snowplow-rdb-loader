@@ -50,7 +50,11 @@ final case class Migration[F[_]](preTransaction: LoaderAction[F, Unit], inTransa
     Migration[F](preTransaction, inTransaction *> statement)
 }
 
+
 object Migration {
+
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
    * A set of statements migrating (or creating) a single table.
