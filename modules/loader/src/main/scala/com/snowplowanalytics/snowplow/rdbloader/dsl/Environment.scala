@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Parallel, Monad}
+import cats.{Parallel, Monad}
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
@@ -44,6 +44,7 @@ class Environment[F[_]](cache: Cache[F],
                         aws: AWS[F],
                         jdbc: JDBC[F],
                         state: State.Ref[F],
+                        busy: SignallingRef[F, Boolean],
                         val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
@@ -55,23 +56,25 @@ class Environment[F[_]](cache: Cache[F],
   def control(implicit F: Monad[F]): Environment.Control[F] =
     Environment.Control(state, makeBusy, isBusy, incrementLoaded)
 
-  private def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
-    Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
+  private def makeBusy(implicit F: Monad[F]): Resource[F, Unit] = {
+    val setLock = loggingF.debug("Setting an environment lock") *> busy.set(true).as(busy)
+    Resource.make(setLock)(signal => loggingF.debug("Releasing an environment lock") *> signal.set(false)).void
+  }
 
-  private def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    Stream.eval[F, SignallingRef[F, Boolean]](busy).flatMap[F, Boolean](_.discrete)
+  private def isBusy: Stream[F, Boolean] =
+    busy.discrete
 
   private def incrementLoaded: F[Unit] =
     state.update(_.incrementLoaded)
-
-  private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
-    state.get.map(_.busy)
 }
 
 object Environment {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   case class Control[F[_]](state: State.Ref[F],
-                           makeBusy: Resource[F, SignallingRef[F, Boolean]],
+                           makeBusy: Resource[F, Unit],
                            isBusy: Stream[F, Boolean],
                            incrementLoaded: F[Unit])
 
@@ -103,7 +106,8 @@ object Environment {
       //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       jdbc <- JDBC.interpreter[F](cli.config.storage, cli.dryRun, blocker)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, blocker)
+      busy <- Resource.eval(SignallingRef[F, Boolean](false))
+    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, busy, blocker)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =

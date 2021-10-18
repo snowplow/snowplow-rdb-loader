@@ -35,6 +35,9 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 /** Entry-point for loading-related logic */
 object Load {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   type MonadThrow[F[_]] = MonadError[F, Throwable]
 
   /**

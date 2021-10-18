@@ -37,7 +37,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTa
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
-
 /**
  * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
  *
@@ -51,14 +50,17 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
  */
 object FolderMonitoring {
 
-  def createAlertPayload(folder: S3.Folder, message: String): AlertPayload =
-    AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Warning, message, Map.empty)
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   implicit val s3FolderGet: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
 
   private val TimePattern: String =
     "yyyy-MM-dd-HH-mm-ss"
+
+  def createAlertPayload(folder: S3.Folder, message: String): AlertPayload =
+    AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Warning, message, Map.empty)
 
   val LogTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern(TimePattern).withZone(ZoneId.from(ZoneOffset.UTC))
@@ -175,7 +177,7 @@ object FolderMonitoring {
             Stream.raiseError[F](new IllegalArgumentException(s"Shredder output could not be parsed into S3 URI $error"))
         }
       case (None, _: StorageTarget.Redshift) =>
-        Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been providing - monitoring is disabled"))
+        Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
 
   /**
@@ -206,12 +208,10 @@ object FolderMonitoring {
         Logging[F].info("Monitoring shredded folders") *>
           sinkAndCheck.handleErrorWith { error =>
             failed.getAndSet(true).flatMap { failedBefore =>
-              val handling = if (failedBefore)
+              if (failedBefore)
                 Logging[F].error(error)("Folder monitoring has failed with unhandled exception for the second time") *>
                   Sync[F].raiseError[Unit](error)
               else Logging[F].error(error)("Folder monitoring has failed with unhandled exception, ignoring for now")
-
-              Monitoring[F].trackException(error) *> handling
             }
           }
       }

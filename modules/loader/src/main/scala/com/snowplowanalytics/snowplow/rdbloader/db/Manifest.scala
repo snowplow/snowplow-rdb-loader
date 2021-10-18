@@ -23,6 +23,9 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, AWS, Monitor
 
 object Manifest {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   val Name = "manifest"
   val LegacyName = "manifest_legacy"
 

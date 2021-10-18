@@ -33,6 +33,9 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.RedshiftStatements._
  */
 object RedshiftLoader {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   /**
    * Run loading actions for atomic and shredded data
    *
