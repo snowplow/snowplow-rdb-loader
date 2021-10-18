@@ -42,7 +42,10 @@ trait Monitoring[F[_]] {
   /** Send metrics */
   def reportMetrics(metrics: Metrics.KVMetrics): F[Unit]
 
-  /** Send an alert to a HTTP endpoint */
+  /** 
+   * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` 
+   * to either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
+   */
   def alert(payload: Monitoring.AlertPayload): F[Unit]
 
   /** Helper method specifically for exceptions */
@@ -55,6 +58,10 @@ trait Monitoring[F[_]] {
 }
 
 object Monitoring {
+
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(1,0,0))
@@ -84,10 +91,11 @@ object Monitoring {
     private val derivedEncoder: Encoder[AlertPayload] =
       deriveEncoder[AlertPayload]
 
+    def toSelfDescribing(payload: AlertPayload): SelfDescribingData[Json] =
+      SelfDescribingData(AlertSchema, derivedEncoder.apply(payload))
+
     implicit val alertPayloadEncoder: Encoder[AlertPayload] =
-      Encoder[Json].contramap { alert: AlertPayload =>
-        SelfDescribingData(AlertSchema, derivedEncoder.apply(alert)).normalize
-      }
+      Encoder[Json].contramap[AlertPayload](p => toSelfDescribing(p).normalize)
 
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]
@@ -124,8 +132,8 @@ object Monitoring {
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
         reporters.traverse_(r => r.report(metrics.toList))
 
-      def alert(payload: AlertPayload): F[Unit] =
-        webhookConfig match {
+      def alert(payload: AlertPayload): F[Unit] = {
+        val webhookRequest = webhookConfig match {
           case Some(webhook) =>
             val request: Request[F] =
               Request[F](Method.POST, webhook.endpoint)
@@ -137,8 +145,16 @@ object Monitoring {
                 if (response.status.isSuccess) Sync[F].unit
                 else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
               }
-          case None => Sync[F].unit
+          case None => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
         }
+
+        val snowplowRequest = tracker match {
+          case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(payload))
+          case None => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
+        }
+
+        snowplowRequest *> webhookRequest
+      }
 
       private def trackEmpty(schema: SchemaKey): F[Unit] =
         tracker match {
@@ -155,7 +171,7 @@ object Monitoring {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
@@ -166,23 +182,23 @@ object Monitoring {
     }
 
   /** Callback for failed  */
-  private def callback[F[_]: Sync: Clock](params: Emitter.EndpointParams, request: Emitter.Request, response: Emitter.Result): F[Unit] = {
+  private def callback[F[_]: Sync: Clock: Logging](params: Emitter.EndpointParams, request: Emitter.Request, response: Emitter.Result): F[Unit] = {
     val _ = request
-    def toMsg(rsp: Emitter.Result): String = rsp match {
+    def toMsg(rsp: Emitter.Result): Option[String] = rsp match {
       case Emitter.Result.Failure(code) =>
-        s"Cannot deliver event to ${params.getUri}. Collector responded with $code"
+        s"Cannot deliver event to ${params.getUri}. Collector responded with $code".some
       case Emitter.Result.TrackerFailure(error) =>
-        s"Cannot deliver event to ${params.getUri}. Tracker failed due ${error.getMessage}"
+        s"Cannot deliver event to ${params.getUri}. Tracker failed due ${error.getMessage}".some
       case Emitter.Result.RetriesExceeded(_) =>
-        s"Tracker gave up on trying to deliver event"
+        s"Tracker gave up on trying to deliver event".some
       case Emitter.Result.Success(_) =>
-        ""
+        none[String]
     }
 
-    val message = toMsg(response)
-
-    // The only place in interpreters where println used instead of logger as this is async function
-    if (message.isEmpty) Sync[F].unit else Sync[F].delay(System.out.println(message))
+    toMsg(response) match {
+      case Some(msg) => Logging[F].warning(msg)
+      case None => Logging[F].debug("Snowplow event has been submitted")
+    }
   }
 
   /**
