@@ -127,7 +127,7 @@ object JDBC {
       conn <- retryingOnAllErrors(retryPolicy[F], log[F])(jdbcConnection)
     } yield conn
 
-    val release = (conn: Connection) => Logging[F].info("Releasing connection") *> Sync[F].delay(conn.close())
+    val release = (conn: Connection) => Logging[F].warning("Releasing JDBC connection") *> Sync[F].delay(conn.close())
 
     Pool.create[F, Connection](acquire, release, MaxConnections).onFinalize(Logging[F].info("RDB Pool has been destroyed"))
   }

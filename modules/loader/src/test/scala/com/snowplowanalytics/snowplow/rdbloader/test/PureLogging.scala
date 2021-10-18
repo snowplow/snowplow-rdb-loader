@@ -22,6 +22,9 @@ object PureLogging {
       def info(message: String): Pure[Unit] =
         log(message)
 
+      def warning(message: String): Pure[Unit] =
+        log(message)
+
       def error(message: String): Pure[Unit] =
         log(message)
 

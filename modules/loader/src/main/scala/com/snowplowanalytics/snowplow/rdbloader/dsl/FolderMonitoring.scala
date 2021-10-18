@@ -15,8 +15,10 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 import java.time.{ZoneId, Instant, ZoneOffset}
-import java.time.format.DateTimeFormatter
+import java.time.format.{ DateTimeFormatter, DateTimeParseException }
 import java.util.concurrent.TimeUnit
+
+import scala.concurrent.duration.FiniteDuration
 
 import cats.{Functor, Applicative, Monad}
 import cats.implicits._
@@ -36,6 +38,17 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
 
+/**
+ * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
+ *
+ * The logic is following:
+ * * Periodically list all folders in shredded archive (down to `since`)
+ * * Sink this list into `staging` S3 Folder
+ * * Load this list into a Redshift temporary table
+ * * Execute MINUS query, finding out what folders are in the list, but *not* in the manifest
+ * * Check every that folder for presence of `shredding_complete.json` file
+ *   Everything with the file is "abandoned", everything without the file is "corrupted"
+ */
 object FolderMonitoring {
 
   def createAlertPayload(folder: S3.Folder, message: String): AlertPayload =
@@ -44,15 +57,51 @@ object FolderMonitoring {
   implicit val s3FolderGet: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
 
+  private val TimePattern: String =
+    "yyyy-MM-dd-HH-mm-ss"
+
   val LogTimeFormatter: DateTimeFormatter =
-    DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss").withZone(ZoneId.from(ZoneOffset.UTC))
+    DateTimeFormatter.ofPattern(TimePattern).withZone(ZoneId.from(ZoneOffset.UTC))
 
   val ShreddingComplete = "shredding_complete.json"
 
-  /** Sink all processed folders in `input` into `output` */
-  def sinkFolders[F[_]: Sync: Logging: AWS](input: S3.Folder, output: S3.Folder): F[Unit] =
-    Stream.eval(Ref.of(0)).flatMap { ref =>
-      AWS[F].listS3(input, recursive = false).map(_.key)
+  /**
+   * Check if S3 key name represents a date more recent than a `since`
+   *
+   * @param since optional duration representing, how fresh a folder needs to be
+   *              in order to be taken into account; If None - all folders are taken
+   *              into account
+   * @param now current timestamp
+   * @param key S3 key, representing a folder, must be in `run=2021-10-08-16-30-05` format
+   *            (no trailing slash); keys of a wrong format won't be filtered out
+   * @return false if folder is old enough, true otherwise
+   */
+  def isRecent(since: Option[FiniteDuration], now: Instant)(key: S3.Key): Boolean =
+    since match {
+      case Some(duration) =>
+        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(key.takeRight(TimePattern.size))) match {
+          case Right(accessor) => 
+            val oldest = now.minusMillis(duration.toMillis)
+            accessor.query(Instant.from).isAfter(oldest)
+          case Left(_) =>
+            // TODO: check if list returns keys without trailing slash
+            true
+        }
+      case None => true
+    }
+
+  /**
+   * Sink all processed paths of folders in `input` (shredded archive) into `output` (temp staging)
+   * Processed folders is everything in shredded archive
+   * @param since optional duration to ignore old folders
+   * @param input shredded archive
+   * @param output temp staging path to store the list
+   */
+  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Unit] =
+    Stream.eval((Ref.of(0), Timer[F].clock.instantNow).tupled).flatMap { case (ref, now) =>
+      AWS[F].listS3(input, recursive = false)
+        .map(_.key)
+        .filter(isRecent(since, now))
         .evalTap(_ => ref.update(size => size + 1))
         .intersperse("\n")
         .through(utf8Encode[F])
@@ -94,7 +143,7 @@ object FolderMonitoring {
         else createAlertPayload(folder, "Incomplete shredding")
       }
 
-  /** Get stream of S3 keys emitted with configured interval */
+  /** Get stream of S3 folders emitted with configured interval */
   def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, S3.Folder] = {
     val getKey = Timer[F]
       .clock
@@ -131,18 +180,21 @@ object FolderMonitoring {
    * Same as [[run]], but without parsing preparation
    * The stream ignores a first failure just printing an error, hoping it's transient,
    * but second failure in row makes the whole stream to crash
+   * @param folders configuration for folders monitoring
+   * @param storage Redshift config needed for loading
+   * @param archive shredded archive path
    */
   def stream[F[_]: Sync: Timer: AWS: JDBC: Logging: Monitoring](folders: Config.Folders,
                                                                 storage: StorageTarget.Redshift,
-                                                                output: S3.Folder): Stream[F, Unit] =
+                                                                archive: S3.Folder): Stream[F, Unit] =
     Stream.eval(Ref.of(false)).flatMap { failed =>
       getOutputKeys[F](folders).evalMap { outputFolder =>
-        val sinkAndCheck = sinkFolders[F](output, outputFolder) *>
+        val sinkAndCheck = sinkFolders[F](folders.since, archive, outputFolder) *>
           check[F](outputFolder, storage)
             .rethrowT
             .flatMap { alerts =>
               alerts.traverse_ { payload =>
-                Monitoring[F].alert(payload) *> Logging[F].info(s"WARNING: ${payload.message} ${payload.base}")
+                Monitoring[F].alert(payload) *> Logging[F].warning(s"${payload.message} ${payload.base}")
               }
             } *> failed.set(false)
 

@@ -76,6 +76,18 @@ class PoolSpec extends Specification with CatsIO with ScalaCheck {
       }.setGen(argsGen).setShrink(Shrink(_ => Stream.empty[(Int, Int)]))
     }
 
+    "throws an exception in case of failure" in {
+      val action = create[IO, Unit](IO.unit, _ => IO.unit, 1).use { pool =>
+        pool.use { _ =>
+          IO.raiseError[Int](new RuntimeException("Boom!"))
+        }
+      }
+
+      action.attempt.map { result =>
+        result must beLeft
+      }
+    }
+
     "acquire new resources in case of a failure" in {
       // Fail every 3rd use
       def runUse(stateRef: Ref[IO, PoolSpec.State])(resource: Int): IO[Unit] =

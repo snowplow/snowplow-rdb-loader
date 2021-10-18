@@ -24,6 +24,9 @@ trait Logging[F[_]] {
   /** Log line with log level INFO */
   def info(line: String): F[Unit]
 
+  /** Log line with log level WARNING */
+  def warning(line: String): F[Unit]
+
   /** Log line with log level ERROR */
   def error(error: String): F[Unit]
 
@@ -40,6 +43,9 @@ object Logging {
 
       def info(line: String): F[Unit] =
         logger.info(Common.sanitize(line, stopWords))
+
+      def warning(line: String): F[Unit] =
+        logger.warn(Common.sanitize(line, stopWords))
 
       def error(line: String): F[Unit] =
         logger.error(Common.sanitize(line, stopWords))
