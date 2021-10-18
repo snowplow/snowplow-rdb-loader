@@ -79,15 +79,14 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if key is folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], now: Instant)(key: S3.Key): Boolean =
+  def isRecent(since: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
     since match {
       case Some(duration) =>
-        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(key.takeRight(TimePattern.size))) match {
+        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
           case Right(accessor) => 
             val oldest = now.minusMillis(duration.toMillis)
             accessor.query(Instant.from).isAfter(oldest)
           case Left(_) =>
-            // TODO: check if list returns keys without trailing slash
             true
         }
       case None => true
@@ -103,7 +102,7 @@ object FolderMonitoring {
   def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Unit] =
     Stream.eval((Ref.of(0), Timer[F].clock.instantNow).tupled).flatMap { case (ref, now) =>
       AWS[F].listS3(input, recursive = false)
-        .map(_.key)
+        .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) S3.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
         .filter(isRecent(since, now))
         .evalTap(_ => ref.update(size => size + 1))
         .intersperse("\n")
