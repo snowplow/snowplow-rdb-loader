@@ -1,3 +1,12 @@
+Version 1.3.0 (2021-10-21)
+--------------------------
+Refactor state and logging (TBC)
+RDB Shredder: allow configuring deduplication (#583)
+RDB Shredder: optimize DAG by excluding count (#582)
+RDB Loader: improve updateTable error message (#569)
+RDB Shredder: introduce since and until options (#570)
+RDB Loader: add load_tstamp field (#571)
+
 Version 1.2.1 (2021-10-20)
 --------------------------
 RDB Loader: add since option to folder monitoring (#600)
