@@ -25,6 +25,7 @@ import com.amazonaws.services.sqs.model.SendMessageRequest
 import com.amazonaws.services.sns.{AmazonSNSClientBuilder, AmazonSNS}
 import com.amazonaws.services.sns.model.PublishRequest
 
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 
@@ -118,26 +119,26 @@ object Cloud {
     }
 
   /** Create SQS client with built-in retry mechanism (jitter) */
-  def createSqsClient(region: String): AmazonSQS =
+  def createSqsClient(region: Region): AmazonSQS =
     AmazonSQSClientBuilder
       .standard()
-      .withRegion(region)
+      .withRegion(region.name)
       .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
       .build()
 
   /** Create SNS client with built-in retry mechanism (jitter) */
-  def creteSnsClient(region: String): AmazonSNS =
+  def creteSnsClient(region: Region): AmazonSNS =
     AmazonSNSClientBuilder
       .standard()
-      .withRegion(region)
+      .withRegion(region.name)
       .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
       .build()
 
   /** Create S3 client with built-in retry mechanism (jitter) */
-  def createS3Client(region: String): AmazonS3 =
+  def createS3Client(region: Region): AmazonS3 =
     AmazonS3ClientBuilder
       .standard()
-      .withRegion(region)
+      .withRegion(region.name)
       .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
       .build()
 }

@@ -1,0 +1,10 @@
+{
+  "input": "s3://bucket/input/"
+  "output": {
+    "path": "s3://bucket/shredded/"
+  }
+  "queue": {
+    "type": "sns"
+    "topicArn": "test-sns"
+  }
+}

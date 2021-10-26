@@ -18,7 +18,7 @@ import cats.effect.Sync
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 object StdoutReporter {
   def build[F[_]: Sync](stdoutConfig: Option[Config.Stdout]): Reporter[F] =

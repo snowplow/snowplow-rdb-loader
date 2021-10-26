@@ -12,23 +12,24 @@ import fs2.aws.kinesis.CommittableRecord
 import fs2.aws.kinesis.consumer.readFromKinesisStream
 import fs2.aws.kinesis.KinesisConsumerSettings
 
-import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.kinesis.common.InitialPositionInStream
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.InitPosition
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.InitPosition
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.Processing.Application
 
 object kinesis {
 
-  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: String, position: InitPosition): Stream[F, ParsedF[F]] = {
-    val settings = Either.catchOnly[IllegalArgumentException](Region.of(region)) match {
+  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedF[F]] = {
+    val settings = Either.catchOnly[IllegalArgumentException](AWSRegion.of(region.name)) match {
       case Right(region) =>
         Sync[F].pure(KinesisConsumerSettings(streamName, appName, region, initialPositionInStream = fromConfig(position)))
       case Left(error) =>
-        Sync[F].raiseError[KinesisConsumerSettings](new IllegalArgumentException(s"Cannot parse $region as valid AWS region", error))
+        Sync[F].raiseError[KinesisConsumerSettings](new IllegalArgumentException(s"Cannot parse ${region.name} as valid AWS region", error))
     }
 
     for {

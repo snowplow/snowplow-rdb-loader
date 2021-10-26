@@ -1,0 +1,85 @@
+{
+  # Data Lake (S3) region
+  # This field is optional if it can be resolved with AWS region provider chain.
+  # It checks places like env variables, system properties, AWS profile file.
+  # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
+  "region": "us-east-1",
+
+  # SQS topic name used by Shredder and Loader to communicate
+  "messageQueue": "test-queue",
+
+  # Optional. S3 path that holds JSONPaths
+  "jsonpaths": "s3://bucket/jsonpaths/",
+
+  # Warehouse connection details
+  "storage" : {
+    # Redshift hostname
+    "host": "redshift.amazonaws.com",
+    # Database name
+    "database": "snowplow",
+    # Database port. Optional, default value 5439
+    "port": 5439,
+    # AWS Role ARN allowing Redshift to load data from S3
+    "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+    # DB schema name
+    "schema": "atomic",
+    # DB user with permissions to load data
+    "username": "admin",
+    # DB password
+    "password": "Supersecret1",
+    # Custom JDBC configuration. Optional, default value { "ssl": true }
+    "jdbc": { "ssl": true },
+    # MAXERROR, amount of acceptable loading errors. Optional, default value 10
+    "maxError": 10
+  },
+
+  # Additional steps. analyze, vacuum and transit_load are valid values
+  # Optional, default value []
+  "steps": ["analyze"],
+
+  # Observability and reporting options
+  "monitoring": {
+    # Snowplow tracking (optional)
+    "snowplow": {
+      "appId": "redshift-loader",
+      "collector": "snplow.acme.com",
+    },
+
+    # Optional, for tracking runtime exceptions
+    "sentry": {
+      "dsn": "http://sentry.acme.com"
+    },
+
+    # Optional, configure how metrics are reported
+    "metrics": {
+      # Optional, send metrics to StatsD server
+      "statsd": {
+        "hostname": "localhost",
+        "port": 8125,
+        # Any key-value pairs to be tagged on every StatsD metric
+        "tags": {
+          "app": "rdb-loader"
+        }
+        # Optional, override the default metric prefix
+        # "prefix": "snowplow.rdbloader."
+      },
+
+      # Optional, print metrics on stdout (with slf4j)
+      "stdout": {
+        # Optional, override the default metric prefix
+        # "prefix": "snowplow.rdbloader."
+      }
+    },
+
+    # Optional, configuration for periodic unloaded/corrupted folders checks
+    "folders": {
+      # Path where Loader could store auxiliary logs
+      # Loader should be able to write here, Redshift should be able to load from here
+      "staging": "s3://acme-snowplow/loader/logs/",
+      # How often to check
+      "period": "1 hour"
+      # Path to shredded archive
+      "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+    }
+  }
+}
