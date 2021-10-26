@@ -16,10 +16,10 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget.Redshift
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, Step}
-
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.Redshift
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Step
 
 /**
  * Result of discovery and SQL-statement generation steps
@@ -52,7 +52,7 @@ object RedshiftStatements {
       .filterNot(_.isAtomic)
       .map(transformShreddedType(config, discovery.compression))
     val transitCopy = config.steps.contains(Step.TransitCopy)
-    val atomic = Statement.EventsCopy(config.storage.schema, transitCopy, discovery.base, config.region, config.storage.maxError, config.storage.roleArn, discovery.compression)
+    val atomic = Statement.EventsCopy(config.storage.schema, transitCopy, discovery.base, config.region.name, config.storage.maxError, config.storage.roleArn, discovery.compression)
     buildLoadStatements(config.storage, config.steps, atomic, shreddedStatements)
   }
 
@@ -109,7 +109,7 @@ object RedshiftStatements {
    */
   private def transformShreddedType(config: Config[Redshift], compression: Compression)(shreddedType: ShreddedType): ShreddedStatements = {
     val tableName = config.storage.shreddedTable(shreddedType.getTableName)
-    val copyFromJson = Statement.ShreddedCopy(config.storage.schema, shreddedType, config.region, config.storage.maxError, config.storage.roleArn, compression)
+    val copyFromJson = Statement.ShreddedCopy(config.storage.schema, shreddedType, config.region.name, config.storage.maxError, config.storage.roleArn, compression)
     val analyze = Statement.Analyze(tableName)
     val vacuum = Statement.Vacuum(tableName)
     ShreddedStatements(copyFromJson, analyze, vacuum)

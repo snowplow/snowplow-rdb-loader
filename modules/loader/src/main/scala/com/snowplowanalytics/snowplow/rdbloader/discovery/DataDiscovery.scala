@@ -19,9 +19,9 @@ import cats.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 
 /**
   * Result of data discovery in shredded.good folder
@@ -73,7 +73,7 @@ object DataDiscovery {
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.data) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle(config.region, config.jsonpaths, parsed, message.ack, message.extend)
+            handle(config.region.name, config.jsonpaths, parsed, message.ack, message.extend)
           case Left(error) =>
             ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }

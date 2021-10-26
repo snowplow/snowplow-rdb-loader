@@ -75,7 +75,7 @@ object Environment {
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      amazonS3 <- AWS.getClient[F](cli.config.region)
+      amazonS3 <- AWS.getClient[F](cli.config.region.name)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
       aws = AWS.s3Interpreter[F](amazonS3)

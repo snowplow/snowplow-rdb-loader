@@ -19,11 +19,11 @@ import cats.implicits._
 
 import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 object StatsDReporter {
 
-  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] = 
+  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] =
     statsDConfig match {
       case Some(config) =>
         new Reporter[F] {

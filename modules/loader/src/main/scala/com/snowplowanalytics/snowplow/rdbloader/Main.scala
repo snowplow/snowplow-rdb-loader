@@ -38,7 +38,7 @@ object Main extends IOApp {
         Environment.initialize[IO](cli).use { env =>
           import env._
 
-          loggingF.info(s"RDB Loader ${generated.BuildInfo.version} [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
+          loggingF.info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
             process[IO](cli, control)
               .compile
               .drain
@@ -61,7 +61,7 @@ object Main extends IOApp {
    */
   def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path, control.isBusy)
+      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, control.isBusy)
 
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery

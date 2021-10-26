@@ -119,6 +119,7 @@ object Dependencies {
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
   val aws2sns           = "software.amazon.awssdk" % "sns"                      % V.aws2
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
+  val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
