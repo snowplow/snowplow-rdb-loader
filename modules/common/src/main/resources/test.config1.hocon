@@ -1,0 +1,11 @@
+{
+  "input": "s3://bucket/input/"
+  "output": {
+    "path": "s3://bucket/shredded/"
+    "region": "unknown-region-1"
+  }
+  "queue": {
+    "type": "sns"
+    "topicArn": "test-sns"
+  }
+}

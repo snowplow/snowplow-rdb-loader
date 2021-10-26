@@ -11,7 +11,7 @@ import fs2.{Stream, Pipe}
 import fs2.text.utf8Encode
 import fs2.compression.gzip
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 
 import blobstore.fs.FileStore
 import blobstore.BasePath

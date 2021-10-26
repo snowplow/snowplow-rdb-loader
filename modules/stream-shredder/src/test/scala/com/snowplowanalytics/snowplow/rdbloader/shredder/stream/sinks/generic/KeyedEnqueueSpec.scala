@@ -61,7 +61,7 @@ class KeyedEnqueueSpec extends Specification {
         keyedEnqueue <- KeyedEnqueue.mk[IO, String, String](getSink)
         _ <- keyedEnqueue.enqueueKV("key-1", "element-1")
         _ <- keyedEnqueue.enqueueKV("key-1", "element-2")
-        timeout <- keyedEnqueue.sink.compile.drain.timeout(200.millis).attempt
+        timeout <- keyedEnqueue.sink.compile.drain.timeout(500.millis).attempt
         finalResult <- store.get
       } yield (timeout.isLeft, finalResult)
 

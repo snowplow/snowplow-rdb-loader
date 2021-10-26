@@ -40,8 +40,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Shredded}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.{Formats, Shredder}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.Discovery.MessageProcessor
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
@@ -57,7 +57,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 class ShredJob(@transient val spark: SparkSession,
                igluConfig: Json,
                formats: Formats,
-               shredderConfig: Shredder.Batch) extends Serializable {
+               config: ShredderConfig.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   // Accumulator to track shredded types
@@ -83,8 +83,8 @@ class ShredJob(@transient val spark: SparkSession,
           atomicLengths: Map[String, Int],
           eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
     val jobStarted: Instant = Instant.now()
-    val inputFolder: S3.Folder = S3.Folder.coerce(shredderConfig.input.toString).append(folderName)
-    val outFolder: S3.Folder = S3.Folder.coerce(shredderConfig.output.path.toString).append(folderName)
+    val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
+    val outFolder: S3.Folder = S3.Folder.coerce(config.output.path.toString).append(folderName)
 
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
@@ -162,8 +162,8 @@ class ShredJob(@transient val spark: SparkSession,
     val shreddedBad = common.flatMap(_.swap.toOption.map(Shredded.fromBadRow).flatMap(_.json))
 
     // Final output
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.tsv), outFolder)
-    Sink.writeShredded(spark, shredderConfig.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
+    Sink.writeShredded(spark, config.output.compression, shreddedData.flatMap(_.tsv), outFolder)
+    Sink.writeShredded(spark, config.output.compression, shreddedData.flatMap(_.json) ++ shreddedBad, outFolder)
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
@@ -174,7 +174,7 @@ class ShredJob(@transient val spark: SparkSession,
 
     val count = Either.catchOnly[TimeoutException](Await.result(goodCount, ShredJob.CountTimeout)).map(LoaderMessage.Count).toOption
 
-    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, shredderConfig.output.compression, MessageProcessor, count)
+    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, config.output.compression, MessageProcessor, count)
   }
 }
 
@@ -190,18 +190,17 @@ object ShredJob {
     spark: SparkSession,
     igluConfig: Json,
     duplicateStorageConfig: Option[Json],
-    config: Config[StorageTarget],
-    shredderConfig: Shredder.Batch
+    config: ShredderConfig.Batch
   ): Unit = {
-    val s3Client = Cloud.createS3Client(config.region)
+    val s3Client = Cloud.createS3Client(config.output.region)
 
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
 
-    val enrichedFolder = Folder.coerce(shredderConfig.input.toString)
-    val shreddedFolder = Folder.coerce(shredderConfig.output.path.toString)
+    val enrichedFolder = Folder.coerce(config.input.toString)
+    val shreddedFolder = Folder.coerce(config.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
-      .getState(config.region, enrichedFolder, shreddedFolder)
+      .getState(config.output.region, enrichedFolder, shreddedFolder)
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
       val config = EventsManifestConfig
@@ -211,19 +210,19 @@ object ShredJob {
       config
     }
 
-    val sendToQueue = shredderConfig.snsTopic match {
-        case None =>
-          val sqsClient = Cloud.createSqsClient(config.region)
-          Cloud.sendToSqs(sqsClient, config.messageQueue, _, _)
-        case Some(topic) =>
-          val snsClient = Cloud.creteSnsClient(config.region)
-          Cloud.sendToSns(snsClient, topic, _, _)
+    val sendToQueue = config.queue match {
+        case q: QueueConfig.SQS =>
+          val sqsClient = Cloud.createSqsClient(q.region)
+          Cloud.sendToSqs(sqsClient, q.queueName, _, _)
+        case q: QueueConfig.SNS =>
+          val snsClient = Cloud.creteSnsClient(q.region)
+          Cloud.sendToSns(snsClient, q.topicArn, _, _)
       }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 
     unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
-      val job = new ShredJob(spark, igluConfig, config.formats, shredderConfig)
+      val job = new ShredJob(spark, igluConfig, config.formats, config)
       val completed = job.run(folder.folderName, atomicLengths, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3)
     }

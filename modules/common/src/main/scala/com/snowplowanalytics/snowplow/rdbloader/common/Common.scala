@@ -16,7 +16,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format}
 
 /**

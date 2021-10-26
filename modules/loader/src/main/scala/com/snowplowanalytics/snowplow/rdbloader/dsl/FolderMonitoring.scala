@@ -13,7 +13,6 @@
 
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.net.URI
 import java.time.{ZoneId, Instant, ZoneOffset}
 import java.time.format.{ DateTimeFormatter, DateTimeParseException }
 import java.util.concurrent.TimeUnit
@@ -33,7 +32,7 @@ import fs2.text.utf8Encode
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
@@ -164,16 +163,10 @@ object FolderMonitoring {
    * Resulting stream has to be running in background.
    */
   def run[F[_]: Sync: Timer: AWS: JDBC: Logging: Monitoring](foldersCheck: Option[Config.Folders],
-                                                             storage: StorageTarget,
-                                                             output: URI): Stream[F, Unit] =
+                                                             storage: StorageTarget): Stream[F, Unit] =
     (foldersCheck, storage) match {
       case (Some(folders), redshift: StorageTarget.Redshift) =>
-        S3.Folder.parse(output.toString) match {
-          case Right(shreddedArchive) =>
-            stream[F](folders, redshift, shreddedArchive)
-          case Left(error) =>
-            Stream.raiseError[F](new IllegalArgumentException(s"Shredder output could not be parsed into S3 URI $error"))
-        }
+        stream[F](folders, redshift)
       case (None, _: StorageTarget.Redshift) =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been providing - monitoring is disabled"))
     }
@@ -187,12 +180,11 @@ object FolderMonitoring {
    * @param archive shredded archive path
    */
   def stream[F[_]: Sync: Timer: AWS: JDBC: Logging: Monitoring](folders: Config.Folders,
-                                                                storage: StorageTarget.Redshift,
-                                                                archive: S3.Folder): Stream[F, Unit] =
+                                                                storage: StorageTarget.Redshift): Stream[F, Unit] =
     Stream.eval(Ref.of(false)).flatMap { failed =>
       getOutputKeys[F](folders).evalMap { outputFolder =>
         val sinkAndCheck = 
-          sinkFolders[F](folders.since, archive, outputFolder).ifM(
+          sinkFolders[F](folders.since, folders.shredderOutput, outputFolder).ifM(
             check[F](outputFolder, storage)
               .rethrowT
               .flatMap { alerts =>
@@ -200,9 +192,8 @@ object FolderMonitoring {
                   Monitoring[F].alert(payload) *> Logging[F].warning(s"${payload.message} ${payload.base}")
                 }
               },
-            Logging[F].info(s"No folders were found in ${archive}. Skipping manifest check")
+            Logging[F].info(s"No folders were found in ${folders.shredderOutput}. Skipping manifest check")
           ) *> failed.set(false)
-
         Logging[F].info("Monitoring shredded folders") *>
           sinkAndCheck.handleErrorWith { error =>
             failed.getAndSet(true).flatMap { failedBefore =>
