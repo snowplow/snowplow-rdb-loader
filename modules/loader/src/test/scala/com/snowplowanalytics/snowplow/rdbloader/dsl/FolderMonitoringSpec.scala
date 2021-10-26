@@ -23,7 +23,7 @@ import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureJDBC, TestState, PureAWS}
@@ -89,7 +89,7 @@ class FolderMonitoringSpec extends Specification {
     "produce new keys with interval" in {
       implicit val T = IO.timer(scala.concurrent.ExecutionContext.global)
       val result = FolderMonitoring
-        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/"), None))
+        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/"), None, S3.Folder.coerce("s3://acme/shredder-output/")))
         .take(2)
         .compile
         .toList

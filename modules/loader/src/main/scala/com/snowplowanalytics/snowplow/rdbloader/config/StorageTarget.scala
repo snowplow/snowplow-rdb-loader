@@ -10,7 +10,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.common.config
+package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Properties
 
@@ -20,6 +20,8 @@ import cats.implicits._
 import io.circe.{CursorOp, _}
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
+
+import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 
 /**
  * Common configuration for JDBC target, such as Redshift

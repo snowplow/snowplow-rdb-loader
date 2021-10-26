@@ -20,10 +20,10 @@ import doobie.util.update.Update0
 import io.circe.jawn.parse
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 
-import com.snowplowanalytics.snowplow.rdbloader.common.ConfigSpec
+import com.snowplowanalytics.snowplow.rdbloader.config.ConfigSpec
 
 object SpecHelpers {
 
@@ -31,7 +31,14 @@ object SpecHelpers {
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
-  val validConfig: Config[StorageTarget.Redshift] = ConfigSpec.configExampleParsed
+  val validConfig: Config[StorageTarget.Redshift] = Config(
+    ConfigSpec.exampleRegion,
+    ConfigSpec.exampleJsonPaths,
+    ConfigSpec.exampleMonitoring,
+    ConfigSpec.exampleQueueName,
+    ConfigSpec.exampleStorage,
+    ConfigSpec.exampleSteps
+  )
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
   /**

@@ -14,28 +14,21 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
-
+import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
 import io.circe._
 import io.circe.generic.semiauto._
-
-import org.http4s.{Request, EntityEncoder, Method}
+import org.http4s.{EntityEncoder, Method, Request}
 import org.http4s.client.Client
 import org.http4s.circe.jsonEncoderOf
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
-
 import io.sentry.SentryClient
-
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
 trait Monitoring[F[_]] {

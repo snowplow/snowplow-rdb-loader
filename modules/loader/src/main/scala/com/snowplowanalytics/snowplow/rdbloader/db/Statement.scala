@@ -23,8 +23,7 @@ import io.circe.syntax._
 import com.snowplowanalytics.iglu.schemaddl.redshift
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
@@ -253,7 +252,7 @@ object Statement {
     def toFragment: Fragment = Fragment.const0(ddl.render)
   }
 
-  private def getCompressionFormat(compression: Config.Shredder.Compression): Fragment =
+  private def getCompressionFormat(compression: Compression): Fragment =
     compression match {
       case Compression.Gzip => Fragment.const("GZIP")
       case Compression.None => Fragment.empty

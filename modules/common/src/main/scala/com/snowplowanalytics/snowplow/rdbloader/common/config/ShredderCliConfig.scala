@@ -13,70 +13,50 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
-import java.util.Base64
-import java.nio.charset.StandardCharsets.UTF_8
-
-import cats.data.ValidatedNel
 import cats.implicits._
 
 import io.circe.Json
-import io.circe.parser.parse
 
 import com.monovore.decline.{Command, Opts}
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
-/**
- * Case class representing the configuration for the shred job.
- * @param inFolder Folder where the input events are located
- * @param outFolder Output folder where the shredded events will be stored
- * @param badFolder Output folder where the malformed events will be stored
- * @param igluConfig JSON representing the Iglu configuration
- */
-case class ShredderCliConfig(igluConfig: Json,
-                             duplicateStorageConfig: Option[Json],
-                             config: Config[StorageTarget])
-
 object ShredderCliConfig {
 
-  private val Base64Decoder = Base64.getDecoder
+  case class Batch(igluConfig: Json,
+                   duplicateStorageConfig: Option[Json],
+                   config: ShredderConfig.Batch)
+  object Batch {
+    val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
+      "Base64-encoded Events Manifest JSON config",
+      metavar = "<base64>").mapValidated(ConfigUtils.Base64Json.decode).orNone
+    val batchConfig = Opts.option[String]("config",
+      "base64-encoded config HOCON", "c", "config.hocon")
+      .mapValidated(x => ConfigUtils.base64decode(x).flatMap(ShredderConfig.Batch.fromString).toValidatedNel)
+    val batchShredderConfig = (igluConfig, duplicateStorageConfig, batchConfig).mapN {
+      (iglu, dupeStorage, target) => Batch(iglu, dupeStorage, target)
+    }
+    def command(name: String, description: String): Command[Batch] =
+      Command(s"$name-${BuildInfo.version}", description)(batchShredderConfig)
+    def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, Batch] =
+      command(name, description).parse(args).leftMap(_.toString())
+  }
 
-  def base64decode(str: String): Either[String, String] =
-    Either
-      .catchOnly[IllegalArgumentException](Base64Decoder.decode(str))
-      .map(arr => new String(arr, UTF_8))
-      .leftMap(_.getMessage)
-
-  object Base64Json {
-
-    def decode(str: String): ValidatedNel[String, Json] =
-      base64decode(str)
-        .flatMap(str => parse(str).leftMap(_.show))
-        .toValidatedNel
+  case class Stream(igluConfig: Json, config: ShredderConfig.Stream)
+  object Stream {
+    val streamConfig = Opts.option[String]("config",
+      "base64-encoded config HOCON", "c", "config.hocon")
+      .mapValidated(x => ConfigUtils.base64decode(x).flatMap(ShredderConfig.Stream.fromString).toValidatedNel)
+    val streamShredderConfig = (igluConfig, streamConfig).mapN {
+      (iglu, config) => Stream(iglu, config)
+    }
+    def command(name: String, description: String): Command[Stream] =
+      Command(s"$name-${BuildInfo.version}", description)(streamShredderConfig)
+    def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, Stream] =
+      command(name, description).parse(args).leftMap(_.toString())
   }
 
   val igluConfig = Opts.option[String]("iglu-config",
     "Base64-encoded Iglu Client JSON config",
-    metavar = "<base64>").mapValidated(Base64Json.decode)
-  val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
-    "Base64-encoded Events Manifest JSON config",
-    metavar = "<base64>").mapValidated(Base64Json.decode).orNone
-  val config = Opts.option[String]("config",
-    "base64-encoded config HOCON", "c", "config.hocon")
-    .mapValidated(x => base64decode(x).flatMap(Config.fromString).toValidatedNel)
-
-  val shredJobConfig = (igluConfig, duplicateStorageConfig, config).mapN {
-    (iglu, dupeStorage, target) => ShredderCliConfig(iglu, dupeStorage, target)
-  }
-
-  def command(name: String, description: String): Command[ShredderCliConfig] =
-    Command(s"$name-${BuildInfo.version}", description)(shredJobConfig)
-
-  /**
-   * Load a ShredJobConfig from command line arguments.
-   * @param args The command line arguments
-   * @return The job config or one or more error messages boxed in a Scalaz Validation Nel
-   */
-  def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, ShredderCliConfig] =
-    command(name, description).parse(args).leftMap(_.toString())
+    metavar = "<base64>").mapValidated(ConfigUtils.Base64Json.decode)
 }

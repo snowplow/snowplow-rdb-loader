@@ -20,6 +20,7 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated.BuildInfo
 
 
@@ -43,7 +44,7 @@ object Discovery {
    * (ones where shredding hasn't completed successfully) and
    * list of folders ready to be shredded
    */
-  def getState(region: String, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
+  def getState(region: Region, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
     val client = Cloud.createS3Client(region)
     val enrichedDirs = Cloud.listDirs(client, enrichedFolder)
     val shreddedDirs = Cloud.listDirs(client, shreddedFolder)

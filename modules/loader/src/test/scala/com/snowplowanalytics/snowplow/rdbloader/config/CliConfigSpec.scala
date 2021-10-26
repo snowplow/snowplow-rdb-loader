@@ -20,31 +20,22 @@ import cats.data.Validated
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
-import com.snowplowanalytics.snowplow.rdbloader.common.ConfigSpec
 
 class CliConfigSpec extends Specification {
-  val configB64 = new String(Base64.getEncoder.encode(ConfigSpec.configExamplePlain.getBytes))
+  val configB64 = new String(
+    Base64.getEncoder.encode(
+      ConfigSpec.readResource("/loader.config.reference.hocon").getBytes
+    )
+  )
 
   "parse" should {
-    "parse minimal valid configuration" in {
+    "parse valid configuration" in {
       val cli = Array(
         "--config", configB64,
         "--iglu-config", resolverConfig)
 
       val expected = CliConfig(validConfig, false, resolverJson)
       val result = CliConfig.parse(cli)
-      result must beEqualTo(Validated.Valid(expected))
-    }
-
-    "collect custom steps" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig)
-
-      val expected = CliConfig(validConfig, false, resolverJson)
-
-      val result = CliConfig.parse(cli)
-
       result must beEqualTo(Validated.Valid(expected))
     }
 
@@ -55,9 +46,7 @@ class CliConfigSpec extends Specification {
         "--dry-run")
 
       val expected = CliConfig(validConfig, true, resolverJson)
-
       val result = CliConfig.parse(cli)
-
       result must beEqualTo(Validated.Valid(expected))
     }
   }
