@@ -31,7 +31,7 @@ import doobie.free.connection.{abort, setAutoCommit => autoCommit, unit}
 import com.amazon.redshift.jdbc42.{Driver => RedshiftDriver}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError.StorageTargetError
-import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Pool}
 
 import retry.{RetryPolicies, retryingOnAllErrors, RetryDetails, RetryPolicy}

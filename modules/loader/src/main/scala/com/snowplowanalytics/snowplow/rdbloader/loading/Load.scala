@@ -24,8 +24,8 @@ import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDeta
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}

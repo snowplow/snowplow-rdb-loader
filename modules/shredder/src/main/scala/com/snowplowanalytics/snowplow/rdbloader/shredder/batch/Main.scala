@@ -22,7 +22,7 @@ import org.apache.spark.sql.SparkSession
 
 import cats.syntax.either._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, ShredderCliConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.Serialization
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated.BuildInfo
 
@@ -35,27 +35,21 @@ object Main {
     .registerKryoClasses(Serialization.classesToRegister)
 
   def main(args: Array[String]): Unit = {
-    ShredderCliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
+    ShredderCliConfig.Batch.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
       case Right(cli) =>
-        cli.config.shredder match {
-          case b: Config.Shredder.Batch =>
-            val spark = SparkSession.builder()
-              .config(sparkConfig)
-              .getOrCreate()
-            val sentryClient = cli.config.monitoring.sentry.map(s => Sentry.init(SentryOptions.defaults(s.dsn.toString)))
-            Either
-              .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config, b)) match {
-                case Left(throwable) =>
-                  sentryClient.foreach(_.sendException(throwable))
-                  spark.stop()
-                  throw throwable
-                case Right(_) =>
-                  spark.stop()
-              }
-          case other =>
-            System.err.println(s"Shredder configuration $other is not for Spark")
-            System.exit(2)
-        }
+        val spark = SparkSession.builder()
+          .config(sparkConfig)
+          .getOrCreate()
+        val sentryClient = cli.config.monitoring.sentry.map(s => Sentry.init(SentryOptions.defaults(s.dsn.toString)))
+        Either
+          .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config)) match {
+            case Left(throwable) =>
+              sentryClient.foreach(_.sendException(throwable))
+              spark.stop()
+              throw throwable
+            case Right(_) =>
+              spark.stop()
+          }
       case Left(error) =>
         System.err.println(error)
         System.exit(2)

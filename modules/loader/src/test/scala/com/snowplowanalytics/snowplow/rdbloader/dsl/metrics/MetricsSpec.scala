@@ -22,7 +22,7 @@ import cats.effect.Clock
 
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ShredderConfig, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 
@@ -53,7 +53,7 @@ class MetricsSpec extends Specification {
           min = Some(now.minusSeconds(collectorLatencyMax)),
           max = Some(now.minusSeconds(collectorLatencyMin))
         ),
-        Config.Shredder.Compression.Gzip,
+        ShredderConfig.Compression.Gzip,
         Processor("loader_unit_tests", Semver(0, 0, 0, None)),
         Some(Count(countGood))
       )
