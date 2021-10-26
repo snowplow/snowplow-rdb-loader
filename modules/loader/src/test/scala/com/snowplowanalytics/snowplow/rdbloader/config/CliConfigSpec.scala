@@ -14,38 +14,29 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Base64
 
-import cats.data.Validated
+import cats.effect.IO
 
 // specs2
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
-import com.snowplowanalytics.snowplow.rdbloader.common.ConfigSpec
 
 class CliConfigSpec extends Specification {
-  val configB64 = new String(Base64.getEncoder.encode(ConfigSpec.configExamplePlain.getBytes))
+  val configB64 = new String(
+    Base64.getEncoder.encode(
+      ConfigSpec.readResource("/loader.config.reference.hocon").getBytes
+    )
+  )
 
   "parse" should {
-    "parse minimal valid configuration" in {
+    "parse valid configuration" in {
       val cli = Array(
         "--config", configB64,
         "--iglu-config", resolverConfig)
 
       val expected = CliConfig(validConfig, false, resolverJson)
-      val result = CliConfig.parse(cli)
-      result must beEqualTo(Validated.Valid(expected))
-    }
-
-    "collect custom steps" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig)
-
-      val expected = CliConfig(validConfig, false, resolverJson)
-
-      val result = CliConfig.parse(cli)
-
-      result must beEqualTo(Validated.Valid(expected))
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result must beRight(expected)
     }
 
     "parse CLI options with dry-run" in {
@@ -55,10 +46,18 @@ class CliConfigSpec extends Specification {
         "--dry-run")
 
       val expected = CliConfig(validConfig, true, resolverJson)
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result must beRight(expected)
+    }
 
-      val result = CliConfig.parse(cli)
+    "give error with invalid resolver" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", invalidResolverConfig,
+        "--dry-run")
 
-      result must beEqualTo(Validated.Valid(expected))
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result.isLeft must beTrue
     }
   }
 }

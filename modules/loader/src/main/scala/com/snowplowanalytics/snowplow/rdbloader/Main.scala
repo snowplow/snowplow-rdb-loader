@@ -13,7 +13,6 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Applicative
-import cats.data.Validated._
 import cats.implicits._
 
 import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer, Clock}
@@ -32,24 +31,26 @@ import com.snowplowanalytics.snowplow.rdbloader.State._
 
 object Main extends IOApp {
 
-  def run(argv: List[String]): IO[ExitCode] =
-    CliConfig.parse(argv) match {
-      case Valid(cli) =>
-        Environment.initialize[IO](cli).use { env =>
-          import env._
-
-          loggingF.info(s"RDB Loader ${generated.BuildInfo.version} [${cli.config.name}] has started. Listening ${cli.config.messageQueue}") *>
-            process[IO](cli, control)
-              .compile
-              .drain
-              .as(ExitCode.Success)
-              .handleErrorWith(handleFailure[IO])
-        }
-      case Invalid(errors) =>
-        val logger = Slf4jLogger.getLogger[IO]
-        logger.error("Configuration error") *>
-          errors.traverse_(message => logger.error(message)).as(ExitCode(2))
-    }
+  def run(argv: List[String]): IO[ExitCode] = {
+    for {
+      parsed <- CliConfig.parse[IO](argv).value
+      res <- parsed match {
+        case Right(cli) =>
+          Environment.initialize[IO](cli).use { env =>
+            import env._
+            loggingF.info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
+              process[IO](cli, control)
+                .compile
+                .drain
+                .as(ExitCode.Success)
+                .handleErrorWith(handleFailure[IO])
+          }
+        case Left(error) =>
+          val logger = Slf4jLogger.getLogger[IO]
+          logger.error("Configuration error") *>logger.error(error).as(ExitCode(2))
+      }
+    } yield res
+  }
 
   /**
    * Main application workflow, responsible for discovering new data via message queue
@@ -61,7 +62,7 @@ object Main extends IOApp {
    */
   def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path, control.isBusy)
+      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, control.isBusy)
 
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery

@@ -20,7 +20,7 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitSchemaCache, InitListCache}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.QueueConfig
 
 import com.snowplowanalytics.aws.AWSQueue
 
@@ -37,7 +37,7 @@ object Resources {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json, region: String, sqsQueueName: String, streamConf: Shredder.Stream): Resource[F, Resources[F]] = {
+  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json, queueConfig: QueueConfig): Resource[F, Resources[F]] = {
     val init = for {
       igluClient <- Client.parseDefault[F](igluConfig)
         .leftMap(e => new RuntimeException(s"Error while parsing Iglu config: ${e.getMessage()}"))
@@ -59,9 +59,9 @@ object Resources {
             logger.info(s"Final window state:\n${stack.mkString("\n")}")
         }
       }
-      awsQueue <- streamConf.snsTopic match {
-        case None => AWSQueue.build(AWSQueue.QueueType.SQS, sqsQueueName, region)
-        case Some(snsTopicName) => AWSQueue.build(AWSQueue.QueueType.SNS, snsTopicName, region)
+      awsQueue <- queueConfig match {
+        case QueueConfig.SQS(queueName, region) => AWSQueue.build(AWSQueue.QueueType.SQS, queueName, region.name)
+        case QueueConfig.SNS(topicArn, region) => AWSQueue.build(AWSQueue.QueueType.SNS, topicArn, region.name)
       }
       sinks <- Resource.eval(Ref.of(0L))
       instanceId <- Resource

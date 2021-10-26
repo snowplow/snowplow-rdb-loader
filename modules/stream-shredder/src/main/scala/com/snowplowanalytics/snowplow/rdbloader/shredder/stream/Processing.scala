@@ -17,9 +17,9 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.badrows.Processor
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Common}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.{Shredder, Formats}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Shredded
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sources.{Parsed, ParsedF}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks._
@@ -37,10 +37,9 @@ object Processing {
   type Windowed[F[_], A] = Record[F, Window, A]
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
-                                                              config: Shredder.Stream,
-                                                              formats: Formats): F[Unit] = {
+                                                              config: ShredderConfig.Stream): F[Unit] = {
     val isTabular: SchemaKey => Boolean =
-      Common.isTabular(formats)
+      Common.isTabular(config.formats)
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =
@@ -92,22 +91,22 @@ object Processing {
 
   /** Build a `Stream` of parsed Snowplow events */
   def getSource[F[_]: ConcurrentEffect: ContextShift](resources: Resources[F],
-                                                      config: Shredder.StreamInput): Stream[F, ParsedF[F]] =
+                                                      config: ShredderConfig.StreamInput): Stream[F, ParsedF[F]] =
     config match {
-      case Shredder.StreamInput.Kinesis(appName, streamName, region, position) =>
+      case ShredderConfig.StreamInput.Kinesis(appName, streamName, region, position) =>
         sources.kinesis.read[F](appName, streamName, region, position)
-      case Shredder.StreamInput.File(dir) =>
+      case ShredderConfig.StreamInput.File(dir) =>
         sources.file.read[F](resources.blocker, dir)
     }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
   def getSink[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker,
                                                     instanceId: String,
-                                                    config: Shredder.Output,
+                                                    config: ShredderConfig.Output,
                                                     sinkCount: Window => F[Int],
                                                     onComplete: Window => F[Unit]): Grouping[F] =
     config match {
-      case Shredder.Output(path, _) =>
+      case ShredderConfig.Output(path, _, _) =>
         val dataSink = Option(path.getScheme) match {
           case Some("file") =>
             file.getSink[F](blocker, path, config.compression, sinkCount) _

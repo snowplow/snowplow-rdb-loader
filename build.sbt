@@ -51,6 +51,7 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.pureconfigCirce,
       Dependencies.schemaDdl,
       Dependencies.http4sCore,
+      Dependencies.aws2regions,
 
       Dependencies.specs2,
       Dependencies.monocle,
