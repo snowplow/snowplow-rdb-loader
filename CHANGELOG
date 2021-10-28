@@ -1,3 +1,8 @@
+Version 1.1.2 (2021-10-28)
+--------------------------
+No Changes - Version increment only
+
+
 Version 1.1.1 (2021-07-29)
 --------------------------
 RDB Loader: don't raise duplicate SQS message as an error (#542)
