@@ -27,6 +27,7 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
+import sbtdynver.DynVerPlugin.autoImport._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -165,5 +166,10 @@ object BuildSettings {
     Docker / daemonUser := "daemon",
     Docker / daemonUserUid := None,
     Docker / defaultLinuxInstallLocation := "/opt/snowplow"
+  )
+
+  lazy val dynVerSettings = Seq(
+    ThisBuild / dynverVTagPrefix := false, // Otherwise git tags required to have v-prefix
+    ThisBuild / dynverSeparator := "-" // to be compatible with docker
   )
 }
