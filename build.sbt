@@ -11,8 +11,6 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-ThisBuild / version := "1.2.3"
-
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
 
@@ -71,6 +69,7 @@ lazy val loader = project.in(file("modules/loader"))
   .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -113,6 +112,7 @@ lazy val shredder = project.in(file("modules/shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
@@ -149,6 +149,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(
