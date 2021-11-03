@@ -17,6 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common.config
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Base64
 
+import cats.Id
 import cats.data.ValidatedNel
 import cats.syntax.either._
 import cats.syntax.show._
@@ -27,6 +28,8 @@ import io.circe._
 import pureconfig.module.circe._
 import pureconfig._
 import pureconfig.error._
+
+import com.snowplowanalytics.iglu.client.Resolver
 
 object ConfigUtils {
   private val Base64Decoder = Base64.getDecoder
@@ -75,6 +78,12 @@ object ConfigUtils {
           conf
       }
     }
+
+  def validateResolverJson(resolverJson: Json): ValidatedNel[String, Json] =
+    Resolver.parse[Id](resolverJson)
+      .leftMap(_.show)
+      .map(_ => resolverJson)
+      .toValidatedNel
 
   // Used as an option prefix when reading system properties.
   val Namespace = "snowplow"

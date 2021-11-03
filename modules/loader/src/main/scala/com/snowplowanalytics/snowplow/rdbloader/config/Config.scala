@@ -98,6 +98,9 @@ object Config {
           }
       }
 
+    implicit val uriDecoder: Decoder[URI] =
+      Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
+
     implicit val webhookDecoder: Decoder[Webhook] =
       deriveDecoder[Webhook]
     implicit val foldersDecoder: Decoder[Folders] =

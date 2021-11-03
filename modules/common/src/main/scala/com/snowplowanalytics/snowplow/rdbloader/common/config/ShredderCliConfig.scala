@@ -58,5 +58,7 @@ object ShredderCliConfig {
 
   val igluConfig = Opts.option[String]("iglu-config",
     "Base64-encoded Iglu Client JSON config",
-    metavar = "<base64>").mapValidated(ConfigUtils.Base64Json.decode)
+    metavar = "<base64>")
+    .mapValidated(ConfigUtils.Base64Json.decode)
+    .mapValidated(ConfigUtils.validateResolverJson)
 }

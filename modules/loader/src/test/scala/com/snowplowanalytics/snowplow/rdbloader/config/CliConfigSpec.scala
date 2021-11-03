@@ -49,5 +49,15 @@ class CliConfigSpec extends Specification {
       val result = CliConfig.parse(cli)
       result must beEqualTo(Validated.Valid(expected))
     }
+
+    "give error with invalid resolver" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", invalidResolverConfig,
+        "--dry-run")
+
+      val result = CliConfig.parse(cli)
+      result.isInvalid must beTrue
+    }
   }
 }

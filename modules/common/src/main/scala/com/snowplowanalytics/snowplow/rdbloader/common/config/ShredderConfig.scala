@@ -224,6 +224,12 @@ object ShredderConfig {
 
     implicit val sentryConfigDecoder: Decoder[Sentry] =
       deriveDecoder[Sentry]
+
+    implicit val durationDecoder: Decoder[Duration] =
+      Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))
+
+    implicit val uriDecoder: Decoder[URI] =
+      Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
   }
 
   def configCheck[A <: ShredderConfig](config: A): Either[String, A] = {

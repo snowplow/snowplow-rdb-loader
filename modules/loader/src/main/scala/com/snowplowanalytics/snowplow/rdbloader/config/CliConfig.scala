@@ -43,6 +43,7 @@ object CliConfig {
   val igluConfig = Opts.option[String]("iglu-config",
     "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
     .mapValidated(ConfigUtils.Base64Json.decode)
+    .mapValidated(ConfigUtils.validateResolverJson)
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
   val cliConfig = (config, dryRun, igluConfig).mapN {

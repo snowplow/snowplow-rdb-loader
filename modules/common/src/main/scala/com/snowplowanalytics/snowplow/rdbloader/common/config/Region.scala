@@ -25,7 +25,7 @@ import software.amazon.awssdk.regions.{Region => AWSRegion}
 final case class Region(name: String)
 object Region {
 
-  private val regionResolveErrorMessage = "Region can not be resolved, needs to be passed explicitly"
+  private val regionResolveErrorMessage = "Region cannot be resolved, needs to be passed explicitly"
 
   /**
    * Custom Region decoder which allows Region types to be missing.

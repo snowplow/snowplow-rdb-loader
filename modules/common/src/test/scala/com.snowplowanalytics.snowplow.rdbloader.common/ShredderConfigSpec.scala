@@ -54,8 +54,12 @@ class ShredderConfigSpec extends Specification {
     "give error when unknown region given" in {
       val result = getConfig("/test.config1.hocon", ShredderConfig.Batch.fromString)
       result.fold(
+        // Left case means there is an error while loading the config.
+        // We are expecting an error related with region here indeed.
         err => err.contains("unknown-region-1"),
-        _ => true
+        // Right case means that config is loaded successfully.
+        // This is not expected therefore false is returned.
+        _ => false
       ) must beTrue
     }
 

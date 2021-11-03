@@ -12,14 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit, Duration}
-
-import java.net.URI
+import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
 
 import io.circe._
 import cats.Id
-import cats.syntax.either._
-
 import cats.effect.Clock
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -67,11 +63,4 @@ package object common {
     Decoder.decodeString.emap {
       s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
-
-  implicit val durationDecoder: Decoder[Duration] =
-    Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))
-
-  implicit val uriDecoder: Decoder[URI] =
-    Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
-
 }

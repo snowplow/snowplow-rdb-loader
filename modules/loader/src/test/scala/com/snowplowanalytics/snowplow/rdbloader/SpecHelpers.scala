@@ -28,6 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.ConfigSpec
 object SpecHelpers {
 
   val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
+  val invalidResolverConfig = fromInputStream(getClass.getResourceAsStream("/invalid-resolver.json.base64")).getLines.mkString("\n")
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
