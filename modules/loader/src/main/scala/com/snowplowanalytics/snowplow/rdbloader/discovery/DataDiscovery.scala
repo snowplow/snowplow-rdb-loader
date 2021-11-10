@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats._
 import cats.implicits._
 
@@ -71,7 +73,7 @@ object DataDiscovery {
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.data) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle(config.region, config.jsonpaths, parsed, message.ack)
+            handle(config.region, config.jsonpaths, parsed, message.ack, message.extend)
           case Left(error) =>
             ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }
@@ -87,12 +89,15 @@ object DataDiscovery {
    * @param region AWS region to discover JSONPaths
    * @param assets optional bucket with custom JSONPaths
    * @param message payload coming from shredder
+   * @param ack action to acknowledge/delete the message
+   * @param extend action to prolong the visibility of the message
    * @tparam F effect type to perform AWS interactions
    */
   def handle[F[_]: MonadThrow: AWS: Cache: Logging](region: String,
                                                     assets: Option[S3.Folder],
                                                     message: LoaderMessage.ShreddingComplete,
-                                                    ack: F[Unit]) =
+                                                    ack: F[Unit],
+                                                    extend: FiniteDuration => F[Unit]) =
     fromLoaderMessage[F](region, assets, message)
       .value
       .flatMap[Option[Message[F, WithOrigin]]] {
@@ -102,7 +107,7 @@ object DataDiscovery {
         case Right(discovery) =>
           Logging[F]
             .info(s"New data discovery at ${discovery.show}")
-            .as(Some(Message(WithOrigin(discovery, message), ack)))
+            .as(Some(Message(WithOrigin(discovery, message), ack, extend)))
         case Left(error) =>
           ackAndRaise[F](error, ack)
       }

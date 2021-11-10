@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.syntax.option._
 
 import cats.effect.Timer
@@ -45,7 +47,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
@@ -63,7 +65,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -75,7 +77,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.modify(_.log("ACK")))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.modify(_.log("ACK")), LoadSpec.extendNoOp)
 
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
@@ -94,7 +96,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -106,7 +108,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.fail[Unit](new RuntimeException("Failed ack")))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.fail[Unit](new RuntimeException("Failed ack")), LoadSpec.extendNoOp)
 
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
@@ -120,7 +122,7 @@ class LoadSpec extends Specification {
         LogEntry.Message("TICK REALTIME")
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -132,7 +134,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
@@ -156,7 +158,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
         LogEntry.Sql(Statement.Commit)
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -176,14 +178,14 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
       val expected = List(
         LogEntry.Sql(Statement.Begin),
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.Abort),
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -195,7 +197,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.pure(()))
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
       val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
@@ -211,7 +213,7 @@ class LoadSpec extends Specification {
         LogEntry.Message("Post-loading actions failed, ignoring. Database error: Vacuum failed")
       )
       val configWithPostLoad = SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum))
-      val result = Load.load[Pure](configWithPostLoad, message).value.runS
+      val result = Load.load[Pure](configWithPostLoad, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -232,6 +234,11 @@ object LoadSpec {
     ),
     Compression.Gzip
   )
+
+  val extendNoOp: FiniteDuration => Pure[Unit] =
+    _ => Pure.unit
+  val setStageNoOp: Load.Stage => Pure[Unit] =
+    _ => Pure.unit
 
   val dataDiscoveryWithOrigin = DataDiscovery.WithOrigin(
     dataDiscovery,

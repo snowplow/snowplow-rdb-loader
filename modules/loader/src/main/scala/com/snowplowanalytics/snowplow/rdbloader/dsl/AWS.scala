@@ -112,7 +112,7 @@ object AWS {
     }
 
     def readSqs(name: String): Stream[F, Message[F, String]] =
-      SQS.readQueue(name).map { case (msg, ack) => Message(msg.body(), ack) }
+      SQS.readQueue(name).map { case (msg, ack, extend) => Message(msg.body(), ack, extend) }
   }
 }
 

@@ -12,7 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-final case class Message[F[_], A](data: A, ack: F[Unit]) {
+import scala.concurrent.duration.FiniteDuration
+
+/**
+  * Generic entity pulled from a message queue
+  *
+  * @param data the actual payload, e.g. JSON
+  * @param ack an action to acknowledge the message and/or remove it from the queue
+  */
+ final case class Message[F[_], A](data: A, ack: F[Unit], extend: FiniteDuration => F[Unit]) {
   def map[B](f: A => B): Message[F, B] =
-    Message(f(data), ack)
+    Message(f(data), ack, extend)
 }

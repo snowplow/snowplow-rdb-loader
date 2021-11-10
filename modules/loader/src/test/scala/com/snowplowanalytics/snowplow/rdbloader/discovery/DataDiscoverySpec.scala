@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.data.NonEmptyList
 import cats.syntax.either._
 
@@ -28,6 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
+
 class DataDiscoverySpec extends Specification {
   "show" should {
     "should DataDiscovery with several shredded types" >> {
@@ -91,7 +94,7 @@ class DataDiscoverySpec extends Specification {
 
       val message = DataDiscoverySpec.shreddingComplete
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack")), DataDiscoverySpec.extendNoOp).run
 
       result must beLeft(LoaderError.DiscoveryError(NonEmptyList.of(
         DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
@@ -116,7 +119,7 @@ class DataDiscoverySpec extends Specification {
         Compression.Gzip
       )
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack"))).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack")), DataDiscoverySpec.extendNoOp).run
 
       result.map(_.map(_.data.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
@@ -131,6 +134,12 @@ class DataDiscoverySpec extends Specification {
 }
 
 object DataDiscoverySpec {
+
+  def extendNoOp(duration: FiniteDuration): Pure[Unit] = {
+    val _ = duration
+    Pure.unit
+  }
+
   val shreddingComplete = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),
     List(
