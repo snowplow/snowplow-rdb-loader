@@ -16,7 +16,8 @@ import cats.Applicative
 import cats.data.Validated._
 import cats.implicits._
 
-import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer}
+import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer, Clock}
+import cats.effect.implicits._
 
 import fs2.Stream
 
@@ -26,6 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
+import com.snowplowanalytics.snowplow.rdbloader.State._
 
 
 object Main extends IOApp {
@@ -57,7 +59,7 @@ object Main extends IOApp {
    * @param control various stateful controllers
    * @return endless stream waiting for messages
    */
-  def process[F[_]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
+  def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path)
 
@@ -66,8 +68,13 @@ object Main extends IOApp {
         .discover[F](cli.config, control.state)
         .pauseWhen[F](control.isBusy)
         .evalMap { discovery =>
-          val loading: F[Unit] = control.makeBusy.use { _ =>
-            load[F](cli.config, discovery).rethrowT *> control.incrementLoaded
+          val prepare = for {
+            _ <- StateMonitoring.run(control.state, discovery.extend).background
+            _ <- control.makeBusy(discovery.data.origin.base)
+          } yield ()
+          
+          val loading: F[Unit] = prepare.use { _ =>
+            load[F](cli.config, control.state.setStage, discovery).rethrowT *> control.state.update(_.incrementLoaded)
           }
 
           // Catches both connection acquisition and loading errors

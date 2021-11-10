@@ -21,7 +21,6 @@ import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
 import fs2.Stream
-import fs2.concurrent.SignallingRef
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
@@ -52,28 +51,26 @@ class Environment[F[_]](cache: Cache[F],
   implicit val awsF: AWS[F] = aws
   implicit val jdbcF: JDBC[F] = jdbc
 
-  def control(implicit F: Monad[F]): Environment.Control[F] =
-    Environment.Control(state, makeBusy, isBusy, incrementLoaded)
+  def control(implicit F: Monad[F], C: Clock[F]): Environment.Control[F] =
+    Environment.Control(state, makeBusy, isBusy)
 
-  private def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
-    Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
+  private[this] def makeBusy(implicit F: Monad[F], C: Clock[F]): S3.Folder => Resource[F, Unit] = 
+    folder => {
+      val allocate = C.instantNow.flatMap { now => state.update(_.start(folder).setUpdated(now)) }
+      val deallocate: F[Unit] = C.instantNow.flatMap { now => state.update(_.idle.setUpdated(now)) }
+      Resource.make(allocate)(_ => deallocate)
+  }
 
-  private def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    Stream.eval[F, SignallingRef[F, Boolean]](busy).flatMap[F, Boolean](_.discrete)
-
-  private def incrementLoaded: F[Unit] =
-    state.update(_.incrementLoaded)
-
-  private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
-    state.get.map(_.busy)
+  private[this] def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
+    state.map(_.isBusy).discrete
 }
 
 object Environment {
 
+  /** A signle set of mutable objects and functions to manipulate them */
   case class Control[F[_]](state: State.Ref[F],
-                           makeBusy: Resource[F, SignallingRef[F, Boolean]],
-                           isBusy: Stream[F, Boolean],
-                           incrementLoaded: F[Unit])
+                           makeBusy: S3.Folder => Resource[F, Unit],
+                           isBusy: Stream[F, Boolean])
 
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
@@ -88,7 +85,7 @@ object Environment {
     for {
       blocker <- Blocker[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
-      implicit0(iglu: Iglu[F]) <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
+      iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))

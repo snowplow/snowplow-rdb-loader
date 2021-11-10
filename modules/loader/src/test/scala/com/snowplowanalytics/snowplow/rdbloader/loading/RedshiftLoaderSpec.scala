@@ -27,6 +27,8 @@ import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureLoggin
 import org.specs2.mutable.Specification
 
 class RedshiftLoaderSpec extends Specification {
+  import RedshiftLoaderSpec._
+
   "loadFolder" should {
     "perform atomic and shredded insertions, ignore VACUUM and ANALYZE" >> {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
@@ -47,7 +49,7 @@ class RedshiftLoaderSpec extends Specification {
         Some(List(Statement.Analyze("foo")))
       )
 
-      val (state, result) = RedshiftLoader.loadFolder[Pure](input).run
+      val (state, result) = RedshiftLoader.loadFolder[Pure](input, setLoadingNoOp).run
 
       val expected = List(
         LogEntry.Sql(Statement.EventsCopy("atomic", false, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None)),
@@ -85,7 +87,7 @@ class RedshiftLoaderSpec extends Specification {
         Some(List(Statement.Analyze("foo")))
       )
 
-      val (state, result) = RedshiftLoader.loadFolder[Pure](input).run
+      val (state, result) = RedshiftLoader.loadFolder[Pure](input, setLoadingNoOp).run
 
       val expected = List(
         LogEntry.Sql(Statement.CreateTransient("schema")),
@@ -118,7 +120,7 @@ class RedshiftLoaderSpec extends Specification {
       )
       val discovery = DataDiscovery(S3.Folder.coerce("s3://bucket/path/run=1/"), shreddedTypes, Compression.Gzip)
 
-      val (state, result) = RedshiftLoader.run[Pure](SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum, Step.Analyze)), discovery).flatMap(identity).run
+      val (state, result) = RedshiftLoader.run[Pure](SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum, Step.Analyze)), setLoadingNoOp, discovery).flatMap(identity).run
 
       val expected = List(
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://bucket/path/run=1/".dir,"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
@@ -142,4 +144,12 @@ class RedshiftLoaderSpec extends Specification {
       transactionsExpectation.and(resultExpectation)
     }
   }
+}
+
+object RedshiftLoaderSpec {
+  def setLoadingNoOp(table: String): Pure[Unit] = {
+    val _ = table
+    Pure.unit
+  }
+
 }

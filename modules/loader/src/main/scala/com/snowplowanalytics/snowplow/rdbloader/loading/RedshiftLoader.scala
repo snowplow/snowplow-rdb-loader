@@ -41,19 +41,22 @@ object RedshiftLoader {
    * @return block of VACUUM and ANALYZE statements to execute them out of a main transaction
    */
   def run[F[_]: Monad: Logging: JDBC](config: Config[StorageTarget.Redshift],
+                                      setLoading: String => F[Unit],
                                       discovery: DataDiscovery) =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}").liftA
       statements = getStatements(config, discovery)
-      _ <- loadFolder[F](statements)
+      _ <- loadFolder[F](statements, setLoading)
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)").liftA
     } yield vacuum[F](statements) *> analyze[F](statements)
 
   /** Perform data-loading for a single run folder */
-  def loadFolder[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements): LoaderAction[F, Unit] =
-    loadAtomic[F](statements.dbSchema, statements.atomicCopy) *>
+  def loadFolder[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements, setLoading: String => F[Unit]): LoaderAction[F, Unit] =
+    setLoading("events").liftA *>
+      loadAtomic[F](statements.dbSchema, statements.atomicCopy) *>
       statements.shredded.traverse_ { statement =>
         Logging[F].info(statement.title).liftA *>
+          setLoading(statement.shreddedType.getTableName).liftA *>
           JDBC[F].executeUpdate(statement).void
       }
 

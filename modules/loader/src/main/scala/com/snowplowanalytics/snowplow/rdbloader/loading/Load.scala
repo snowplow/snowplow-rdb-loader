@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import scala.concurrent.duration._
 
-import cats.{Applicative, Monad, MonadError}
+import cats.{Applicative, Monad, MonadError, Show}
 import cats.implicits._
 
 import cats.effect.{Timer, Clock}
@@ -25,6 +25,7 @@ import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDeta
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
@@ -38,6 +39,60 @@ object Load {
   type MonadThrow[F[_]] = MonadError[F, Throwable]
 
   /**
+   * Loading stage.
+   * Represents the finite state machine of the Loader, it can be only in one of the below stages
+   * Internal state sets the stage right before it gets executed, i.e. if it failed being in
+   * `ManifestCheck` stage it means that manifest check has failed, but it certainly has started
+   */
+  sealed trait Stage
+  object Stage {
+    /** Figure out how the migration should look like, by inspecting affected tables. First stage */
+    final case object MigrationBuild extends Stage
+    /** Pre-transaction migrations, such as ALTER COLUMN. Usually empty. Second stage */
+    final case object MigrationPre extends Stage
+    /** Checking manifest if the folder is already loaded. Third stage */
+    final case object ManifestCheck extends Stage
+    /** In-transaction migrations, such as ADD COLUMN. Fourth stage */
+    final case object MigrationIn extends Stage
+    /** Actual loading into a table. Appears for many different tables. Fifth stage */
+    final case class Loading(table: String) extends Stage
+    /** Adding manifest item, acking SQS comment. Sixth stage  */
+    final case object Committing extends Stage
+    /** Post-load procedures, such as VACUUM and ANALYZE. Out of loading */
+    final case object PostLoad extends Stage
+    /** Abort the loading. Can appear after any stage */
+    final case class Cancelling(reason: String) extends Stage
+
+    implicit val stageShow: Show[Stage] =
+      Show.show {
+        case MigrationBuild => "migration building"
+        case MigrationPre => "pre-transaction migrations"
+        case ManifestCheck => "manifest check"
+        case MigrationIn => "in-transaction migrations"
+        case Loading(table) => show"copying into $table table"
+        case PostLoad => "post-loading procedures"
+        case Committing => "committing"
+        case Cancelling(reason) => show"cancelling because of $reason"
+      }
+  }
+
+  /** State of the loader */
+  sealed trait State
+  object State {
+    final case object Idle extends State
+    final case class Loading(folder: S3.Folder, stage: Stage) extends State
+
+    def start(folder: S3.Folder): State =
+      State.Loading(folder, Stage.MigrationBuild)
+
+    implicit val stateShow: Show[State] =
+      Show.show {
+        case Idle => "Idle"
+        case Loading(folder, stage) => show"Ongoing processing of $folder at $stage"
+      }
+  }
+
+  /**
    * Process discovered data with specified storage target (load it)
    * The function is responsible for transactional load nature and retries
    *
@@ -46,15 +101,16 @@ object Load {
    */
   def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](
     config: Config[StorageTarget],
-    discovery: Message[F, DataDiscovery.WithOrigin]
+    setStage: Stage => F[Unit],
+    discovery: Message[F, DataDiscovery.WithOrigin],
   ): LoaderAction[F, Unit] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
         for {
           migrations <- Migration.build[F](redshiftConfig.storage.schema, discovery.data.discovery)
-          _          <- migrations.preTransaction
-          transaction = getTransaction(redshiftConfig, discovery)(migrations.inTransaction)
+          _          <- setStage(Stage.MigrationPre).liftA *> migrations.preTransaction
+          transaction = getTransaction(redshiftConfig, setStage, discovery)(migrations.inTransaction)
           postLoad   <- retryLoad(transaction)
           _          <- postLoad.recoverWith { case error => Logging[F].info(s"Post-loading actions failed, ignoring. ${error.show}").liftA }
         } yield ()
@@ -73,20 +129,25 @@ object Load {
    *                                that have to run before the batch is loaded
    * @return post-load action
    */
-  def getTransaction[F[_]: JDBC: Logging: Monitoring: Monad: Clock](config: Config[StorageTarget.Redshift], discovery: Message[F, DataDiscovery.WithOrigin])
+  def getTransaction[F[_]: JDBC: Logging: Monitoring: Monad: Clock](config: Config[StorageTarget.Redshift], setStage: Stage => F[Unit], discovery: Message[F, DataDiscovery.WithOrigin])
                                                                    (inTransactionMigrations: LoaderAction[F, Unit]): LoaderAction[F, LoaderAction[F, Unit]] =
     for {
       _ <- JDBC[F].executeUpdate(Statement.Begin)
-      state <- Manifest.get[F](config.storage.schema, discovery.data.discovery.base)
-      postLoad <- state match {
+      _ <- setStage(Stage.ManifestCheck).liftA
+      manifestState <- Manifest.get[F](config.storage.schema, discovery.data.discovery.base)
+      postLoad <- manifestState match {
         case Some(entry) =>
           val noPostLoad = LoaderAction.unit[F]
-          Logging[F].info(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
+          setStage(Stage.Cancelling("Already loaded")).liftA *>
+            Logging[F].warning(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
             Monitoring[F].alert(AlertPayload.info("Folder is already loaded", entry.meta.base)).liftA *>
             JDBC[F].executeUpdate(Statement.Abort).as(noPostLoad)
         case None =>
-          inTransactionMigrations *>
-            RedshiftLoader.run[F](config, discovery.data.discovery) <*
+          val setLoading: String => F[Unit] = table => setStage(Stage.Loading(table))
+          setStage(Stage.MigrationIn).liftA *>
+            inTransactionMigrations *>
+            RedshiftLoader.run[F](config, setLoading, discovery.data.discovery) <*
+            setStage(Stage.Committing).liftA <*
             Manifest.add[F](config.storage.schema, discovery.data.origin) <*
             JDBC[F].executeUpdate(Statement.Commit) <*
             congratulate[F](discovery.data.origin).liftA
@@ -94,6 +155,7 @@ object Load {
 
       // With manifest protecting from double-loading it's safer to ack *after* commit
       _ <- discovery.ack.liftA
+      _ <- setStage(Stage.PostLoad).liftA
     } yield postLoad
 
   // Retry policy
