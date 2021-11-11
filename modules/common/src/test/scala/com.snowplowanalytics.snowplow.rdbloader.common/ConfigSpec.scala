@@ -155,7 +155,7 @@ object ConfigSpec {
       Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
       Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
       None,
-      Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), None))
+      Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), None, None))
     ),
     "messages",
     Shredder.Batch(

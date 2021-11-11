@@ -75,17 +75,25 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
-    since match {
-      case Some(duration) =>
-        Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
-          case Right(accessor) => 
-            val oldest = now.minusMillis(duration.toMillis)
+  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
+    Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
+      case Right(accessor) => 
+        (since, until) match {
+          case (Some(sinceDuration), Some(untilDuration))  =>
+            val oldest = now.minusMillis(sinceDuration.toMillis)
+            val newest = now.minusMillis(untilDuration.toMillis)
+            val time = accessor.query(Instant.from)
+            time.isAfter(oldest) && time.isBefore(newest)
+          case (None, Some(untilDuration))  =>
+            val newest = now.minusMillis(untilDuration.toMillis)
+            accessor.query(Instant.from).isBefore(newest)
+          case (Some(sinceDuration), None)  =>
+            val oldest = now.minusMillis(sinceDuration.toMillis)
             accessor.query(Instant.from).isAfter(oldest)
-          case Left(_) =>
-            true
+          case (None, None) => true
         }
-      case None => true
+      case Left(_) =>
+        true
     }
 
   /**
@@ -96,12 +104,12 @@ object FolderMonitoring {
    * @param output temp staging path to store the list
    * @return whether the list was non-empty (true) or empty (false)
    */
-  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
+  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], until: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
       Stream.eval(Timer[F].clock.instantNow).flatMap { now =>
         AWS[F].listS3(input, recursive = false)
           .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) S3.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
-          .filter(isRecent(since, now))
+          .filter(isRecent(since, until, now))
           .evalTap(_ => ref.update(size => size + 1))
           .intersperse("\n")
           .through(utf8Encode[F])
@@ -191,7 +199,7 @@ object FolderMonitoring {
     Stream.eval(Ref.of(false)).flatMap { failed =>
       getOutputKeys[F](folders).evalMap { outputFolder =>
         val sinkAndCheck = 
-          sinkFolders[F](folders.since, archive, outputFolder).ifM(
+          sinkFolders[F](folders.since, folders.until, archive, outputFolder).ifM(
             check[F](outputFolder, storage)
               .rethrowT
               .flatMap { alerts =>
