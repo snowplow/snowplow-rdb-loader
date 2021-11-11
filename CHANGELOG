@@ -1,3 +1,9 @@
+Version 1.2.2 (2021-11-12)
+--------------------------
+RDB Loader: remove logging class from a message (#623)
+RDB Loader: add until option to folder monitoring (#620)
+RDB Loader: extend SQS messages visibility timeout during loading (#608)
+
 Version 1.2.1 (2021-10-20)
 --------------------------
 RDB Loader: add since option to folder monitoring (#600)
