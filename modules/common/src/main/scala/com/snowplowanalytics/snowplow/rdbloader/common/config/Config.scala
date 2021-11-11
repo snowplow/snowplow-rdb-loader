@@ -179,7 +179,7 @@ object Config {
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration])
+  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], until: Option[FiniteDuration])
 
   implicit val batchShredderDecoder: Decoder[Shredder.Batch] =
     deriveDecoder[Shredder.Batch]
