@@ -33,10 +33,6 @@
     "maxError": 10
   },
 
-  # Additional steps. analyze, vacuum and transit_load are valid values
-  # Optional, default value []
-  "steps": ["analyze"],
-
   # Observability and reporting options
   "monitoring": {
     # Snowplow tracking (optional)

@@ -94,7 +94,7 @@ object ConfigSpec {
     10,
     None
   )
-  val exampleSteps: Set[Step] = Set(Step.Analyze)
+  val exampleSteps: Set[Step] = Set()
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()
