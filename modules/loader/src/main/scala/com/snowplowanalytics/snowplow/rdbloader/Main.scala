@@ -63,9 +63,11 @@ object Main extends IOApp {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage)
 
+    // TODO: Currently, steps are deactivated with making them empty.
+    // Remove them from the codebase properly.
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery
-        .discover[F](cli.config, control.state)
+        .discover[F](cli.config.copy(steps = Set.empty), control.state)
         .pauseWhen[F](control.isBusy)
         .evalMap { discovery =>
           val prepare = for {
@@ -74,7 +76,7 @@ object Main extends IOApp {
           } yield ()
           
           val loading: F[Unit] = prepare.use { _ =>
-            load[F](cli.config, control.state.setStage, discovery).rethrowT *> control.state.update(_.incrementLoaded)
+            load[F](cli.config.copy(steps = Set.empty), control.state.setStage, discovery).rethrowT *> control.state.update(_.incrementLoaded)
           }
 
           // Catches both connection acquisition and loading errors

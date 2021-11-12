@@ -65,7 +65,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -96,7 +96,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -158,7 +158,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
         LogEntry.Sql(Statement.Commit)
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
