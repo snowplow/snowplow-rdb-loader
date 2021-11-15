@@ -56,7 +56,7 @@ trait Monitoring[F[_]] {
   def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
     // Note tags are added by Monitoring later
-    val payload = Monitoring.AlertPayload(Monitoring.Application, folder, Monitoring.AlertPayload.Severity.Error, message, Map.empty)
+    val payload = Monitoring.AlertPayload(Monitoring.Application, Some(folder), Monitoring.AlertPayload.Severity.Error, message, Map.empty)
     alert(payload)
   }
 }
@@ -72,7 +72,7 @@ object Monitoring {
     s"snowplow-rdb-loader-${BuildInfo.version}"
 
   final case class AlertPayload(application: String,
-                                base: S3.Folder,
+                                base: Option[S3.Folder],
                                 severity: AlertPayload.Severity,
                                 message: String,
                                 tags: Map[String, String])
@@ -100,7 +100,13 @@ object Monitoring {
       jsonEncoderOf[F, AlertPayload]
 
     def info(message: String, folder: S3.Folder): AlertPayload =
-      Monitoring.AlertPayload(Application, folder, Monitoring.AlertPayload.Severity.Info, message, Map.empty)
+      AlertPayload(Application, Some(folder), Severity.Info, message, Map.empty)
+
+    def warn(message: String): AlertPayload =
+      AlertPayload(Application, None, Severity.Warning, message, Map.empty)
+
+    def warn(message: String, folder: S3.Folder): AlertPayload =
+      AlertPayload(Application, Some(folder), Severity.Warning, message, Map.empty)
   }
 
   def monitoringInterpreter[F[_]: Sync: Logging](
