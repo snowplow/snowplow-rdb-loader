@@ -16,7 +16,7 @@ import java.time.Instant
 
 import scala.concurrent.duration._
 
-import cats.effect.IO
+import cats.effect.{ IO, Timer }
 
 import io.circe.syntax._
 
@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureJDBC, TestState, PureAWS}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureJDBC, TestState, PureAWS, PureTimer}
 
 import org.specs2.mutable.Specification
 
@@ -36,6 +36,7 @@ class FolderMonitoringSpec extends Specification {
   "check" should {
     "return a single element returned by MINUS statement (shredding_complete doesn't exist)" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(jdbcResults))
+      implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
@@ -43,6 +44,7 @@ class FolderMonitoringSpec extends Specification {
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+        TestState.LogEntry.Message("SLEEP 1 second"),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable)),Map()
       )
       val ExpectedResult = List(
@@ -61,6 +63,7 @@ class FolderMonitoringSpec extends Specification {
 
     "return a single element returned by MINUS statement (shredding_complete does exist)" in {
       implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(jdbcResults))
+      implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
@@ -68,6 +71,7 @@ class FolderMonitoringSpec extends Specification {
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+        TestState.LogEntry.Message("SLEEP 1 second"),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable)),Map()
       )
       val ExpectedResult = List(
