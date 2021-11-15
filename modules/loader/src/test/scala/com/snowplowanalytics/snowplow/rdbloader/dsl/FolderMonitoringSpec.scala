@@ -21,7 +21,6 @@ import cats.effect.{ IO, Timer }
 import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
-import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
@@ -42,13 +41,14 @@ class FolderMonitoringSpec extends Specification {
 
       val expectedState = TestState(List(
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
+        TestState.LogEntry.Sql(Statement.Commit),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-        TestState.LogEntry.Message("SLEEP 1 second"),
-        TestState.LogEntry.Sql(Statement.DropAlertingTempTable)),Map()
+        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+        TestState.LogEntry.Sql(Statement.Begin)),Map()
       )
       val ExpectedResult = List(
-        Monitoring.AlertPayload(BuildInfo.version, S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/"), Severity.Warning, "Incomplete shredding", Map.empty)
+        Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
       )
 
       val (state, result) = FolderMonitoring.check[Pure](loadFrom, SpecHelpers.validConfig.storage).run
@@ -69,13 +69,14 @@ class FolderMonitoringSpec extends Specification {
 
       val expectedState = TestState(List(
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
+        TestState.LogEntry.Sql(Statement.Commit),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-        TestState.LogEntry.Message("SLEEP 1 second"),
-        TestState.LogEntry.Sql(Statement.DropAlertingTempTable)),Map()
+        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+        TestState.LogEntry.Sql(Statement.Begin)),Map()
       )
       val ExpectedResult = List(
-        Monitoring.AlertPayload(BuildInfo.version, S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/"), Severity.Warning, "Unloaded batch", Map.empty)
+        Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
       )
 
       val (state, result) = FolderMonitoring.check[Pure](loadFrom, SpecHelpers.validConfig.storage).run

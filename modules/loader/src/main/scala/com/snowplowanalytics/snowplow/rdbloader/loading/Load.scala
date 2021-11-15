@@ -99,11 +99,9 @@ object Load {
    * @param config RDB Loader app configuration
    * @param discovery discovered folder to load
    */
-  def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](
-    config: Config[StorageTarget],
-    setStage: Stage => F[Unit],
-    discovery: Message[F, DataDiscovery.WithOrigin],
-  ): LoaderAction[F, Unit] =
+  def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](config: Config[StorageTarget],
+                                                                     setStage: Stage => F[Unit],
+                                                                     discovery: Message[F, DataDiscovery.WithOrigin]): LoaderAction[F, Unit] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)

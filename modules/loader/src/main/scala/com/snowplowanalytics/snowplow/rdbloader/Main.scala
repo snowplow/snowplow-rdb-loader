@@ -61,7 +61,7 @@ object Main extends IOApp {
    */
   def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path)
+      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, cli.config.shredder.output.path, control.isBusy)
 
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery

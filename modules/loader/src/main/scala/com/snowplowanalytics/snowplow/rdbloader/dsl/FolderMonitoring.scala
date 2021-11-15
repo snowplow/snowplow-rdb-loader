@@ -29,7 +29,6 @@ import doobie.util.Get
 import fs2.Stream
 import fs2.text.utf8Encode
 
-import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, StorageTarget}
@@ -49,9 +48,6 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
  *   Everything with the file is "abandoned", everything without the file is "corrupted"
  */
 object FolderMonitoring {
-
-  def createAlertPayload(folder: S3.Folder, message: String): AlertPayload =
-    AlertPayload(BuildInfo.version, folder, Monitoring.AlertPayload.Severity.Warning, message, Map.empty)
 
   implicit val s3FolderGet: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
@@ -142,15 +138,12 @@ object FolderMonitoring {
    */
   def check[F[_]: Monad: AWS: JDBC: Timer](loadFrom: S3.Folder, redshiftConfig: StorageTarget.Redshift): LoaderAction[F, List[AlertPayload]] =
     for {
-      _                 <- JDBC[F].executeUpdate(DropAlertingTempTable)
-      _                 <- LoaderAction.liftF(Timer[F].sleep(1.second))
-      _                 <- JDBC[F].executeUpdate(CreateAlertingTempTable)
-      _                 <- JDBC[F].executeUpdate(FoldersCopy(loadFrom, redshiftConfig.roleArn))
+      _                 <- JDBC[F].executeTransaction(List(DropAlertingTempTable, CreateAlertingTempTable, FoldersCopy(loadFrom, redshiftConfig.roleArn)))
       onlyS3Batches     <- JDBC[F].executeQueryList[S3.Folder](FoldersMinusManifest(redshiftConfig.schema))
       foldersWithChecks <- LoaderAction.liftF(checkShreddingComplete[F](onlyS3Batches))
       } yield foldersWithChecks.map { case (folder, exists) =>
-        if (exists) createAlertPayload(folder, "Unloaded batch")
-        else createAlertPayload(folder, "Incomplete shredding")
+        if (exists) Monitoring.AlertPayload.warn("Unloaded batch", folder)
+        else Monitoring.AlertPayload.warn("Incomplete shredding", folder)
       }
 
   /** Get stream of S3 folders emitted with configured interval */
@@ -173,18 +166,21 @@ object FolderMonitoring {
    */
   def run[F[_]: Concurrent: Timer: AWS: JDBC: Logging: Monitoring](foldersCheck: Option[Config.Folders],
                                                              storage: StorageTarget,
-                                                             output: URI): Stream[F, Unit] =
+                                                             output: URI,
+                                                             isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     (foldersCheck, storage) match {
       case (Some(folders), redshift: StorageTarget.Redshift) =>
         S3.Folder.parse(output.toString) match {
           case Right(shreddedArchive) =>
-            stream[F](folders, redshift, shreddedArchive)
+            stream[F](folders, redshift, shreddedArchive, isBusy)
           case Left(error) =>
             Stream.raiseError[F](new IllegalArgumentException(s"Shredder output could not be parsed into S3 URI $error"))
         }
       case (None, _: StorageTarget.Redshift) =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been providing - monitoring is disabled"))
     }
+
+  val FailBeforeAlarm = 3
 
   /**
    * Same as [[run]], but without parsing preparation
@@ -196,34 +192,41 @@ object FolderMonitoring {
    */
   def stream[F[_]: Concurrent: Timer: AWS: JDBC: Logging: Monitoring](folders: Config.Folders,
                                                                       storage: StorageTarget.Redshift,
-                                                                      archive: S3.Folder): Stream[F, Unit] =
-    Stream.eval((Semaphore[F](1), Ref.of(false)).tupled).flatMap { case (lock, failed) =>
-      getOutputKeys[F](folders).evalMap { outputFolder =>
-        lock.tryAcquire.flatMap { acquired =>
-          if (acquired) { // The lock shouldn't be necessary with fixedDelay, but adding just in case
-            val sinkAndCheck = 
-              Logging[F].info("Monitoring shredded folders") *>
-                sinkFolders[F](folders.since, folders.until, archive, outputFolder).ifM(
-                  check[F](outputFolder, storage)
-                    .rethrowT
-                    .flatMap { alerts =>
-                      alerts.traverse_ { payload =>
-                        Logging[F].warning(s"${payload.message} ${payload.base}") *> Monitoring[F].alert(payload)
-                      }
-                    },
-                    Logging[F].info(s"No folders were found in ${archive}. Skipping manifest check")
-                  ) *> failed.set(false)
+                                                                      archive: S3.Folder,
+                                                                      isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+    Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
+      getOutputKeys[F](folders)
+        .pauseWhen(isBusy)
+        .evalMap { outputFolder =>
+          lock.tryAcquire.flatMap { acquired =>
+            if (acquired) { // The lock shouldn't be necessary with fixedDelay, but adding just in case
+              val sinkAndCheck =
+                Logging[F].info("Monitoring shredded folders") *>
+                  sinkFolders[F](folders.since, folders.until, archive, outputFolder).ifM(
+                    check[F](outputFolder, storage)
+                      .rethrowT
+                      .flatMap { alerts =>
+                        alerts.traverse_ { payload =>
+                          val warn = payload.base match {
+                            case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
+                            case None => Logging[F].error(s"${payload.message} with unkown path. Invalid state!")
+                          }
+                          warn *> Monitoring[F].alert(payload)
+                        }
+                      },
+                      Logging[F].info(s"No folders were found in ${archive}. Skipping manifest check")
+                    ) *> failed.set(0)
 
-            sinkAndCheck.handleErrorWith { error =>
-              failed.getAndSet(true).flatMap { failedBefore =>    // Should be changed to int
-                if (failedBefore)
-                  Logging[F].error(error)("Folder monitoring has failed with unhandled exception for the second time") *>
-                Sync[F].raiseError[Unit](error)
-              else Logging[F].error(error)("Folder monitoring has failed with unhandled exception, ignoring for now")
-              }
-            } *> lock.release
-          } else Logging[F].warning("Attempt to execute parallel folder monitoring, skipping")
-        }
+              sinkAndCheck.handleErrorWith { error =>
+                failed.updateAndGet(_ + 1).flatMap { failedBefore =>
+                  val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
+                  val payload = Monitoring.AlertPayload.warn(msg)
+                  if (failedBefore >= FailBeforeAlarm) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
+                  else Logging[F].warning(msg)
+                }
+              } *> lock.release
+            } else Logging[F].warning("Attempt to execute parallel folder monitoring, skipping")
+          }
       }
     }
 }

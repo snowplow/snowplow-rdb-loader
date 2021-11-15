@@ -60,8 +60,8 @@ trait JDBC[F[_]] { self =>
     EitherT(updates.traverse_(executeUpdate).value)
 
   /** Execute SQL transaction (against target in interpreter) */
-  def executeTransaction(queries: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] =
-    executeUpdates((Statement.Begin :: queries) :+ Statement.Commit)
+  def executeTransaction(updates: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] =
+    executeUpdates((Statement.Begin :: updates) :+ Statement.Commit)
 }
 
 object JDBC {
@@ -155,6 +155,26 @@ object JDBC {
 
   /** Real-world (opposed to dry-run) interpreter */
   def jdbcRealInterpreter[F[_]: Logging: Monitoring: Sync](conn: Transactor[F]): JDBC[F] = new JDBC[F] {
+
+    override def executeTransaction(updates: List[Statement])(implicit A: Monad[F]): LoaderAction[F, Unit] = {
+      val transaction =
+        updates
+          .traverse_(_.toFragment.update.run)
+          .transact(conn)
+          .attemptSql
+          .flatMap[Either[LoaderError, Unit]] {
+            case Left(e: SQLException) if Option(e.getMessage).getOrElse("").contains("is not authorized to assume IAM Role") =>
+              (StorageTargetError("IAM Role with S3 Read permissions is not attached to Redshift instance"): LoaderError).asLeft[Unit].pure[F]
+            case Left(e) =>
+              Monitoring[F].trackException(e)
+                .as(StorageTargetError(Option(e.getMessage).getOrElse(e.toString)).asLeft[Unit])
+            case Right(result) =>
+              result.asRight[LoaderError].pure[F]
+          }
+
+      LoaderAction[F, Unit](transaction)
+    }
+
     /**
      * Execute a single update-statement in provided Postgres connection
      *
