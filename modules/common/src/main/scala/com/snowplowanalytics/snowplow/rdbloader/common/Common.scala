@@ -66,13 +66,18 @@ object Common {
       .toLowerCase
 
   def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
-    formats.default match {
-      case LoaderMessage.Format.TSV =>
-        val notJson = !formats.json.exists(c => c.matches(schemaKey))
-        val notSkip = !formats.skip.exists(c => c.matches(schemaKey))
-        notJson && notSkip
-      case LoaderMessage.Format.JSON =>
-        formats.tsv.exists(c => c.matches(schemaKey))
+    formats match {
+      case Formats.WideRow => false
+      case s: Formats.Shred =>
+        s.default match {
+          case LoaderMessage.Format.TSV =>
+            val notJson = !s.json.exists(c => c.matches(schemaKey))
+            val notSkip = !s.skip.exists(c => c.matches(schemaKey))
+            notJson && notSkip
+          case LoaderMessage.Format.JSON =>
+            s.tsv.exists(c => c.matches(schemaKey))
+          case LoaderMessage.Format.WIDEROW => false
+        }
     }
 
   /** Registry embedded into RDB Loader jar */

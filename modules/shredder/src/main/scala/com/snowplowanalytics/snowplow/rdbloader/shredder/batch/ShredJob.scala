@@ -30,6 +30,7 @@ import org.apache.spark.sql.SparkSession
 
 // Snowplow
 import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.badrows.BadRow
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
@@ -40,7 +41,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Shredded}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Shredded, WideRow}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
@@ -137,34 +138,68 @@ class ShredJob(@transient val spark: SparkSession,
     // Events that could not be parsed
     val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
 
+    val wideRowGoodTransform = (event: Event) => {
+      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator)(event.inventory.map(_.schemaKey))
+      timestampsAccumulator.add(event)
+      eventsCounter.add(1L)
+      List(WideRow(isGood = true, event.toJson(true).noSpaces).text.asLeft)
+    }
+
+    val shredGoodTransform = (event: Event) =>
+      Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
+        case Right(shredded) =>
+          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, Some(isTabular))(event.inventory.map(_.schemaKey))
+          timestampsAccumulator.add(event)
+          eventsCounter.add(1L)
+          shredded.map(_.text.asRight)
+        case Left(badRow) =>
+          List(Shredded.fromBadRow(badRow).text.asRight)
+      }
+
+    val wideRowBadTransform = (badRow: BadRow) =>
+      WideRow(isGood = false, badRow.compact).text.asLeft
+
+    val shredBadTransform = (badRow: BadRow) =>
+      Shredded.fromBadRow(badRow).text.asRight
+
+    val goodTransform = config.formats match {
+      case Formats.WideRow => wideRowGoodTransform
+      case _: Formats.Shred => shredGoodTransform
+    }
+
+    val badTransform = config.formats match {
+      case Formats.WideRow => wideRowBadTransform
+      case _: Formats.Shred => shredBadTransform
+    }
+
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val shredded = (shreddedBad ++ result.events).flatMap {
+    val transformed = (shreddedBad ++ result.events).flatMap {
       case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value match {
-          case Right(shredded) =>
-            ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(withDupeContext.inventory.map(_.schemaKey))
-            timestampsAccumulator.add(event)
-            eventsCounter.add(1L)
-            shredded.map(_.text)
-          case Left(badRow) =>
-            List(Shredded.fromBadRow(badRow).text)
-        }
-      case Left(badRow) =>
-        List(Shredded.fromBadRow(badRow).text)
+        goodTransform(withDupeContext)
+      case Left(badRow) => List(badTransform(badRow))
     }
 
     // Final output
-    Sink.writeShredded(spark, config.output.compression, shredded, outFolder)
+    config.formats match {
+      case Formats.WideRow =>
+        Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.swap.toOption), outFolder)
+      case _: Formats.Shred =>
+        Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.toOption), outFolder)
+    }
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shredded.isEmpty()  // RDD.isEmpty called as last resort
-    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
+    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && transformed.isEmpty()  // RDD.isEmpty called as last resort
+    val atomicSchemaFormat = config.formats match {
+      case Formats.WideRow => Format.WIDEROW
+      case _: Formats.Shred => Format.TSV
+    }
+    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, atomicSchemaFormat) :: shreddedTypes
 
     LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
   }

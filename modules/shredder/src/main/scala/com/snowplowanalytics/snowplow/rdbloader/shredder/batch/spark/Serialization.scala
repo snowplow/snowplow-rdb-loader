@@ -47,8 +47,12 @@ object Serialization {
     Class.forName("io.circe.JsonBiggerDecimal"),
     Class.forName("io.circe.JsonDouble"),
     Class.forName("io.circe.JsonFloat"),
+    Class.forName("io.circe.numbers.SigAndExp"),
+    Class.forName("io.circe.numbers.BiggerDecimal$$anon$1"),
     classOf[java.util.LinkedHashMap[_, _]],
     classOf[java.util.ArrayList[_]],
+    classOf[java.math.BigInteger],
+    classOf[java.math.BigDecimal],
     Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
     Class.forName("scala.math.Ordering$Reverse"),
     classOf[org.apache.spark.sql.catalyst.InternalRow],
@@ -56,6 +60,8 @@ object Serialization {
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$TSV$"),
     classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
-    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats]
+    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
+    classOf[Array[scala.util.Either[_, _]]],
+    classOf[Array[scala.runtime.BoxedUnit]]
   )
 }
