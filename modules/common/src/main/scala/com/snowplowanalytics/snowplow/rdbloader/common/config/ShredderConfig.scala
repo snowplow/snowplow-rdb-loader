@@ -17,6 +17,8 @@ import scala.concurrent.duration.Duration
 import java.net.URI
 import java.time.Instant
 
+import cats.effect.Sync
+import cats.data.EitherT
 import cats.syntax.either._
 
 import io.circe._
@@ -46,12 +48,12 @@ object ShredderConfig {
 
   final case class Stream(input: StreamInput, windowing: Duration, output: Output, queue: QueueConfig, formats: Formats) extends ShredderConfig
   object Stream {
-    def fromString(conf: String): Either[String, Stream] =
+    def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
       fromString(conf, implicits().streamConfigDecoder)
 
-    def fromString(conf: String, streamConfigDecoder: Decoder[Stream]): Either[String, Stream] = {
+    def fromString[F[_]: Sync](conf: String, streamConfigDecoder: Decoder[Stream]): EitherT[F, String, Stream] = {
       implicit val implStreamConfigDecoder: Decoder[Stream] = streamConfigDecoder
-      ConfigUtils.fromString[Stream](conf).flatMap(configCheck)
+      ConfigUtils.fromStringF[F, Stream](conf).flatMap(e => EitherT.fromEither(configCheck(e)))
     }
   }
 

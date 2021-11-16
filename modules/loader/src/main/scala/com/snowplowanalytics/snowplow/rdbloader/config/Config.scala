@@ -16,6 +16,8 @@ import java.net.URI
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
+import cats.effect.Sync
+import cats.data.EitherT
 import cats.syntax.either._
 
 import io.circe._
@@ -43,12 +45,12 @@ object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString(s: String): Either[String, Config[StorageTarget]] =
+  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
     fromString(s, implicits().configDecoder)
 
-  def fromString(s: String, configDecoder: Decoder[Config[StorageTarget]]): Either[String, Config[StorageTarget]] =  {
+  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] =  {
     implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
-    ConfigUtils.fromString[Config[StorageTarget]](s)
+    ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
   }
 
   final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders])

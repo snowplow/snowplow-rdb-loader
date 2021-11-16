@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Base64
 
-import cats.data.Validated
+import cats.effect.IO
 
 // specs2
 import org.specs2.mutable.Specification
@@ -35,8 +35,8 @@ class CliConfigSpec extends Specification {
         "--iglu-config", resolverConfig)
 
       val expected = CliConfig(validConfig, false, resolverJson)
-      val result = CliConfig.parse(cli)
-      result must beEqualTo(Validated.Valid(expected))
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result must beRight(expected)
     }
 
     "parse CLI options with dry-run" in {
@@ -46,8 +46,8 @@ class CliConfigSpec extends Specification {
         "--dry-run")
 
       val expected = CliConfig(validConfig, true, resolverJson)
-      val result = CliConfig.parse(cli)
-      result must beEqualTo(Validated.Valid(expected))
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result must beRight(expected)
     }
 
     "give error with invalid resolver" in {
@@ -56,8 +56,8 @@ class CliConfigSpec extends Specification {
         "--iglu-config", invalidResolverConfig,
         "--dry-run")
 
-      val result = CliConfig.parse(cli)
-      result.isInvalid must beTrue
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result.isLeft must beTrue
     }
   }
 }

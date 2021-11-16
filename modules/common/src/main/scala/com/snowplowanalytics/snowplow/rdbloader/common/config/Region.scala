@@ -22,7 +22,7 @@ import io.circe._
 import software.amazon.awssdk.regions.providers.DefaultAwsRegionProviderChain
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 
-final case class Region(name: String)
+final case class Region(name: String) extends AnyVal
 object Region {
 
   private val regionResolveErrorMessage = "Region cannot be resolved, needs to be passed explicitly"

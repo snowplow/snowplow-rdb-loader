@@ -15,6 +15,8 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import java.net.URI
 import java.nio.file.{Paths, Files}
 
+import cats.effect.IO
+
 import scala.concurrent.duration._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -97,7 +99,7 @@ class ShredderConfigSpec extends Specification {
 
   "stream fromString" should {
     "be able to parse extended stream shredder config" in {
-      val result = getConfig("/shredder.stream.config.reference.hocon", ShredderConfig.Stream.fromString)
+      val result = getConfig("/shredder.stream.config.reference.hocon", c => ShredderConfig.Stream.fromString[IO](c).value.unsafeRunSync())
       val expected = ShredderConfig.Stream(
         exampleStreamInput,
         exampleWindowPeriod,
@@ -204,7 +206,7 @@ object ShredderConfigSpec {
     Region("eu-central-1")
   )
   val exampleSNSConfig = ShredderConfig.QueueConfig.SNS(
-    "test-sns",
+    "arn:aws:sns:eu-central-1:123456789:test-sns-topic",
     RegionSpec.DefaultTestRegion
   )
   val exampleFormats = ShredderConfig.Formats(
@@ -234,5 +236,5 @@ object ShredderConfigSpec {
     ShredderConfig.Batch.fromString(conf, ShredderConfig.implicits(RegionSpec.testRegionConfigDecoder).batchConfigDecoder)
 
   def testParseStreamConfig(conf: String): Either[String, ShredderConfig.Stream] =
-    ShredderConfig.Stream.fromString(conf, ShredderConfig.implicits(RegionSpec.testRegionConfigDecoder).streamConfigDecoder)
+    ShredderConfig.Stream.fromString[IO](conf, ShredderConfig.implicits(RegionSpec.testRegionConfigDecoder).streamConfigDecoder).value.unsafeRunSync()
 }

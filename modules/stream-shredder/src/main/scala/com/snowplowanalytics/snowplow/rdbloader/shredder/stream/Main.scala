@@ -28,13 +28,16 @@ object Main extends IOApp {
   val InvalidConfig: ExitCode = ExitCode(2)
 
   def run(args: List[String]): IO[ExitCode] =
-    ShredderCliConfig.Stream.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args: Seq[String]) match {
-      case Right(cliConfig) =>
-        Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue).use { resources =>
-          logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-            Processing.run[IO](resources, cliConfig.config).as(ExitCode.Success)
-        }
-      case Left(e) =>
-        logger[IO].error(s"Configuration error: $e").as(InvalidConfig)
-    }
+    for {
+      parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
+      res <- parsed match {
+        case Right(cliConfig) =>
+          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue).use { resources =>
+            logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
+              Processing.run[IO](resources, cliConfig.config).as(ExitCode.Success)
+          }
+        case Left(e) =>
+          logger[IO].error(s"Configuration error: $e").as(InvalidConfig)
+      }
+    } yield res
 }
