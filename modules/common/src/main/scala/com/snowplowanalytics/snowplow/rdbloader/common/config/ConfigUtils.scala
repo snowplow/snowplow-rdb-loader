@@ -18,7 +18,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Base64
 
 import cats.Id
-import cats.data.ValidatedNel
+import cats.effect.Sync
+import cats.data.{ValidatedNel, EitherT}
 import cats.syntax.either._
 import cats.syntax.show._
 
@@ -33,6 +34,9 @@ import com.snowplowanalytics.iglu.client.Resolver
 
 object ConfigUtils {
   private val Base64Decoder = Base64.getDecoder
+
+  def fromStringF[F[_]: Sync, A](conf: String)(implicit d: Decoder[A]): EitherT[F, String, A] =
+    EitherT(Sync[F].delay(fromString(conf)))
 
   def fromString[A](conf: String)(implicit d: Decoder[A]): Either[String, A] =
     Either

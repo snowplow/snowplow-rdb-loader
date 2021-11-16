@@ -15,6 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 import java.net.URI
 import java.nio.file.{Paths, Files}
 
+import cats.data.EitherT
+import cats.effect.IO
+
 import scala.concurrent.duration._
 
 import org.specs2.mutable.Specification
@@ -28,7 +31,7 @@ class ConfigSpec extends Specification {
 
   "fromString" should {
     "be able to parse extended config" in {
-      val result = getConfig("/loader.config.reference.hocon", Config.fromString)
+      val result = getConfig("/loader.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
         exampleRegion,
         exampleJsonPaths,
@@ -54,7 +57,7 @@ class ConfigSpec extends Specification {
     }
 
     "give error when unknown region given" in {
-      val result = getConfig("/test.config1.hocon", Config.fromString)
+      val result = getConfig("/test.config1.hocon", Config.fromString[IO])
       result.fold(
         // Left case means there is an error while loading the config.
         // We are expecting an error related with region here indeed.
@@ -93,14 +96,14 @@ object ConfigSpec {
   )
   val exampleSteps: Set[Step] = Set()
 
-  def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
-    parse(readResource(confPath))
+  def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
+    parse(readResource(confPath)).value.unsafeRunSync()
 
   def readResource(resourcePath: String): String = {
     val configExamplePath = Paths.get(getClass.getResource(resourcePath).toURI)
     Files.readString(configExamplePath)
   }
 
-  def testParseConfig(conf: String): Either[String, Config[StorageTarget]] =
-    Config.fromString(conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
+  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget]] =
+    Config.fromString[IO](conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
 }

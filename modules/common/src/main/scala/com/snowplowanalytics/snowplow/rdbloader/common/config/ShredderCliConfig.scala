@@ -14,6 +14,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
 import cats.implicits._
+import cats.data.EitherT
+import cats.effect.Sync
 
 import io.circe.Json
 
@@ -44,16 +46,20 @@ object ShredderCliConfig {
 
   case class Stream(igluConfig: Json, config: ShredderConfig.Stream)
   object Stream {
+    case class RawStreamConfig(igluConfig: Json, config: String)
     val streamConfig = Opts.option[String]("config",
       "base64-encoded config HOCON", "c", "config.hocon")
-      .mapValidated(x => ConfigUtils.base64decode(x).flatMap(ShredderConfig.Stream.fromString).toValidatedNel)
+      .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel)
     val streamShredderConfig = (igluConfig, streamConfig).mapN {
-      (iglu, config) => Stream(iglu, config)
+      (iglu, config) => RawStreamConfig(iglu, config)
     }
-    def command(name: String, description: String): Command[Stream] =
+    def command(name: String, description: String): Command[RawStreamConfig] =
       Command(s"$name-${BuildInfo.version}", description)(streamShredderConfig)
-    def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, Stream] =
-      command(name, description).parse(args).leftMap(_.toString())
+    def loadConfigFrom[F[_]: Sync](name: String, description: String)(args: Seq[String]): EitherT[F, String, Stream] =
+      for {
+        raw  <- EitherT.fromEither[F](command(name, description).parse(args).leftMap(_.toString()))
+        conf <- ShredderConfig.Stream.fromString[F](raw.config)
+      } yield Stream(raw.igluConfig, conf)
   }
 
   val igluConfig = Opts.option[String]("iglu-config",

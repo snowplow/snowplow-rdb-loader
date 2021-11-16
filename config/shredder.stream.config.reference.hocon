@@ -48,7 +48,7 @@
   #  # Type of the queue. It can be either sqs or sns
   #  "type": "sns",
   #  # ARN of SNS topic
-  #  "topicArn": "test-sqs",
+  #  "topicArn": "arn:aws:sns:eu-central-1:123456789:test-sns-topic",
   #  # Region of the SNS topic
   #  "region": "eu-central-1"
   #}

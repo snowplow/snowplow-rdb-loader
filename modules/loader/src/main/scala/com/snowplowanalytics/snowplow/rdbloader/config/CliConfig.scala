@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.config
 
+import cats.effect.Sync
 import cats.data._
 import cats.implicits._
 
@@ -31,15 +32,15 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
  */
-case class CliConfig(config: Config[StorageTarget],
-                     dryRun: Boolean,
-                     resolverConfig: Json)
+case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json)
 
 object CliConfig {
 
+  case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json)
+
   val config = Opts.option[String]("config",
     "base64-encoded HOCON configuration", "c", "config.hocon")
-    .mapValidated(x => ConfigUtils.base64decode(x).flatMap(Config.fromString).toValidatedNel)
+    .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel)
   val igluConfig = Opts.option[String]("iglu-config",
     "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
     .mapValidated(ConfigUtils.Base64Json.decode)
@@ -47,10 +48,10 @@ object CliConfig {
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
   val cliConfig = (config, dryRun, igluConfig).mapN {
-    case (cfg, dry, iglu) => CliConfig(cfg, dry, iglu)
+    case (cfg, dry, iglu) => RawCliConfig(cfg, dry, iglu)
   }
 
-  val parser = Command[CliConfig](BuildInfo.name, BuildInfo.version)(cliConfig)
+  val parser = Command[RawCliConfig](BuildInfo.name, BuildInfo.version)(cliConfig)
 
   /**
    * Parse raw CLI arguments into validated and transformed application config
@@ -64,6 +65,9 @@ object CliConfig {
    *         some application config if everything was validated
    *         correctly
    */
-  def parse(argv: Seq[String]): ValidatedNel[String, CliConfig] =
-    parser.parse(argv).leftMap(_.show).toValidatedNel
+  def parse[F[_]: Sync](argv: Seq[String]): EitherT[F, String, CliConfig] =
+    for {
+      raw  <- EitherT.fromEither[F](parser.parse(argv).leftMap(_.show))
+      conf <- Config.fromString[F](raw.config)
+    } yield CliConfig(conf, raw.dryRun, raw.resolverConfig)
 }
