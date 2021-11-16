@@ -18,7 +18,7 @@ import java.time.Instant
 import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Shredded}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Transformed}
 
 object Serialization {
   val classesToRegister: Array[Class[_]] = Array(
@@ -29,8 +29,11 @@ object Serialization {
     classOf[Event],
     classOf[Hierarchy],
     classOf[Instant],
-    classOf[Array[Shredded]],
-    classOf[Shredded.Tabular],
+    classOf[Transformed],
+    classOf[Transformed.Path.WideRow],
+    classOf[Transformed.Path.Shredded.Json],
+    classOf[Transformed.Path.Shredded.Tabular],
+    classOf[Array[Transformed]],
     classOf[UUID],
     Class.forName("com.snowplowanalytics.iglu.core.SchemaVer$Full"),
     Class.forName("io.circe.JsonObject$LinkedHashMapJsonObject"),
@@ -47,15 +50,22 @@ object Serialization {
     Class.forName("io.circe.JsonBiggerDecimal"),
     Class.forName("io.circe.JsonDouble"),
     Class.forName("io.circe.JsonFloat"),
+    Class.forName("io.circe.numbers.SigAndExp"),
+    Class.forName("io.circe.numbers.BiggerDecimal$$anon$1"),
     classOf[java.util.LinkedHashMap[_, _]],
     classOf[java.util.ArrayList[_]],
+    classOf[java.math.BigInteger],
+    classOf[java.math.BigDecimal],
     Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
     Class.forName("scala.math.Ordering$Reverse"),
     classOf[org.apache.spark.sql.catalyst.InternalRow],
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils$$anonfun$1"),  // Ordering
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$TSV$"),
+    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$JSON$"),
     classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
-    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats]
+    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
+    classOf[Array[scala.util.Either[_, _]]],
+    classOf[Array[scala.runtime.BoxedUnit]]
   )
 }

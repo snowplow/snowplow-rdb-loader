@@ -120,6 +120,10 @@ object ShreddedType {
             Json(info, jsonPath)
           }
         }
+      // TODO: Put it to here to make compiler happy.
+      // Widerow format will be handled in the loader properly later on.
+      case LoaderMessage.ShreddedType(_, LoaderMessage.Format.WIDEROW) =>
+        (DiscoveryFailure.IgluError("temp"): DiscoveryFailure).asLeft[ShreddedType].pure[F]
     }
 
   /**

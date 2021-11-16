@@ -32,6 +32,17 @@ object Sink {
       .text(outFolder)
   }
 
+  def writeWideRowed(spark: SparkSession, compression: Compression, data: RDD[(String, String)], outFolder: String): Unit = {
+    import spark.implicits._
+    data
+      .toDF("output", "data")
+      .write
+      .withCompression(compression)
+      .partitionBy("output")
+      .mode(SaveMode.Append)
+      .text(outFolder)
+  }
+
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {
     def withCompression(compression: Compression): DataFrameWriter[A] =
       compression match {
