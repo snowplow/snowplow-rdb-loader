@@ -1,3 +1,10 @@
+Version 1.2.3 (2021-11-22)
+--------------------------
+Common: bump schema-ddl to 0.14.3 (#632)
+RDB Loader: notify about failure outside of loading (#636)
+RDB Loader: don't allow folder monitoring to crash the loader (#628)
+RDB Loader: make sure folder monitoring cannot execute concurrently (#627)
+
 Version 1.2.2 (2021-11-12)
 --------------------------
 RDB Loader: remove logging class from a message (#623)
