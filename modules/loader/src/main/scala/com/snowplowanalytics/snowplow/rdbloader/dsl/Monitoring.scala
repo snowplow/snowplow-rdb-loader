@@ -107,6 +107,9 @@ object Monitoring {
 
     def warn(message: String, folder: S3.Folder): AlertPayload =
       AlertPayload(Application, Some(folder), Severity.Warning, message, Map.empty)
+
+    def error(message: String): AlertPayload =
+      AlertPayload(Application, None, Severity.Error, message, Map.empty)
   }
 
   def monitoringInterpreter[F[_]: Sync: Logging](

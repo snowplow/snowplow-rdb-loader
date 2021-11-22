@@ -98,6 +98,7 @@ object Main extends IOApp {
    */
   def handleFailure[F[_]: Applicative: Logging: Monitoring](error: Throwable): F[ExitCode] =
     Logging[F].error(error)("Loader shutting down") *> // Making sure we always have last ERROR printed
+      Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
       Monitoring[F].trackException(error) *>
       Monitoring[F].track(LoaderError.RuntimeError(error.getMessage).asLeft).as(ExitCode.Error)
 
