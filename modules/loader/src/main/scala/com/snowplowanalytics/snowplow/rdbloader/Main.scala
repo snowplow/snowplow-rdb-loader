@@ -24,9 +24,9 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{ DataDiscovery, NoOperation }
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
-import com.snowplowanalytics.snowplow.rdbloader.State._
+import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 
 object Main extends IOApp {
@@ -63,24 +63,27 @@ object Main extends IOApp {
    * @param control various stateful controllers
    * @return endless stream waiting for messages
    */
-  def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Environment.Control[F]): Stream[F, Unit] = {
+  def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, control.isBusy)
+    val noOpScheduling: Stream[F, Unit] =
+      NoOperation.run(cli.config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
     // TODO: Currently, steps are deactivated with making them empty.
     // Remove them from the codebase properly.
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery
-        .discover[F](cli.config.copy(steps = Set.empty), control.state)
+        .discover[F](cli.config.copy(steps = Set.empty), control.incrementMessages)
         .pauseWhen[F](control.isBusy)
         .evalMap { discovery =>
           val prepare = for {
-            _ <- StateMonitoring.run(control.state, discovery.extend).background
-            _ <- control.makeBusy(discovery.data.origin.base)
+            _        <- StateMonitoring.run(control.get, discovery.extend).background
+            makeBusy  = control.makeBusy
+            _        <- makeBusy(discovery.data.origin.base)
           } yield ()
           
           val loading: F[Unit] = prepare.use { _ =>
-            load[F](cli.config.copy(steps = Set.empty), control.state.setStage, discovery).rethrowT *> control.state.update(_.incrementLoaded)
+            load[F](cli.config.copy(steps = Set.empty), control.setStage, discovery).rethrowT *> control.incrementLoaded
           }
 
           // Catches both connection acquisition and loading errors
@@ -92,6 +95,7 @@ object Main extends IOApp {
           }
         }
         .merge(folderMonitoring)
+        .merge(noOpScheduling)
   }
 
   /**
