@@ -22,12 +22,15 @@ object Dependencies {
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
     val pureconfig       = "0.16.0"
+    val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
     val cats             = "2.2.0"
+    val catsEffect       = "2.5.4"
     val manifest         = "0.3.0"
     val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
+    val fs2Cron          = "0.5.0"
     val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
@@ -76,10 +79,12 @@ object Dependencies {
   val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"              % V.circe
   val pureconfig        = "com.github.pureconfig"      %% "pureconfig"                        % V.pureconfig
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
+  val cron4sCirce       = "com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
   val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
   val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
   val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
+  val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val doobie            = "org.tpolecat"               %% "doobie-core"                       % V.doobie
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
@@ -126,4 +131,5 @@ object Dependencies {
   val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
   val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
   val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
+  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
 }

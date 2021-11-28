@@ -14,19 +14,17 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Parallel, Monad}
+import cats.Parallel
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
-import fs2.Stream
-
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
 
-import com.snowplowanalytics.snowplow.rdbloader.State
+import com.snowplowanalytics.snowplow.rdbloader.state.{ State, Control }
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
@@ -51,28 +49,12 @@ class Environment[F[_]](cache: Cache[F],
   implicit val awsF: AWS[F] = aws
   implicit val jdbcF: JDBC[F] = jdbc
 
-  def control(implicit F: Monad[F], C: Clock[F]): Environment.Control[F] =
-    Environment.Control(state, makeBusy, isBusy)
-
-  private[this] def makeBusy(implicit F: Monad[F], C: Clock[F]): S3.Folder => Resource[F, Unit] = 
-    folder => {
-      val allocate = loggingF.debug("Setting an environment lock") *>
-        C.instantNow.flatMap { now => state.update(_.start(folder).setUpdated(now)) }
-      val deallocate: F[Unit] = loggingF.debug("Releasing an environment lock") *>
-        C.instantNow.flatMap { now => state.update(_.idle.setUpdated(now)) }
-      Resource.make(allocate)(_ => deallocate)
-  }
-
-  private[this] def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    state.map(_.isBusy).discrete
+  def control: Control[F] =
+    Control(state)
 }
 
 object Environment {
 
-  /** A signle set of mutable objects and functions to manipulate them */
-  case class Control[F[_]](state: State.Ref[F],
-                           makeBusy: S3.Folder => Resource[F, Unit],
-                           isBusy: Stream[F, Boolean])
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 

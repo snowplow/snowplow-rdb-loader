@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.Show
+import cats.{ Show, Applicative }
 import cats.effect.Sync
 
 import org.typelevel.log4cats.Logger
@@ -66,5 +66,23 @@ object Logging {
 
       def error(t: Throwable)(line: String): F[Unit] =
         logger.error(t)(Common.sanitize(line, stopWords))
+    }
+
+  def noOp[F[_]: Applicative]: Logging[F] =
+    new Logging[F] {
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+        Applicative[F].unit
+
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+        Applicative[F].unit
+
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+        Applicative[F].unit
+
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+        Applicative[F].unit
+
+      def error(t: Throwable)(line: String): F[Unit] =
+        Applicative[F].unit
     }
 }
