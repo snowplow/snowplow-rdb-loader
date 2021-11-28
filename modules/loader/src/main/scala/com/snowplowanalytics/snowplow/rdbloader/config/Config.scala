@@ -25,6 +25,9 @@ import io.circe.generic.semiauto._
 
 import org.http4s.{ParseFailure, Uri}
 
+import cron4s.CronExpr
+import cron4s.circe._
+
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, ConfigUtils, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
@@ -39,7 +42,8 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              monitoring: Monitoring,
                                              messageQueue: String,
                                              storage: D,
-                                             steps: Set[Step])
+                                             steps: Set[Step],
+                                             schedules: Schedules)
 
 object Config {
 
@@ -53,6 +57,8 @@ object Config {
     ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
   }
 
+  final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
+  final case class Schedules(noOperation: List[Schedule])
   final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
@@ -76,6 +82,12 @@ object Config {
 
     implicit val sentryDecoder: Decoder[Sentry] =
       deriveDecoder[Sentry]
+
+    implicit val periodicDurationDecoder: Decoder[Schedule] =
+      deriveDecoder[Schedule]
+
+    implicit val schedulesDecoder: Decoder[Schedules] =
+      deriveDecoder[Schedules]
 
     implicit val statsdDecoder: Decoder[StatsD] =
       deriveDecoder[StatsD]

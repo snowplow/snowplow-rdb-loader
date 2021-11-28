@@ -16,13 +16,13 @@ import cats.effect.Sync
 import cats.data._
 import cats.implicits._
 
-import com.monovore.decline.{Command, Opts}
 import io.circe.Json
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
+import com.monovore.decline.{Command, Opts}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
 
 /**
  * Validated and parsed result application config

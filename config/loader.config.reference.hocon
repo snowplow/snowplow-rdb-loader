@@ -33,6 +33,21 @@
     "maxError": 10
   },
 
+  "schedules": {
+    # Periodic schedules to stop loading, e.g. for Redshift maintenance window
+    # Any amount of schedules is supported, but recommended to not overlap them
+    "noOperation": [
+      {
+        # Human-readable name of the no-op window
+        "name": "Maintenance window",
+        # Cron expression with second granularity
+        "when": "0 0 12 * * ?",
+        # For how long the loader should be paused
+        "duration": "1 hour"
+      }
+    ]
+  }
+
   # Observability and reporting options
   "monitoring": {
     # Snowplow tracking (optional)

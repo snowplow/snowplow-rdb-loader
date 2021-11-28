@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import scala.concurrent.duration._
 
-import cats.{Applicative, Monad, MonadError, Show}
+import cats.{Applicative, Monad, Show, MonadThrow}
 import cats.implicits._
 
 import cats.effect.{Timer, Clock}
@@ -36,10 +36,8 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 /** Entry-point for loading-related logic */
 object Load {
 
-  private implicit val LoggerName =
+  private implicit val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
-
-  type MonadThrow[F[_]] = MonadError[F, Throwable]
 
   /**
    * Loading stage.
@@ -79,18 +77,20 @@ object Load {
       }
   }
 
-  /** State of the loader */
-  sealed trait State
-  object State {
-    final case object Idle extends State
-    final case class Loading(folder: S3.Folder, stage: Stage) extends State
+  /** State of the loading */
+  sealed trait Status
+  object Status {
+    final case object Idle extends Status
+    final case class Paused(owner: String) extends Status
+    final case class Loading(folder: S3.Folder, stage: Stage) extends Status
 
-    def start(folder: S3.Folder): State =
-      State.Loading(folder, Stage.MigrationBuild)
+    def start(folder: S3.Folder): Status =
+      Status.Loading(folder, Stage.MigrationBuild)
 
-    implicit val stateShow: Show[State] =
+    implicit val stateShow: Show[Status] =
       Show.show {
         case Idle => "Idle"
+        case Paused(owner) => show"Paused by $owner"
         case Loading(folder, stage) => show"Ongoing processing of $folder at $stage"
       }
   }
