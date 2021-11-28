@@ -15,16 +15,18 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 import java.net.URI
 import java.nio.file.{Paths, Files}
 
-import cats.data.EitherT
-import cats.effect.IO
-
 import scala.concurrent.duration._
+
+import cats.data.EitherT
+
+import cats.effect.IO
 
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Region}
-import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, RegionSpec}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, Step}
+
+import cron4s.Cron
 
 class ConfigSpec extends Specification {
   import ConfigSpec._
@@ -38,7 +40,8 @@ class ConfigSpec extends Specification {
         exampleMonitoring,
         exampleQueueName,
         exampleStorage,
-        exampleSteps
+        exampleSteps,
+        exampleSchedules
       )
       result must beRight(expected)
     }
@@ -51,7 +54,8 @@ class ConfigSpec extends Specification {
         emptyMonitoring,
         exampleQueueName,
         exampleStorage,
-        Set.empty
+        Set.empty,
+        emptySchedules
       )
       result must beRight(expected)
     }
@@ -95,6 +99,10 @@ object ConfigSpec {
     None
   )
   val exampleSteps: Set[Step] = Set()
+  val exampleSchedules: Config.Schedules = Config.Schedules(List(
+    Config.Schedule("Maintenance window", Cron.unsafeParse("0 0 12 * * ?"), 1.hour)
+  ))
+  val emptySchedules: Config.Schedules = Config.Schedules(Nil)
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()
