@@ -14,16 +14,15 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.net.URI
 import java.nio.file.{Paths, Files}
+import java.nio.file.{Files, Paths}
 import java.time.Instant
 
 import cats.effect.IO
 
 import scala.concurrent.duration._
-
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Validations
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, ShredderConfig}
-
 import org.specs2.mutable.Specification
 
 class ShredderConfigSpec extends Specification {
@@ -39,7 +38,8 @@ class ShredderConfigSpec extends Specification {
         exampleFormats,
         exampleMonitoring,
         exampleDeduplication,
-        exampleRunInterval
+        exampleRunInterval,
+        exampleValidations
       )
       result must beRight(expected)
     }
@@ -53,21 +53,15 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultFormats,
         exampleDefaultMonitoring,
         exampleDeduplication,
-        emptyRunInterval
+        emptyRunInterval,
+        emptyValidations
       )
       result must beRight(expected)
     }
 
     "give error when unknown region given" in {
       val result = getConfig("/test.config1.hocon", ShredderConfig.Batch.fromString)
-      result.fold(
-        // Left case means there is an error while loading the config.
-        // We are expecting an error related with region here indeed.
-        err => err.contains("unknown-region-1"),
-        // Right case means that config is loaded successfully.
-        // This is not expected therefore false is returned.
-        _ => false
-      ) must beTrue
+      result must beLeft(contain("unknown-region-1"))
     }
 
     "fail if there are overlapping schema criterions" in {
@@ -110,7 +104,8 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleOutput,
         exampleSQSConfig,
-        exampleFormats
+        exampleFormats,
+        exampleValidations
       )
       result must beRight(expected)
     }
@@ -122,7 +117,8 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleDefaultOutput,
         exampleSNSConfig,
-        exampleDefaultFormats
+        exampleDefaultFormats,
+        emptyValidations
       )
       result must beRight(expected)
     }
@@ -235,6 +231,8 @@ object ShredderConfigSpec {
     Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
     Some(ShredderConfig.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
+  val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val emptyValidations = Validations(None)
 
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
     parse(readResource(confPath))

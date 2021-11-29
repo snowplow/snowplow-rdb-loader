@@ -80,6 +80,12 @@
     "until": "2021-12-10-18-34-52"
   }
 
+  # Events will be validated against given criterias and
+  # bad row will be created if validation is not successful
+  "validations": {
+    "minimumTimestamp": "2021-11-18T11:00:00.00Z"
+  }
+
   # Observability and reporting options
   "monitoring": {
     # Optional, for tracking runtime exceptions

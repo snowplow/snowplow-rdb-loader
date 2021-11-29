@@ -41,7 +41,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
@@ -96,7 +96,12 @@ class ShredJob(@transient val spark: SparkSession,
 
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
-      .map(line => EventUtils.loadAndShred(IgluSingleton.get(igluConfig), ShredJob.BadRowsProcessor, line))
+      .map { line =>
+        for {
+          event <- EventUtils.loadAndShred(IgluSingleton.get(igluConfig), ShredJob.BadRowsProcessor, line)
+          _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
+        } yield event
+      }
       .setName("common")
       .cache()
 
