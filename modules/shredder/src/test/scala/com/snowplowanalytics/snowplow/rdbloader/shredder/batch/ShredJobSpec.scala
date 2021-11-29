@@ -28,9 +28,9 @@ import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 
 import cats.data.ValidatedNel
-import cats.syntax.either._
-import cats.syntax.validated._
+import cats.implicits._
 
+import io.circe.Json
 import io.circe.literal._
 import io.circe.optics.JsonPath._
 import io.circe.parser.{ parse => parseCirce }
@@ -244,6 +244,9 @@ object ShredJobSpec {
     |"formats": {
     |  "type": "${if (wideRow) "widerow" else "shred"}"
     |}
+    |"validations": {
+    |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
+    |}
     |"monitoring": {"snowplow": null, "sentry": null},
     |"formats": { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] }
     |}""".stripMargin
@@ -315,6 +318,19 @@ object ShredJobSpec {
       }
     }"""
 
+  val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
+
+  val clearTimestamp: Json => Json =
+    root.data.failure.timestamp.string.set(DefaultTimestamp)
+
+  def clearFailureTimestamps(jsons: List[String]): List[String] =
+    jsons
+      .map(parseCirce)
+      .sequence.map(_.map(clearTimestamp))
+      .toOption
+      .get
+      .map(_.noSpaces)
+
   /** Get environment variable wrapped into `Validation` */
   def getEnv(envvar: String): ValidatedNel[String, String] = sys.env.get(envvar) match {
     case Some(v) => v.validNel
@@ -332,7 +348,8 @@ object ShredJobSpec {
       ShredderConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, Nil, Nil, Nil),
       ShredderConfig.Monitoring(None),
-      ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
+      ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
+      ShredderConfig.Validations(None)
     )
   }
 }

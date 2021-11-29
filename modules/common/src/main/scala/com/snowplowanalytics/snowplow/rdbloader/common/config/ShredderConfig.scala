@@ -35,7 +35,13 @@ sealed trait ShredderConfig {
 
 object ShredderConfig {
 
-  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring, deduplication: Deduplication) extends ShredderConfig
+  final case class Batch(input: URI,
+                         output: Output,
+                         queue: QueueConfig,
+                         formats: Formats,
+                         monitoring: Monitoring,
+                         deduplication: Deduplication,
+                         validations: Validations) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -46,7 +52,12 @@ object ShredderConfig {
     }
   }
 
-  final case class Stream(input: StreamInput, windowing: Duration, output: Output, queue: QueueConfig, formats: Formats) extends ShredderConfig
+  final case class Stream(input: StreamInput,
+                          windowing: Duration,
+                          output: Output,
+                          queue: QueueConfig,
+                          formats: Formats,
+                          validations: Validations) extends ShredderConfig
   object Stream {
     def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
       fromString(conf, implicits().streamConfigDecoder)
@@ -173,6 +184,8 @@ object ShredderConfig {
     }
   }
 
+  final case class Validations(minimumTimestamp: Option[Instant])
+
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
@@ -296,6 +309,9 @@ object ShredderConfig {
 
     implicit val wideRowFormatsConfigDecoder: Decoder[Formats.WideRow.type] =
       deriveDecoder[Formats.WideRow.type]
+
+    implicit val validationsDecoder: Decoder[Validations] =
+      deriveDecoder[Validations]
   }
 
   def configCheck[A <: ShredderConfig](config: A): Either[String, A] =
