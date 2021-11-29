@@ -259,6 +259,12 @@ object ShredJobSpec {
     |  "queueName": "test-sqs"
     |  "region": "us-east-1"
     |}
+    |"formats": {
+    |  "type": "${if (wideRow) "widerow" else "shred"}"
+    |}
+    |"validations": {
+    |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
+    |}
     |"monitoring": {"snowplow": null, "sentry": null},
     |$formatsSection
     |"validations": {"minimumTimestamp": "0000-01-02T00:00:00.00Z"}
@@ -363,7 +369,8 @@ object ShredJobSpec {
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
       ShredderConfig.RunInterval(None, None, None),
-      ShredderConfig.FeatureFlags(false)
+      ShredderConfig.FeatureFlags(false),
+      ShredderConfig.Validations(None)
     )
   }
 }
