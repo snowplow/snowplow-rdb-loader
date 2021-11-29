@@ -19,11 +19,9 @@ import java.time.Instant
 import cats.effect.IO
 
 import scala.concurrent.duration._
-
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Validations
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, ShredderConfig}
-
 import org.specs2.mutable.Specification
 
 class ShredderConfigSpec extends Specification {
@@ -40,7 +38,8 @@ class ShredderConfigSpec extends Specification {
         exampleMonitoring,
         exampleDeduplication,
         exampleRunInterval,
-        exampleDefaultFeatureFlags
+        exampleDefaultFeatureFlags,
+        exampleValidations
       )
       result must beRight(expected)
     }
@@ -55,7 +54,8 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultMonitoring,
         exampleDeduplication,
         emptyRunInterval,
-        exampleDefaultFeatureFlags
+        exampleDefaultFeatureFlags,
+        emptyValidations
       )
       result must beRight(expected)
     }
@@ -107,7 +107,8 @@ class ShredderConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         ShredderConfig.Formats.WideRow.JSON,
-        exampleDefaultFeatureFlags
+        exampleDefaultFeatureFlags,
+        exampleValidations
       )
       result must beRight(expected)
     }
@@ -120,7 +121,8 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         ShredderConfig.Formats.WideRow.JSON,
-        exampleDefaultFeatureFlags
+        exampleDefaultFeatureFlags,
+        emptyValidations
       )
       result must beRight(expected)
     }
@@ -234,6 +236,8 @@ object ShredderConfigSpec {
     Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
     Some(ShredderConfig.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
+  val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val emptyValidations = Validations(None)
 
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
     parse(readResource(confPath))

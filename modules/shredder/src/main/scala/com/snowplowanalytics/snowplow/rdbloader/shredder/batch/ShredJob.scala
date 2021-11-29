@@ -38,7 +38,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.QueueConfig
 
@@ -82,7 +82,10 @@ class ShredJob[T](@transient val spark: SparkSession,
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
       .map { line =>
-        EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+        for {
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
+        } yield event
       }
       .setName("common")
       .cache()

@@ -43,7 +43,8 @@ object ShredderConfig {
                          monitoring: Monitoring,
                          deduplication: Deduplication,
                          runInterval: RunInterval,
-                         featureFlags: FeatureFlags) extends ShredderConfig
+                         featureFlags: FeatureFlags,
+                         validations: Validations) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -59,7 +60,8 @@ object ShredderConfig {
                           output: Output,
                           queue: QueueConfig,
                           formats: Formats,
-                          featureFlags: FeatureFlags) extends ShredderConfig
+                          featureFlags: FeatureFlags,
+                          validations: Validations) extends ShredderConfig
   object Stream {
     def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
       fromString(conf, implicits().streamConfigDecoder)
@@ -191,6 +193,8 @@ object ShredderConfig {
     }
   }
 
+  final case class Validations(minimumTimestamp: Option[Instant])
+
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
@@ -307,7 +311,6 @@ object ShredderConfig {
         }
       }
 
-
     implicit val shredFormatsConfigDecoder: Decoder[Formats.Shred] =
       deriveDecoder[Formats.Shred]
 
@@ -354,6 +357,9 @@ object ShredderConfig {
             else Left(s"Cannot convert Duration $duration to FiniteDuration")
           }
       }
+
+    implicit val validationsDecoder: Decoder[Validations] =
+      deriveDecoder[Validations]
   }
 
   def configCheck[A <: ShredderConfig](config: A): Either[String, A] =
