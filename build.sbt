@@ -169,6 +169,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
       Dependencies.aws2kinesis,
       Dependencies.http4sClient,
       // Scala (test only)
+      Dependencies.circeOptics,
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
