@@ -20,10 +20,10 @@ import doobie.util.update.Update0
 import io.circe.jawn.parse
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.core.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.core.config.CliConfig
 
-import com.snowplowanalytics.snowplow.rdbloader.config.ConfigSpec
+import com.snowplowanalytics.snowplow.rdbloader.core.config.ConfigSpec
 
 object SpecHelpers {
 

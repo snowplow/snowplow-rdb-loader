@@ -1,11 +1,9 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
-
-import fs2.{Stream, Pipe}
-
+import fs2.{Pipe, Stream}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.{Folder, Key}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
+import com.snowplowanalytics.snowplow.rdbloader.common.{Message, S3}
+import com.snowplowanalytics.snowplow.rdbloader.core.algebras.AWS
 
 case class PureAWS(listS3: Folder => Stream[Pure, S3.BlobObject], keyExists: Key => Boolean) {
   def withExistingKeys: PureAWS =

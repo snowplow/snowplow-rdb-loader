@@ -1,7 +1,8 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.data.{StateT, EitherT, State => CState}
+import cats.data.{EitherT, StateT, State => CState}
 import cats.syntax.either._
+import com.snowplowanalytics.snowplow.rdbloader.core.{LoaderAction, LoaderError}
 
 package object test {
   /** Pure effect. It can only change [[TestState]] and never actually produce side-effects */

@@ -14,8 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.Show
 import cats.implicits._
-
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
+import com.snowplowanalytics.snowplow.rdbloader.core.algebras.Logging
 
 object PureLogging {
   def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =

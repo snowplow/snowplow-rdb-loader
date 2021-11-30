@@ -1,29 +1,29 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
+import com.snowplowanalytics.snowplow.rdbloader.core.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.core.db.{Statement => SqlStatement}
 
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState._
 
 /**
- * Intermediate state and final result of every effectful test spec
- * Used as a core of [[Pure]] effect
- * @param genericLog list of strings that every effect can add
- * @param cache JSONPaths cache
- */
+  * Intermediate state and final result of every effectful test spec
+  * Used as a core of [[Pure]] effect
+  * @param genericLog list of strings that every effect can add
+  * @param cache JSONPaths cache
+  */
 case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Option[S3.Key]]) {
 
   def getLog: List[LogEntry] = getLogUntrimmed.map {
     case LogEntry.Message(message) => LogEntry.Message(trim(message))
-    case LogEntry.Sql(statement) => LogEntry.Sql(statement)
+    case LogEntry.Sql(statement)   => LogEntry.Sql(statement)
   }
   def getLogUntrimmed: List[LogEntry] = genericLog.reverse
 
   def log(message: String): TestState =
     TestState(LogEntry.Message(message) :: genericLog, cache)
 
-  def log(statement: Statement): TestState =
+  def log(statement: SqlStatement): TestState =
     TestState(LogEntry.Sql(statement) :: genericLog, cache)
 
   def time: Long =
@@ -46,6 +46,6 @@ object TestState {
   sealed trait LogEntry
   object LogEntry {
     case class Message(content: String) extends LogEntry
-    case class Sql(content: Statement) extends LogEntry
+    case class Sql(content: SqlStatement) extends LogEntry
   }
 }

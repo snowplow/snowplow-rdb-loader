@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Cache
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.core.algebras.Cache
 
 object PureCache {
   def interpreter: Cache[Pure] = new Cache[Pure] {
@@ -15,7 +15,7 @@ object PureCache {
         val result = testState.cache.get(key)
         result match {
           case Some(_) => (testState.log(s"GET $key"), result)
-          case None => (testState.log(s"GET $key (miss)"), result)
+          case None    => (testState.log(s"GET $key (miss)"), result)
         }
 
       }

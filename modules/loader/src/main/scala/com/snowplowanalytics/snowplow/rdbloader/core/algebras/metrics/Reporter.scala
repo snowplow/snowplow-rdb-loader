@@ -10,24 +10,16 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.test
+package com.snowplowanalytics.snowplow.rdbloader.core.algebras.metrics
 
-import com.snowplowanalytics.snowplow.rdbloader.core.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.core.algebras.Monitoring
-import com.snowplowanalytics.snowplow.rdbloader.core.algebras.metrics.Metrics
+import cats.Applicative
 
-object PureMonitoring {
-  def interpreter: Monitoring[Pure] = new Monitoring[Pure] {
-    def track(result: Either[LoaderError, Unit]): Pure[Unit] =
-      Pure.unit
+trait Reporter[F[_]] {
+  def report(metrics: List[Metrics.KVMetric]): F[Unit]
+}
 
-    def trackException(e: Throwable): Pure[Unit] =
-      Pure.unit
-
-    def reportMetrics(metrics: Metrics.KVMetrics): Pure[Unit] =
-      Pure.unit
-
-    def alert(payload: Monitoring.AlertPayload): Pure[Unit] =
-      Pure.unit
+object Reporter {
+  def noop[F[_]: Applicative]: Reporter[F] = new Reporter[F] {
+    def report(metrics: List[Metrics.KVMetric]) = Applicative[F].unit
   }
 }
