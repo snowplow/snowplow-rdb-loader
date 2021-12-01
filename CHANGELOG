@@ -1,3 +1,15 @@
+Version 2.0.0 (2021-12-01)
+--------------------------
+Batch Shredder: send shredding_complete to SNS (#595)
+Stream Shredder: send shredding_complete to SNS (#616)
+Common: split shredder and loader config (close #596)
+RDB Loader: deprecate steps (close #625)
+Common: use sbt-dynver plugin (close #610)
+Common: bump aws-java-sdk from 1.11.1019 to 1.12.31 (#613)
+Common: bump jackson-scala-module to 2.12.3 (#566)
+Common: bump jackson-databind to 2.12.3 (#614)
+Common: bump aws-java-sdk-v2 from 2.16.23 to 2.17.59 (#615)
+
 Version 1.2.3 (2021-11-22)
 --------------------------
 Common: bump schema-ddl to 0.14.3 (#632)
