@@ -12,15 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.{ Show, Applicative }
+import cats.{Show, Applicative, ~>}
+
 import cats.effect.Sync
 
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 
-trait Logging[F[_]] {
+trait Logging[F[_]] { self =>
 
   def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit]
 
@@ -35,6 +35,15 @@ trait Logging[F[_]] {
 
   /** Log line with log level ERROR */
   def error(t: Throwable)(line: String): F[Unit]
+
+  def mapK[G[_]](arrow: F ~> G): Logging[G] =
+    new Logging[G] {
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.debug(a))
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.info(a))
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.warning(a))
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.error(a))
+      def error(t: Throwable)(line: String): G[Unit] = arrow(self.error(t)(line))
+    }
 }
 
 object Logging {

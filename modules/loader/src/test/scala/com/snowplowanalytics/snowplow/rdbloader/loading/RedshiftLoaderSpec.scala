@@ -15,14 +15,14 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.AsSql
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureLogging}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureLogging, PureDAO, PureOps}
 
 import org.specs2.mutable.Specification
 
@@ -32,7 +32,7 @@ class RedshiftLoaderSpec extends Specification {
   "loadFolder" should {
     "perform atomic and shredded insertions, ignore VACUUM and ANALYZE" >> {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
       val input = RedshiftStatements(
         "atomic",
@@ -68,7 +68,7 @@ class RedshiftLoaderSpec extends Specification {
 
     "perform atomic transit load with shredded types, ignore VACUUM and ANALYZE" >> {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
       val input = RedshiftStatements(
         "schema",
@@ -107,7 +107,7 @@ class RedshiftLoaderSpec extends Specification {
   "run" should {
     "perform insertions, VACUUM and ANALYZE" >> {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
       val shreddedTypes = List(
         ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0)), "s3://assets/event_1.json".key),
@@ -137,5 +137,4 @@ object RedshiftLoaderSpec {
     val _ = table
     Pure.unit
   }
-
 }

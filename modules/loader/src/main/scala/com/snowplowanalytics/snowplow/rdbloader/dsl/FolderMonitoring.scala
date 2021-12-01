@@ -28,7 +28,6 @@ import doobie.util.Get
 import fs2.Stream
 import fs2.text.utf8Encode
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
@@ -137,15 +136,22 @@ object FolderMonitoring {
    * @param redshiftConfig DB config
    * @return potentially empty list of alerts
    */
-  def check[F[_]: Monad: AWS: JDBC: Timer](loadFrom: S3.Folder, redshiftConfig: StorageTarget.Redshift): LoaderAction[F, List[AlertPayload]] =
+  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Timer](loadFrom: S3.Folder, redshiftConfig: StorageTarget.Redshift): F[List[AlertPayload]] = {
+    val getBatches = for {
+      _                 <- DAO[C].executeUpdate(DropAlertingTempTable)
+      _                 <- DAO[C].executeUpdate(CreateAlertingTempTable)
+      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom, redshiftConfig.roleArn))
+      onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest(redshiftConfig.schema))
+    } yield onlyS3Batches
+
     for {
-      _                 <- JDBC[F].executeTransaction(List(DropAlertingTempTable, CreateAlertingTempTable, FoldersCopy(loadFrom, redshiftConfig.roleArn)))
-      onlyS3Batches     <- JDBC[F].executeQueryList[S3.Folder](FoldersMinusManifest(redshiftConfig.schema))
-      foldersWithChecks <- LoaderAction.liftF(checkShreddingComplete[F](onlyS3Batches))
+      onlyS3Batches <- Transaction[F, C].transact(getBatches)
+      foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
       } yield foldersWithChecks.map { case (folder, exists) =>
         if (exists) Monitoring.AlertPayload.warn("Unloaded batch", folder)
         else Monitoring.AlertPayload.warn("Incomplete shredding", folder)
       }
+  }
 
   /** Get stream of S3 folders emitted with configured interval */
   def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, S3.Folder] = {
@@ -165,12 +171,12 @@ object FolderMonitoring {
    * If some configurations are not provided - just prints a warning.
    * Resulting stream has to be running in background.
    */
-  def run[F[_]: Concurrent: Timer: AWS: JDBC: Logging: Monitoring](foldersCheck: Option[Config.Folders],
-                                                                   storage: StorageTarget,
-                                                                   isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+  def run[C[_]: DAO: Monad,
+          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders], storage: StorageTarget,
+                                                                                   isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     (foldersCheck, storage) match {
       case (Some(folders), redshift: StorageTarget.Redshift) =>
-        stream[F](folders, redshift, isBusy)
+        stream[C, F](folders, redshift, isBusy)
       case (None, _: StorageTarget.Redshift) =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -185,9 +191,10 @@ object FolderMonitoring {
    * @param storage Redshift config needed for loading
    * @param archive shredded archive path
    */
-  def stream[F[_]: Concurrent: Timer: AWS: JDBC: Logging: Monitoring](folders: Config.Folders,
-                                                                      storage: StorageTarget.Redshift,
-                                                                      isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+  def stream[C[_]: DAO: Monad,
+             F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring](folders: Config.Folders,
+                                                                                      storage: StorageTarget.Redshift,
+                                                                                      isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
         .pauseWhen(isBusy)
@@ -197,13 +204,12 @@ object FolderMonitoring {
               val sinkAndCheck =
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.shredderOutput, outputFolder).ifM(
-                    check[F](outputFolder, storage)
-                      .rethrowT
+                    check[C, F](outputFolder, storage)
                       .flatMap { alerts =>
                         alerts.traverse_ { payload =>
                           val warn = payload.base match {
                             case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
-                            case None => Logging[F].error(s"${payload.message} with unkown path. Invalid state!")
+                            case None => Logging[F].error(s"${payload.message} with unknown path. Invalid state!")
                           }
                           warn *> Monitoring[F].alert(payload)
                         }

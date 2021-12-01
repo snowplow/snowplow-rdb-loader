@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureJDBC, TestState, PureAWS, PureTimer}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureTransaction, PureDAO, TestState, PureAWS, PureTimer, PureOps}
 
 import org.specs2.mutable.Specification
 
@@ -34,58 +34,58 @@ class FolderMonitoringSpec extends Specification {
 
   "check" should {
     "return a single element returned by MINUS statement (shredding_complete doesn't exist)" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(jdbcResults))
+      implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(List(
+        PureTransaction.CommitMessage,
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
-        TestState.LogEntry.Sql(Statement.Commit),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        TestState.LogEntry.Sql(Statement.Begin)),Map()
+        PureTransaction.StartMessage),Map()
       )
       val ExpectedResult = List(
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure](loadFrom, SpecHelpers.validConfig.storage).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, SpecHelpers.validConfig.storage).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
-        case Right(ExpectedResult) => ok
-        case Right(alerts) => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
-        case _ => ko
+        case ExpectedResult => ok
+        case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
       }
     }
 
     "return a single element returned by MINUS statement (shredding_complete does exist)" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(jdbcResults))
+      implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(List(
+        PureTransaction.CommitMessage,
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
-        TestState.LogEntry.Sql(Statement.Commit),
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        TestState.LogEntry.Sql(Statement.Begin)),Map()
+        PureTransaction.StartMessage),Map()
       )
       val ExpectedResult = List(
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure](loadFrom, SpecHelpers.validConfig.storage).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, SpecHelpers.validConfig.storage).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
-        case Right(ExpectedResult) => ok
-        case Right(alerts) => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
-        case _ => ko
+        case ExpectedResult => ok
+        case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
       }
     }
   }

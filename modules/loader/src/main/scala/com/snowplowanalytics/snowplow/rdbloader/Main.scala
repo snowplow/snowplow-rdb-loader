@@ -15,17 +15,19 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.Applicative
 import cats.implicits._
 
-import cats.effect.{ExitCode, IOApp, Concurrent, IO, Timer, Clock}
+import cats.effect.{Clock, Timer, ExitCode, IOApp, MonadThrow, Concurrent, IO}
 import cats.effect.implicits._
 
 import fs2.Stream
+
+import doobie.ConnectionIO
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{ DataDiscovery, NoOperation }
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.{ load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 
@@ -42,8 +44,8 @@ object Main extends IOApp {
           Environment.initialize[IO](cli).use { env =>
             import env._
 
-            loggingF.info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
-              process[IO](cli, control)
+            Logging[IO].info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${cli.config.messageQueue}") *>
+              process[IO, ConnectionIO](cli, control)
                 .compile
                 .drain
                 .as(ExitCode.Success)
@@ -63,15 +65,17 @@ object Main extends IOApp {
    * @param control various stateful controllers
    * @return endless stream waiting for messages
    */
-  def process[F[_]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: JDBC](cli: CliConfig, control: Control[F]): Stream[F, Unit] = {
+  def process[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
+              C[_]: DAO: MonadThrow: Logging]
+    (cli: CliConfig, control: Control[F]): Stream[F, Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F](cli.config.monitoring.folders, cli.config.storage, control.isBusy)
+      FolderMonitoring.run[C, F](cli.config.monitoring.folders, cli.config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(cli.config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
     // TODO: Currently, steps are deactivated with making them empty.
     // Remove them from the codebase properly.
-    Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
+    Stream.eval_(Manifest.initialize[F, C](cli.config.storage)) ++
       DataDiscovery
         .discover[F](cli.config, control.incrementMessages)
         .pauseWhen[F](control.isBusy)
@@ -81,9 +85,13 @@ object Main extends IOApp {
             makeBusy  = control.makeBusy
             _        <- makeBusy(discovery.data.origin.base)
           } yield ()
-          
+
+          // Lifting setStage into `DAO[C]` because it's always called within loading
+          val setStageC: Stage => C[Unit] =
+            stage => Transaction[F, C].arrowBack(control.setStage(stage))
+
           val loading: F[Unit] = prepare.use { _ =>
-            load[F](cli.config, control.setStage, discovery).rethrowT *> control.incrementLoaded
+            load[F, C](cli.config, setStageC, discovery) *> control.incrementLoaded
           }
 
           // Catches both connection acquisition and loading errors

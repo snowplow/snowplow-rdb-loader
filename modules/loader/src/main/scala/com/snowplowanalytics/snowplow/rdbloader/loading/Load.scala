@@ -14,21 +14,21 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import scala.concurrent.duration._
 
-import cats.{Applicative, Monad, Show, MonadThrow}
+import cats.{Show, Monad, MonadThrow}
 import cats.implicits._
 
 import cats.effect.{Timer, Clock}
 
-import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, Sleep, RetryDetails}
+import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, RetryDetails}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget }
-import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Statement, Manifest }
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, Transaction, Logging, Monitoring, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
@@ -77,8 +77,11 @@ object Load {
   /** State of the loading */
   sealed trait Status
   object Status {
+    /** Loader waits for the next folder to load */
     final case object Idle extends Status
+    /** Loader is artificially paused, e.g. by no-op schedule */
     final case class Paused(owner: String) extends Status
+    /** Loader is already loading a folder */
     final case class Loading(folder: S3.Folder, stage: Stage) extends Status
 
     def start(folder: S3.Folder): Status =
@@ -99,20 +102,25 @@ object Load {
    * @param config RDB Loader app configuration
    * @param discovery discovered folder to load
    */
-  def load[F[_]: Iglu: JDBC: Logging: Monitoring: MonadThrow: Timer](config: Config[StorageTarget],
-                                                                     setStage: Stage => F[Unit],
-                                                                     discovery: Message[F, DataDiscovery.WithOrigin]): LoaderAction[F, Unit] =
+  def load[F[_]: MonadThrow: Logging: Monitoring: Timer: Iglu: Transaction[*[_], C],
+           C[_]: Monad: Logging: DAO]
+  (config: Config[StorageTarget],
+   setStage: Stage => C[Unit],
+   discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
+
         for {
-          migrations  <- Migration.build[F](redshiftConfig.storage.schema, discovery.data.discovery)
-          _           <- setStage(Stage.MigrationPre).liftA *> migrations.preTransaction
-          transaction  = getTransaction(redshiftConfig, setStage, discovery)(migrations.inTransaction)
-          _           <- retryLoad(transaction)
+          migrations  <- Migration.build[F, C](redshiftConfig.storage.schema, discovery.data.discovery)
+          _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
+          discoveryC   = discovery.mapK(Transaction[F, C].arrowBack)
+          transaction  = getTransaction[C](redshiftConfig, setStage, discoveryC)(migrations.inTransaction)
+          result      <- retryLoad(Transaction[F, C].transact(transaction))
+          _           <- discovery.ack.recoverWith { case e => Logging[F].warning(show"Error during SQS message acknowledge; ${e.toString}") }
+          _           <- result.fold(Monitoring[F].alert, _ => congratulate[F](discovery.data.origin))
         } yield ()
     }
-
 
   /**
    * Run a transaction with all load statements and with in-transaction migrations if necessary
@@ -124,34 +132,32 @@ object Load {
    * @param discovery metadata about batch
    * @param inTransactionMigrations sequence of migration actions such as ALTER TABLE
    *                                that have to run before the batch is loaded
-   * @return post-load action
+   * @return either alert payload in case of an existing folder or unit in case of success
    */
-  def getTransaction[F[_]: JDBC: Logging: Monitoring: Monad: Clock](config: Config[StorageTarget.Redshift], setStage: Stage => F[Unit], discovery: Message[F, DataDiscovery.WithOrigin])
-                                                                   (inTransactionMigrations: LoaderAction[F, Unit]): LoaderAction[F, Unit] =
+  def getTransaction[F[_]: Logging: Monad: DAO](config: Config[StorageTarget.Redshift],
+                                                setStage: Stage => F[Unit],
+                                                discovery: Message[F, DataDiscovery.WithOrigin])
+                                               (inTransactionMigrations: F[Unit]): F[Either[AlertPayload, Unit]] =
     for {
-      _ <- JDBC[F].executeUpdate(Statement.Begin)
-      _ <- setStage(Stage.ManifestCheck).liftA
+      _ <- setStage(Stage.ManifestCheck)
       manifestState <- Manifest.get[F](config.storage.schema, discovery.data.discovery.base)
-      _ <- manifestState match {
+      result <- manifestState match {
         case Some(entry) =>
-          setStage(Stage.Cancelling("Already loaded")).liftA *>
-            Logging[F].warning(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
-            Monitoring[F].alert(AlertPayload.info("Folder is already loaded", entry.meta.base)).liftA *>
-            JDBC[F].executeUpdate(Statement.Abort)
+          val message = s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command"
+          val payload = AlertPayload.info("Folder is already loaded", entry.meta.base).asLeft
+          setStage(Stage.Cancelling("Already loaded")) *>
+            Logging[F].warning(message) *>
+            DAO[F].rollback.as(payload)   // Haven't done anything, but rollback just in case
         case None =>
-          val setLoading: String => F[Unit] = table => setStage(Stage.Loading(table))
-          setStage(Stage.MigrationIn).liftA *>
+          val setLoading: String => F[Unit] =
+            table => setStage(Stage.Loading(table))
+          setStage(Stage.MigrationIn) *>
             inTransactionMigrations *>
             RedshiftLoader.run[F](config, setLoading, discovery.data.discovery) *>
-            setStage(Stage.Committing).liftA *>
-            Manifest.add[F](config.storage.schema, discovery.data.origin) *>
-            JDBC[F].executeUpdate(Statement.Commit) *>
-            congratulate[F](discovery.data.origin).liftA
+            setStage(Stage.Committing) *>
+            Manifest.add[F](config.storage.schema, discovery.data.origin).as(().asRight)
       }
-
-      // With manifest protecting from double-loading it's safer to ack *after* commit
-      _ <- discovery.ack.liftA
-    } yield ()
+    } yield result
 
   // Retry policy
 
@@ -166,16 +172,16 @@ object Load {
    * Because most of errors such connection drops should be happening in in connection acquisition
    * The error handler will also abort the transaction (it should start in the original action again)
    */
-  def retryLoad[F[_]: Monad: JDBC: Logging: Timer, A](fa: LoaderAction[F, A]): LoaderAction[F, A] =
-    retryingOnSomeErrors[A](retryPolicy[F], isWorth, abortAndLog[F])(fa)
+  def retryLoad[F[_]: MonadThrow: Logging: Timer, A](fa: F[A]): F[A] =
+    retryingOnSomeErrors[A](retryPolicy[F], isWorth, log[F])(fa)
 
-  def abortAndLog[F[_]: Monad: JDBC: Logging](e: LoaderError, d: RetryDetails): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(Statement.Abort) *>
-      Logging[F].error(show"$e Transaction aborted. ${JDBC.retriesMessage(d)}").liftA
+  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
+    Logging[F].error(show"${e.toString} Transaction aborted. ${Transaction.retriesMessage(d)}")
 
   /** Check if error is worth retrying */
-  def isWorth(e: LoaderError): Boolean =
+  def isWorth(e: Throwable): Boolean =
     e match {
+//      case _ => true
       case LoaderError.StorageTargetError(message)
         if message.contains("[Amazon](500310) Invalid operation") =>
         // Schema or column does not exist
@@ -186,15 +192,12 @@ object Load {
         false
     }
 
-  private implicit def loaderActionSleep[F[_]: Applicative: Timer]: Sleep[LoaderAction[F, *]] =
-    (delay: FiniteDuration) => Sleep.sleepUsingTimer[F].sleep(delay).liftA
-
-  private def retryPolicy[F[_]: Monad]: RetryPolicy[LoaderAction[F, *]] =
+  private def retryPolicy[F[_]: Monad]: RetryPolicy[F] =
     RetryPolicies
-      .limitRetries[LoaderAction[F, *]](MaxRetries)
+      .limitRetries[F](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
 
-  private def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
+  def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
     loaded: LoaderMessage.ShreddingComplete
   ): F[Unit] = {
     val reportMetrics: F[Unit] =

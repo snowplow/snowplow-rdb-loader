@@ -25,20 +25,20 @@ import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, JDBC}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, Transaction, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
-import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureLogging, PureDAO, PureTransaction}
 
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureJDBC, Pure, PureIglu, PureLogging}
+import org.specs2.mutable.Specification
 
 class MigrationSpec extends Specification {
   "build" should {
     "build Migration with table creation for ShreddedType.Tabular" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val types =
@@ -77,6 +77,8 @@ class MigrationSpec extends Specification {
       )
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        PureTransaction.ArrowBackMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_context/jsonschema/2-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_context_2")),
       )
@@ -88,19 +90,19 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure]("public", input).run
+      val (state, value) = Migration.build[Pure, Pure]("public", input).run
 
       state.getLog must beEqualTo(expected)
       value must beRight.like {
-        case Right(Migration(preTransaction, inTransaction)) =>
+        case Migration(preTransaction, inTransaction) =>
           preTransaction.runS.getLog must beEmpty
           inTransaction.runS.getLog must beEqualTo(expectedMigration)
-        case Left(error) => ko(s"Unexpected error $error")
       }
     }
 
     "ignore atomic schema" in {
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
@@ -140,6 +142,8 @@ class MigrationSpec extends Specification {
       )
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        PureTransaction.ArrowBackMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_event/jsonschema/1-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_event_1")),
       )
@@ -151,13 +155,12 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure]("public", input).run
+      val (state, value) = Migration.build[Pure, Pure]("public", input).run
       state.getLog must beEqualTo(expected)
       value must beRight.like {
-        case Right(Migration(preTransaction, inTransaction)) =>
+        case Migration(preTransaction, inTransaction) =>
           preTransaction.runS.getLog must beEmpty
           inTransaction.runS.getLog must beEqualTo(expectedMigration)
-        case Left(error) => ko(s"Unexpected error $error")
       }
     }
   }
