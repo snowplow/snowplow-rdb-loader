@@ -51,7 +51,7 @@ object RedshiftLoader {
       statements = getStatements(config, discovery)
       _ <- loadFolder[F](statements, setLoading)
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)").liftA
-    } yield vacuum[F](statements) *> analyze[F](statements)
+    } yield ()
 
   /** Perform data-loading for a single run folder */
   def loadFolder[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements, setLoading: String => F[Unit]): LoaderAction[F, Unit] =
@@ -73,34 +73,4 @@ object RedshiftLoader {
     else
       Logging[F].info(s"COPY $dbSchema.events").liftA *>
         JDBC[F].executeUpdate(copy).void
-
-  /**
-   * Return action executing VACUUM statements if there's any vacuum statements,
-   * or noop if no vacuum statements were generated
-   */
-  def analyze[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements): LoaderAction[F, Unit] =
-    statements.analyze match {
-      case Some(analyze) =>
-        for {
-          _ <- JDBC[F].executeTransaction(analyze)
-          _ <- Logging[F].info("ANALYZE executed").liftA
-        } yield ()
-      case None => Logging[F].info("ANALYZE skipped").liftA
-    }
-
-  /**
-   * Return action executing ANALYZE statements if there's any vacuum statements,
-   * or noop if no vacuum statements were generated
-   */
-  def vacuum[F[_]: Monad: Logging: JDBC](statements: RedshiftStatements): LoaderAction[F, Unit] = {
-    statements.vacuum match {
-      case Some(vacuums) =>
-        vacuums.traverse_ {
-          case v @ Statement.Vacuum(tableName) =>
-            Logging[F].info(s"VACUUM $tableName").liftA *>
-              JDBC[F].executeUpdate(v)
-        }
-      case None => Logging[F].info("VACUUM queries skipped").liftA
-    }
-  }
 }

@@ -29,7 +29,7 @@ import cron4s.CronExpr
 import cron4s.circe._
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, ConfigUtils, Region}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common._
 
@@ -42,7 +42,6 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              monitoring: Monitoring,
                                              messageQueue: String,
                                              storage: D,
-                                             steps: Set[Step],
                                              schedules: Schedules)
 
 object Config {
