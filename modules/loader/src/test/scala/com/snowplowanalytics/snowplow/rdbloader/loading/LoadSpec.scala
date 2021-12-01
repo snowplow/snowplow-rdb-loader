@@ -26,10 +26,10 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
-import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{isVacuum, failCommit, isFirstCommit, failVacuum}
+import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
@@ -59,13 +59,9 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
-        LogEntry.Sql(Statement.Begin),
-        LogEntry.Sql(Statement.Analyze("atomic.events")),
-        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
-        LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -90,13 +86,9 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("ACK"),
-        LogEntry.Sql(Statement.Begin),
-        LogEntry.Sql(Statement.Analyze("atomic.events")),
-        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
-        LogEntry.Sql(Statement.Commit)
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -153,12 +145,8 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
         LogEntry.Sql(Statement.Commit),
         LogEntry.Message("TICK REALTIME"),
-        LogEntry.Sql(Statement.Begin),
-        LogEntry.Sql(Statement.Analyze("atomic.events")),
-        LogEntry.Sql(Statement.Analyze("atomic.com_acme_json_context_1")),
-        LogEntry.Sql(Statement.Commit)
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config.copy(steps = Set(Step.Analyze)), LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -186,34 +174,6 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.Abort),
       )
       val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
-
-      result.getLog must beEqualTo(expected)
-    }
-
-    "not retry post-load actions (VACUUM and ANALYZE) if failed" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(predicate = Some(_.toLowerCase.contains("vacuum")))
-      implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init.withExecuteUpdate(isVacuum, failVacuum))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
-
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
-
-      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
-      val expected = List(
-        LogEntry.Sql(Statement.Begin),
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Commit),
-        LogEntry.Message("TICK REALTIME"),
-        LogEntry.Message("VACUUM atomic.events"),
-        LogEntry.Message("Post-loading actions failed, ignoring. Database error: Vacuum failed")
-      )
-      val configWithPostLoad = SpecHelpers.validConfig.copy(steps = Set(Step.Vacuum))
-      val result = Load.load[Pure](configWithPostLoad, LoadSpec.setStageNoOp, message).value.runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -268,16 +228,6 @@ object LoadSpec {
       case _ => false
     }
 
-  def isVacuum(sql: Statement, ts: TestState) =
-    sql match {
-      case Statement.Vacuum(_) =>
-        val _ = ts.getLog
-        true
-      case _ => false
-    }
-
   val failCommit: LoaderAction[Pure, Int] =
     LoaderAction.liftE[Pure, Int](LoaderError.StorageTargetError("Commit failed").asLeft)
-  val failVacuum: LoaderAction[Pure, Int] =
-    LoaderAction.liftE[Pure, Int](LoaderError.StorageTargetError("Vacuum failed").asLeft)
 }
