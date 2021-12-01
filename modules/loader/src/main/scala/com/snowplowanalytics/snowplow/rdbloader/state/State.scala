@@ -58,7 +58,8 @@ case class State(loading: Load.Status,
   def isBusy: Boolean =
     loading match {
       case Load.Status.Idle => false
-      case _ => true
+      case Load.Status.Paused(_) => true
+      case Load.Status.Loading(_, _) => true
     }
 
   def show: String =

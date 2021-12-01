@@ -6,19 +6,17 @@ import cats.{Functor, Monad, MonadError}
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Timer, MonadThrow}
+import cats.effect.{MonadThrow, Timer}
 
 import doobie.Read
 import doobie.implicits.javasql._
 
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 
-import com.snowplowanalytics.snowplow.rdbloader._
-import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, JDBC, AWS, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, AWS, Transaction, Logging}
 
 object Manifest {
 
@@ -62,8 +60,9 @@ object Manifest {
       Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))
     )
 
-  def initialize[F[_]: MonadThrow: Logging: Monitoring: Timer: AWS: JDBC](target: StorageTarget): F[Unit] =
-    Control.withTransaction(setup[F](target.schema)).value.flatMap {
+  def initialize[F[_]: MonadThrow: Logging: Timer: AWS, C[_]: DAO: Monad](target: StorageTarget)
+                                                                         (implicit F: Transaction[F, C]): F[Unit] = {
+    F.transact(setup[C](target.schema)).attempt.flatMap {
       case Right(InitStatus.Created) =>
         Logging[F].info("The manifest table has been created")
       case Right(InitStatus.Migrated) =>
@@ -72,10 +71,11 @@ object Manifest {
         Monad[F].unit
       case Left(error) =>
         Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
-          MonadError[F, Throwable].raiseError(new IllegalStateException(error.show))
+          MonadError[F, Throwable].raiseError(new IllegalStateException(error.toString))
     }
+  }
 
-  def setup[F[_]: Monad: JDBC](schema: String): LoaderAction[F, InitStatus] =
+  def setup[F[_]: Monad: DAO](schema: String): F[InitStatus] =
     for {
       exists <- Control.tableExists[F](schema, Name)
       status <- if (exists) for {
@@ -85,26 +85,25 @@ object Manifest {
           Control.renameTable[F](schema, Name, LegacyName) *>
             create[F](schema).as[InitStatus](InitStatus.Migrated)
         else
-          LoaderAction.pure[F, InitStatus](InitStatus.NoChanges)
+          Monad[F].pure[InitStatus](InitStatus.NoChanges)
       } yield status else create[F](schema).as(InitStatus.Created)
       _ <- status match {
         case InitStatus.Migrated | InitStatus.Created =>
-          JDBC[F].executeUpdate(Statement.CommentOn(CommentOn(s"$schema.$Name", "0.2.0")))
+          DAO[F].executeUpdate(Statement.CommentOn(CommentOn(s"$schema.$Name", "0.2.0")))
         case _ =>
-          LoaderAction.unit[F]
+          Monad[F].unit
       }
     } yield status
 
-  def add[F[_]: Functor: JDBC](schema: String, message: LoaderMessage.ShreddingComplete): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(Statement.ManifestAdd(schema, message)).void
+  def add[F[_]: DAO: Functor](schema: String, message: LoaderMessage.ShreddingComplete): F[Unit] =
+    DAO[F].executeUpdate(Statement.ManifestAdd(schema, message)).void
 
-  def get[F[_]: Functor: JDBC](schema: String, base: S3.Folder): LoaderAction[F, Option[Entry]] = {
-    JDBC[F].executeQueryOption[Entry](Statement.ManifestGet(schema, base))(Entry.entryRead)
-  }
+  def get[F[_]: DAO](schema: String, base: S3.Folder): F[Option[Entry]] =
+    DAO[F].executeQueryOption[Entry](Statement.ManifestGet(schema, base))(Entry.entryRead)
 
   /** Create manifest table */
-  def create[F[_]: Functor: JDBC](schema: String): LoaderAction[F, Unit] =
-    JDBC[F].executeUpdate(Statement.CreateTable(getManifestDef(schema))).void
+  def create[F[_]: DAO: Functor](schema: String): F[Unit] =
+    DAO[F].executeUpdate(Statement.CreateTable(getManifestDef(schema))).void
 
   case class Entry(ingestion: Instant, meta: LoaderMessage.ShreddingComplete)
 
