@@ -59,8 +59,6 @@ object Load {
     final case class Loading(table: String) extends Stage
     /** Adding manifest item, acking SQS comment. Sixth stage  */
     final case object Committing extends Stage
-    /** Post-load procedures, such as VACUUM and ANALYZE. Out of loading */
-    final case object PostLoad extends Stage
     /** Abort the loading. Can appear after any stage */
     final case class Cancelling(reason: String) extends Stage
 
@@ -71,7 +69,6 @@ object Load {
         case ManifestCheck => "manifest check"
         case MigrationIn => "in-transaction migrations"
         case Loading(table) => show"copying into $table table"
-        case PostLoad => "post-loading procedures"
         case Committing => "committing"
         case Cancelling(reason) => show"cancelling because of $reason"
       }
@@ -109,11 +106,10 @@ object Load {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
         for {
-          migrations <- Migration.build[F](redshiftConfig.storage.schema, discovery.data.discovery)
-          _          <- setStage(Stage.MigrationPre).liftA *> migrations.preTransaction
-          transaction = getTransaction(redshiftConfig, setStage, discovery)(migrations.inTransaction)
-          postLoad   <- retryLoad(transaction)
-          _          <- postLoad.recoverWith { case error => Logging[F].info(s"Post-loading actions failed, ignoring. ${error.show}").liftA }
+          migrations  <- Migration.build[F](redshiftConfig.storage.schema, discovery.data.discovery)
+          _           <- setStage(Stage.MigrationPre).liftA *> migrations.preTransaction
+          transaction  = getTransaction(redshiftConfig, setStage, discovery)(migrations.inTransaction)
+          _           <- retryLoad(transaction)
         } yield ()
     }
 
@@ -131,33 +127,31 @@ object Load {
    * @return post-load action
    */
   def getTransaction[F[_]: JDBC: Logging: Monitoring: Monad: Clock](config: Config[StorageTarget.Redshift], setStage: Stage => F[Unit], discovery: Message[F, DataDiscovery.WithOrigin])
-                                                                   (inTransactionMigrations: LoaderAction[F, Unit]): LoaderAction[F, LoaderAction[F, Unit]] =
+                                                                   (inTransactionMigrations: LoaderAction[F, Unit]): LoaderAction[F, Unit] =
     for {
       _ <- JDBC[F].executeUpdate(Statement.Begin)
       _ <- setStage(Stage.ManifestCheck).liftA
       manifestState <- Manifest.get[F](config.storage.schema, discovery.data.discovery.base)
-      postLoad <- manifestState match {
+      _ <- manifestState match {
         case Some(entry) =>
-          val noPostLoad = LoaderAction.unit[F]
           setStage(Stage.Cancelling("Already loaded")).liftA *>
             Logging[F].warning(s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command").liftA *>
             Monitoring[F].alert(AlertPayload.info("Folder is already loaded", entry.meta.base)).liftA *>
-            JDBC[F].executeUpdate(Statement.Abort).as(noPostLoad)
+            JDBC[F].executeUpdate(Statement.Abort)
         case None =>
           val setLoading: String => F[Unit] = table => setStage(Stage.Loading(table))
           setStage(Stage.MigrationIn).liftA *>
             inTransactionMigrations *>
-            RedshiftLoader.run[F](config, setLoading, discovery.data.discovery) <*
-            setStage(Stage.Committing).liftA <*
-            Manifest.add[F](config.storage.schema, discovery.data.origin) <*
-            JDBC[F].executeUpdate(Statement.Commit) <*
+            RedshiftLoader.run[F](config, setLoading, discovery.data.discovery) *>
+            setStage(Stage.Committing).liftA *>
+            Manifest.add[F](config.storage.schema, discovery.data.origin) *>
+            JDBC[F].executeUpdate(Statement.Commit) *>
             congratulate[F](discovery.data.origin).liftA
       }
 
       // With manifest protecting from double-loading it's safer to ack *after* commit
       _ <- discovery.ack.liftA
-      _ <- setStage(Stage.PostLoad).liftA
-    } yield postLoad
+    } yield ()
 
   // Retry policy
 

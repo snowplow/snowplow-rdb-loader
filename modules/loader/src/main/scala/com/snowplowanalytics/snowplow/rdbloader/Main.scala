@@ -73,7 +73,7 @@ object Main extends IOApp {
     // Remove them from the codebase properly.
     Stream.eval_(Manifest.initialize[F](cli.config.storage)) ++
       DataDiscovery
-        .discover[F](cli.config.copy(steps = Set.empty), control.incrementMessages)
+        .discover[F](cli.config, control.incrementMessages)
         .pauseWhen[F](control.isBusy)
         .evalMap { discovery =>
           val prepare = for {
@@ -83,7 +83,7 @@ object Main extends IOApp {
           } yield ()
           
           val loading: F[Unit] = prepare.use { _ =>
-            load[F](cli.config.copy(steps = Set.empty), control.setStage, discovery).rethrowT *> control.incrementLoaded
+            load[F](cli.config, control.setStage, discovery).rethrowT *> control.incrementLoaded
           }
 
           // Catches both connection acquisition and loading errors
