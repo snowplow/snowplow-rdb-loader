@@ -16,9 +16,9 @@ import cats.implicits._
 
 import cats.effect.{Timer, Sync, ConcurrentEffect}
 
-import fs2.{ Stream, Pipe }
+import fs2.{Stream, Pipe}
 
-import blobstore.s3.{S3Store, S3Path}
+import blobstore.s3.{S3Path, S3Store}
 
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
@@ -33,7 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 
 
-trait AWS[F[_]] {
+trait AWS[F[_]] { self =>
 
   /**
    * List S3 folder

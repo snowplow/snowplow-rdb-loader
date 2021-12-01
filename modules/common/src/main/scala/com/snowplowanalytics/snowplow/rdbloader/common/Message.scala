@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import scala.concurrent.duration.FiniteDuration
 
+import cats.~>
+
 /**
   * Generic entity pulled from a message queue
   *
@@ -23,4 +25,7 @@ import scala.concurrent.duration.FiniteDuration
  final case class Message[F[_], A](data: A, ack: F[Unit], extend: FiniteDuration => F[Unit]) {
   def map[B](f: A => B): Message[F, B] =
     Message(f(data), ack, extend)
+
+  def mapK[G[_]](arrow: F ~> G): Message[G, A] =
+    Message(data, arrow(ack), duration => arrow(extend(duration)))
 }

@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import cats.~>
 import cats.implicits._
 import cats.effect.{Clock, Async, Resource}
 
@@ -34,9 +35,13 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Flattening
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
-trait Iglu[F[_]] {
+trait Iglu[F[_]] { self =>
   /** Retrieve list of schemas from Iglu Server */
   def getSchemas(vendor: String, name: String, model: Int): F[Either[LoaderError, SchemaList]]
+
+  def mapK[G[_]](arrow: F ~> G): Iglu[G] =
+    (vendor: String, name: String, model: Int) =>
+      arrow(self.getSchemas(vendor, name, model))
 }
 
 object Iglu {
