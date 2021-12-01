@@ -24,7 +24,7 @@ import cats.effect.IO
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, RegionSpec}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, Step}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
 import cron4s.Cron
 
@@ -40,7 +40,6 @@ class ConfigSpec extends Specification {
         exampleMonitoring,
         exampleQueueName,
         exampleStorage,
-        exampleSteps,
         exampleSchedules
       )
       result must beRight(expected)
@@ -54,7 +53,6 @@ class ConfigSpec extends Specification {
         emptyMonitoring,
         exampleQueueName,
         exampleStorage,
-        Set.empty,
         emptySchedules
       )
       result must beRight(expected)
@@ -98,7 +96,6 @@ object ConfigSpec {
     10,
     None
   )
-  val exampleSteps: Set[Step] = Set()
   val exampleSchedules: Config.Schedules = Config.Schedules(List(
     Config.Schedule("Maintenance window", Cron.unsafeParse("0 0 12 * * ?"), 1.hour)
   ))

@@ -58,12 +58,6 @@ object Statement {
   case object Abort extends Statement {
     def toFragment: Fragment = sql"ABORT"
   }
-  case class Analyze(tableName: String) extends Statement {
-    def toFragment: Fragment = sql"ANALYZE ${Fragment.const0(tableName)}"
-  }
-  case class Vacuum(tableName: String) extends Statement {
-    def toFragment: Fragment = sql"VACUUM SORT ONLY ${Fragment.const0(tableName)}"
-  }
 
   // Alerting
 

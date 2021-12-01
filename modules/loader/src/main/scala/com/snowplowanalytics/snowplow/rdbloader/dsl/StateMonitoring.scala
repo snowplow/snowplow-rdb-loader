@@ -55,8 +55,6 @@ object StateMonitoring {
         current.loading match {
           case Load.Status.Idle =>
             Monad[F].unit
-          case Load.Status.Loading(_, Load.Stage.PostLoad) =>
-            Monad[F].unit     // Message is already ack'ed
           case _ if current.loading == previous =>
             raise(current.loading, current.updated) >> again
           case _ =>
