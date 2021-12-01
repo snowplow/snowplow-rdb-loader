@@ -19,49 +19,54 @@ import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
 
 import cats.effect.Timer
-import cats.syntax.either._
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers, LoaderAction}
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, JDBC, Logging, Monitoring}
-import com.snowplowanalytics.snowplow.rdbloader.loading.LoadSpec.{failCommit, isFirstCommit}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Transaction, Iglu, Logging, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
+
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureJDBC, PureLogging, PureMonitoring, PureOps, PureTimer, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureMonitoring, PureTransaction, PureLogging, PureTimer}
 
 import org.specs2.mutable.Specification
 
 class LoadSpec extends Specification {
+  import LoadSpec.{isBeforeFirstCommit, failCommit, arn}
+
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
-      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.NoTransactionMessage,   // Migration.build
+        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
+        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Commit),
-        LogEntry.Message("TICK REALTIME"),
+        PureTransaction.CommitMessage,
+        LogEntry.Message("TICK REALTIME"),      // congratulate
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -69,26 +74,30 @@ class LoadSpec extends Specification {
     "perform COMMIT after writing to manifest, but before ack" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.modify(_.log("ACK")), LoadSpec.extendNoOp)
 
-      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.NoTransactionMessage,   // Migration.build
+        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
+        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Commit),
-        LogEntry.Message("TICK REALTIME"),
+        PureTransaction.CommitMessage,
         LogEntry.Message("ACK"),
+        LogEntry.Message("TICK REALTIME"),      // congratulate
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -96,25 +105,29 @@ class LoadSpec extends Specification {
     "perform COMMIT even if ack failed with RuntimeException" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.fail[Unit](new RuntimeException("Failed ack")), LoadSpec.extendNoOp)
+      val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.fail[Unit](new RuntimeException()), LoadSpec.extendNoOp)
 
-      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.NoTransactionMessage,   // Migration.build
+        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
+        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Commit),
-        LogEntry.Message("TICK REALTIME")
+        PureTransaction.CommitMessage,
+        LogEntry.Message("TICK REALTIME")       // congratulate
       )
 
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -122,31 +135,34 @@ class LoadSpec extends Specification {
     "abort, sleep and start transaction again if first commit failed" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.init.withExecuteUpdate(isFirstCommit, failCommit))
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
-      val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.NoTransactionMessage,   // Migration.build
+        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
+        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Abort),
+        PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.Commit),
+        PureTransaction.CommitMessage,
         LogEntry.Message("TICK REALTIME"),
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -162,18 +178,25 @@ class LoadSpec extends Specification {
 
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val monitoring: Monitoring[Pure] = PureMonitoring.interpreter
-      implicit val jdbc: JDBC[Pure] = PureJDBC.interpreter(PureJDBC.custom(getResult))
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val message = Message(LoadSpec.dataDiscoveryWithOrigin, Pure.unit, LoadSpec.extendNoOp)
 
       val expected = List(
-        LogEntry.Sql(Statement.Begin),
+        PureTransaction.NoTransactionMessage,   // Migration.build
+        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
+        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.Abort),
+        PureTransaction.RollbackMessage,
+        PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
+                                                //       to throw an ad-hoc exception within a transaction
       )
-      val result = Load.load[Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).value.runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -194,6 +217,8 @@ object LoadSpec {
     ),
     Compression.Gzip
   )
+
+  val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
 
   val extendNoOp: FiniteDuration => Pure[Unit] =
     _ => Pure.unit
@@ -222,12 +247,12 @@ object LoadSpec {
     ),
   )
 
-  def isFirstCommit(sql: Statement, ts: TestState) =
+  def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.Commit => ts.getLog.length == 5
+      case Statement.ManifestAdd(_, _) => ts.getLog.length == 7
       case _ => false
     }
 
-  val failCommit: LoaderAction[Pure, Int] =
-    LoaderAction.liftE[Pure, Int](LoaderError.StorageTargetError("Commit failed").asLeft)
+  val failCommit: Pure[Int] =
+    Pure.fail(LoaderError.StorageTargetError("Commit failed"))
 }

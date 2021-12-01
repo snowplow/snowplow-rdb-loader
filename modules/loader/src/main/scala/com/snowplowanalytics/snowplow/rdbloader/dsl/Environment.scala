@@ -20,6 +20,8 @@ import cats.implicits._
 import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
+import doobie.ConnectionIO
+
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
@@ -39,7 +41,7 @@ class Environment[F[_]](cache: Cache[F],
                         monitoring: Monitoring[F],
                         iglu: Iglu[F],
                         aws: AWS[F],
-                        jdbc: JDBC[F],
+                        transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
                         val blocker: Blocker) {
   implicit val cacheF: Cache[F] = cache
@@ -47,7 +49,10 @@ class Environment[F[_]](cache: Cache[F],
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
-  implicit val jdbcF: JDBC[F] = jdbc
+  implicit val transactionF: Transaction[F, ConnectionIO] = transaction
+
+  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO
+  implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
 
   def control: Control[F] =
     Control(state)
@@ -85,8 +90,8 @@ object Environment {
       //       we'd need to integrate its lifecycle into Pool or maintain
       //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
-      jdbc <- JDBC.interpreter[F](cli.config.storage, cli.dryRun, blocker)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, blocker)
+      transaction <- Transaction.interpreter[F](cli.config.storage, cli.dryRun, blocker)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, blocker)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
