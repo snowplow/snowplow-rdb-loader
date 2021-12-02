@@ -16,11 +16,11 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.badrows.{Processor, BadRow}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Shredded
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sources.{Parsed, ParsedF}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated.BuildInfo
@@ -40,10 +40,16 @@ object Processing {
                                                               config: ShredderConfig.Stream): F[Unit] = {
     val isTabular: SchemaKey => Boolean =
       Common.isTabular(config.formats)
+    val isTabularOpt: Option[SchemaKey => Boolean] = {
+      config.formats match {
+        case ShredderConfig.Formats.WideRow => None
+        case _: ShredderConfig.Formats.Shred => Some(isTabular)
+      }
+    }
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =
-      getOnComplete(config.output.compression, isTabular, config.output.path, resources.awsQueue, resources.windows)
+      getOnComplete(config.output.compression, isTabularOpt, config.output.path, resources.awsQueue, resources.windows)
     val sinkId: Window => F[Int] =
       getSinkId(resources.windows)
 
@@ -51,7 +57,7 @@ object Processing {
       .interruptWhen(resources.halt)
       .through(windowing)
       .evalTap(State.update(resources.windows))
-      .through(shred[F](resources.iglu, isTabular, resources.atomicLengths))
+      .through(shred[F](resources.iglu, isTabular, resources.atomicLengths, config.formats))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
       .compile
@@ -63,7 +69,7 @@ object Processing {
    * The callback sends an SQS message and modifies the global state to reflect closed window
    */
   def getOnComplete[F[_]: Sync: Clock](compression: Compression,
-                                       isTabular: SchemaKey => Boolean,
+                                       isTabular: Option[SchemaKey => Boolean],
                                        root: URI,
                                        awsQueue: AWSQueue[F],
                                        state: State.Windows[F])
@@ -115,31 +121,40 @@ object Processing {
             s3.getSink[F](bucket, prefix, config.compression, sinkCount, instanceId) _
           case _ =>
             val error = new IllegalArgumentException(s"Cannot create sink for $path. Possible options are file:// and s3://")
-            (_: Window) => (_: Shredded.Path) =>
-              (_: Stream[F, Shredded.Data]) =>
+            (_: Window) => (_: Transformed.Path) =>
+              (_: Stream[F, Transformed.Data]) =>
                 Stream.raiseError[F](error)
         }
 
-        generic.Partitioned.write[F, Window, Shredded.Path, Shredded.Data](dataSink, onComplete)
+        generic.Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
     }
 
   def shred[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
                                             isTabular: SchemaKey => Boolean,
-                                            atomicLengths: Map[String, Int]): Pipe[F, Windowed[F, Parsed], Windowed[F, (Shredded.Path, Shredded.Data)]] = {
+                                            atomicLengths: Map[String, Int],
+                                            formats: ShredderConfig.Formats): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
     _.flatMap { record =>
       val shreddedRecord = record.traverse { parsed =>
         EitherT
           .fromEither[F](parsed)
-          .flatMap(Shredded.fromEvent(iglu, isTabular, atomicLengths, Application))
+          .flatMap { e =>
+            formats match {
+              case _: ShredderConfig.Formats.Shred =>
+                Transformed.shredEvent(iglu, isTabular, atomicLengths, Application)(e)
+              case ShredderConfig.Formats.WideRow =>
+                EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(e)))
+            }
+          }
           .value
+          .map(_.leftMap(Transformed.transformBadRow(_, formats)))
       }
       Stream.eval(shreddedRecord).flatMap {
         case Record.Data(window, checkpoint, Right(shredded)) =>
           Record.mapWithLast(shredded)(s => Record.Data(window, None, s.split), s => Record.Data(window, checkpoint, s.split))
         case Record.Data(window, checkpoint, Left(badRow)) =>
-          Stream.emit(Record.Data(window, checkpoint, Shredded.fromBadRow(badRow).split))
+          Stream.emit(Record.Data(window, checkpoint, badRow.split))
         case Record.EndWindow(window, next, checkpoint) =>
-          Stream.emit(Record.EndWindow[F, Window, (Shredded.Path, Shredded.Data)](window, next, checkpoint))
+          Stream.emit(Record.EndWindow[F, Window, (Transformed.Path, Transformed.Data)](window, next, checkpoint))
       }
     }
   }

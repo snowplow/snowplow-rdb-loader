@@ -41,7 +41,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Shredded, WideRow}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
@@ -142,35 +142,26 @@ class ShredJob(@transient val spark: SparkSession,
       ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator)(event.inventory.map(_.schemaKey))
       timestampsAccumulator.add(event)
       eventsCounter.add(1L)
-      List(WideRow(isGood = true, event.toJson(true).noSpaces).text.asLeft)
+      List(Transformed.wideRowEvent(event).toTuple)
     }
 
     val shredGoodTransform = (event: Event) =>
-      Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
+      Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
         case Right(shredded) =>
           ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, Some(isTabular))(event.inventory.map(_.schemaKey))
           timestampsAccumulator.add(event)
           eventsCounter.add(1L)
-          shredded.map(_.text.asRight)
+          shredded.map(_.toTuple)
         case Left(badRow) =>
-          List(Shredded.fromBadRow(badRow).text.asRight)
+          List(Transformed.transformBadRow(badRow, config.formats).toTuple)
       }
-
-    val wideRowBadTransform = (badRow: BadRow) =>
-      WideRow(isGood = false, badRow.compact).text.asLeft
-
-    val shredBadTransform = (badRow: BadRow) =>
-      Shredded.fromBadRow(badRow).text.asRight
 
     val goodTransform = config.formats match {
       case Formats.WideRow => wideRowGoodTransform
       case _: Formats.Shred => shredGoodTransform
     }
-
-    val badTransform = config.formats match {
-      case Formats.WideRow => wideRowBadTransform
-      case _: Formats.Shred => shredBadTransform
-    }
+    val badTransform = (badRow: BadRow) =>
+      Transformed.transformBadRow(badRow, config.formats).toTuple
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates

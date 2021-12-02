@@ -18,7 +18,7 @@ import java.time.Instant
 import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Shredded}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Transformed}
 
 object Serialization {
   val classesToRegister: Array[Class[_]] = Array(
@@ -29,8 +29,7 @@ object Serialization {
     classOf[Event],
     classOf[Hierarchy],
     classOf[Instant],
-    classOf[Array[Shredded]],
-    classOf[Shredded.Tabular],
+    classOf[Array[Transformed]],
     classOf[UUID],
     Class.forName("com.snowplowanalytics.iglu.core.SchemaVer$Full"),
     Class.forName("io.circe.JsonObject$LinkedHashMapJsonObject"),

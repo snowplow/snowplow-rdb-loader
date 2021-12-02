@@ -41,12 +41,17 @@ object Completion {
    * @param state all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: Sync](compression: Compression,
-                              isTabular: SchemaKey => Boolean,
+                              isTabularOpt: Option[SchemaKey => Boolean],
                               root: URI,
                               awsQueue: AWSQueue[F])
                              (window: Window, state: State): F[Unit] = {
     val shreddedTypes: List[ShreddedType] = state.types.toList.map { key =>
-      if (isTabular(key)) ShreddedType(key, Format.TSV) else ShreddedType(key, Format.JSON)
+      isTabularOpt match {
+        case None => ShreddedType(key, Format.WIDEROW)
+        case Some(isTabular) =>
+          if (isTabular(key)) ShreddedType(key, Format.TSV)
+          else ShreddedType(key, Format.JSON)
+      }
     }
     for {
       timestamps <- Clock[F].instantNow.map { now =>
