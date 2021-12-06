@@ -96,5 +96,20 @@
       # Path to shredded archive
       "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
     }
+  },
+
+  # Additional backlog of recently failed folders that could be automatically retried
+  # Retry Queue saves a failed folder and then re-reads the info from shredding_complete S3 file
+  "retryQueue": {
+    # How often batch of failed folders should be pulled into a discovery queue
+    "period": "30 minutes",
+    # How many failures should be kept in memory
+    # After the limit is reached new failures are dropped
+    "size": 64,
+    # How many attempt to make for each folder
+    # After the limit is reached new failures are dropped
+    "maxAttempts": 3,
+    # Artificial pause after each failed folder being added to the queue
+    "interval": "5 seconds"
   }
 }

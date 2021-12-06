@@ -37,6 +37,7 @@ object SpecHelpers {
     ConfigSpec.exampleJsonPaths,
     ConfigSpec.exampleMonitoring,
     ConfigSpec.exampleQueueName,
+    ConfigSpec.exampleRetryQueue,
     ConfigSpec.exampleStorage,
     ConfigSpec.exampleSchedules,
   )

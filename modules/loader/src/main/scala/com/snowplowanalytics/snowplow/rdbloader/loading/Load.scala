@@ -104,22 +104,19 @@ object Load {
   def load[F[_]: MonadThrow: Logging: Monitoring: Timer: Iglu: Transaction[*[_], C],
            C[_]: Monad: Logging: DAO]
   (config: Config[StorageTarget],
-   setStage: Stage => F[Unit],
+   setStage: Stage => C[Unit],
    discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
-        val setStageC: Stage => C[Unit] =
-          stage => Transaction[F, C].arrowBack(setStage(stage))
 
         for {
           migrations  <- Migration.build[F, C](redshiftConfig.storage.schema, discovery.data.discovery)
-          _           <- Transaction[F, C].run(setStageC(Stage.MigrationPre) *> migrations.preTransaction)
+          _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
           discoveryC   = discovery.mapK(Transaction[F, C].arrowBack)
-          transaction  = getTransaction[C](redshiftConfig, setStageC, discoveryC)(migrations.inTransaction)
-          fail         = failTransaction[F](discovery, setStage)(_)
-          result      <- retryLoad(Transaction[F, C].transact(transaction)).handleErrorWith(fail)
-          _           <- discovery.ack.recoverWith { case e => Logging[F].warning(show"Error during SQS message acknowledge; ${e.toString}") }
+          transaction  = getTransaction[C](redshiftConfig, setStage, discoveryC)(migrations.inTransaction)
+          result      <- retryLoad(Transaction[F, C].transact(transaction))
+          _           <- discovery.ack
           _           <- result.fold(Monitoring[F].alert, _ => congratulate[F](discovery.data.origin))
         } yield ()
     }
@@ -127,10 +124,9 @@ object Load {
   /**
    * Run a transaction with all load statements and with in-transaction migrations if necessary
    * and acknowledge the discovery message after transaction is successful.
-   * If successful it returns a post-load action, such as VACUUM and ANALYZE.
-   * If the main transaction fails it will be retried several times by a caller,
-   * ff post-load action fails - we can ignore it
+   * If the main transaction fails it will be retried several times by a caller
    * @param config DB information
+   * @param setStage function to report current loading status to global state
    * @param discovery metadata about batch
    * @param inTransactionMigrations sequence of migration actions such as ALTER TABLE
    *                                that have to run before the batch is loaded
@@ -189,24 +185,11 @@ object Load {
       .limitRetries[F](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
 
-  def failTransaction[F[_]: Logging: Monad](discovery: Message[F, DataDiscovery.WithOrigin],
-                                            setStage: Stage => F[Unit])
-                                           (error: Throwable): F[Either[AlertPayload, Unit]] = {
-    val message = s"Transaction aborted. ${error.getMessage}"
-    val alert = AlertPayload.warn(message, discovery.data.origin.base)
-    setStage(Stage.Cancelling(message)) *>
-      Logging[F].error(error)("Transaction aborted").as(alert.asLeft)
-  }
-
-  def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
-    loaded: LoaderMessage.ShreddingComplete
-  ): F[Unit] = {
-    val reportMetrics: F[Unit] =
-      for {
-        metrics <- Metrics.getMetrics[F](loaded)
-        _ <- Monitoring[F].reportMetrics(metrics)
-        _ <- Logging[F].info(metrics.toHumanReadableString)
-      } yield ()
-    Logging[F].info(s"Folder ${loaded.base} loaded successfully") >> reportMetrics
-  }
+  def congratulate[F[_]: Clock: Monad: Logging: Monitoring](loaded: LoaderMessage.ShreddingComplete): F[Unit] =
+    for {
+      _       <- Logging[F].info(s"Folder ${loaded.base} loaded successfully")
+      metrics <- Metrics.getMetrics[F](loaded)
+      _       <- Monitoring[F].reportMetrics(metrics)
+      _       <- Logging[F].info(metrics.toHumanReadableString)
+    } yield ()
 }

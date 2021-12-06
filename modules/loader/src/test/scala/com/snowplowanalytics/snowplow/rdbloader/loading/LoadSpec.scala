@@ -120,8 +120,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        PureTransaction.CommitMessage,
-        LogEntry.Message("TICK REALTIME")       // congratulate
+        PureTransaction.CommitMessage
       )
 
       val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, message).runS
