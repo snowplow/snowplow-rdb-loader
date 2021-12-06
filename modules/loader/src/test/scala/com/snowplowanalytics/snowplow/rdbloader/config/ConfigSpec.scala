@@ -39,8 +39,9 @@ class ConfigSpec extends Specification {
         exampleJsonPaths,
         exampleMonitoring,
         exampleQueueName,
+        exampleRetryQueue,
         exampleStorage,
-        exampleSchedules
+        exampleSchedules,
       )
       result must beRight(expected)
     }
@@ -52,6 +53,7 @@ class ConfigSpec extends Specification {
         None,
         emptyMonitoring,
         exampleQueueName,
+        None,
         exampleStorage,
         emptySchedules
       )
@@ -98,6 +100,9 @@ object ConfigSpec {
   )
   val exampleSchedules: Config.Schedules = Config.Schedules(List(
     Config.Schedule("Maintenance window", Cron.unsafeParse("0 0 12 * * ?"), 1.hour)
+  ))
+  val exampleRetryQueue: Option[Config.RetryQueue] = Some(Config.RetryQueue(
+    30.minutes, 64, 3, 5.seconds
   ))
   val emptySchedules: Config.Schedules = Config.Schedules(Nil)
 

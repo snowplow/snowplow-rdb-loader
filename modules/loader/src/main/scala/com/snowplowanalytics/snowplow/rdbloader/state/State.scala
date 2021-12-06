@@ -15,12 +15,14 @@ package com.snowplowanalytics.snowplow.rdbloader.state
 import java.time.Instant
 
 import cats.implicits._
-import cats.effect.{ Concurrent, Clock }
+
+import cats.effect.{Concurrent, Clock}
 
 import fs2.concurrent.SignallingRef
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
+import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
 
 /**
  * Primary state of the loader
@@ -40,6 +42,7 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 case class State(loading: Load.Status,
                  updated: Instant,
                  attempts: Int,
+                 failures: Failures,
                  loaded: Int,
                  messages: Int) {
 
@@ -74,6 +77,6 @@ object State {
   /** Initiate state for a fresh app */
   def mk[F[_]: Concurrent: Clock]: F[SignallingRef[F, State]] =
     Clock[F].instantNow.flatMap { now =>
-      SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, 0, 0))
+      SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, Map.empty, 0, 0))
     }
 }

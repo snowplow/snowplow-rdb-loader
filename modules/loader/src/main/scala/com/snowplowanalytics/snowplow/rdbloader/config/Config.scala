@@ -41,6 +41,7 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              jsonpaths: Option[S3.Folder],
                                              monitoring: Monitoring,
                                              messageQueue: String,
+                                             retryQueue: Option[RetryQueue],
                                              storage: D,
                                              schedules: Schedules)
 
@@ -66,6 +67,7 @@ object Config {
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
   final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration])
+  final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
 
 
   /**
@@ -121,6 +123,9 @@ object Config {
 
     implicit val monitoringDecoder: Decoder[Monitoring] =
       deriveDecoder[Monitoring]
+
+    implicit val retryQueueDecoder: Decoder[RetryQueue] =
+      deriveDecoder[RetryQueue]
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]]
