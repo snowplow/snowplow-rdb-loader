@@ -12,16 +12,19 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.state
 
-import cats.{ Monad, Functor }
+import cats.{Functor, Monad}
 import cats.implicits._
 
-import cats.effect.{ Clock, Resource }
+import cats.effect.{Resource, Clock}
 
 import fs2.Stream
 import fs2.concurrent.Signal
 
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
 
 /** 
  * A single set of mutable objects and functions to manipulate them
@@ -58,6 +61,17 @@ case class Control[F[_]](private val state: State.Ref[F]) {
             throw new IllegalStateException(s"Cannot set $stage stage while loading is Idle. Current state is $original")
         }
       }
+    }
+
+  /**
+   * Add a failure into failure queue
+   * @return true if the folder has been added or false if folder has been dropped
+   *         (too many attempts to load or too many stored failures)
+   */
+  def addFailure(config: Option[Config.RetryQueue])(base: S3.Folder)(error: Throwable)(implicit C: Clock[F], F: Monad[F]): F[Boolean] =
+    config match {
+      case Some(config) => Retries.addFailure[F](config, state)(base, error)
+      case None => Monad[F].pure(false)
     }
 
   def makePaused(implicit F: Monad[F], C: Clock[F], L: Logging[F]): MakePaused[F] =

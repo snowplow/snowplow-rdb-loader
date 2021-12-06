@@ -21,6 +21,9 @@ object PureAWS {
     def sinkS3(path: Key, overwrite: Boolean): Pipe[Pure, Byte, Unit] =
       in => in.map(_ => ())
 
+    def readKey(path: Key): Pure[Option[String]] =
+      Pure.pure(None)
+
     def keyExists(key: Key): Pure[Boolean] =
       Pure.pure(results.keyExists(key))
 

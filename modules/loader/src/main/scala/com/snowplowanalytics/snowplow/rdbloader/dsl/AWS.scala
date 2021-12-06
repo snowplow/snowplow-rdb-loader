@@ -18,11 +18,11 @@ import cats.effect.{Timer, Sync, ConcurrentEffect}
 
 import fs2.{Stream, Pipe}
 
-import blobstore.s3.{S3Path, S3Store}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Key
 
+import blobstore.s3.{S3Path, S3Store}
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.s3.S3AsyncClient
-
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder
 import com.amazonaws.services.simplesystemsmanagement.model.{GetParameterRequest, AWSSimpleSystemsManagementException}
 
@@ -41,6 +41,8 @@ trait AWS[F[_]] { self =>
   def listS3(bucket: S3.Folder, recursive: Boolean): Stream[F, S3.BlobObject]
 
   def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
+
+  def readKey(path: S3.Key): F[Option[String]]
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): F[Boolean]
@@ -70,6 +72,17 @@ object AWS {
     def getKey(path: S3Path): S3.BlobObject = {
       val key = S3.Key.coerce(s"s3://${path.bucket}/${path.key}")
       S3.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
+    }
+
+    def readKey(path: Key): F[Option[String]] = {
+      val (bucket, s3Key) = S3.splitS3Key(path)
+      client
+        .get(S3Path(bucket, s3Key, None), 1024)
+        .compile
+        .to(Array)
+        .map(array => new String(array))
+        .attempt
+        .map(_.toOption)
     }
 
     def listS3(folder: S3.Folder, recursive: Boolean): Stream[F, S3.BlobObject] = {
