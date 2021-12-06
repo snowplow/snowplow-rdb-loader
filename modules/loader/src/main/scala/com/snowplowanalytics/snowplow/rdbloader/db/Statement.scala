@@ -58,6 +58,9 @@ object Statement {
   case object Abort extends Statement {
     def toFragment: Fragment = sql"ABORT"
   }
+  case object Select1 extends Statement {
+    def toFragment: Fragment = sql"SELECT 1"
+  }
 
   // Alerting
 
