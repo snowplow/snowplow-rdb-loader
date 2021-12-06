@@ -82,9 +82,10 @@ object ConfigSpec {
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
     None,
-    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days)))
+    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days))),
+    Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
-  val emptyMonitoring = Config.Monitoring(None, None, None, None, None)
+  val emptyMonitoring = Config.Monitoring(None, None, None, None, None, None)
   val exampleQueueName = "test-queue"
   val exampleStorage = StorageTarget.Redshift(
     "redshift.amazonaws.com",
