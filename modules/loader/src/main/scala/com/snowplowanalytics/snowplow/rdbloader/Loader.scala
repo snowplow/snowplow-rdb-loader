@@ -22,7 +22,7 @@ import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
@@ -51,6 +51,8 @@ object Loader {
       FolderMonitoring.run[C, F](config.monitoring.folders, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
+    val healthCheck =
+      HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
       loadStream[F, C](config, control)
 
@@ -58,6 +60,7 @@ object Loader {
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)
+        .merge(healthCheck)
     }
 
     process

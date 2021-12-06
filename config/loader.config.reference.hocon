@@ -95,6 +95,14 @@
       "until": "7 days"
       # Path to shredded archive
       "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+    },
+
+    # Periodic DB health-check, raising a warning if DB hasn't responded to `SELECT 1`
+    "healthCheck": {
+      # How often query a DB
+      "frequency": "20 minutes",
+      # How long to wait for a response
+      "timeout": "15 seconds"
     }
   },
 
