@@ -20,7 +20,7 @@ import com.snowplowanalytics.snowplow.badrows.{Processor, BadRow}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Common, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Transformed, EventUtils}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sources.{Parsed, ParsedF}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated.BuildInfo
@@ -59,7 +59,7 @@ object Processing {
       .interruptWhen(resources.halt)
       .through(windowing)
       .evalTap(State.update(resources.windows))
-      .through(shred[F](resources.iglu, isTabular, resources.atomicLengths, config.formats))
+      .through(transform[F](resources.iglu, isTabular, resources.atomicLengths, config.formats))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
       .compile
@@ -131,24 +131,25 @@ object Processing {
         generic.Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
     }
 
-  def shred[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
+  def transform[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
                                             isTabular: SchemaKey => Boolean,
                                             atomicLengths: Map[String, Int],
                                             formats: ShredderConfig.Formats): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
     _.flatMap { record =>
       val shreddedRecord = record.traverse { parsed =>
-        EitherT
-          .fromEither[F](parsed)
-          .flatMap { e =>
+        val res = for {
+          event <- EitherT.fromEither[F](parsed)
+          _ <- EitherT(EventUtils.validateEntities(Application, iglu, event))
+          transformed <- {
             formats match {
               case _: ShredderConfig.Formats.Shred =>
-                Transformed.shredEvent(iglu, isTabular, atomicLengths, Application)(e)
+                Transformed.shredEvent(iglu, isTabular, atomicLengths, Application)(event)
               case ShredderConfig.Formats.WideRow =>
-                EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(e)))
+                EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(event)))
             }
           }
-          .value
-          .map(_.leftMap(Transformed.transformBadRow(_, formats)))
+        } yield transformed
+        res.leftMap(Transformed.transformBadRow(_, formats)).value
       }
       Stream.eval(shreddedRecord).flatMap {
         case Record.Data(window, checkpoint, Right(shredded)) =>
