@@ -27,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, DataDiscovery}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.{ load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.load
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 
@@ -86,12 +86,8 @@ object Main extends IOApp {
             _        <- makeBusy(discovery.data.origin.base)
           } yield ()
 
-          // Lifting setStage into `DAO[C]` because it's always called within loading
-          val setStageC: Stage => C[Unit] =
-            stage => Transaction[F, C].arrowBack(control.setStage(stage))
-
           val loading: F[Unit] = prepare.use { _ =>
-            load[F, C](cli.config, setStageC, discovery) *> control.incrementLoaded
+            load[F, C](cli.config, control.setStage, discovery) *> control.incrementLoaded
           }
 
           // Catches both connection acquisition and loading errors
