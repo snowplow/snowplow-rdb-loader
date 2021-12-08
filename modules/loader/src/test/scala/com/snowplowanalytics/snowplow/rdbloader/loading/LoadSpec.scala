@@ -54,7 +54,6 @@ class LoadSpec extends Specification {
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
@@ -84,7 +83,6 @@ class LoadSpec extends Specification {
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
@@ -115,7 +113,6 @@ class LoadSpec extends Specification {
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
@@ -145,7 +142,6 @@ class LoadSpec extends Specification {
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
@@ -187,7 +183,6 @@ class LoadSpec extends Specification {
 
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.ArrowBackMessage,       // Migration.build (schemas)
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
@@ -249,7 +244,7 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_, _) => ts.getLog.length == 7
+      case Statement.ManifestAdd(_, _) => ts.getLog.length == 6
       case _ => false
     }
 
