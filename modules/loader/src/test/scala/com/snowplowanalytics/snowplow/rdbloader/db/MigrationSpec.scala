@@ -78,7 +78,6 @@ class MigrationSpec extends Specification {
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
-        PureTransaction.ArrowBackMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_context/jsonschema/2-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_context_2")),
       )
@@ -143,7 +142,6 @@ class MigrationSpec extends Specification {
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
-        PureTransaction.ArrowBackMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_event/jsonschema/1-0-0"),
         LogEntry.Sql(Statement.TableExists("public","com_acme_some_event_1")),
       )

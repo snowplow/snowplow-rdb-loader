@@ -35,10 +35,6 @@ object PureTransaction {
   val NoTransactionMessage: TestState.LogEntry =
     TestState.LogEntry.Message(NoTransaction)
 
-  val ArrowBack = "ARROW BACK"
-  val ArrowBackMessage: TestState.LogEntry =
-    TestState.LogEntry.Message(ArrowBack)
-
   def interpreter: Transaction[Pure, Pure] =
     new Transaction[Pure, Pure] {
       def transact[A](io: Pure[A]): Pure[A] =
@@ -56,8 +52,7 @@ object PureTransaction {
 
       def arrowBack: Pure ~> Pure = new FunctionK[Pure, Pure] {
         def apply[A](fa: Pure[A]): Pure[A] =
-          Pure.modify(_.log(ArrowBack)) *>
-            fa
+          fa
       }
     }
 }

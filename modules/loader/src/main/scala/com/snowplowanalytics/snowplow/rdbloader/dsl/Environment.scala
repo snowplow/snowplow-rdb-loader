@@ -42,8 +42,7 @@ class Environment[F[_]](cache: Cache[F],
                         iglu: Iglu[F],
                         aws: AWS[F],
                         transaction: Transaction[F, ConnectionIO],
-                        state: State.Ref[F],
-                        val blocker: Blocker) {
+                        state: State.Ref[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -90,8 +89,8 @@ object Environment {
       //       we'd need to integrate its lifecycle into Pool or maintain
       //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
-      transaction <- Transaction.interpreter[F](cli.config.storage, cli.dryRun, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, blocker)
+      transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
