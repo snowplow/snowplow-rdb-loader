@@ -86,6 +86,7 @@ object Dependencies {
   val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val doobie            = "org.tpolecat"               %% "doobie-core"                       % V.doobie
+  val doobieHikari      = "org.tpolecat"               %% "doobie-hikari"                     % V.doobie
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle

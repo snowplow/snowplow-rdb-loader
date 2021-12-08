@@ -14,15 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import scala.concurrent.duration._
 
-import cats.{Show, Monad, MonadThrow}
+import cats.{MonadThrow, Show, Monad}
 import cats.implicits._
 
 import cats.effect.{Timer, Clock}
 
-import retry.{retryingOnSomeErrors, RetryPolicy, RetryPolicies, RetryDetails}
+import retry.{RetryPolicies, retryingOnSomeErrors, RetryDetails, RetryPolicy}
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget }
@@ -105,18 +104,21 @@ object Load {
   def load[F[_]: MonadThrow: Logging: Monitoring: Timer: Iglu: Transaction[*[_], C],
            C[_]: Monad: Logging: DAO]
   (config: Config[StorageTarget],
-   setStage: Stage => C[Unit],
+   setStage: Stage => F[Unit],
    discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
         val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
+        val setStageC: Stage => C[Unit] =
+          stage => Transaction[F, C].arrowBack(setStage(stage))
 
         for {
           migrations  <- Migration.build[F, C](redshiftConfig.storage.schema, discovery.data.discovery)
-          _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
+          _           <- Transaction[F, C].run(setStageC(Stage.MigrationPre) *> migrations.preTransaction)
           discoveryC   = discovery.mapK(Transaction[F, C].arrowBack)
-          transaction  = getTransaction[C](redshiftConfig, setStage, discoveryC)(migrations.inTransaction)
-          result      <- retryLoad(Transaction[F, C].transact(transaction))
+          transaction  = getTransaction[C](redshiftConfig, setStageC, discoveryC)(migrations.inTransaction)
+          fail         = failTransaction[F](discovery, setStage)(_)
+          result      <- retryLoad(Transaction[F, C].transact(transaction)).handleErrorWith(fail)
           _           <- discovery.ack.recoverWith { case e => Logging[F].warning(show"Error during SQS message acknowledge; ${e.toString}") }
           _           <- result.fold(Monitoring[F].alert, _ => congratulate[F](discovery.data.origin))
         } yield ()
@@ -176,26 +178,25 @@ object Load {
     retryingOnSomeErrors[A](retryPolicy[F], isWorth, log[F])(fa)
 
   def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(show"${e.toString} Transaction aborted. ${Transaction.retriesMessage(d)}")
+    Logging[F].error(show"${e.toString} Transaction aborted. ${d.toString}")
 
   /** Check if error is worth retrying */
   def isWorth(e: Throwable): Boolean =
-    e match {
-//      case _ => true
-      case LoaderError.StorageTargetError(message)
-        if message.contains("[Amazon](500310) Invalid operation") =>
-        // Schema or column does not exist
-        false
-      case LoaderError.RuntimeError(_) | LoaderError.StorageTargetError(_) =>
-        true
-      case _ =>
-        false
-    }
+    !e.toString.contains("[Amazon](500310) Invalid operation")
 
   private def retryPolicy[F[_]: Monad]: RetryPolicy[F] =
     RetryPolicies
       .limitRetries[F](MaxRetries)
       .join(RetryPolicies.exponentialBackoff(Backoff))
+
+  def failTransaction[F[_]: Logging: Monad](discovery: Message[F, DataDiscovery.WithOrigin],
+                                            setStage: Stage => F[Unit])
+                                           (error: Throwable): F[Either[AlertPayload, Unit]] = {
+    val message = s"Transaction aborted. ${error.getMessage}"
+    val alert = AlertPayload.warn(message, discovery.data.origin.base)
+    setStage(Stage.Cancelling(message)) *>
+      Logging[F].error(error)("Transaction aborted").as(alert.asLeft)
+  }
 
   def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
     loaded: LoaderMessage.ShreddingComplete
