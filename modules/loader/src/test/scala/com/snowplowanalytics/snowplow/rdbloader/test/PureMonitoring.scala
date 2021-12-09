@@ -12,19 +12,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 object PureMonitoring {
   def interpreter: Monitoring[Pure] = new Monitoring[Pure] {
-    def track(result: Either[LoaderError, Unit]): Pure[Unit] =
-      Pure.unit
-
     def trackException(e: Throwable): Pure[Unit] =
       Pure.unit
 
     def reportMetrics(metrics: Metrics.KVMetrics): Pure[Unit] =
+      Pure.unit
+
+    def success(payload: Monitoring.SuccessPayload): Pure[Unit] =
       Pure.unit
 
     def alert(payload: Monitoring.AlertPayload): Pure[Unit] =

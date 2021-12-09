@@ -21,8 +21,12 @@ import cats.effect.{Concurrent, Clock}
 import fs2.concurrent.SignallingRef
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.InstantOps
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Idle
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Paused
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 
 /**
  * Primary state of the loader
@@ -66,7 +70,19 @@ case class State(loading: Load.Status,
     }
 
   def show: String =
-    s"Total $messages messages received, $loaded loaded, $attempts attempts has been made to load current folder"
+    show"Total $messages messages received, $loaded loaded"
+
+  def showExtended: String = {
+    val statusInfo = show"Loader is in ${loading} state".some
+    val attemptsInfo = loading match {
+      case Idle => none
+      case Paused(_) => none
+      case Loading(_, _) => show"$attempts attempts has been made to load current folder".some
+    }
+    val failuresInfo = if (failures.nonEmpty) show"${failures.size} failed folders in retry queue".some else none[String]
+    val updatedInfo = s"Last state update at ${updated.formatted}".some
+    List(show.some, statusInfo, attemptsInfo, failuresInfo, updatedInfo).unite.mkString("; ")
+  }
 }
 
 object State {

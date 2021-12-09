@@ -22,7 +22,7 @@ import fs2.concurrent.Signal
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load
+import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
 
@@ -37,17 +37,21 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
 case class Control[F[_]](private val state: State.Ref[F]) {
   def incrementMessages: F[State] =
     state.updateAndGet { state => state.copy(messages = state.messages + 1) }
-  def incrementAttempts: F[Unit] =
-    state.update { state => state.copy(attempts = state.attempts + 1) }
   def incrementLoaded: F[Unit] =
     state.update { state => state.copy(loaded = state.loaded + 1) }
+
+  def incrementAttempts: F[Unit] =
+    state.update { state => state.copy(attempts = state.attempts + 1) }
+  def getAndResetAttempts(implicit F: Functor[F]): F[Int] =
+    state.getAndUpdate(state => state.copy(attempts = 0)).map(_.attempts)
+
 
   def get: F[State] =
     state.get
   def signal: Signal[F, State] =
     state
 
-  def setStage(stage: Load.Stage)(implicit C: Clock[F], F: Monad[F]): F[Unit] =
+  def setStage(stage: Stage)(implicit C: Clock[F], F: Monad[F]): F[Unit] =
     C.instantNow.flatMap { now =>
       state.update { original =>
         original.loading match {
