@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import scala.concurrent.duration._
+
 import cats.{Monad, Apply}
 import cats.implicits._
 
@@ -25,13 +27,16 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load
+import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 object Loader {
 
   private implicit val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
+  /** How often Loader should print its internal state */
+  val StateLoggingFrequency: FiniteDuration = 5.minutes
 
   /**
    * Primary application's entry-point, responsible for launching all processes
@@ -55,12 +60,17 @@ object Loader {
       HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
       loadStream[F, C](config, control)
+    val stateLogging: Stream[F, Unit] =
+      Stream.awakeDelay[F](StateLoggingFrequency)
+        .evalMap { _ => control.get.map(_.showExtended) }
+        .evalMap { state => Logging[F].info(show"Loader State: $state") }
 
     val process = Stream.eval(Manifest.initialize[F, C](config.storage)).flatMap { _ =>
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)
         .merge(healthCheck)
+        .merge(stateLogging)
     }
 
     process
@@ -100,16 +110,33 @@ object Loader {
       _        <- makeBusy(discovery.data.origin.base)
     } yield ()
 
-    val setStageC: Load.Stage => C[Unit] =
+    val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
     val addFailure: Throwable => F[Boolean] =
       control.addFailure(config.retryQueue)(discovery.data.origin.base)(_)
 
     val loading: F[Unit] = prepare.use { _ =>
-      Load.load[F, C](config, setStageC, discovery) *> control.incrementLoaded
+      for {
+        start  <- Clock[F].instantNow
+        result <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
+        _      <- result match {
+          case Right(ingested) =>
+            val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
+            for {
+              loaded   <- ingested.map(Monad[F].pure).getOrElse(now)
+              _        <- discovery.ack
+              attempts <- control.getAndResetAttempts
+              _        <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
+              _        <- control.incrementLoaded
+            } yield ()
+          case Left(alert) =>
+            discovery.ack *> control.getAndResetAttempts.void *> Monitoring[F].alert(alert)
+
+        }
+      } yield ()
     }
 
-    loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure, control.setStage))
+    loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
   }
 
   /**
@@ -120,20 +147,17 @@ object Loader {
    * and just reports the failure, without crashing the process
    *
    * @param discovery the original discovery
-   * @param setStage function to signal the cancelling
    * @param error the actual error, typically `SQLException`
    */
   def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: Message[F, DataDiscovery.WithOrigin],
-                                                          addFailure: Throwable => F[Boolean],
-                                                          setStage: Load.Stage => F[Unit])
+                                                          addFailure: Throwable => F[Boolean])
                                                          (error: Throwable): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
     val alert = Monitoring.AlertPayload.warn(message, discovery.data.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Not adding into retry queue. $message")
     val logRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Adding intro retry queue. $message")
 
-    setStage(Load.Stage.Cancelling(message)) *>
-      discovery.ack *>
+    discovery.ack *>
       Monitoring[F].alert(alert) *>
       addFailure(error).ifM(logRetry, logNoRetry)
   }
@@ -143,7 +167,6 @@ object Loader {
     case error =>
       Logging[F].error("Loader shutting down") *>
         Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
-        Monitoring[F].trackException(error) *>
-        Monitoring[F].track(LoaderError.RuntimeError(error.getMessage).asLeft)
+        Monitoring[F].trackException(error)
   }
 }
