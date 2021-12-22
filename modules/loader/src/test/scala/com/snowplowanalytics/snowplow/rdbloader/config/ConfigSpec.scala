@@ -115,6 +115,6 @@ object ConfigSpec {
     Files.readString(configExamplePath)
   }
 
-  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget]] =
+  def testParseConfig(conf: String): EitherT[IO, String, Config] =
     Config.fromString[IO](conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
 }

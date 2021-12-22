@@ -35,26 +35,25 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 
 /**
  * Main config file parsed from HOCON
- * @tparam D kind of supported warehouse
  */
-final case class Config[+D <: StorageTarget](region: Region,
-                                             jsonpaths: Option[S3.Folder],
-                                             monitoring: Monitoring,
-                                             messageQueue: String,
-                                             retryQueue: Option[RetryQueue],
-                                             storage: D,
-                                             schedules: Schedules)
+final case class Config(region: Region,
+                        jsonpaths: Option[S3.Folder],
+                        monitoring: Monitoring,
+                        messageQueue: String,
+                        retryQueue: Option[RetryQueue],
+                        storage: StorageTarget.Redshift,
+                        schedules: Schedules)
 
 object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
+  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config] =
     fromString(s, implicits().configDecoder)
 
-  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] =  {
-    implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
-    ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
+  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config]): EitherT[F, String, Config] =  {
+    implicit val implConfigDecoder: Decoder[Config] = configDecoder
+    ConfigUtils.fromStringF[F, Config](s)
   }
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
@@ -132,7 +131,7 @@ object Config {
     implicit val retryQueueDecoder: Decoder[RetryQueue] =
       deriveDecoder[RetryQueue]
 
-    implicit val configDecoder: Decoder[Config[StorageTarget]] =
-      deriveDecoder[Config[StorageTarget]]
+    implicit val configDecoder: Decoder[Config] =
+      deriveDecoder[Config]
   }
 }

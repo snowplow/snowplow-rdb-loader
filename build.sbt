@@ -82,6 +82,7 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
+      Dependencies.snowflakeJdbc,
 
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,

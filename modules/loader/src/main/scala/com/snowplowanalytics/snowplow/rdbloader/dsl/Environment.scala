@@ -89,7 +89,7 @@ object Environment {
       //       we'd need to integrate its lifecycle into Pool or maintain
       //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
-      transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+      transaction <- RedshiftTransaction.interpreter[F](cli.config.storage, blocker)
     } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state)
   }
 

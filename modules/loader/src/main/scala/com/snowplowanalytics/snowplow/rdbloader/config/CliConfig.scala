@@ -32,11 +32,11 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
  */
-case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json)
+case class CliConfig(config: Config, dryRun: Boolean, resolverConfig: Json, snowflakeConfig: Option[StorageTarget.Snowflake])
 
 object CliConfig {
 
-  case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json)
+  case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json, snowflakeConfig: Option[String])
 
   val config = Opts.option[String]("config",
     "base64-encoded HOCON configuration", "c", "config.hocon")
@@ -47,8 +47,12 @@ object CliConfig {
     .mapValidated(ConfigUtils.validateResolverJson)
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
-  val cliConfig = (config, dryRun, igluConfig).mapN {
-    case (cfg, dry, iglu) => RawCliConfig(cfg, dry, iglu)
+  val snowflakeConfig = Opts.option[String]("snowflake",
+    "base64-encoded HOCON configuration for snowflake", "s", "snowflake.hocon")
+    .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel).orNone
+
+  val cliConfig = (config, dryRun, igluConfig, snowflakeConfig).mapN {
+    case (cfg, dry, iglu, snowflakeConfig) => RawCliConfig(cfg, dry, iglu, snowflakeConfig)
   }
 
   val parser = Command[RawCliConfig](BuildInfo.name, BuildInfo.version)(cliConfig)
@@ -69,5 +73,9 @@ object CliConfig {
     for {
       raw  <- EitherT.fromEither[F](parser.parse(argv).leftMap(_.show))
       conf <- Config.fromString[F](raw.config)
-    } yield CliConfig(conf, raw.dryRun, raw.resolverConfig)
+      snowflakeConfig <- raw.snowflakeConfig match {
+        case None => EitherT.pure[F, String](Option.empty[StorageTarget.Snowflake])
+        case Some(c) => EitherT.fromEither[F](ConfigUtils.fromString[StorageTarget.Snowflake](c)).map(Option.apply)
+      }
+    } yield CliConfig(conf, raw.dryRun, raw.resolverConfig, snowflakeConfig)
 }

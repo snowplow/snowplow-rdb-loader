@@ -50,6 +50,7 @@ object Dependencies {
     val aws2             = "2.17.59"
     val jSch             = "0.1.55"
     val sentry           = "1.7.30"
+    val snowflakeJdbc    = "3.13.5"
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -112,6 +113,7 @@ object Dependencies {
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
   val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
+  val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws

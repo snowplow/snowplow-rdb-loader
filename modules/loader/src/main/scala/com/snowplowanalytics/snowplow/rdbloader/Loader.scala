@@ -21,7 +21,7 @@ import cats.effect.implicits._
 import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Message
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
@@ -46,7 +46,7 @@ object Loader {
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
   def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
-          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
+          C[_]: DAO: MonadThrow: Logging](config: Config, control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[C, F](config.monitoring.folders, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
@@ -74,7 +74,7 @@ object Loader {
    * (SQS and retry queue) and performing the load operation itself
    */
   def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
-                 C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
+                 C[_]: DAO: Monad: Logging](config: Config, control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages)
     val retryDiscovery: DiscoveryStream[F] =
@@ -92,7 +92,7 @@ object Loader {
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
   def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
-                       C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
+                       C[_]: DAO: Monad: Logging](config: Config, control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
     val prepare: Resource[F, Unit] = for {
       _        <- StateMonitoring.run(control.get, discovery.extend).background

@@ -40,7 +40,7 @@ object RedshiftStatements {
    * Transform discovery results into group of load statements (atomic, shredded, etc)
    * More than one `RedshiftLoadStatements` must be grouped with others using `buildQueue`
    */
-  private[loading] def getStatements(config: Config[Redshift], discovery: DataDiscovery): RedshiftStatements = {
+  private[loading] def getStatements(config: Config, discovery: DataDiscovery): RedshiftStatements = {
     val shreddedStatements = discovery
       .shreddedTypes
       .filterNot(_.isAtomic)
@@ -84,7 +84,7 @@ object RedshiftStatements {
    * @param shreddedType full info about shredded type found in `shredded/good`
    * @return three SQL-statements to load `shreddedType` from S3
    */
-  private def transformShreddedType(config: Config[Redshift], compression: Compression)(shreddedType: ShreddedType): ShreddedStatements = {
+  private def transformShreddedType(config: Config, compression: Compression)(shreddedType: ShreddedType): ShreddedStatements = {
     val copyFromJson = Statement.ShreddedCopy(config.storage.schema, shreddedType, config.region.name, config.storage.maxError, config.storage.roleArn, compression)
     ShreddedStatements(copyFromJson)
   }

@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 import cats.Monad
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO}
@@ -41,7 +41,7 @@ object RedshiftLoader {
    * @param discovery batch discovered from message queue
    * @return block of VACUUM and ANALYZE statements to execute them out of a main transaction
    */
-  def run[F[_]: Monad: Logging: DAO](config: Config[StorageTarget.Redshift],
+  def run[F[_]: Monad: Logging: DAO](config: Config,
                                      setLoading: String => F[Unit],
                                      discovery: DataDiscovery): F[Unit] =
     for {

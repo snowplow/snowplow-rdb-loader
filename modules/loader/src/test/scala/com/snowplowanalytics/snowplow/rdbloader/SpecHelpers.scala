@@ -32,7 +32,7 @@ object SpecHelpers {
   val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
-  val validConfig: Config[StorageTarget.Redshift] = Config(
+  val validConfig: Config = Config(
     ConfigSpec.exampleRegion,
     ConfigSpec.exampleJsonPaths,
     ConfigSpec.exampleMonitoring,

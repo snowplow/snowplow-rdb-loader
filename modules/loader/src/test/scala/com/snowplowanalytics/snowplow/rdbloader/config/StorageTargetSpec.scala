@@ -147,5 +147,35 @@ class StorageTargetSpec extends Specification {
 
       input.as[StorageTarget.RedshiftJdbc] must beRight(expected)
     }
+
+    "populate properties correctly" in {
+      val redshiftJdbc = StorageTarget.RedshiftJdbc(
+        blockingRows = Some(3),
+        disableIsValidQuery = Some(true),
+        dsiLogLevel = None,
+        filterLevel = Some("test"),
+        loginTimeout = Some(4),
+        loglevel = Some(5),
+        socketTimeout = Some(6),
+        ssl = None,
+        sslMode = None,
+        sslRootCert = Some("test"),
+        tcpKeepAlive = Some(false),
+        tcpKeepAliveMinutes = Some(10)
+      )
+      val props = redshiftJdbc.properties
+      props.getProperty("BlockingRowsMode") must beEqualTo(redshiftJdbc.blockingRows.get.toString)
+      props.getProperty("DisableIsValidQuery") must beEqualTo(redshiftJdbc.disableIsValidQuery.get.toString)
+      props.getProperty("DSILogLevel") must beNull
+      props.getProperty("FilterLevel") must beEqualTo(redshiftJdbc.filterLevel.get)
+      props.getProperty("loginTimeout") must beEqualTo(redshiftJdbc.loginTimeout.get.toString)
+      props.getProperty("loglevel") must beEqualTo(redshiftJdbc.loglevel.get.toString)
+      props.getProperty("socketTimeout") must beEqualTo(redshiftJdbc.socketTimeout.get.toString)
+      props.getProperty("ssl") must beNull
+      props.getProperty("sslMode") must beNull
+      props.getProperty("sslRootCert") must beEqualTo(redshiftJdbc.sslRootCert.get)
+      props.getProperty("tcpKeepAlive") must beEqualTo(redshiftJdbc.tcpKeepAlive.get.toString)
+      props.getProperty("TCPKeepAliveMinutes") must beEqualTo(redshiftJdbc.tcpKeepAliveMinutes.get.toString)
+    }
   }
 }

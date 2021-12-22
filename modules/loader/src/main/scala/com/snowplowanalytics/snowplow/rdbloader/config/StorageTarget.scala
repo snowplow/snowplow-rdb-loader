@@ -14,9 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Properties
 
-import cats.data._
-import cats.implicits._
-
 import io.circe.{CursorOp, _}
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
@@ -58,6 +55,17 @@ object StorageTarget {
     final case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
   }
 
+  // TODO: Move this to Snowflake module when it is ready
+  /** Snowflake connection settings */
+  final case class Snowflake(snowflakeRegion: String,
+                             username: String,
+                             password: PasswordConfig,
+                             account: String,
+                             warehouse: String,
+                             database: String,
+                             schema: String,
+                             jdbcHost: Option[String])
+
   /** Amazon Redshift connection settings */
   final case class Redshift(host: String,
                             database: String,
@@ -87,29 +95,21 @@ object StorageTarget {
                           sslRootCert: Option[String],
                           tcpKeepAlive: Option[Boolean],
                           tcpKeepAliveMinutes: Option[Int]) {
-    /** Either errors or list of mutators to update the `Properties` object */
-    val validation: Either[ParseError, List[Properties => Unit]] = RedshiftJdbc.jdbcEncoder.encodeObject(this).toList.map {
-      case (property, value) => value.fold(
-        ((_: Properties) => ()).asRight,
-        b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
-        n => n.toInt match {
-          case Some(num) =>
-            ((props: Properties) => {
-              props.setProperty(property, num.toString)
-              ()
-            }).asRight
-          case None => s"Impossible to apply JDBC property [$property] with value [${value.noSpaces}]".asLeft
-        },
-        s => ((props: Properties) => { props.setProperty(property, s); ()}).asRight,
-        _ => s"Impossible to apply JDBC property [$property] with JSON array".asLeft,
-        _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
-      )
-    } traverse(_.toValidatedNel) match {
-      case Validated.Valid(updaters) => updaters.asRight[ParseError]
-      case Validated.Invalid(errors) =>
-        val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
-        val error: ParseError = ParseError(messages)
-        error.asLeft[List[Properties => Unit]]
+    val properties: Properties = {
+      val props: Properties = new Properties()
+      props.add("BlockingRowsMode", blockingRows)
+      props.add("DisableIsValidQuery", disableIsValidQuery)
+      props.add("DSILogLevel", dsiLogLevel)
+      props.add("FilterLevel", filterLevel)
+      props.add("loginTimeout", loginTimeout)
+      props.add("loglevel", loglevel)
+      props.add("socketTimeout", socketTimeout)
+      props.add("ssl", ssl)
+      props.add("sslMode", sslMode)
+      props.add("sslRootCert", sslRootCert)
+      props.add("tcpKeepAlive", tcpKeepAlive)
+      props.add("TCPKeepAliveMinutes", tcpKeepAliveMinutes)
+      props
     }
   }
 
@@ -120,14 +120,6 @@ object StorageTarget {
       Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
         "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
         "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
-
-    implicit def jdbcEncoder: Encoder.AsObject[RedshiftJdbc] =
-      Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
-        "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
-        "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
-        (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
-          j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
-          j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
   }
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
@@ -208,4 +200,12 @@ object StorageTarget {
           Left(other)
       }
     }
+
+  implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
+    deriveDecoder[Snowflake]
+
+  implicit class jdbcPropertySettings(properties: Properties) {
+    def add[T](fieldKey: String, fieldValue: Option[T]): Unit =
+      fieldValue.foreach(t => properties.setProperty(fieldKey, t.toString))
+  }
 }

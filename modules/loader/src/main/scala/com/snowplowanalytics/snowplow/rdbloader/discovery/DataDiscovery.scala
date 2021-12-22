@@ -71,7 +71,7 @@ object DataDiscovery {
    * @param config generic storage target configuration
    * @param state mutable state to keep logging information
    */
-  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config, incrementMessages: F[State]): DiscoveryStream[F] =
     AWS[F]
       .readSqs(config.messageQueue)
       .evalMapFilter { message =>

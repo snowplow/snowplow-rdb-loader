@@ -18,7 +18,7 @@ import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
+import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, Sync, Effect}
 
 import doobie._
 import doobie.implicits._
@@ -81,31 +81,16 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  val RedshiftDriver = "com.amazon.redshift.jdbc42.Driver"
-
-  def buildPool[F[_]: Async: ContextShift: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] =
+  def buildPool[F[_]: Async: ContextShift: Timer: AWS](passwordConfig: StorageTarget.PasswordConfig,
+                                                       url: String,
+                                                       username: String,
+                                                       driverClassName: String,
+                                                       properties: Properties,
+                                                       blocker: Blocker): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
-      password <- target.password match {
-        case StorageTarget.PasswordConfig.PlainText(text) =>
-          Resource.pure[F, String](text)
-        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-          Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
-      }
-      url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
-      properties <- target match {
-        case r: StorageTarget.Redshift =>
-          r.jdbc.validation match {
-            case Right(propertyUpdaters) =>
-              val props = new Properties()
-              propertyUpdaters.foreach(f => f(props))
-              Resource.pure[F, Properties](props)
-            case Left(error) =>
-              val thrown = Sync[F].raiseError[Properties](new IllegalArgumentException(error.message)) // Should never happen
-              Resource.eval(thrown)
-          }
-      }
-      xa <- HikariTransactor.newHikariTransactor[F](RedshiftDriver, url, target.username, password, ce, blocker)
+      password <- resolvePassword[F](passwordConfig)
+      xa <- HikariTransactor.newHikariTransactor[F](driverClassName, url, username, password, ce, blocker)
       _  <- Resource.eval(xa.configure { ds =>
         Sync[F].delay {
           ds.setAutoCommit(false)
@@ -114,14 +99,13 @@ object Transaction {
       })
     } yield xa
 
-  /**
-   * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`,
-   * which guarantees to close a JDBC connection.
-   * If connection could not be acquired, it will retry several times according to `retryPolicy`
-   */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] = {
-    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](xa))
-  }
+  def resolvePassword[F[_]: Async: ContextShift: Timer: AWS](passwordConfig: StorageTarget.PasswordConfig): Resource[F, String] =
+    passwordConfig match {
+      case StorageTarget.PasswordConfig.PlainText(text) =>
+        Resource.pure[F, String](text)
+      case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+        Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
+    }
 
   /** Real-world (opposed to dry-run) interpreter */
   def jdbcRealInterpreter[F[_]: Effect](conn: Transactor[F]): Transaction[F, ConnectionIO] =

@@ -62,6 +62,12 @@ object Statement {
     def toFragment: Fragment = sql"SELECT 1"
   }
 
+  case object DbCheck extends Statement {
+    def toFragment: Fragment = {
+      sql"select count(*) from PUBLIC.TEST_TABLE"
+    }
+  }
+
   // Alerting
 
   val AlertingTempTableName = "rdb_folder_monitoring"

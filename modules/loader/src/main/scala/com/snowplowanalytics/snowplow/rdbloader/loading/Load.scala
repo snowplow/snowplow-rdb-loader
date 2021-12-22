@@ -72,13 +72,13 @@ object Load {
    */
   def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C],
            C[_]: Monad: Logging: DAO]
-  (config: Config[StorageTarget],
+  (config: Config,
    setStage: Stage => C[Unit],
    incrementAttempt: F[Unit],
    discovery: DataDiscovery.WithOrigin): F[Either[AlertPayload, Option[Instant]]] =
     config.storage match {
       case redshift: StorageTarget.Redshift =>
-        val redshiftConfig: Config[StorageTarget.Redshift] = config.copy(storage = redshift)
+        val redshiftConfig: Config = config.copy(storage = redshift)
 
         for {
           migrations  <- Migration.build[F, C](redshiftConfig.storage.schema, discovery.discovery)
@@ -99,7 +99,7 @@ object Load {
    *                                that have to run before the batch is loaded
    * @return either alert payload in case of an existing folder or ingestion timestamp of the current folder
    */
-  def getTransaction[F[_]: Logging: Monad: DAO](config: Config[StorageTarget.Redshift],
+  def getTransaction[F[_]: Logging: Monad: DAO](config: Config,
                                                 setStage: Stage => F[Unit],
                                                 discovery: DataDiscovery.WithOrigin)
                                                (inTransactionMigrations: F[Unit]): F[Either[AlertPayload, Option[Instant]]] =
