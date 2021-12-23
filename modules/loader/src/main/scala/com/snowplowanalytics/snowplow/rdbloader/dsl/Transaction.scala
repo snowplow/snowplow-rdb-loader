@@ -24,7 +24,7 @@ import doobie._
 import doobie.implicits._
 import doobie.hikari._
 
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, PasswordConfig}
 
 
 /**
@@ -87,9 +87,9 @@ object Transaction {
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
       password <- target.password match {
-        case StorageTarget.PasswordConfig.PlainText(text) =>
+        case PasswordConfig.PlainText(text) =>
           Resource.pure[F, String](text)
-        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
+        case PasswordConfig.EncryptedKey(PasswordConfig.EncryptedConfig(key)) =>
           Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
       }
       url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
