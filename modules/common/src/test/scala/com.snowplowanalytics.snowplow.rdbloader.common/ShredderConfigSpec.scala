@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.net.URI
 import java.nio.file.{Paths, Files}
+import java.time.Instant
 
 import cats.effect.IO
 
@@ -37,7 +38,8 @@ class ShredderConfigSpec extends Specification {
         exampleSQSConfig,
         exampleFormats,
         exampleMonitoring,
-        exampleDeduplication
+        exampleDeduplication,
+        exampleRunInterval
       )
       result must beRight(expected)
     }
@@ -50,7 +52,8 @@ class ShredderConfigSpec extends Specification {
         exampleSNSConfig,
         exampleDefaultFormats,
         exampleDefaultMonitoring,
-        exampleDeduplication
+        exampleDeduplication,
+        emptyRunInterval
       )
       result must beRight(expected)
     }
@@ -226,6 +229,11 @@ object ShredderConfigSpec {
   )
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
   val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
+  val emptyRunInterval = ShredderConfig.RunInterval(None, None)
+  val exampleRunInterval = ShredderConfig.RunInterval(
+    Some(ShredderConfig.RunInterval.SinceInstant(Instant.parse("2021-10-12T14:55:22.00Z"))),
+    Some(ShredderConfig.RunInterval.Until(Instant.parse("2021-12-10T18:34:52.00Z")))
+  )
 
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
     parse(readResource(confPath))

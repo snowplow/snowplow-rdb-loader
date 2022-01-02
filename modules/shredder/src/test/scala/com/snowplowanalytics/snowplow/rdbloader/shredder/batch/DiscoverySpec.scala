@@ -15,12 +15,14 @@
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.RunInterval
 
 import org.specs2.mutable.Specification
 
@@ -98,7 +100,8 @@ class DiscoverySpec extends Specification {
 
       val start = Instant.parse("2021-09-06T13:15:00.00Z")
       val end = Instant.parse("2021-09-10T13:15:00.00Z")
-      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, Some(start), Some(end))
+      val runInterval = RunInterval(Some(RunInterval.SinceInstant(start)), Some(RunInterval.Until(end)))
+      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(List.empty)
       unshredded must beEqualTo(expectedUnshredded)
@@ -138,7 +141,8 @@ class DiscoverySpec extends Specification {
       ).map(enrichedFolder.append)
 
       val end = Instant.parse("2021-08-10T13:15:00.00Z")
-      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, None, Some(end))
+      val runInterval = RunInterval(None, Some(RunInterval.Until(end)))
+      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(expectedIncomplete)
       unshredded must beEqualTo(expectedUnshredded)
@@ -190,11 +194,45 @@ class DiscoverySpec extends Specification {
       ).map(enrichedFolder.append)
 
       val start = Instant.parse("2021-08-06T14:15:00.00Z")
-      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, Some(start), None)
+      val runInterval = RunInterval(Some(RunInterval.SinceInstant(start)), None)
+      val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(expectedIncomplete)
       unshredded must beEqualTo(expectedUnshredded)
     }
+  }
+
+  "return folders correctly according to given interval when given since value is duration" in {
+    def listDirs(f: Folder): List[Folder] = f match {
+      case `enrichedFolder` => List(
+        "run=2021-09-05-13-00-27",
+        "run=2021-09-10-13-00-27",
+        "run=2021-09-11-13-41-27",
+        "run=2021-09-12-13-41-27",
+        "run=2021-09-13-13-41-27",
+        "run=2021-09-14-13-41-27",
+        "run=2021-09-15-13-41-27",
+      ).map(f.append)
+      case `shreddedFolder` => List(
+        "run=2021-08-12-13-41-27",
+        "run=2021-09-05-13-00-27",
+        "run=2021-09-12-13-41-27",
+        "run=2021-09-14-13-41-27",
+      ).map(f.append)
+    }
+    val expectedUnshredded = List(
+      "run=2021-09-11-13-41-27",
+      "run=2021-09-13-13-41-27",
+    ).map(enrichedFolder.append)
+
+    val start = FiniteDuration(4, TimeUnit.DAYS)
+    val end = Instant.parse("2021-09-15T12:41:27.00Z")
+    val now = Instant.parse("2021-09-14T13:41:27.00Z")
+    val runInterval = RunInterval(Some(RunInterval.SinceDuration(start)), Some(RunInterval.Until(end)))
+    val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval, now = now)
+
+    incomplete must beEqualTo(List.empty)
+    unshredded must beEqualTo(expectedUnshredded)
   }
 
   "Discovery.findIntervalFolders" should {
@@ -305,10 +343,10 @@ class DiscoverySpec extends Specification {
     def getState(enrichedFolder: Folder,
                shreddedFolder: Folder,
                listDirs: Folder => List[Folder],
-               since: Option[Instant] = None,
-               until: Option[Instant] = None,
-               ke: S3.Key => Boolean = keyExists): (List[Folder], List[Folder]) = {
-    val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, since, until, listDirs, ke)
+               runInterval: RunInterval = RunInterval(None, None),
+               ke: S3.Key => Boolean = keyExists,
+               now: Instant = Instant.now): (List[Folder], List[Folder]) = {
+    val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, runInterval, now, listDirs, ke)
     (Await.result(incomplete, 2.seconds), unshredded)
   }
 

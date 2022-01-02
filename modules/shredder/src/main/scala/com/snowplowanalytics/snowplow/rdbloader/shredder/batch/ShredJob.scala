@@ -179,9 +179,7 @@ object ShredJob {
     spark: SparkSession,
     igluConfig: Json,
     duplicateStorageConfig: Option[Json],
-    config: ShredderConfig.Batch,
-    since: Option[Instant],
-    until: Option[Instant]
+    config: ShredderConfig.Batch
   ): Unit = {
     val s3Client = Cloud.createS3Client(config.output.region)
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
@@ -190,7 +188,7 @@ object ShredJob {
     val shreddedFolder = Folder.coerce(config.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
-      .getState(enrichedFolder, shreddedFolder, since, until, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
+      .getState(enrichedFolder, shreddedFolder, config.runInterval, Instant.now, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
       val config = EventsManifestConfig

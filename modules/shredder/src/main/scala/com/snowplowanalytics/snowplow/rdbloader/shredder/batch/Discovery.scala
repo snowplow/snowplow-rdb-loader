@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Commo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated.BuildInfo
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.RunInterval
 
 object Discovery {
 
@@ -45,11 +45,12 @@ object Discovery {
    */
   def getState(enrichedFolder: Folder,
                shreddedFolder: Folder,
-               since: Option[Instant],
-               until: Option[Instant],
+               runInterval: RunInterval,
+               now: Instant,
                listDirs: Folder => List[Folder],
                keyExists: S3.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
-    val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, until)
+    val since = getConcrete(runInterval.since, now)
+    val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
     val shreddedDirs = listDirs(shreddedFolder)
 
     val enrichedFolderNames = enrichedDirs.map(Folder.coerce).map(_.folderName)
@@ -71,6 +72,13 @@ object Discovery {
 
     (incomplete, unshredded)
   }
+
+  def getConcrete(since: Option[RunInterval.Since], now: Instant): Option[Instant] =
+    since match {
+      case None => Option.empty[Instant]
+      case Some(RunInterval.SinceInstant(v)) => Some(v)
+      case Some(RunInterval.SinceDuration(v)) => Some(now.minusMillis(v.toMillis))
+    }
 
   /**
    * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format.

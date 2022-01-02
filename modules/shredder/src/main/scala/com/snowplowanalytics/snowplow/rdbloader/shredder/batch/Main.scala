@@ -42,7 +42,7 @@ object Main {
           .getOrCreate()
         val sentryClient = cli.config.monitoring.sentry.map(s => Sentry.init(SentryOptions.defaults(s.dsn.toString)))
         Either
-          .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config, cli.since, cli.until)) match {
+          .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config)) match {
             case Left(throwable) =>
               sentryClient.foreach(_.sendException(throwable))
               spark.stop()
