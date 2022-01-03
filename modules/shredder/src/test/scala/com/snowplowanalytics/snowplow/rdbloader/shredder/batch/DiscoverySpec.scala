@@ -100,7 +100,7 @@ class DiscoverySpec extends Specification {
 
       val start = Instant.parse("2021-09-06T13:15:00.00Z")
       val end = Instant.parse("2021-09-10T13:15:00.00Z")
-      val runInterval = RunInterval(Some(RunInterval.SinceInstant(start)), Some(RunInterval.Until(end)))
+      val runInterval = RunInterval(Some(RunInterval.IntervalInstant(start)), None, Some(RunInterval.IntervalInstant(end)))
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(List.empty)
@@ -141,7 +141,7 @@ class DiscoverySpec extends Specification {
       ).map(enrichedFolder.append)
 
       val end = Instant.parse("2021-08-10T13:15:00.00Z")
-      val runInterval = RunInterval(None, Some(RunInterval.Until(end)))
+      val runInterval = RunInterval(None, None, Some(RunInterval.IntervalInstant(end)))
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(expectedIncomplete)
@@ -194,7 +194,7 @@ class DiscoverySpec extends Specification {
       ).map(enrichedFolder.append)
 
       val start = Instant.parse("2021-08-06T14:15:00.00Z")
-      val runInterval = RunInterval(Some(RunInterval.SinceInstant(start)), None)
+      val runInterval = RunInterval(Some(RunInterval.IntervalInstant(start)), None, None)
       val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval)
 
       incomplete must beEqualTo(expectedIncomplete)
@@ -226,9 +226,10 @@ class DiscoverySpec extends Specification {
     ).map(enrichedFolder.append)
 
     val start = FiniteDuration(4, TimeUnit.DAYS)
+    val startInstant = Instant.parse("2021-09-01T13:41:27.00Z")
     val end = Instant.parse("2021-09-15T12:41:27.00Z")
     val now = Instant.parse("2021-09-14T13:41:27.00Z")
-    val runInterval = RunInterval(Some(RunInterval.SinceDuration(start)), Some(RunInterval.Until(end)))
+    val runInterval = RunInterval(Some(RunInterval.IntervalInstant(startInstant)), Some(start), Some(RunInterval.IntervalInstant(end)))
     val (incomplete, unshredded) = getState(enrichedFolder, shreddedFolder, listDirs, runInterval, now = now)
 
     incomplete must beEqualTo(List.empty)
@@ -343,7 +344,7 @@ class DiscoverySpec extends Specification {
     def getState(enrichedFolder: Folder,
                shreddedFolder: Folder,
                listDirs: Folder => List[Folder],
-               runInterval: RunInterval = RunInterval(None, None),
+               runInterval: RunInterval = RunInterval(None, None, None),
                ke: S3.Key => Boolean = keyExists,
                now: Instant = Instant.now): (List[Folder], List[Folder]) = {
     val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, runInterval, now, listDirs, ke)

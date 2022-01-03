@@ -316,7 +316,7 @@ object ShredJobSpec {
       ShredderConfig.Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil),
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
-      ShredderConfig.RunInterval(None, None)
+      ShredderConfig.RunInterval(None, None, None)
     )
   }
 }

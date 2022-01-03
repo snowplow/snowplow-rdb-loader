@@ -49,7 +49,7 @@ object Discovery {
                now: Instant,
                listDirs: Folder => List[Folder],
                keyExists: S3.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
-    val since = getConcrete(runInterval.since, now)
+    val since = getConcrete(runInterval, now)
     val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
     val shreddedDirs = listDirs(shreddedFolder)
 
@@ -73,12 +73,15 @@ object Discovery {
     (incomplete, unshredded)
   }
 
-  def getConcrete(since: Option[RunInterval.Since], now: Instant): Option[Instant] =
-    since match {
-      case None => Option.empty[Instant]
-      case Some(RunInterval.SinceInstant(v)) => Some(v)
-      case Some(RunInterval.SinceDuration(v)) => Some(now.minusMillis(v.toMillis))
+  def getConcrete(runInterval: RunInterval, now: Instant): Option[Instant] = {
+    val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
+    (runInterval.since.map(_.value), instantForDuration) match {
+      case (None, None) => None
+      case (i1@Some(v1), i2@Some(v2)) => if (v1.isAfter(v2)) i1 else i2
+      case (v1, None) => v1
+      case (None, v2) => v2
     }
+  }
 
   /**
    * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format.

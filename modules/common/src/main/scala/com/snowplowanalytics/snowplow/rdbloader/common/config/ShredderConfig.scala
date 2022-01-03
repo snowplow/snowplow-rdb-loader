@@ -171,13 +171,9 @@ object ShredderConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
-  final case class RunInterval(since: Option[RunInterval.Since], until: Option[RunInterval.Until])
+  final case class RunInterval(since: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
   object RunInterval {
-    sealed trait Since extends Product with Serializable
-    final case class SinceInstant(value: Instant) extends Since
-    final case class SinceDuration(value: FiniteDuration) extends Since
-
-    final case class Until(value: Instant)
+    final case class IntervalInstant(value: Instant)
   }
 
   /**
@@ -278,15 +274,8 @@ object ShredderConfig {
     implicit val runIntervalConfigDecoder: Decoder[RunInterval] =
       deriveDecoder[RunInterval]
 
-    implicit val runIntervalSinceConfigDecoder: Decoder[RunInterval.Since] =
-      Decoder.instance { cur =>
-        cur.as[String]
-          .flatMap(v => Common.parseFolderTime(v).map(RunInterval.SinceInstant))
-          .leftFlatMap(_ => cur.as[FiniteDuration].map(RunInterval.SinceDuration))
-      }
-
-    implicit val runIntervalUntilConfigDecoder: Decoder[RunInterval.Until] =
-      Decoder[String].emap(v => Common.parseFolderTime(v).leftMap(_.toString).map(RunInterval.Until))
+    implicit val runIntervalInstantConfigDecoder: Decoder[RunInterval.IntervalInstant] =
+      Decoder[String].emap(v => Common.parseFolderTime(v).leftMap(_.toString).map(RunInterval.IntervalInstant))
 
     implicit val durationDecoder: Decoder[Duration] =
       Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))

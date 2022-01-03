@@ -229,10 +229,11 @@ object ShredderConfigSpec {
   )
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
   val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
-  val emptyRunInterval = ShredderConfig.RunInterval(None, None)
+  val emptyRunInterval = ShredderConfig.RunInterval(None, None, None)
   val exampleRunInterval = ShredderConfig.RunInterval(
-    Some(ShredderConfig.RunInterval.SinceInstant(Instant.parse("2021-10-12T14:55:22.00Z"))),
-    Some(ShredderConfig.RunInterval.Until(Instant.parse("2021-12-10T18:34:52.00Z")))
+    Some(ShredderConfig.RunInterval.IntervalInstant(Instant.parse("2021-10-12T14:55:22.00Z"))),
+    Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
+    Some(ShredderConfig.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
 
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
