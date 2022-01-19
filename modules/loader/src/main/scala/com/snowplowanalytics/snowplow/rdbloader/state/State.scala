@@ -10,20 +10,23 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader
+package com.snowplowanalytics.snowplow.rdbloader.state
 
 import java.time.Instant
 
-import cats.Monad
 import cats.implicits._
-import cats.effect.{ Concurrent, Clock }
+
+import cats.effect.{Concurrent, Clock}
 
 import fs2.concurrent.SignallingRef
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.InstantOps
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.State.Idle
-import com.snowplowanalytics.snowplow.rdbloader.loading.Load.State.Loading
+import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Idle
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Paused
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 
 /**
  * Primary state of the loader
@@ -40,40 +43,46 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.State.Loading
  * @param loaded amount of folders the loader managed to load
  * @param messages total amount of message received
  */
-case class State(loading: Load.State,
+case class State(loading: Load.Status,
                  updated: Instant,
                  attempts: Int,
+                 failures: Failures,
                  loaded: Int,
                  messages: Int) {
-  def incrementAttempts: State =
-    this.copy(attempts = attempts + 1)
-  def incrementMessages: State =
-    this.copy(messages = messages + 1)
-  def incrementLoaded: State =
-    this.copy(loaded = loaded + 1)
 
   /** Start loading a folder */
   def start(folder: S3.Folder): State =
-    this.copy(loading = Load.State.start(folder), attempts = 0)
+    this.copy(loading = Load.Status.start(folder), attempts = 0)
   def idle: State =
-    this.copy(loading = Load.State.Idle)
-  private def setStage(stage: Load.Stage): State =
-    loading match {
-      case Loading(folder, _) => this.copy(loading = Loading(folder, stage))
-      case Idle => throw new IllegalStateException(s"Cannot set $stage stage while loading is Idle")
-    }
+    this.copy(loading = Load.Status.Idle)
+  def paused(who: String): State =
+    this.copy(loading = Load.Status.Paused(who))
+
   def setUpdated(time: Instant): State =
     this.copy(updated = time)
 
   /** Check if Loader is ready to perform a next load */
   def isBusy: Boolean =
     loading match {
-      case Load.State.Idle => false
-      case _ => true
+      case Load.Status.Idle => false
+      case Load.Status.Paused(_) => true
+      case Load.Status.Loading(_, _) => true
     }
 
   def show: String =
-    s"Total $messages messages received, $loaded loaded, $attempts attempts has been made to load current folder"
+    show"Total $messages messages received, $loaded loaded"
+
+  def showExtended: String = {
+    val statusInfo = show"Loader is in ${loading} state".some
+    val attemptsInfo = loading match {
+      case Idle => none
+      case Paused(_) => none
+      case Loading(_, _) => show"$attempts attempts has been made to load current folder".some
+    }
+    val failuresInfo = if (failures.nonEmpty) show"${failures.size} failed folders in retry queue".some else none[String]
+    val updatedInfo = s"Last state update at ${updated.formatted}".some
+    List(show.some, statusInfo, attemptsInfo, failuresInfo, updatedInfo).unite.mkString("; ")
+  }
 }
 
 object State {
@@ -84,20 +93,6 @@ object State {
   /** Initiate state for a fresh app */
   def mk[F[_]: Concurrent: Clock]: F[SignallingRef[F, State]] =
     Clock[F].instantNow.flatMap { now =>
-      SignallingRef.apply[F, State](State(Load.State.Idle, now, 0, 0, 0))
+      SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, Map.empty, 0, 0))
     }
-
-  implicit class StateRefOps[F[_]](ref: Ref[F]) {
-    def setStage(stage: Load.Stage)(implicit C: Clock[F], M: Monad[F]): F[Unit] =
-      C.instantNow.flatMap { now =>
-        ref.update { original =>
-          original.loading match {
-            case Load.State.Loading(_, s) if s != stage =>
-              original.setStage(stage).setUpdated(now)
-            case _ =>  // We never call setStage on idling loader or with the same stage
-              original
-          }
-        }
-      }
-  }
 }

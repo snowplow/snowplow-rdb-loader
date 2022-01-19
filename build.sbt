@@ -11,8 +11,6 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-ThisBuild / version := "1.2.2"
-
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, shredder, streamShredder)
 
@@ -23,6 +21,7 @@ lazy val aws = project.in(file("modules/aws"))
     libraryDependencies ++= Seq(
       Dependencies.aws2s3,
       Dependencies.aws2sqs,
+      Dependencies.aws2sns,
       Dependencies.fs2,
       Dependencies.catsRetry,
     )
@@ -48,8 +47,10 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.circeLiteral,
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
+      Dependencies.cron4sCirce,
       Dependencies.schemaDdl,
       Dependencies.http4sCore,
+      Dependencies.aws2regions,
 
       Dependencies.specs2,
       Dependencies.monocle,
@@ -69,6 +70,7 @@ lazy val loader = project.in(file("modules/loader"))
   .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -84,16 +86,19 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
+      Dependencies.fs2Cron,
       Dependencies.http4sCirce,
       Dependencies.http4sClient,
       Dependencies.igluClientHttp4s,
       Dependencies.doobie,
+      Dependencies.doobieHikari,
       Dependencies.catsRetry,
       Dependencies.log4cats,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck,
+      Dependencies.catsEffectLaws,
       Dependencies.catsTesting,
     )
   )
@@ -111,10 +116,12 @@ lazy val shredder = project.in(file("modules/shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(BuildSettings.shredderAssemblySettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(
     libraryDependencies ++= Seq(
       // Java
       Dependencies.sqs,
+      Dependencies.sns,
       Dependencies.dynamodb,
       Dependencies.slf4j,
       Dependencies.sentry,
@@ -122,6 +129,8 @@ lazy val shredder = project.in(file("modules/shredder"))
       Dependencies.eventsManifest,
       Dependencies.sparkCore,
       Dependencies.sparkSQL,
+      Dependencies.jacksonModule,
+      Dependencies.jacksonDatabind,
       // Scala (test only)
       Dependencies.circeOptics,
       Dependencies.specs2,
@@ -144,6 +153,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     libraryDependencies ++= Seq(

@@ -41,7 +41,7 @@ class MonitoringSpec extends Specification {
 
       val payload = AlertPayload(
         BuildInfo.version,
-        S3.Folder.coerce("s3://acme/folder/"),
+        Some(S3.Folder.coerce("s3://acme/folder/")),
         AlertPayload.Severity.Warning,
         "Some error",
         Map("pipeline" -> "dev1")

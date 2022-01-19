@@ -19,11 +19,11 @@ import cats.implicits._
 
 import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 object StatsDReporter {
 
-  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] = 
+  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] =
     statsDConfig match {
       case Some(config) =>
         new Reporter[F] {
@@ -60,6 +60,6 @@ object StatsDReporter {
   private def statsDFormat(config: Config.StatsD)(metric: Metrics.KVMetric): String = {
     val tagStr = config.tags.map { case (k, v) => s"$k:$v" }.mkString(",")
     val prefix = config.prefix.getOrElse(Config.MetricsDefaultPrefix).stripSuffix(".")
-    s"${prefix}.${metric.key}:${metric.value}|g|#$tagStr".stripPrefix(".")
+    s"${prefix}.${metric.key}:${metric.value}|c|#$tagStr".stripPrefix(".")
   }
 }
