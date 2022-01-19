@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake.config
 
 import cats.implicits._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, SecretExtractor}
 import com.snowplowanalytics.snowplow.rdbloader.config.components.PasswordConfig
 import enumeratum._
 import io.circe.generic.semiauto._
@@ -42,6 +42,10 @@ object SnowflakeTarget {
 
   implicit val snowflakeConfigDecoder: Decoder[SnowflakeTarget] =
     deriveDecoder[SnowflakeTarget]
+
+  implicit val secretExtractor: SecretExtractor[SnowflakeTarget] = new SecretExtractor[SnowflakeTarget] {
+    override def extract(c: SnowflakeTarget): List[String] = List(c.username, c.password.getUnencrypted)
+  }
 
   sealed trait SetupSteps extends EnumEntry
 
@@ -133,7 +137,7 @@ object SnowflakeTarget {
       result || s.startsWith(s"$prefix://")
     }
 
-  private[core] def fixPrefix(s: String): String =
+  private def fixPrefix(s: String): String =
     if (s.startsWith("s3n")) "s3" + s.stripPrefix("s3n")
     else if (s.startsWith("s3a")) "s3" + s.stripPrefix("s3a")
     else s

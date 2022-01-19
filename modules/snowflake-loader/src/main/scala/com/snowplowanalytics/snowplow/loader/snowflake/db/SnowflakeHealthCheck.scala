@@ -12,14 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import cats.syntax.all._
-import cats.effect.{Concurrent, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{HealthCheck, Transaction}
-import com.snowplowanalytics.snowplow.rdbloader.db.Transaction
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.HealthCheck
 
-class RedshiftHealthCheck[F[_]: Transaction[*[_], C]: Timer: Concurrent: Logging: Monitoring, C[_]: SfDao]
-    extends HealthCheck[F] {
+class SnowflakeHealthCheck[C[_]: SfDao] extends HealthCheck[C] {
 
-  def perform: F[Boolean] = ???
+  override def select1: C[Int] = SfDao[C].executeQuery[Int](Statement.Select1)
 }

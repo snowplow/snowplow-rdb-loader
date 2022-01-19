@@ -1,9 +1,53 @@
 package com.snowplowanalytics.snowplow.loader.snowflake.dsl
 
-import cats.effect.Resource
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.dsl.EnvironmentBuilder
+import cats.Parallel
+import cats.effect._
 
-class SnowflakeEnvironmentBuilder[F[_]] extends EnvironmentBuilder[F] {
-  override def build(cfg: CliConfig): Resource[F, EnvironmentBuilder.Environment[F]] = ???
+import doobie.ConnectionIO
+import doobie.implicits._
+
+import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl.TargetEnvironmentBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.db.helpers.DAO
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.EnvironmentBuilder.CommonEnvironment
+import com.snowplowanalytics.snowplow.rdbloader.state.Control
+import com.snowplowanalytics.snowplow.loader.snowflake.db.{
+  Statement,
+  SnowflakeMigrationBuilder,
+  SnowflakeManifest,
+  SnowflakeHealthCheck
+}
+import com.snowplowanalytics.snowplow.loader.snowflake.config.SnowflakeTarget
+import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
+
+class SnowflakeEnvironmentBuilder[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel] extends TargetEnvironmentBuilder[F, SnowflakeTarget] {
+  override def build(cli: CliConfig[SnowflakeTarget],
+                     commonEnv: CommonEnvironment[F]): Resource[F, TargetEnvironmentBuilder.TargetEnvironment[F]] = {
+
+    implicit val aws: AWS[F]                         = commonEnv.aws
+    implicit val loggingC: Logging[ConnectionIO]     = commonEnv.loggingC
+    implicit val controlC: Control[ConnectionIO]     = commonEnv.controlC
+    implicit val sfDao: DAO[ConnectionIO, Statement] = DAO.connectionIO[Statement]
+
+    lazy val target: SnowflakeTarget = cli.config.storage
+    lazy val snowflakeLoader         = new SnowflakeLoader[ConnectionIO](target, cli.config.region.name)
+    lazy val snowflakeMonitoring     = new SnowflakeFolderMonitoringDao[ConnectionIO](target)
+
+    for {
+      implicit0(snowflakeTransaction: Transaction[F, ConnectionIO]) <- SnowflakeTransaction
+        .interpreter[F](target, commonEnv.blocker)
+      snowflakeMigrator    = new SnowflakeMigrationBuilder[ConnectionIO](target.schema)
+      snowflakeManifest    = new SnowflakeManifest[ConnectionIO](target.schema)
+      snowflakeHealthCheck = new SnowflakeHealthCheck[ConnectionIO]
+    } yield new TargetEnvironmentBuilder.TargetEnvironment[F] (
+      transaction         = snowflakeTransaction,
+      healthCheck         = snowflakeHealthCheck,
+      manifest            = snowflakeManifest,
+      migrationBuilder    = snowflakeMigrator,
+      targetLoader        = snowflakeLoader,
+      folderMonitoringDao = snowflakeMonitoring
+    )
+  }
 }
