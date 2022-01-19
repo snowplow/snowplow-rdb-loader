@@ -12,31 +12,35 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import cats.~>
 import cats.implicits._
-import cats.effect.{Clock, Async, Resource}
+
+import cats.effect.{Async, Resource, Clock}
 
 import io.circe.Json
 import io.circe.syntax._
 
 import org.http4s.client.Client
 
-import com.snowplowanalytics.iglu.client.resolver.Resolver
+import com.snowplowanalytics.iglu.client.resolver.{Resolver, ResolverCache}
 import com.snowplowanalytics.iglu.client.{Client => IgluClient}
-
 import com.snowplowanalytics.iglu.client.resolver.registries.{RegistryLookup, Http4sRegistryLookup}
 
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
-
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Flattening
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
-trait Iglu[F[_]] {
+trait Iglu[F[_]] { self =>
   /** Retrieve list of schemas from Iglu Server */
   def getSchemas(vendor: String, name: String, model: Int): F[Either[LoaderError, SchemaList]]
+
+  def mapK[G[_]](arrow: F ~> G): Iglu[G] =
+    (vendor: String, name: String, model: Int) =>
+      arrow(self.getSchemas(vendor, name, model))
 }
 
 object Iglu {
@@ -49,7 +53,7 @@ object Iglu {
     val buildResolver: F[Resolver[F]] =
       IgluClient
         .parseDefault[F](igluConfig)
-        .map(_.resolver)
+        .map(_.resolver.copy(cache = none[ResolverCache[F]])) // Disable cache to not re-fetch the stale state
         .leftMap { decodingFailure => new IllegalArgumentException(s"Cannot initialize Iglu Resolver: ${decodingFailure.show}") }
         .rethrowT
 

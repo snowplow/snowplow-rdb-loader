@@ -47,6 +47,7 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.circeLiteral,
       Dependencies.pureconfig,
       Dependencies.pureconfigCirce,
+      Dependencies.cron4sCirce,
       Dependencies.schemaDdl,
       Dependencies.http4sCore,
       Dependencies.aws2regions,
@@ -85,16 +86,19 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
+      Dependencies.fs2Cron,
       Dependencies.http4sCirce,
       Dependencies.http4sClient,
       Dependencies.igluClientHttp4s,
       Dependencies.doobie,
+      Dependencies.doobieHikari,
       Dependencies.catsRetry,
       Dependencies.log4cats,
 
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck,
+      Dependencies.catsEffectLaws,
       Dependencies.catsTesting,
     )
   )

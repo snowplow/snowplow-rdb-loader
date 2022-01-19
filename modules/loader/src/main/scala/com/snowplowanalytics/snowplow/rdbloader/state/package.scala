@@ -10,22 +10,14 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.common
+package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.concurrent.duration.FiniteDuration
+import cats.effect.Resource
 
-import cats.~>
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
-/**
-  * Generic entity pulled from a message queue
-  *
-  * @param data the actual payload, e.g. JSON
-  * @param ack an action to acknowledge the message and/or remove it from the queue
-  */
- final case class Message[F[_], A](data: A, ack: F[Unit], extend: FiniteDuration => F[Unit]) {
-  def map[B](f: A => B): Message[F, B] =
-    Message(f(data), ack, extend)
+package object state {
+  type MakeBusy[F[_]] = S3.Folder => Resource[F, Unit]
 
-  def mapK[G[_]](arrow: F ~> G): Message[G, A] =
-    Message(data, arrow(ack), duration => arrow(extend(duration)))
+  type MakePaused[F[_]] = String => Resource[F, Unit]
 }

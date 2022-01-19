@@ -17,11 +17,12 @@ import scala.concurrent.duration.FiniteDuration
 import cats._
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction, State}
+import com.snowplowanalytics.snowplow.rdbloader.{ DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction }
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 /**
   * Result of data discovery in shredded.good folder
@@ -53,6 +54,9 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
  */
 object DataDiscovery {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
   case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
 
   /**
@@ -67,7 +71,7 @@ object DataDiscovery {
    * @param config generic storage target configuration
    * @param state mutable state to keep logging information
    */
-  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], state: State.Ref[F]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
     AWS[F]
       .readSqs(config.messageQueue)
       .evalMapFilter { message =>
@@ -78,9 +82,10 @@ object DataDiscovery {
             ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
         }
 
-        state.updateAndGet(_.incrementMessages).flatMap { state =>
-          Logging[F].info(s"Received new message. ${state.show}")
-        } *> action
+        Logging[F].info("Received a new message") *>
+          Logging[F].debug(message.data) *>
+          incrementMessages.flatMap(state => Logging[F].info(state.show)) *> 
+          action
       }
 
   /**

@@ -33,6 +33,21 @@
     "maxError": 10
   },
 
+  "schedules": {
+    # Periodic schedules to stop loading, e.g. for Redshift maintenance window
+    # Any amount of schedules is supported, but recommended to not overlap them
+    "noOperation": [
+      {
+        # Human-readable name of the no-op window
+        "name": "Maintenance window",
+        # Cron expression with second granularity
+        "when": "0 0 12 * * ?",
+        # For how long the loader should be paused
+        "duration": "1 hour"
+      }
+    ]
+  }
+
   # Observability and reporting options
   "monitoring": {
     # Snowplow tracking (optional)
@@ -80,6 +95,29 @@
       "until": "7 days"
       # Path to shredded archive
       "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+    },
+
+    # Periodic DB health-check, raising a warning if DB hasn't responded to `SELECT 1`
+    "healthCheck": {
+      # How often query a DB
+      "frequency": "20 minutes",
+      # How long to wait for a response
+      "timeout": "15 seconds"
     }
+  },
+
+  # Additional backlog of recently failed folders that could be automatically retried
+  # Retry Queue saves a failed folder and then re-reads the info from shredding_complete S3 file
+  "retryQueue": {
+    # How often batch of failed folders should be pulled into a discovery queue
+    "period": "30 minutes",
+    # How many failures should be kept in memory
+    # After the limit is reached new failures are dropped
+    "size": 64,
+    # How many attempt to make for each folder
+    # After the limit is reached new failures are dropped
+    "maxAttempts": 3,
+    # Artificial pause after each failed folder being added to the queue
+    "interval": "5 seconds"
   }
 }

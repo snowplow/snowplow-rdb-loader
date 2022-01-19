@@ -23,7 +23,7 @@ import cats.implicits._
 import cats.effect.Timer
 
 import com.snowplowanalytics.aws.sqs.SQS
-import com.snowplowanalytics.snowplow.rdbloader.State
+import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 
 object StateMonitoring {
@@ -38,25 +38,23 @@ object StateMonitoring {
    * Start a periodic state check in order to extend an SQS message visibility
    * if it hasn't been processed in time
    */
-  def run[F[_]: Monad: Timer: Logging](globalState: State.Ref[F], extend: FiniteDuration => F[Unit]): F[Unit] = {
-    def raise(loading: Load.State, updated: Instant): F[Unit] =
+  def run[F[_]: Monad: Timer: Logging](globalState: F[State], extend: FiniteDuration => F[Unit]): F[Unit] = {
+    def raise(loading: Load.Status, updated: Instant): F[Unit] =
       Timer[F].clock.instantNow.flatMap { now =>
         val duration = Duration.between(updated, now).toMinutes
         Logging[F].warning(show"Loading is ongoing, but approached SQS timeout. $loading. Spent $duration minutes at this stage. Extending processing for $DefaultExtendPeriod")
       }
 
-    def info(loading: Load.State): F[Unit] =
+    def info(loading: Load.Status): F[Unit] =
       Logging[F].info(show"Loading is ongoing, but approached SQS timeout. $loading. Extending processing for $DefaultExtendPeriod")
 
-    def go(n: Int, previous: Load.State): F[Unit] =
-      Timer[F].sleep(SleepPeriod) >> globalState.get.flatMap { current =>
+    def go(n: Int, previous: Load.Status): F[Unit] =
+      Timer[F].sleep(SleepPeriod) >> globalState.flatMap { current =>
         val again = extend(DefaultExtendPeriod) >> go(n + 1, current.loading)
 
         current.loading match {
-          case Load.State.Idle =>
+          case Load.Status.Idle =>
             Monad[F].unit
-          case Load.State.Loading(_, Load.Stage.PostLoad) =>
-            Monad[F].unit     // Message is already ack'ed
           case _ if current.loading == previous =>
             raise(current.loading, current.updated) >> again
           case _ =>
@@ -64,7 +62,7 @@ object StateMonitoring {
         }
       }
 
-    globalState.get.flatMap { first =>
+    globalState.flatMap { first =>
       go(1, first.loading)
     }
   }

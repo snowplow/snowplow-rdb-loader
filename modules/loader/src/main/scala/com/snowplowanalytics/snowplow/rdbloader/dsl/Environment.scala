@@ -14,19 +14,19 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Parallel, Monad}
+import cats.Parallel
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
-import fs2.Stream
+import doobie.ConnectionIO
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
 
-import com.snowplowanalytics.snowplow.rdbloader.State
+import com.snowplowanalytics.snowplow.rdbloader.state.{ State, Control }
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
@@ -41,36 +41,26 @@ class Environment[F[_]](cache: Cache[F],
                         monitoring: Monitoring[F],
                         iglu: Iglu[F],
                         aws: AWS[F],
-                        jdbc: JDBC[F],
-                        state: State.Ref[F],
-                        val blocker: Blocker) {
+                        transaction: Transaction[F, ConnectionIO],
+                        state: State.Ref[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
-  implicit val jdbcF: JDBC[F] = jdbc
+  implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
-  def control(implicit F: Monad[F], C: Clock[F]): Environment.Control[F] =
-    Environment.Control(state, makeBusy, isBusy)
+  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO
+  implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
 
-  private[this] def makeBusy(implicit F: Monad[F], C: Clock[F]): S3.Folder => Resource[F, Unit] = 
-    folder => {
-      val allocate = C.instantNow.flatMap { now => state.update(_.start(folder).setUpdated(now)) }
-      val deallocate: F[Unit] = C.instantNow.flatMap { now => state.update(_.idle.setUpdated(now)) }
-      Resource.make(allocate)(_ => deallocate)
-  }
-
-  private[this] def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    state.map(_.isBusy).discrete
+  def control: Control[F] =
+    Control(state)
 }
 
 object Environment {
 
-  /** A signle set of mutable objects and functions to manipulate them */
-  case class Control[F[_]](state: State.Ref[F],
-                           makeBusy: S3.Folder => Resource[F, Unit],
-                           isBusy: Stream[F, Boolean])
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
     val init = for {
@@ -86,8 +76,8 @@ object Environment {
       blocker <- Blocker[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
-      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
@@ -99,8 +89,8 @@ object Environment {
       //       we'd need to integrate its lifecycle into Pool or maintain
       //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
-      jdbc <- JDBC.interpreter[F](cli.config.storage, cli.dryRun, blocker)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, blocker)
+      transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state)
   }
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =

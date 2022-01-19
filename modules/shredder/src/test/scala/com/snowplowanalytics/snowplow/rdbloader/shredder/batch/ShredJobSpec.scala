@@ -314,7 +314,8 @@ object ShredJobSpec {
       ShredderConfig.Output(dirs.output.toURI, ShredderConfig.Compression.None, Region("eu-central-1")),
       ShredderConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       ShredderConfig.Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil),
-      ShredderConfig.Monitoring(None)
+      ShredderConfig.Monitoring(None),
+      ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
     )
   }
 }

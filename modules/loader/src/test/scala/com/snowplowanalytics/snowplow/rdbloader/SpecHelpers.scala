@@ -37,8 +37,9 @@ object SpecHelpers {
     ConfigSpec.exampleJsonPaths,
     ConfigSpec.exampleMonitoring,
     ConfigSpec.exampleQueueName,
+    ConfigSpec.exampleRetryQueue,
     ConfigSpec.exampleStorage,
-    ConfigSpec.exampleSteps
+    ConfigSpec.exampleSchedules,
   )
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 

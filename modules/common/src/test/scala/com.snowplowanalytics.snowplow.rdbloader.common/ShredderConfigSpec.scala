@@ -36,7 +36,8 @@ class ShredderConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         exampleFormats,
-        exampleMonitoring
+        exampleMonitoring,
+        exampleDeduplication
       )
       result must beRight(expected)
     }
@@ -48,7 +49,8 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         exampleDefaultFormats,
-        exampleDefaultMonitoring
+        exampleDefaultMonitoring,
+        exampleDeduplication
       )
       result must beRight(expected)
     }
@@ -223,6 +225,7 @@ object ShredderConfigSpec {
     Some(ShredderConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
+  val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
 
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
     parse(readResource(confPath))

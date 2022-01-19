@@ -25,8 +25,11 @@ import io.circe.generic.semiauto._
 
 import org.http4s.{ParseFailure, Uri}
 
+import cron4s.CronExpr
+import cron4s.circe._
+
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, ConfigUtils, Region}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common._
 
@@ -38,8 +41,9 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              jsonpaths: Option[S3.Folder],
                                              monitoring: Monitoring,
                                              messageQueue: String,
+                                             retryQueue: Option[RetryQueue],
                                              storage: D,
-                                             steps: Set[Step])
+                                             schedules: Schedules)
 
 object Config {
 
@@ -53,14 +57,18 @@ object Config {
     ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
   }
 
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders])
+  final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
+  final case class Schedules(noOperation: List[Schedule])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
+  final case class HealthCheck(frequency: FiniteDuration, timeout: FiniteDuration)
   final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
   final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration])
+  final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
 
 
   /**
@@ -76,6 +84,12 @@ object Config {
 
     implicit val sentryDecoder: Decoder[Sentry] =
       deriveDecoder[Sentry]
+
+    implicit val periodicDurationDecoder: Decoder[Schedule] =
+      deriveDecoder[Schedule]
+
+    implicit val schedulesDecoder: Decoder[Schedules] =
+      deriveDecoder[Schedules]
 
     implicit val statsdDecoder: Decoder[StatsD] =
       deriveDecoder[StatsD]
@@ -105,11 +119,18 @@ object Config {
 
     implicit val webhookDecoder: Decoder[Webhook] =
       deriveDecoder[Webhook]
+
     implicit val foldersDecoder: Decoder[Folders] =
       deriveDecoder[Folders]
 
+    implicit val healthCheckDecoder: Decoder[HealthCheck] =
+      deriveDecoder[HealthCheck]
+
     implicit val monitoringDecoder: Decoder[Monitoring] =
       deriveDecoder[Monitoring]
+
+    implicit val retryQueueDecoder: Decoder[RetryQueue] =
+      deriveDecoder[RetryQueue]
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]]

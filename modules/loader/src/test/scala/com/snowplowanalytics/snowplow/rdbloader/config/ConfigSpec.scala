@@ -15,16 +15,18 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 import java.net.URI
 import java.nio.file.{Paths, Files}
 
-import cats.data.EitherT
-import cats.effect.IO
-
 import scala.concurrent.duration._
+
+import cats.data.EitherT
+
+import cats.effect.IO
 
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Step, Region}
-import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, RegionSpec}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+
+import cron4s.Cron
 
 class ConfigSpec extends Specification {
   import ConfigSpec._
@@ -37,8 +39,9 @@ class ConfigSpec extends Specification {
         exampleJsonPaths,
         exampleMonitoring,
         exampleQueueName,
+        exampleRetryQueue,
         exampleStorage,
-        exampleSteps
+        exampleSchedules,
       )
       result must beRight(expected)
     }
@@ -50,8 +53,9 @@ class ConfigSpec extends Specification {
         None,
         emptyMonitoring,
         exampleQueueName,
+        None,
         exampleStorage,
-        Set.empty
+        emptySchedules
       )
       result must beRight(expected)
     }
@@ -78,9 +82,10 @@ object ConfigSpec {
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
     None,
-    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days)))
+    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days))),
+    Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
-  val emptyMonitoring = Config.Monitoring(None, None, None, None, None)
+  val emptyMonitoring = Config.Monitoring(None, None, None, None, None, None)
   val exampleQueueName = "test-queue"
   val exampleStorage = StorageTarget.Redshift(
     "redshift.amazonaws.com",
@@ -94,7 +99,13 @@ object ConfigSpec {
     10,
     None
   )
-  val exampleSteps: Set[Step] = Set()
+  val exampleSchedules: Config.Schedules = Config.Schedules(List(
+    Config.Schedule("Maintenance window", Cron.unsafeParse("0 0 12 * * ?"), 1.hour)
+  ))
+  val exampleRetryQueue: Option[Config.RetryQueue] = Some(Config.RetryQueue(
+    30.minutes, 64, 3, 5.seconds
+  ))
+  val emptySchedules: Config.Schedules = Config.Schedules(Nil)
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()
