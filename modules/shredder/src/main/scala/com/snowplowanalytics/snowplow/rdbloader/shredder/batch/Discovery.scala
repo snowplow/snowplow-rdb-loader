@@ -75,7 +75,7 @@ object Discovery {
 
   def getConcrete(runInterval: RunInterval, now: Instant): Option[Instant] = {
     val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
-    (runInterval.since.map(_.value), instantForDuration) match {
+    (runInterval.sinceTimestamp.map(_.value), instantForDuration) match {
       case (None, None) => None
       case (i1@Some(v1), i2@Some(v2)) => if (v1.isAfter(v2)) i1 else i2
       case (v1, None) => v1

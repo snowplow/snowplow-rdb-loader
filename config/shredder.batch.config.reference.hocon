@@ -68,9 +68,17 @@
     ]
   },
 
+  # Specifies interval shredder will work on
   "runInterval": {
-    "since": "2021-10-12-14-55-22",
+    # Timestamp specifies since when shredder will process
+    "sinceTimestamp": "2021-10-12-14-55-22",
+    # Duration value specifies since when shredder will process.
+    # Timestamp for duration is calculated with going back
+    # as long as specified age value. Whichever of sinceTimestamp
+    # and calculated timestamp is later than other, shredder starts
+    # to process from that time.
     "sinceAge": "14 days",
+    # Specifies until when shredder will process
     "until": "2021-12-10-18-34-52"
   }
 

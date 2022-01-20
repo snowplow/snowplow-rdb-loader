@@ -171,7 +171,7 @@ object ShredderConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
-  final case class RunInterval(since: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
+  final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
   object RunInterval {
     final case class IntervalInstant(value: Instant)
   }
