@@ -34,32 +34,42 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common._
 
 /**
- * Main config file parsed from HOCON
- * @tparam D kind of supported warehouse
- */
-final case class Config[+D <: StorageTarget](region: Region,
-                                             jsonpaths: Option[S3.Folder],
-                                             monitoring: Monitoring,
-                                             messageQueue: String,
-                                             retryQueue: Option[RetryQueue],
-                                             storage: D,
-                                             schedules: Schedules)
+  * Main config file parsed from HOCON
+  * @tparam D kind of supported warehouse
+  */
+final case class Config[+D <: StorageTarget](
+  region: Region,
+  jsonpaths: Option[S3.Folder],
+  monitoring: Monitoring,
+  messageQueue: String,
+  retryQueue: Option[RetryQueue],
+  storage: D,
+  schedules: Schedules
+)
 
 object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
-    fromString(s, implicits().configDecoder)
-
-  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] =  {
-    implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
-    ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
+  def fromString[F[_]: Sync, T <: StorageTarget: Decoder](
+    s: String
+  ): EitherT[F, String, Config[T]] = {
+    val impl = implicits()
+    import impl._
+    implicit val configDecoder: Decoder[Config[T]] = deriveDecoder[Config[T]]
+    ConfigUtils.fromStringF[F, Config[T]](s)
   }
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
   final case class Schedules(noOperation: List[Schedule])
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
+  final case class Monitoring(
+    snowplow: Option[SnowplowMonitoring],
+    sentry: Option[Sentry],
+    metrics: Option[Metrics],
+    webhook: Option[Webhook],
+    folders: Option[Folders],
+    healthCheck: Option[HealthCheck]
+  )
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class HealthCheck(frequency: FiniteDuration, timeout: FiniteDuration)
@@ -67,14 +77,19 @@ object Config {
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration])
+  final case class Folders(
+    period: FiniteDuration,
+    staging: S3.Folder,
+    since: Option[FiniteDuration],
+    shredderOutput: S3.Folder,
+    until: Option[FiniteDuration]
+  )
   final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
 
-
   /**
-   * All config implicits are put into case class because we want to make region decoder
-   * replaceable to write unit tests for config parsing.
-   */
+    * All config implicits are put into case class because we want to make region decoder
+    * replaceable to write unit tests for config parsing.
+    */
   final case class implicits(regionConfigDecoder: Decoder[Region] = Region.regionConfigDecoder) {
     implicit val implRegionConfigDecoder: Decoder[Region] =
       regionConfigDecoder
@@ -105,13 +120,10 @@ object Config {
 
     implicit val minuteDecoder: Decoder[FiniteDuration] =
       Decoder[String].emap { str =>
-        Either
-          .catchOnly[NumberFormatException](Duration.create(str))
-          .leftMap(_.toString)
-          .flatMap { duration =>
-            if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
-            else Left(s"Cannot convert Duration $duration to FiniteDuration")
-          }
+        Either.catchOnly[NumberFormatException](Duration.create(str)).leftMap(_.toString).flatMap { duration =>
+          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+          else Left(s"Cannot convert Duration $duration to FiniteDuration")
+        }
       }
 
     implicit val uriDecoder: Decoder[URI] =
@@ -131,8 +143,5 @@ object Config {
 
     implicit val retryQueueDecoder: Decoder[RetryQueue] =
       deriveDecoder[RetryQueue]
-
-    implicit val configDecoder: Decoder[Config[StorageTarget]] =
-      deriveDecoder[Config[StorageTarget]]
   }
 }

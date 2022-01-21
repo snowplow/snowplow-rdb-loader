@@ -12,154 +12,165 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.concurrent.duration._
-
-import cats.{Monad, Apply}
+import cats.{Apply, Monad}
 import cats.implicits._
-
-import cats.effect.{Clock, Resource, Timer, MonadThrow, Concurrent}
+import cats.effect.{Clock, ConcurrentEffect, MonadThrow, Resource, Timer}
 import cats.effect.implicits._
-
 import fs2.Stream
 
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db._
 import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{
+  AWS,
+  Cache,
+  FolderMonitoring,
+  Iglu,
+  Logging,
+  Monitoring,
+  StateMonitoring
+}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
+import scala.concurrent.duration._
 object Loader {
 
-  private implicit val LoggerName: Logging.LoggerName =
+  implicit private val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /** How often Loader should print its internal state */
   val StateLoggingFrequency: FiniteDuration = 5.minutes
 
   /**
-   * Primary application's entry-point, responsible for launching all processes
-   * (such as discovery, loading, monitoring etc), managing global state and
-   * handling failures
-   *
-   * @tparam F primary application's effect (usually `IO`), responsible for all
-   *           communication with outside world and performing DB transactions
-   *           Any `C[A]` can be transformed into `F[A]`
-   * @tparam C auxiliary effect for communicating with database (usually `ConnectionIO`)
-   *           Unlike `F` it cannot pull `A` out of DB (perform a transaction), but just
-   *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
-   */
-  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
-          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
+    * Primary application's entry-point, responsible for launching all processes
+    * (such as discovery, loading, monitoring etc), managing global state and
+    * handling failures
+    *
+    * @tparam F primary application's effect (usually `IO`), responsible for all
+    *           communication with outside world and performing DB transactions
+    *           Any `C[A]` can be transformed into `F[A]`
+    * @tparam C auxiliary effect for communicating with database (usually `ConnectionIO`)
+    *           Unlike `F` it cannot pull `A` out of DB (perform a transaction), but just
+    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
+    */
+  def run[
+    F[_]: Transaction[*[_], C]: ConcurrentEffect: AWS: Clock: Control: Iglu: Cache: Logging: Timer: Monitoring,
+    C[_]: MonadThrow: Logging: Control: FolderMonitoringDao: Manifest: TargetLoader: HealthCheck: MigrationBuilder,
+    T <: StorageTarget
+  ](config: Config[T]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[C, F](config.monitoring.folders, config.storage, control.isBusy)
+      FolderMonitoring.run[F, C](config.monitoring.folders)
     val noOpScheduling: Stream[F, Unit] =
-      NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
-    val healthCheck =
-      HealthCheck.start[F, C](config.monitoring.healthCheck)
+      NoOperation.run[F](config.schedules.noOperation)
+    val healthCheck = HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
-      loadStream[F, C](config, control)
+      loadStream[F, C, T](config)
+
     val stateLogging: Stream[F, Unit] =
-      Stream.awakeDelay[F](StateLoggingFrequency)
-        .evalMap { _ => control.get.map(_.showExtended) }
-        .evalMap { state => Logging[F].info(show"Loader State: $state") }
+      Stream
+        .awakeDelay[F](StateLoggingFrequency)
+        .evalMap { _ =>
+          Control[F].get.map(_.showExtended)
+        }
+        .evalMap { state =>
+          Logging[F].info(show"Loader State: $state")
+        }
 
-    val process = Stream.eval(Manifest.initialize[F, C](config.storage)).flatMap { _ =>
-      loading
-        .merge(folderMonitoring)
-        .merge(noOpScheduling)
-        .merge(healthCheck)
-        .merge(stateLogging)
-    }
+    // TODO initialize fomr setup
+    val process = Stream.eval(Manifest.init) >>
+      loading.merge(folderMonitoring).merge(noOpScheduling).merge(healthCheck).merge(stateLogging)
 
-    process
-      .compile
-      .drain
-      .onError(reportFatal[F])
+    process.compile.drain.onError(reportFatal[F])
   }
 
   /**
-   * A primary loading processing, pulling information from discovery streams
-   * (SQS and retry queue) and performing the load operation itself
-   */
-  def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
-                 C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
+    * A primary loading processing, pulling information from discovery streams
+    * (SQS and retry queue) and performing the load operation itself
+    */
+  def loadStream[
+    F[_]: Transaction[*[_], C]: ConcurrentEffect: AWS: Iglu: Cache: Logging: Timer: Monitoring: Control,
+    C[_]: Monad: Logging: TargetLoader: MigrationBuilder: Manifest: Control,
+    T <: StorageTarget
+  ](config: Config[T]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery.discover[F](config, control.incrementMessages)
+      DataDiscovery.discover[F, T](config)
     val retryDiscovery: DiscoveryStream[F] =
-      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.get.map(_.failures))
+      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, Control[F].get.map(_.failures))
     val discovery = sqsDiscovery.merge(retryDiscovery)
 
-    discovery
-      .pauseWhen[F](control.isBusy)
-      .evalMap(processDiscovery[F, C](config, control))
+    discovery.evalMap(processDiscovery[F, C, T](config))
   }
 
   /**
-   * Block the discovery stream until the message is processed and pass the control
-   * over to `Load`. A primary function handling the global state - everything
-   * downstream has access only to `F` actions, instead of whole `Control` object
-   */
-  def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
-                       C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
-                                                 (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
+    * Block the discovery stream until the message is processed and pass the control
+    * over to `Load`. A primary function handling the global state - everything
+    * downstream has access only to `F` actions, instead of whole `Control` object
+    */
+  def processDiscovery[
+    F[_]: Transaction[*[_], C]: Cache: Logging: Control: Timer: Iglu: Monad: Monitoring: ConcurrentEffect,
+    C[_]: Monad: Logging: Manifest: MigrationBuilder: TargetLoader: Control,
+    T <: StorageTarget
+  ](config: Config[T])(
+    discovery: Message[F, DataDiscovery.WithOrigin]
+  ): F[Unit] = {
     val prepare: Resource[F, Unit] = for {
-      _        <- StateMonitoring.run(control.get, discovery.extend).background
-      makeBusy  = control.makeBusy
-      _        <- makeBusy(discovery.data.origin.base)
+      _ <- StateMonitoring.run[F](discovery.extend).background
+      _ <- Control[F].makeBusy(discovery.data.origin.base)
     } yield ()
-
-    val setStageC: Stage => C[Unit] =
-      stage => Transaction[F, C].arrowBack(control.setStage(stage))
-    val addFailure: Throwable => F[Boolean] =
-      control.addFailure(config.retryQueue)(discovery.data.origin.base)(_)
 
     val loading: F[Unit] = prepare.use { _ =>
       for {
         start  <- Clock[F].instantNow
-        result <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
-        _      <- result match {
+        result <- Load.load[F, C](discovery.data)
+        _ <- result match {
           case Right(ingested) =>
             val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
             for {
               loaded   <- ingested.map(Monad[F].pure).getOrElse(now)
               _        <- discovery.ack
-              attempts <- control.getAndResetAttempts
+              attempts <- Control[F].getAndResetAttempts
               _        <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
-              _        <- control.incrementLoaded
+              _        <- Control[F].incrementLoaded
             } yield ()
           case Left(alert) =>
-            discovery.ack *> control.getAndResetAttempts.void *> Monitoring[F].alert(alert)
+            discovery.ack *> Control[F].getAndResetAttempts.void *> Monitoring[F].alert(alert)
 
         }
       } yield ()
     }
 
-    loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
+    loading.handleErrorWith(reportLoadFailure[F, T](discovery, config))
   }
 
   /**
-   * Handle a failure during loading.
-   * `Load.getTransaction` can fail only in one "expected" way - if the folder is already loaded
-   * everything else in the transaction and outside (migration building, pre-transaction
-   * migrations, ack) is handled by this function. It's called on non-fatal loading failure
-   * and just reports the failure, without crashing the process
-   *
-   * @param discovery the original discovery
-   * @param error the actual error, typically `SQLException`
-   */
-  def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: Message[F, DataDiscovery.WithOrigin],
-                                                          addFailure: Throwable => F[Boolean])
-                                                         (error: Throwable): F[Unit] = {
+    * Handle a failure during loading.
+    * `Load.getTransaction` can fail only in one "expected" way - if the folder is already loaded
+    * everything else in the transaction and outside (migration building, pre-transaction
+    * migrations, ack) is handled by this function. It's called on non-fatal loading failure
+    * and just reports the failure, without crashing the process
+    *
+    * @param discovery the original discovery
+    * @param error the actual error, typically `SQLException`
+    */
+  def reportLoadFailure[
+    F[_]: Control: Logging: Monitoring: Monad,
+    T <: StorageTarget
+  ](
+    discovery: Message[F, DataDiscovery.WithOrigin],
+    config: Config[T]
+  )(error: Throwable): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
-    val alert = Monitoring.AlertPayload.warn(message, discovery.data.origin.base)
-    val logNoRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Not adding into retry queue. $message")
-    val logRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Adding intro retry queue. $message")
+    val alert   = Monitoring.AlertPayload.warn(message, discovery.data.origin.base)
+    val logNoRetry =
+      Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Not adding into retry queue. $message")
+    val logRetry =
+      Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Adding intro retry queue. $message")
 
     discovery.ack *>
       Monitoring[F].alert(alert) *>
-      addFailure(error).ifM(logRetry, logNoRetry)
+      Control[F].addFailure(config.retryQueue)(discovery.data.origin.base)(error).ifM(logRetry, logNoRetry)
   }
 
   /** Last level of failure handling, called when non-loading stream fail. Called on an application crash */

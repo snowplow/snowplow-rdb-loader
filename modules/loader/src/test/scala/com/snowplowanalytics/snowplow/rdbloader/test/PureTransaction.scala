@@ -14,41 +14,43 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.~>
 import cats.arrow.FunctionK
-import cats.data.{State, EitherT}
+import cats.data.{EitherT, State}
 import cats.implicits._
-
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 object PureTransaction {
 
   val Start = "BEGIN TRANSACTION"
-  val StartMessage: TestState.LogEntry =
+  val StartMessage: LogEntry.Message =
     TestState.LogEntry.Message(Start)
   val Commit = "COMMIT TRANSACTION"
-  val CommitMessage: TestState.LogEntry =
+  val CommitMessage: LogEntry.Message =
     TestState.LogEntry.Message(Commit)
   val Rollback = "ROLLBACK TRANSACTION"
-  val RollbackMessage: TestState.LogEntry =
+  val RollbackMessage: LogEntry.Message =
     TestState.LogEntry.Message(Rollback)
 
-  val NoTransaction = "NO TRANSACTION RUN"
-  val NoTransactionMessage: TestState.LogEntry =
-    TestState.LogEntry.Message(NoTransaction)
+  val NoTransaction                          = "NO TRANSACTION RUN"
+  val NoTransactionMessage: LogEntry.Message = TestState.LogEntry.Message(NoTransaction)
 
   def interpreter: Transaction[Pure, Pure] =
     new Transaction[Pure, Pure] {
       def transact[A](io: Pure[A]): Pure[A] =
         Pure.modify(_.log(Start)) *> {
           EitherT(io.value.flatMap {
-            case Right(a) => State.modify[TestState](_.log(Commit)).as(Right(a))
-            case Left(e) => State.modify[TestState](_.log(Rollback)).as(Left(e))
+            case Right(a) => State.modify[TestState](_.transact.log(Commit)).as(Right(a))
+            case Left(e)  => State.modify[TestState](_.truncate.log(Rollback)).as(Left(e))
           })
         }
 
-
       def run[A](io: Pure[A]): Pure[A] =
-        Pure.modify(_.log(NoTransaction)) *>
-          io
+        Pure.modify(_.log(NoTransaction)) *> {
+          EitherT(io.value.flatMap {
+            case Right(a) => State.modify[TestState](_.transact.log(NoTransaction)).as(Right(a))
+            case Left(e)  => State.modify[TestState](_.truncate.log(NoTransaction)).as(Left(e))
+          })
+        }
 
       def arrowBack: Pure ~> Pure = new FunctionK[Pure, Pure] {
         def apply[A](fa: Pure[A]): Pure[A] =

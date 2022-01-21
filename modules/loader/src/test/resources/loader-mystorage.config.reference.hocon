@@ -1,0 +1,106 @@
+{
+  # Data Lake (S3) region
+  # This field is optional if it can be resolved with AWS region provider chain.
+  # It checks places like env variables, system properties, AWS profile file.
+  # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
+  "region": "us-east-1",
+
+  # SQS topic name used by Shredder and Loader to communicate
+  "messageQueue": "test-queue",
+
+  # Optional. S3 path that holds JSONPaths
+  "jsonpaths": "s3://bucket/jsonpaths/",
+
+  # Warehouse connection details
+  "storage" : {
+    "storage": "my_target"
+  },
+
+  "schedules": {
+    # Periodic schedules to stop loading, e.g. for Redshift maintenance window
+    # Any amount of schedules is supported, but recommended to not overlap them
+    "noOperation": [
+      {
+        # Human-readable name of the no-op window
+        "name": "Maintenance window",
+        # Cron expression with second granularity
+        "when": "0 0 12 * * ?",
+        # For how long the loader should be paused
+        "duration": "1 hour"
+      }
+    ]
+  }
+
+  # Observability and reporting options
+  "monitoring": {
+    # Snowplow tracking (optional)
+    "snowplow": {
+      "appId": "redshift-loader",
+      "collector": "snplow.acme.com",
+    },
+
+    # Optional, for tracking runtime exceptions
+    "sentry": {
+      "dsn": "http://sentry.acme.com"
+    },
+
+    # Optional, configure how metrics are reported
+    "metrics": {
+      # Optional, send metrics to StatsD server
+      "statsd": {
+        "hostname": "localhost",
+        "port": 8125,
+        # Any key-value pairs to be tagged on every StatsD metric
+        "tags": {
+          "app": "rdb-loader"
+        }
+        # Optional, override the default metric prefix
+        # "prefix": "snowplow.rdbloader."
+      },
+
+      # Optional, print metrics on stdout (with slf4j)
+      "stdout": {
+        # Optional, override the default metric prefix
+        # "prefix": "snowplow.rdbloader."
+      }
+    },
+
+    # Optional, configuration for periodic unloaded/corrupted folders checks
+    "folders": {
+      # Path where Loader could store auxiliary logs
+      # Loader should be able to write here, Redshift should be able to load from here
+      "staging": "s3://acme-snowplow/loader/logs/",
+      # How often to check
+      "period": "1 hour"
+      # Specifies since when folder monitoring will check
+      "since": "14 days"
+      # Specifies until when folder monitoring will check
+      "until": "7 days"
+      # Path to shredded archive
+      "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+    },
+
+    # Periodic DB health-check, raising a warning if DB hasn't responded to `SELECT 1`
+    "healthCheck": {
+      # How often query a DB
+      "frequency": "20 minutes",
+      # How long to wait for a response
+      "timeout": "15 seconds"
+    }
+  },
+
+  # Additional backlog of recently failed folders that could be automatically retried
+  # Retry Queue saves a failed folder and then re-reads the info from shredding_complete S3 file
+  "retryQueue": {
+    # How often batch of failed folders should be pulled into a discovery queue
+    "period": "30 minutes",
+    # How many failures should be kept in memory
+    # After the limit is reached new failures are dropped
+    "size": 64,
+    # How many attempt to make for each folder
+    # After the limit is reached new failures are dropped
+    "maxAttempts": 3,
+    # Artificial pause after each failed folder being added to the queue
+    "interval": "5 seconds"
+  }
+}

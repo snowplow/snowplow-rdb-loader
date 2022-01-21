@@ -12,33 +12,26 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
-import java.time.{ZoneId, Instant}
+import java.time.{Instant, ZoneId}
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
-
 import scala.concurrent.duration._
-import scala.util.{ Try, Success, Failure }
-
+import scala.util.{Failure, Success, Try}
 import cats.implicits._
-
-import cats.effect.{ContextShift, Resource, Timer, IO}
-import cats.effect.concurrent.Ref
-
-import fs2.Stream
+import cats.effect.{Clock, ContextShift, IO, Resource, Timer}
+import cats.effect.concurrent.{Ref, Semaphore}
 import fs2.concurrent.SignallingRef
-
 import cron4s.Cron
-
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Schedule
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status
-import com.snowplowanalytics.snowplow.rdbloader.state.MakePaused
-
+import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State => CState}
 import org.specs2.mutable.Specification
-
-import org.specs2.matcher.{ Matcher, MatchResult, Expectable }
-
+import org.specs2.matcher.{Expectable, MatchResult, Matcher}
 import cats.effect.laws.util.TestContext
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.loading.Stage
 
 class NoOperationSpec extends Specification {
   import NoOperationSpec._
@@ -46,8 +39,8 @@ class NoOperationSpec extends Specification {
   "NoOperation.run" should {
     "execute actions periodically" in {
       val everySecond = Cron.unsafeParse("* * * ? * *")
-      val input = Schedule("first", everySecond, 500.millis)
-      val test = NoOperationSpec.run(2)(List(input))
+      val input       = Schedule("first", everySecond, 500.millis)
+      val test        = NoOperationSpec.run(2)(List(input))
 
       test must haveJobs {
         case List(job1, job2) =>
@@ -56,50 +49,30 @@ class NoOperationSpec extends Specification {
       }
     }
 
-    "execute two non-overlapping schedules" in {
+    "execute two overlapping schedules" in {
       val everySecond = Cron.unsafeParse("* * * ? * *")
       val input = List(
-        Schedule("first", everySecond, 200.millis),  // responsible for job1, job3
-        Schedule("second", everySecond, 300.millis),  // responsible for job2, job4
+        Schedule("first", everySecond, 400.millis), // responsible for job1, job3
+        Schedule("second", everySecond, 700.millis) // responsible for job2, job4
       )
+      // T is timeout introduced by the NoOp implementation that comes into action when schedule overlap loading or
+      // another schedule.
+      //  1 |2 |3 |4 |5 |6 |7 |8 |9 |0 |1 |2 |3 |4 |5 |6 |7 |8 |9 |0
+      //  X  X  X  X
+      //  X  X  X  X  X  X  X
+      //                                X  X  X  X  T  T
+      //                                X  X  X  X  X  X  X  T  T
+      // Timeouts might not occur is seconds job is scheduled first. It is not deterministic which one will run first.
       val test = NoOperationSpec.run(4)(input)
 
       test must haveJobs {
         case List(job1, job2, job3, job4) =>
-          job1.start - job2.start must beEqualTo(0L)  // start at the same time
-          job2.stop - job1.stop must beEqualTo(100L)  // job2 finishes 100ms later
-          job3.start - job4.start must beEqualTo(0L)  // start at the same time
-          job4.stop - job3.stop must beEqualTo(100L)  // job4 finishes 100ms later
-
-          // Doesn't prove anything - just make sure jobs are as expected
-          job1.duration must beEqualTo(200L)
-          job2.duration must beEqualTo(300L)
-          job3.duration must beEqualTo(200L)
-          job4.duration must beEqualTo(300L)
+          job1.start.min(job2.start) must beEqualTo(1000L)
+          job3.start.min(job4.start) must beEqualTo(2000L)
+          job1.duration + job2.duration must beLessThanOrEqualTo(900L) // 700 (+ 200 timeout)
+          job3.duration + job4.duration must beLessThanOrEqualTo(900L)
       }
     }
-
-     "execute two overlapping schedules" in {
-       val everySecond = Cron.unsafeParse("* * * ? * *")
-       val input = List(
-         Schedule("first", everySecond, 400.millis),   // responsible for job1, job3
-         Schedule("second", everySecond, 1100.millis),  // responsible for job2, job4
-       )
-       val test = NoOperationSpec.run(4)(input)
-
-       test must haveJobs {
-         case List(job1, job2, job3, job4) =>
-           job3.start - job1.start must beEqualTo(1000L)
-           job4.stop - job2.start must beEqualTo(3100L)
-           job4.start - job2.start must beEqualTo(2000L)
-
-           // Doesn't prove anything - just make sure jobs are as expected
-           job1.duration must beEqualTo(400L)
-           job2.duration must beEqualTo(1100L)
-           job3.duration must beEqualTo(400L)
-           job4.duration must beEqualTo(1100L)
-       }
-     }
   }
 }
 
@@ -111,9 +84,8 @@ object NoOperationSpec {
     ec.ioContextShift
   implicit val T: Timer[IO] =
     ec.ioTimer
-
   implicit val L: Logging[IO] =
-    Logging.noOp[IO]   // Can be changed to real one for debugging
+    Logging.noOp[IO] // Can be changed to real one for debugging
 
   val InstantFormat: DateTimeFormatter =
     DateTimeFormatter.ofPattern("s.S").withZone(ZoneId.systemDefault)
@@ -121,23 +93,56 @@ object NoOperationSpec {
     InstantFormat.format(Instant.ofEpochMilli(timestamp))
 
   def run(n: Long)(input: List[Schedule]): FutureValue = {
-    val jobs = create.use {
-      case (makePaused, state, idleStatus) =>
-        NoOperation.run[IO](input, makePaused, idleStatus)
-          .flatMap { _ =>
-            // n does not always represent amount of resulting jobs, but instead just ()'s, which can be timeout
-            // thus we're making sure there n jobs completed
-            val result = state.map(s => if (s.jobs.length == n) Stream.emits(s.jobs.reverse) else Stream.empty)
-            Stream.eval(result).flatten
-          }
-          .take(n)
-          .compile
-          .toList
-    }
+    val r = for {
+      cState    <- CState.mk[IO]
+      testState <- SignallingRef[IO, State](State(0, List.empty[Job], Status.Idle))
+      lock      <- Semaphore[IO](1)
+      implicit0(c: Control[IO]) = new Control[IO] {
+        override def incrementLoaded: IO[Unit] = IO.unit
 
-    val future = jobs.unsafeToFuture()
+        override def incrementMessages: IO[CState] = cState.get
+
+        override def incrementAttempts: IO[Unit] = IO.unit
+
+        override def getAndResetAttempts: IO[Int] = IO(0)
+
+        override def get: IO[CState] = cState.get
+
+        override def setStage(stage: Stage): IO[Unit] = IO.unit
+
+        override def addFailure(config: Option[Config.RetryQueue])(base: Folder)(error: Throwable): IO[Boolean] =
+          IO(true)
+
+        override def makePaused(who: String): Resource[IO, Unit] = {
+
+          val allocate = Clock[IO].instantNow.flatMap { now =>
+            IO.delay(println(s"makePaused $who ${now}")) >> cState.update(_.paused(who).setUpdated(now))
+          }
+          val deallocate = Clock[IO].instantNow.flatMap { now =>
+            IO.delay(println(s"makeUnPaused $who ${now}")) >> cState.update(_.idle.setUpdated(now))
+          }
+
+          Resource.make(lock.acquire >> pause(testState, who))(args => unpause(testState, who)(args) >> lock.release) *>
+            Resource.make(allocate)(_ => deallocate)
+        }
+
+        override def makeBusy(folder: Folder): Resource[IO, Unit] = Resource.eval(IO.unit)
+
+        override def isBusy: IO[Boolean] = IO.pure(false)
+      }
+      _ <- NoOperation.run[IO](input).take(n).compile.drain
+      jobs <- testState
+        .get
+        .map(s =>
+          if (s.jobs.length >= n)
+            s.jobs.takeRight(n.toInt).reverse
+          else
+            List.empty[Job]
+        )
+    } yield jobs
+    val res = r.unsafeToFuture()
     ec.tick(20.seconds)
-    future.value
+    res.value
   }
 
   type FutureValue = Option[Try[List[Job]]]
@@ -148,13 +153,20 @@ object NoOperationSpec {
       def apply[S <: FutureValue](a: Expectable[S]): MatchResult[S] =
         a.value match {
           case Some(Failure(error)) =>
+            println(error.toString)
             outer.result(false, a.description, error.toString, a)
           case Some(Success(jobs)) if pattern.isDefinedAt(jobs) =>
             val r = pattern.apply(jobs)
-            outer.result(r.isSuccess, a.description + " is correct: " + r.message, a.description + " is incorrect: " + r.message, a)
+            outer.result(
+              r.isSuccess,
+              a.description + " is correct: "   + r.message,
+              a.description + " is incorrect: " + r.message,
+              a
+            )
           case Some(Success(jobs)) =>
             outer.failure(s"Expected different amount of resulting jobs, got: [${jobs.mkString(", ")}]", a)
           case None =>
+            println(a)
             outer.failure(s"Future timed out", a)
 
         }
@@ -178,25 +190,11 @@ object NoOperationSpec {
   val now: IO[Long] = T.clock.realTime(TimeUnit.MILLISECONDS)
 
   def pause(state: Ref[IO, State], who: String): IO[(Int, Long)] =
-    IO.sleep(1.nano) *>
-      now.flatMap(start => state.updateAndGet(_.setStatus(Status.Paused(who)).inc).map(_.n).map(updated => (updated, start))) <*
-      IO.sleep(1.nano)
+    now.flatMap(start =>
+      state.updateAndGet(_.setStatus(Status.Paused(who)).inc).map(_.n).map(updated => (updated, start))
+    )
 
   def unpause(state: Ref[IO, State], who: String)(idN: (Int, Long)): IO[Unit] =
-    IO.sleep(1.nano) *>
-      now.flatMap(stop => state.update(_.setStatus(Status.Idle).add(who, idN._2, stop, idN._1))) <*
-      IO.sleep(1.nano)
-
-  def create = {
-    val action = for {
-      initState  <- SignallingRef[IO, State](State(0, List.empty[Job], Status.Idle))
-      signal      = initState.map(_.status)
-      makePaused  = createMakePaused(initState)
-    } yield (makePaused, initState.get, signal)
-    Resource.eval(action)
-  }
-
-  def createMakePaused(state: Ref[IO, State]): MakePaused[IO] =
-    who => Resource.make(pause(state, who))(unpause(state, who)).void
+    now.flatMap(stop => state.update(_.setStatus(Status.Idle).add(who, idN._2, stop, idN._1)))
 
 }

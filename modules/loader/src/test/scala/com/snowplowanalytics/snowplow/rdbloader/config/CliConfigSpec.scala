@@ -13,8 +13,9 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Base64
-
 import cats.effect.IO
+import io.circe.Decoder
+import io.circe.generic.semiauto.deriveDecoder
 
 // specs2
 import org.specs2.mutable.Specification
@@ -22,41 +23,40 @@ import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 
 class CliConfigSpec extends Specification {
+
+  case class MyTarget(storage: String) extends StorageTarget
+
+  implicit lazy val redshiftConfigDecoder: Decoder[MyTarget] = deriveDecoder[MyTarget]
+
   val configB64 = new String(
-    Base64.getEncoder.encode(
-      ConfigSpec.readResource("/loader.config.reference.hocon").getBytes
-    )
+    Base64
+      .getEncoder
+      .encode(
+        ConfigSpec.readResource("/loader-mystorage.config.reference.hocon").getBytes
+      )
   )
 
   "parse" should {
     "parse valid configuration" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig)
+      val cli = Array("--config", configB64, "--iglu-config", resolverConfig)
 
       val expected = CliConfig(validConfig, false, resolverJson)
-      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
-      result must beRight(expected)
+      val result   = CliConfig.parse[IO, MyTarget](cli).value.unsafeRunSync()
+      result.map(_.toString) must beRight(expected.toString)
     }
 
     "parse CLI options with dry-run" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig,
-        "--dry-run")
+      val cli = Array("--config", configB64, "--iglu-config", resolverConfig, "--dry-run")
 
       val expected = CliConfig(validConfig, true, resolverJson)
-      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
-      result must beRight(expected)
+      val result   = CliConfig.parse[IO, MyTarget](cli).value.unsafeRunSync()
+      result.map(_.toString) must beRight(expected.toString)
     }
 
     "give error with invalid resolver" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", invalidResolverConfig,
-        "--dry-run")
+      val cli = Array("--config", configB64, "--iglu-config", invalidResolverConfig, "--dry-run")
 
-      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      val result = CliConfig.parse[IO, MyTarget](cli).value.unsafeRunSync()
       result.isLeft must beTrue
     }
   }

@@ -15,12 +15,9 @@ package com.snowplowanalytics.snowplow.rdbloader.utils
 import cats.Monad
 import cats.effect.{Resource, Sync}
 import cats.implicits._
-
 import com.jcraft.jsch.{JSch, Session}
-
+import com.snowplowanalytics.snowplow.rdbloader.config.components.TunnelConfig
 import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
-
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 
 object SSH {
 
@@ -31,24 +28,24 @@ object SSH {
   def resource[F[_]: Sync: AWS](tunnelConfig: Option[TunnelConfig]): Resource[F, Unit] =
     tunnelConfig match {
       case Some(tunnel) =>
-        Resource.make(getIdentity[F](tunnel).flatMap(i => createSession(tunnel, i)))(s => Sync[F].delay(s.disconnect())).void
+        Resource
+          .make(getIdentity[F](tunnel).flatMap(i => createSession(tunnel, i)))(s => Sync[F].delay(s.disconnect()))
+          .void
       case None =>
         Resource.pure[F, Unit](())
     }
 
   /** Convert pure tunnel configuration to configuration with actual key and passphrase */
   def getIdentity[F[_]: Monad: AWS](tunnelConfig: TunnelConfig): F[Identity] =
-    tunnelConfig
-      .bastion
-      .key
-      .map(_.ec2ParameterStore.parameterName).traverse(AWS[F].getEc2Property)
-      .map { key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key) }
+    tunnelConfig.bastion.key.map(_.ec2ParameterStore.parameterName).traverse(AWS[F].getEc2Property).map { key =>
+      Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key)
+    }
 
   /**
-   * Create a SSH tunnel to bastion host and set port forwarding to target DB
-   * @param tunnelConfig SSH-tunnel configuration
-   * @return either nothing on success and error message on failure
-   */
+    * Create a SSH tunnel to bastion host and set port forwarding to target DB
+    * @param tunnelConfig SSH-tunnel configuration
+    * @return either nothing on success and error message on failure
+    */
   def createSession[F[_]: Sync](tunnelConfig: TunnelConfig, identity: Identity): F[Session] =
     Sync[F].delay {
       val jsch = new JSch()
@@ -56,8 +53,11 @@ object SSH {
       val sshSession = jsch.getSession(tunnelConfig.bastion.user, tunnelConfig.bastion.host, tunnelConfig.bastion.port)
       sshSession.setConfig("StrictHostKeyChecking", "no")
       sshSession.connect()
-      val _ = sshSession.setPortForwardingL(tunnelConfig.localPort, tunnelConfig.destination.host, tunnelConfig.destination.port)
+      val _ = sshSession.setPortForwardingL(
+        tunnelConfig.localPort,
+        tunnelConfig.destination.host,
+        tunnelConfig.destination.port
+      )
       sshSession
     }
 }
-

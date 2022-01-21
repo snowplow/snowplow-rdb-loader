@@ -18,21 +18,21 @@ import cats.~>
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
 
 import io.circe._
 import io.circe.generic.semiauto._
 
-import org.http4s.{Request, EntityEncoder, Method}
+import org.http4s.{EntityEncoder, Method, Request}
 import org.http4s.client.Client
 import org.http4s.circe.jsonEncoderOf
 
 import io.sentry.SentryClient
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
@@ -52,17 +52,23 @@ trait Monitoring[F[_]] { self =>
   /** Track all details about loaded folder */
   def success(payload: Monitoring.SuccessPayload): F[Unit]
 
-  /** 
-   * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` 
-   * to either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
-   */
+  /**
+    * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0`
+    * to either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
+    */
   def alert(payload: Monitoring.AlertPayload): F[Unit]
 
   /** Helper method specifically for exceptions */
   def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
     // Note tags are added by Monitoring later
-    val payload = Monitoring.AlertPayload(Monitoring.Application, Some(folder), Monitoring.AlertPayload.Severity.Error, message, Map.empty)
+    val payload = Monitoring.AlertPayload(
+      Monitoring.Application,
+      Some(folder),
+      Monitoring.AlertPayload.Severity.Error,
+      message,
+      Map.empty
+    )
     alert(payload)
   }
 
@@ -81,22 +87,25 @@ trait Monitoring[F[_]] { self =>
 
 object Monitoring {
 
-  private implicit val LoggerName =
+  implicit private val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(2,0,0))
+  val LoadSucceededSchema =
+    SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(2, 0, 0))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =
     s"snowplow-rdb-loader-${BuildInfo.version}"
 
-  final case class AlertPayload(application: String,
-                                base: Option[S3.Folder],
-                                severity: AlertPayload.Severity,
-                                message: String,
-                                tags: Map[String, String])
+  final case class AlertPayload(
+    application: String,
+    base: Option[S3.Folder],
+    severity: AlertPayload.Severity,
+    message: String,
+    tags: Map[String, String]
+  )
 
   object AlertPayload {
     sealed trait Severity
@@ -134,18 +143,22 @@ object Monitoring {
       AlertPayload(Application, None, Severity.Error, message, Map.empty)
   }
 
-  final case class SuccessPayload(shredding: ShreddingComplete,
-                                  application: String,
-                                  attempt: Int,
-                                  loadingStarted: Instant,
-                                  loadingCompleted: Instant,
-                                  tags: Map[String, String])
+  final case class SuccessPayload(
+    shredding: ShreddingComplete,
+    application: String,
+    attempt: Int,
+    loadingStarted: Instant,
+    loadingCompleted: Instant,
+    tags: Map[String, String]
+  )
 
   object SuccessPayload {
     // Very odd hack, but I couldn't derive a right codec without it
     // We should get rid of single-leaf ADT
-    private[dsl] implicit val shreddingCompleteEncoder: Encoder[ShreddingComplete] =
-      loaderMessageShreddingCompleteEncoder.contramap { e: ShreddingComplete => e }
+    implicit private[dsl] val shreddingCompleteEncoder: Encoder[ShreddingComplete] =
+      loaderMessageShreddingCompleteEncoder.contramap { e: ShreddingComplete =>
+        e
+      }
 
     private val derivedEncoder: Encoder[SuccessPayload] =
       deriveEncoder[SuccessPayload]
@@ -176,15 +189,15 @@ object Monitoring {
         webhookConfig match {
           case Some(webhook) =>
             val request: Request[F] =
-              Request[F](Method.POST, webhook.endpoint)
-                .withEntity(addTags(payload, webhook))
+              Request[F](Method.POST, webhook.endpoint).withEntity(addTags(payload, webhook))
 
-            val req = httpClient
-              .run(request)
-              .use { response =>
-                if (response.status.isSuccess) Sync[F].unit
-                else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
-              }
+            val req = httpClient.run(request).use { response =>
+              if (response.status.isSuccess) Sync[F].unit
+              else
+                response
+                  .as[String]
+                  .flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+            }
             Some(req)
           case None =>
             None
@@ -199,12 +212,12 @@ object Monitoring {
       def success(payload: SuccessPayload): F[Unit] = {
         val webhookRequest = viaWebhook[SuccessPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
-          case None => Logging[F].debug("Webhook monitoring is not configured, skipping success tracking")
+          case None      => Logging[F].debug("Webhook monitoring is not configured, skipping success tracking")
         }
 
         val snowplowRequest = tracker match {
           case Some(t) => t.trackSelfDescribingEvent(SuccessPayload.toSelfDescribing(payload))
-          case None => Logging[F].debug("Snowplow monitoring is not configured, skipping success tracking")
+          case None    => Logging[F].debug("Snowplow monitoring is not configured, skipping success tracking")
         }
 
         snowplowRequest *> webhookRequest
@@ -213,12 +226,12 @@ object Monitoring {
       def alert(payload: AlertPayload): F[Unit] = {
         val webhookRequest = viaWebhook[AlertPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
-          case None => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
+          case None      => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
         }
 
         val snowplowRequest = tracker match {
           case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(payload))
-          case None => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
+          case None    => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
         }
 
         snowplowRequest *> webhookRequest
@@ -226,23 +239,36 @@ object Monitoring {
     }
 
   /**
-   * Initialize Snowplow tracker, if `monitoring` section is properly configured
-   *
-   * @param monitoring config.yml `monitoring` section
-   * @return some tracker if enabled, none otherwise
-   */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
+    * Initialize Snowplow tracker, if `monitoring` section is properly configured
+    *
+    * @param monitoring config.yml `monitoring` section
+    * @return some tracker if enabled, none otherwise
+    */
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](
+    monitoring: Config.Monitoring,
+    client: Client[F]
+  ): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
         Http4sEmitter.build[F](endpoint, client, callback = Some(callback[F])).map { emitter =>
-          Some(new Tracker[F](NonEmptyList.of(emitter), "snowplow-rdb-loader", monitoring.snowplow.map(_.appId).getOrElse("rdb-loader")))
+          Some(
+            new Tracker[F](
+              NonEmptyList.of(emitter),
+              "snowplow-rdb-loader",
+              monitoring.snowplow.map(_.appId).getOrElse("rdb-loader")
+            )
+          )
         }
       case None => Resource.pure[F, Option[Tracker[F]]](none[Tracker[F]])
     }
 
   /** Callback for failed  */
-  private def callback[F[_]: Sync: Clock: Logging](params: Emitter.EndpointParams, request: Emitter.Request, response: Emitter.Result): F[Unit] = {
+  private def callback[F[_]: Sync: Clock: Logging](
+    params: Emitter.EndpointParams,
+    request: Emitter.Request,
+    response: Emitter.Result
+  ): F[Unit] = {
     val _ = request
     def toMsg(rsp: Emitter.Result): Option[String] = rsp match {
       case Emitter.Result.Failure(code) =>
@@ -257,22 +283,24 @@ object Monitoring {
 
     toMsg(response) match {
       case Some(msg) => Logging[F].warning(msg)
-      case None => Logging[F].debug("Snowplow event has been submitted")
+      case None      => Logging[F].debug("Snowplow event has been submitted")
     }
   }
 
   /**
-   * Config helper functions
-   */
+    * Config helper functions
+    */
   private object Collector {
-    def isInt(s: String): Boolean = try { s.toInt; true } catch { case _: NumberFormatException => false }
+    def isInt(s: String): Boolean =
+      try {
+        s.toInt; true
+      } catch { case _: NumberFormatException => false }
 
     def unapply(hostPort: String): Option[(String, Int)] =
       hostPort.split(":").toList match {
         case host :: port :: Nil if isInt(port) => Some((host, port.toInt))
-        case host :: Nil => Some((host, 80))
-        case _ => None
+        case host :: Nil                        => Some((host, 80))
+        case _                                  => None
       }
   }
 }
-

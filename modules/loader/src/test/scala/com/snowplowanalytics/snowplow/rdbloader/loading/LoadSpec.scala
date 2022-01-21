@@ -13,139 +13,118 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
-
 import scala.concurrent.duration.FiniteDuration
-
-import cats.syntax.option._
-
-import cats.effect.Timer
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
+import cats.syntax.all._
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, Processor, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Transaction, Iglu, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
-
-import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
-
+import com.snowplowanalytics.snowplow.rdbloader.test.dao.PureManifest
+import com.snowplowanalytics.snowplow.rdbloader.test._
 import org.specs2.mutable.Specification
 
 class LoadSpec extends Specification {
-  import LoadSpec.{isBeforeFirstCommit, failCommit, arn}
-
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
+      implicit def manifestPure: Manifest[Pure] = PureManifest.interpreter(Iterator(None.asRight, None.asRight))
+
       val expected = List(
-        PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
-
+        PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Message("MigrationBuilder build"),
+        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
+        LogEntry.Message("setStage pre-transaction migrations"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Message("premigration List()"),
+        PureTransaction.NoTransactionMessage,
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        PureTransaction.CommitMessage,
+        LogEntry.Message("setStage manifest check"),
+        LogEntry.Message("setStage in-transaction migrations"),
+        LogEntry.Message("postmigration"),
+        LogEntry.Message("setStage committing"),
+        LogEntry.Message("manifest get s3://shredded/base/"),
+        LogEntry.Message("discovery s3://shredded/base/"),
+        LogEntry.Message("manifest add s3://shredded/base/"),
+        LogEntry.Message("manifest get s3://shredded/base/"),
+        PureTransaction.CommitMessage
       )
 
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](LoadSpec.dataDiscoveryWithOrigin).runS
 
       result.getLog must beEqualTo(expected)
     }
 
     "abort the transaction and return alert if the folder already in manifest" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
-
-      val expected = List(
-        PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
-
-        PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
-        PureTransaction.CommitMessage,
+      implicit def manifestPure: Manifest[Pure] = PureManifest.interpreter(
+        Iterator(Manifest.Entry(Instant.MIN, PureManifest.ValidMessage).some.asRight)
       )
 
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val expected = List(
+        PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Message("MigrationBuilder build"),
+        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
+        LogEntry.Message("setStage pre-transaction migrations"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Message("premigration List()"),
+        PureTransaction.NoTransactionMessage,
+        PureTransaction.StartMessage,
+        LogEntry.Message("setStage manifest check"),
+        LogEntry.Message("setStage cancelling because of Already loaded"),
+        LogEntry.Message(
+          "Folder [s3://bucket/folder/] is already loaded at -1000000000-01-01T00:00:00Z. Aborting the operation, acking the command"
+        ),
+        LogEntry.Message("manifest get s3://shredded/base/"),
+        PureTransaction.CommitMessage
+      )
+
+      val result = Load.load[Pure, Pure](LoadSpec.dataDiscoveryWithOrigin).runS
 
       result.getLog must beEqualTo(expected)
     }
 
     "abort, sleep and start transaction again if first commit failed" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit def manifestPure: Manifest[Pure] =
+        PureManifest.interpreter(
+          Iterator(
+            Left(new Throwable("first statement fails")),
+            None.asRight,
+            None.asRight
+          )
+        )
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
-        PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
-
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Message("MigrationBuilder build"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Message("setStage pre-transaction migrations"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Message("premigration List()"),
+        PureTransaction.NoTransactionMessage,
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Message("setStage manifest check"),
         PureTransaction.RollbackMessage,
+        LogEntry.Message("Control incrementAttempts"),
+        LogEntry.Message(
+          "java.lang.Throwable: first statement fails Transaction aborted. WillDelayAndRetry(30000000000 nanoseconds,0,0 days)"
+        ),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        PureTransaction.CommitMessage,
+        LogEntry.Message("setStage manifest check"),
+        LogEntry.Message("setStage in-transaction migrations"),
+        LogEntry.Message("postmigration"),
+        LogEntry.Message("setStage committing"),
+        LogEntry.Message("manifest get s3://shredded/base/"),
+        LogEntry.Message("discovery s3://shredded/base/"),
+        LogEntry.Message("manifest add s3://shredded/base/"),
+        LogEntry.Message("manifest get s3://shredded/base/"),
+        PureTransaction.CommitMessage
       )
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
-
-      result.getLog must beEqualTo(expected)
-    }
-
-    "abort and ack the command if manifest record already exists" in {
-      val Base = "s3://shredded/base/".dir
-      def getResult(s: TestState)(statement: Statement): Any =
-        statement match {
-          case Statement.ManifestGet("atomic", Base) =>
-            Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin).some
-          case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
-        }
-
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
-
-      val expected = List(
-        PureTransaction.NoTransactionMessage,   // Migration.build
-        PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
-
-        PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
-        PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
-                                                //       to throw an ad-hoc exception within a transaction
-      )
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](LoadSpec.dataDiscoveryWithOrigin).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -159,9 +138,12 @@ object LoadSpec {
       ShreddedType.Json(
         ShreddedType.Info(
           S3.Folder.coerce("s3://shredded/base/"),
-          "com.acme", "json-context", 1, Semver(0,18,0, None)
+          "com.acme",
+          "json-context",
+          1,
+          Semver(0, 18, 0, None)
         ),
-        S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
+        S3.Key.coerce("s3://assets/com.acme/json_context_1.json")
       )
     ),
     Compression.Gzip
@@ -173,16 +155,6 @@ object LoadSpec {
     _ => Pure.unit
   val setStageNoOp: Stage => Pure[Unit] =
     _ => Pure.unit
-
-  def withExistingRecord(s: TestState)(query: Statement): Any =
-    query match {
-      case Statement.GetVersion(_, _) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
-      case Statement.TableExists(_, _) => false
-      case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_, _) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin))
-      case Statement.FoldersMinusManifest(_) => List()
-      case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
-    }
 
   val dataDiscoveryWithOrigin = DataDiscovery.WithOrigin(
     dataDiscovery,
@@ -201,16 +173,10 @@ object LoadSpec {
         Instant.ofEpochMilli(1600342341145L).some
       ),
       dataDiscovery.compression,
-      Processor("snowplow-rdb-shredder", Semver(0,18,0, None)),
+      Processor("snowplow-rdb-shredder", Semver(0, 18, 0, None)),
       None
-    ),
+    )
   )
-
-  def isBeforeFirstCommit(sql: Statement, ts: TestState) =
-    sql match {
-      case Statement.ManifestAdd(_, _) => ts.getLog.length == 6
-      case _ => false
-    }
 
   val failCommit: Pure[Int] =
     Pure.fail(LoaderError.StorageTargetError("Commit failed"))

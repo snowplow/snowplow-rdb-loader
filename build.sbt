@@ -11,10 +11,10 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val root = project.in(file("."))
-  .aggregate(common, aws, loader, shredder, streamShredder)
+lazy val root = project.in(file(".")).aggregate(common, aws, loader, redshiftLoader, shredder, streamShredder)
 
-lazy val aws = project.in(file("modules/aws"))
+lazy val aws = project
+  .in(file("modules/aws"))
   .settings(BuildSettings.buildSettings)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -23,16 +23,19 @@ lazy val aws = project.in(file("modules/aws"))
       Dependencies.aws2sqs,
       Dependencies.aws2sns,
       Dependencies.fs2,
-      Dependencies.catsRetry,
+      Dependencies.catsRetry
     )
   )
   .enablePlugins(BuildInfoPlugin)
 
-lazy val common: Project = project.in(file("modules/common"))
-  .settings(Seq(
-    name := "snowplow-rdb-loader-common",
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
-  ))
+lazy val common: Project = project
+  .in(file("modules/common"))
+  .settings(
+    Seq(
+      name := "snowplow-rdb-loader-common",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
+    )
+  )
   .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.addExampleConfToTestCp)
@@ -51,15 +54,15 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.schemaDdl,
       Dependencies.http4sCore,
       Dependencies.aws2regions,
-
       Dependencies.specs2,
       Dependencies.monocle,
-      Dependencies.monocleMacro,
+      Dependencies.monocleMacro
     )
   )
   .enablePlugins(BuildInfoPlugin)
 
-lazy val loader = project.in(file("modules/loader"))
+lazy val loader = project
+  .in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
     Docker / packageName := "snowplow/snowplow-rdb-loader",
@@ -76,13 +79,10 @@ lazy val loader = project.in(file("modules/loader"))
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
     libraryDependencies ++= Seq(
       Dependencies.slf4j,
-      Dependencies.redshift,
-      Dependencies.redshiftSdk,
       Dependencies.ssm,
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
-
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
@@ -94,20 +94,68 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.doobieHikari,
       Dependencies.catsRetry,
       Dependencies.log4cats,
-
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
+      Dependencies.catsEffLaws,
       Dependencies.scalaCheck,
-      Dependencies.catsEffectLaws,
-      Dependencies.catsTesting,
+      Dependencies.catsTesting
     )
   )
   .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
-lazy val shredder = project.in(file("modules/shredder"))
+lazy val redshiftLoader = project
+  .in(file("modules/redshift-loader"))
   .settings(
-    name        := "snowplow-rdb-shredder",
+    name := "snowplow-redshift-loader",
+    Docker / packageName := "snowplow/snowplow-rdb-loader",
+    initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
+    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
+  .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    libraryDependencies ++= Seq(
+      Dependencies.redshift,
+      Dependencies.redshiftSdk
+    )
+  )
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val snowflakeLoader = project
+  .in(file("modules/snowflake-loader"))
+  .settings(
+    name := "snowplow-snowflake-loader",
+    Docker / packageName := "snowplow/snowplow-snowflake-loader",
+    initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
+    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
+  .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    libraryDependencies ++= Seq(
+      Dependencies.enumeratum,
+      Dependencies.snowflakeJdbc
+    )
+  )
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val shredder = project
+  .in(file("modules/shredder"))
+  .settings(
+    name := "snowplow-rdb-shredder",
     description := "Spark job to shred event and context JSONs from Snowplow enriched events",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated",
     buildInfoKeys := List(name, version, description),
@@ -141,14 +189,15 @@ lazy val shredder = project.in(file("modules/shredder"))
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val streamShredder = project.in(file("modules/stream-shredder"))
+lazy val streamShredder = project
+  .in(file("modules/stream-shredder"))
   .settings(
-    name        := "snowplow-rdb-stream-shredder",
+    name := "snowplow-rdb-stream-shredder",
     description := "Stream Shredding job",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated",
     buildInfoKeys := List(name, version, description),
     Docker / packageName := "snowplow/snowplow-rdb-stream-shredder",
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
   )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.assemblySettings)

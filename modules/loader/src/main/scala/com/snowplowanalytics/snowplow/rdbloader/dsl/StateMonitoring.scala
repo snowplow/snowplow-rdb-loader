@@ -12,18 +12,14 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{Instant, Duration}
+import java.time.{Duration, Instant}
 import java.util.concurrent.TimeUnit
-
 import scala.concurrent.duration._
-
 import cats.Monad
 import cats.implicits._
-
-import cats.effect.Timer
-
+import cats.effect.{Concurrent, Timer}
 import com.snowplowanalytics.aws.sqs.SQS
-import com.snowplowanalytics.snowplow.rdbloader.state.State
+import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 
 object StateMonitoring {
@@ -35,21 +31,25 @@ object StateMonitoring {
   val SleepPeriod: FiniteDuration = DefaultExtendPeriod - 10.seconds
 
   /**
-   * Start a periodic state check in order to extend an SQS message visibility
-   * if it hasn't been processed in time
-   */
-  def run[F[_]: Monad: Timer: Logging](globalState: F[State], extend: FiniteDuration => F[Unit]): F[Unit] = {
+    * Start a periodic state check in order to extend an SQS message visibility
+    * if it hasn't been processed in time
+    */
+  def run[F[_]: Monad: Timer: Control: Logging: Concurrent](extend: FiniteDuration => F[Unit]): F[Unit] = {
     def raise(loading: Load.Status, updated: Instant): F[Unit] =
       Timer[F].clock.instantNow.flatMap { now =>
         val duration = Duration.between(updated, now).toMinutes
-        Logging[F].warning(show"Loading is ongoing, but approached SQS timeout. $loading. Spent $duration minutes at this stage. Extending processing for $DefaultExtendPeriod")
+        Logging[F].warning(
+          show"Loading is ongoing, but approached SQS timeout. $loading. Spent $duration minutes at this stage. Extending processing for $DefaultExtendPeriod"
+        )
       }
 
     def info(loading: Load.Status): F[Unit] =
-      Logging[F].info(show"Loading is ongoing, but approached SQS timeout. $loading. Extending processing for $DefaultExtendPeriod")
+      Logging[F].info(
+        show"Loading is ongoing, but approached SQS timeout. $loading. Extending processing for $DefaultExtendPeriod"
+      )
 
     def go(n: Int, previous: Load.Status): F[Unit] =
-      Timer[F].sleep(SleepPeriod) >> globalState.flatMap { current =>
+      Timer[F].sleep(SleepPeriod) >> Control[F].get.flatMap { current =>
         val again = extend(DefaultExtendPeriod) >> go(n + 1, current.loading)
 
         current.loading match {
@@ -62,7 +62,7 @@ object StateMonitoring {
         }
       }
 
-    globalState.flatMap { first =>
+    Control[F].get.flatMap { first =>
       go(1, first.loading)
     }
   }

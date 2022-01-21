@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.{Show, Applicative, ~>}
+import cats.{Applicative, Show, ~>}
 
 import cats.effect.Sync
 
@@ -38,11 +38,11 @@ trait Logging[F[_]] { self =>
 
   def mapK[G[_]](arrow: F ~> G): Logging[G] =
     new Logging[G] {
-      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.debug(a))
-      def info[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.info(a))
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit]   = arrow(self.debug(a))
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit]    = arrow(self.info(a))
       def warning[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.warning(a))
-      def error[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.error(a))
-      def error(t: Throwable)(line: String): G[Unit] = arrow(self.error(t)(line))
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit]   = arrow(self.error(a))
+      def error(t: Throwable)(line: String): G[Unit]                      = arrow(self.error(t)(line))
     }
 }
 

@@ -18,18 +18,18 @@ import cats.implicits._
 
 import fs2.Stream
 
-import doobie.util.{Read, Get, Put}
+import doobie.util.{Get, Put, Read}
 import doobie.implicits.javasql._
 
 import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType, Count, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.{Message, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, Format, ShreddedType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, StringEnum}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure}
 
 package object rdbloader {
 
@@ -80,10 +80,11 @@ package object rdbloader {
 
   // To replace Instant with sql.Timetstamp
   implicit val readTimestamps: Read[Timestamps] = {
-    val tstampDecoder = Read[java.sql.Timestamp]
+    val tstampDecoder    = Read[java.sql.Timestamp]
     val tstampOptDecoder = Read.fromGetOption[java.sql.Timestamp]
-    (tstampDecoder, tstampDecoder, tstampOptDecoder, tstampOptDecoder).mapN { case (a, b, c, d) =>
-      Timestamps(a.toInstant, b.toInstant, c.map(_.toInstant), d.map(_.toInstant))
+    (tstampDecoder, tstampDecoder, tstampOptDecoder, tstampOptDecoder).mapN {
+      case (a, b, c, d) =>
+        Timestamps(a.toInstant, b.toInstant, c.map(_.toInstant), d.map(_.toInstant))
     }
   }
 

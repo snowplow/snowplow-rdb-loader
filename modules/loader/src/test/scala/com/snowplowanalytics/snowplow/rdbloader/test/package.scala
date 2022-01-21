@@ -1,32 +1,39 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.data.{StateT, EitherT, State => CState}
-import cats.syntax.either._
+import cats.data.{EitherT, State => CState}
+import cats.effect.{Clock, Timer}
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db._
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.state.Control
+import com.snowplowanalytics.snowplow.rdbloader.test.dao.{
+  PureFolderMonitoringDao,
+  PureMigrationBuilder,
+  PureTargetLoader
+}
 
 package object test {
+
   /** Pure effect. It can only change [[TestState]] and never actually produce side-effects */
   type Pure[A] = EitherT[CState[TestState, *], Throwable, A]
 
+//  implicit def functorPure: Functor[Pure] = new Functor[Pure]{
+//    override def map[A, B](fa: Pure[A])(f: A => B): Pure[B] = fa.map(f)
+//  }
+
   object Pure {
     def apply[A](f: TestState => (TestState, A)): Pure[A] = EitherT.right(CState(f))
-    def liftWith[I, A](f: I => A)(a: I): Pure[A] = EitherT.right(CState((s: TestState) => (s, f(a))))
+    def liftWith[I, A](f: I   => A)(a: I): Pure[A]        = EitherT.right(CState((s: TestState) => (s, f(a))))
     def pure[A](a: A): Pure[A] = EitherT.pure(a)
     def modify(f: TestState => TestState): Pure[Unit] = EitherT.right(CState.modify(f))
+    def log(msg: String): Pure[Unit]   = apply(s => (s.log(msg), ()))
+    def sql(msg: String): Pure[Unit]   = apply(s => (s.sql(msg), ()))
     def fail[A](a: Throwable): Pure[A] = EitherT.leftT(a)
-    def unit: Pure[Unit] = pure(())
+    def unit: Pure[Unit]               = pure(())
+    def transact: Pure[Unit]           = apply(s => (s.transact, ()))
+    def get[A](f: TestState => A): Pure[A] = apply(s => (s, f(s)))
   }
 
   type EitherThrow[A] = Either[Throwable, A]
-
-  type Pure2[A] = StateT[EitherThrow, TestState, A]
-
-  object Pure2 {
-    def apply[A](f: TestState => (TestState, A)): Pure2[A] = StateT.apply { s: TestState => f(s).asRight }
-    def liftWith[I, A](f: I => A)(a: I): Pure2[A] = StateT.apply { s: TestState => (s, f(a)).asRight }
-    def pure[A](a: A): Pure2[A] = StateT.pure[EitherThrow, TestState, A](a)
-    def modify(f: TestState => TestState): Pure2[Unit] = StateT.modify[EitherThrow, TestState](f)
-    def fail[A](a: Throwable): Pure2[A] = StateT.apply { _: TestState => a.asLeft[(TestState, A)] }
-  }
 
   implicit class PureEitherOps[A](st: Pure[Either[LoaderError, A]]) {
     def toAction: LoaderAction[Pure, A] = LoaderAction(st)
@@ -47,4 +54,16 @@ package object test {
     def runS =
       st.value.runS(TestState.init).value
   }
+//  implicit def awsPure: AWS[Pure]                       = PureAWS.interpreter(PureAWS(_ => Stream.empty, _ => false))
+  implicit def cachePure: Cache[Pure]                   = PureCache.interpreter
+  implicit def clockPure: Clock[Pure]                   = PureClock.interpreter
+  implicit def igluPure: Iglu[Pure]                     = PureIglu.interpreter
+  implicit def ctlPure: Control[Pure]                   = PureControl.interpreter
+  implicit def logPure: Logging[Pure]                   = PureLogging.interpreter()
+  implicit def mnPure: Monitoring[Pure]                 = PureMonitoring.interpreter
+  implicit def timerPure: Timer[Pure]                   = PureTimer.interpreter
+  implicit def txPure: Transaction[Pure, Pure]          = PureTransaction.interpreter
+  implicit def folderDaoPure: FolderMonitoringDao[Pure] = PureFolderMonitoringDao.interpreter
+  implicit def migrationPure: MigrationBuilder[Pure]    = PureMigrationBuilder.interpreter
+  implicit def tgtLoaderPure: TargetLoader[Pure]        = PureTargetLoader.interpreter
 }

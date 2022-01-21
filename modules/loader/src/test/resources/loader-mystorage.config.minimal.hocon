@@ -1,0 +1,6 @@
+{
+  "messageQueue": "test-queue",
+  "storage" : {
+    "storage": "my_target"
+  }
+}

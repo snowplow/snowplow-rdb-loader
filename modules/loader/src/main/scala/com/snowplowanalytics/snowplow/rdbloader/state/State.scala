@@ -16,7 +16,7 @@ import java.time.Instant
 
 import cats.implicits._
 
-import cats.effect.{Concurrent, Clock}
+import cats.effect.{Clock, Concurrent}
 
 import fs2.concurrent.SignallingRef
 
@@ -29,26 +29,28 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Paused
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 
 /**
- * Primary state of the loader
- * Every Loader's action has two input parameters: message and current state
- * The state is used to exchange data between data discovery stream and load actions
- *
- * @param loading state of the folder loading, which can be either idling ("not busy" or
- *        "no folder") or loading at some stage
- * @param updated when the state was updated the last time
- *        Used to find out about degraded infra - if state is not updated for long enough
- *        it likely means that the database is unresponsive
- * @param attempts amount of attempts the Loader took to load **current** folder
- *                 zero'ed after every message ack'ed
- * @param loaded amount of folders the loader managed to load
- * @param messages total amount of message received
- */
-case class State(loading: Load.Status,
-                 updated: Instant,
-                 attempts: Int,
-                 failures: Failures,
-                 loaded: Int,
-                 messages: Int) {
+  * Primary state of the loader
+  * Every Loader's action has two input parameters: message and current state
+  * The state is used to exchange data between data discovery stream and load actions
+  *
+  * @param loading state of the folder loading, which can be either idling ("not busy" or
+  *        "no folder") or loading at some stage
+  * @param updated when the state was updated the last time
+  *        Used to find out about degraded infra - if state is not updated for long enough
+  *        it likely means that the database is unresponsive
+  * @param attempts amount of attempts the Loader took to load **current** folder
+  *                 zero'ed after every message ack'ed
+  * @param loaded amount of folders the loader managed to load
+  * @param messages total amount of message received
+  */
+case class State(
+  loading: Load.Status,
+  updated: Instant,
+  attempts: Int,
+  failures: Failures,
+  loaded: Int,
+  messages: Int
+) {
 
   /** Start loading a folder */
   def start(folder: S3.Folder): State =
@@ -64,8 +66,8 @@ case class State(loading: Load.Status,
   /** Check if Loader is ready to perform a next load */
   def isBusy: Boolean =
     loading match {
-      case Load.Status.Idle => false
-      case Load.Status.Paused(_) => true
+      case Load.Status.Idle          => false
+      case Load.Status.Paused(_)     => true
       case Load.Status.Loading(_, _) => true
     }
 
@@ -75,11 +77,12 @@ case class State(loading: Load.Status,
   def showExtended: String = {
     val statusInfo = show"Loader is in ${loading} state".some
     val attemptsInfo = loading match {
-      case Idle => none
-      case Paused(_) => none
+      case Idle          => none
+      case Paused(_)     => none
       case Loading(_, _) => show"$attempts attempts has been made to load current folder".some
     }
-    val failuresInfo = if (failures.nonEmpty) show"${failures.size} failed folders in retry queue".some else none[String]
+    val failuresInfo =
+      if (failures.nonEmpty) show"${failures.size} failed folders in retry queue".some else none[String]
     val updatedInfo = s"Last state update at ${updated.formatted}".some
     List(show.some, statusInfo, attemptsInfo, failuresInfo, updatedInfo).unite.mkString("; ")
   }

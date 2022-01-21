@@ -15,9 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.config
 import cats.effect.Sync
 import cats.data._
 import cats.implicits._
-
-import io.circe.Json
-
+import io.circe.{Decoder, Json}
 import com.monovore.decline.{Command, Opts}
 
 // This project
@@ -25,24 +23,24 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
 
 /**
- * Validated and parsed result application config
- *
- * @param config decoded Loader config HOCON
- * @param dryRun if RDB Loader should just discover data and print SQL
- * @param resolverConfig proven to be valid resolver configuration
+  * Validated and parsed result application target
+  *
+  * @param config decoded Loader target HOCON
+  * @param dryRun if RDB Loader should just discover data and print SQL
+  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
- */
-case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json)
+  */
+case class CliConfig[+T <: StorageTarget](config: Config[T], dryRun: Boolean, resolverConfig: Json)
 
 object CliConfig {
 
   case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json)
 
-  val config = Opts.option[String]("config",
-    "base64-encoded HOCON configuration", "c", "config.hocon")
+  val config = Opts
+    .option[String]("config", "base64-encoded HOCON configuration", "c", "config.hocon")
     .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel)
-  val igluConfig = Opts.option[String]("iglu-config",
-    "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
+  val igluConfig = Opts
+    .option[String]("iglu-config", "base64-encoded string with Iglu resolver configuration JSON", "r", "resolver.json")
     .mapValidated(ConfigUtils.Base64Json.decode)
     .mapValidated(ConfigUtils.validateResolverJson)
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
@@ -54,20 +52,22 @@ object CliConfig {
   val parser = Command[RawCliConfig](BuildInfo.name, BuildInfo.version)(cliConfig)
 
   /**
-   * Parse raw CLI arguments into validated and transformed application config
-   * This is side-effecting function, it'll print to stdout all errors
-   *
-   * @param argv list of command-line arguments
-   * @return none if not all required arguments were passed
-   *         or unknown arguments provided,
-   *         some config error if arguments could not be transformed
-   *         into application config
-   *         some application config if everything was validated
-   *         correctly
-   */
-  def parse[F[_]: Sync](argv: Seq[String]): EitherT[F, String, CliConfig] =
+    * Parse raw CLI arguments into validated and transformed application target
+    * This is side-effecting function, it'll print to stdout all errors
+    *
+    * @param argv list of command-line arguments
+    * @return none if not all required arguments were passed
+    *         or unknown arguments provided,
+    *         some target error if arguments could not be transformed
+    *         into application target
+    *         some application target if everything was validated
+    *         correctly
+    */
+  def parse[F[_]: Sync, T <: StorageTarget](
+    argv: Seq[String]
+  )(implicit decoder: Decoder[T]): EitherT[F, String, CliConfig[T]] =
     for {
       raw  <- EitherT.fromEither[F](parser.parse(argv).leftMap(_.show))
-      conf <- Config.fromString[F](raw.config)
+      conf <- Config.fromString[F, T](raw.config)
     } yield CliConfig(conf, raw.dryRun, raw.resolverConfig)
 }

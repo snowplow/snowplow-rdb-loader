@@ -18,7 +18,7 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 
 object PureLogging {
-  def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =
+  implicit def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =
     new Logging[Pure] {
       def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
         log(Show[A].show(a))
