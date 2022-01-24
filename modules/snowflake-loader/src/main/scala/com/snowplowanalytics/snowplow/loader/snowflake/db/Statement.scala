@@ -11,7 +11,6 @@ import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.db.helpers.FragmentEncoder
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 
-
 trait Statement {
   /** Transform to doobie `Fragment`, closer to the end-of-the-world */
   def toFragment: Fragment
@@ -30,6 +29,15 @@ object Statement {
   case class CreateTable(ddl: ast.CreateTable) extends Statement {
     def toFragment: Fragment =
       Fragment.const0(ddl.toDdl)
+  }
+
+  case class GetColumns(schema: String, tableName: String) extends Statement {
+    def toFragment: Fragment =
+      sql"""|SELECT column_name
+            |FROM information_schema.columns
+            |WHERE TABLE_SCHEMA = $schema
+            |AND TABLE_NAME = $tableName
+            |ORDER BY ordinal_position""".stripMargin
   }
 
   // Manifest

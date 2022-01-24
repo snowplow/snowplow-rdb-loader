@@ -10,5 +10,6 @@ object Control {
     SfDao[C].executeQuery[Boolean](Statement.TableExists(dbSchema, tableName))
 
   /** List all columns in the table */
-  def getColumns[C[_]: Monad: SfDao](dbSchema: String, tableName: String): C[List[String]] = ???
+  def getColumns[C[_]: Monad: SfDao](dbSchema: String, tableName: String): C[List[String]] =
+    SfDao[C].executeQueryList[String](Statement.GetColumns(dbSchema, tableName))
 }
