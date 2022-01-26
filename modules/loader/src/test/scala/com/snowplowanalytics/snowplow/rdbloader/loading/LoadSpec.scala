@@ -141,7 +141,8 @@ object LoadSpec {
           "com.acme",
           "json-context",
           1,
-          Semver(0, 18, 0, None)
+          Semver(0, 18, 0, None),
+          LoaderMessage.ShreddedType.SelfDescribingEvent
         ),
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json")
       )
@@ -163,7 +164,8 @@ object LoadSpec {
       List(
         LoaderMessage.ShreddedType(
           SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
-          Format.JSON
+          Format.JSON,
+          LoaderMessage.ShreddedType.SelfDescribingEvent
         )
       ),
       Timestamps(

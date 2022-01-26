@@ -116,19 +116,17 @@ object NoOperationSpec {
         override def makePaused(who: String): Resource[IO, Unit] = {
 
           val allocate = Clock[IO].instantNow.flatMap { now =>
-            IO.delay(println(s"makePaused $who ${now}")) >> cState.update(_.paused(who).setUpdated(now))
+            cState.update(_.paused(who).setUpdated(now))
           }
           val deallocate = Clock[IO].instantNow.flatMap { now =>
-            IO.delay(println(s"makeUnPaused $who ${now}")) >> cState.update(_.idle.setUpdated(now))
+            cState.update(_.idle.setUpdated(now))
           }
 
           Resource.make(lock.acquire >> pause(testState, who))(args => unpause(testState, who)(args) >> lock.release) *>
-            Resource.make(allocate)(_ => deallocate)
+            Resource.make(allocate)(_                               => deallocate)
         }
 
         override def makeBusy(folder: Folder): Resource[IO, Unit] = Resource.eval(IO.unit)
-
-        override def isBusy: IO[Boolean] = IO.pure(false)
       }
       _ <- NoOperation.run[IO](input).take(n).compile.drain
       jobs <- testState
@@ -153,7 +151,6 @@ object NoOperationSpec {
       def apply[S <: FutureValue](a: Expectable[S]): MatchResult[S] =
         a.value match {
           case Some(Failure(error)) =>
-            println(error.toString)
             outer.result(false, a.description, error.toString, a)
           case Some(Success(jobs)) if pattern.isDefinedAt(jobs) =>
             val r = pattern.apply(jobs)
@@ -166,7 +163,6 @@ object NoOperationSpec {
           case Some(Success(jobs)) =>
             outer.failure(s"Expected different amount of resulting jobs, got: [${jobs.mkString(", ")}]", a)
           case None =>
-            println(a)
             outer.failure(s"Future timed out", a)
 
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -19,6 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Monitoring}
 import fs2.Stream
 
+/** Health check query that returns 1. **/
 trait HealthCheck[C[_]] {
   def select1: C[Int]
 }

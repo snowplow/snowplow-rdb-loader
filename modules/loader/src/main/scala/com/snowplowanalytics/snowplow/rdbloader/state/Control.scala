@@ -54,8 +54,6 @@ trait Control[F[_]] { self =>
 
   def makeBusy(folder: S3.Folder): Resource[F, Unit]
 
-  def isBusy: F[Boolean]
-
   def mapK[C[_]: Monad: Defer](arrow: F ~> C): Control[C] =
     new Control[C] {
       def incrementLoaded: C[Unit]        = arrow(self.incrementLoaded)
@@ -68,17 +66,12 @@ trait Control[F[_]] { self =>
         arrow(self.addFailure(config)(base)(error))
       def makePaused(who: String): Resource[C, Unit]     = self.makePaused(who).mapK(arrow)
       def makeBusy(folder: S3.Folder): Resource[C, Unit] = self.makeBusy(folder).mapK(arrow)
-      def isBusy: C[Boolean]                             = arrow(self.isBusy)
-
     }
 
 }
 
 object Control {
   def apply[F[_]](implicit ev: Control[F]): Control[F] = ev
-
-  def isBusyStream[F[_]: Control: Concurrent: Timer]: Stream[F, Boolean] =
-    Stream.awakeEvery[F](100.millis).evalMap(_ => Control[F].isBusy)
 
   def interpreter[F[_]: Logging: Monad: Clock: Concurrent]: F[Control[F]] =
     for {
@@ -161,9 +154,6 @@ object Control {
           }
         Resource.make(lock.acquire >> allocate)(_ => deallocate >> lock.release)
       }
-
-      def isBusy: F[Boolean] =
-        state.get.map(_.isBusy)
     }
 
 }

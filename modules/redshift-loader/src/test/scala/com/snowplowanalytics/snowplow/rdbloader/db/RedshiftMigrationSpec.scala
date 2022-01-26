@@ -22,8 +22,12 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RedshiftMigrationBuilder, RsDao, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
+import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder.Migration
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO}
 import org.specs2.mutable.Specification
@@ -34,6 +38,17 @@ class RedshiftMigrationSpec extends Specification {
       implicit val dao: RsDao[Pure] = PureDAO.interpreter(PureDAO.init)
       lazy val migration            = new RedshiftMigrationBuilder[Pure]("public")
 
+      val s3Folder = S3.Folder.coerce("s3://shredded/archive")
+      val shreddedType = ShreddedType.Tabular(
+        ShreddedType.Info(
+          s3Folder,
+          "com.acme",
+          "some_context",
+          2,
+          Semver(0, 17, 0),
+          LoaderMessage.ShreddedType.SelfDescribingEvent
+        )
+      )
       val create = CreateTable(
         "public.com_acme_some_context_2",
         List(
@@ -71,7 +86,7 @@ class RedshiftMigrationSpec extends Specification {
         Set(Diststyle(Key), DistKeyTable("root_id"), SortKeyTable(None, NonEmptyList.one("root_tstamp")))
       )
 
-      val input = DSchemaList
+      val schemaList = DSchemaList
         .buildSingleSchema(
           SelfDescribingSchema(
             SchemaMap(
@@ -79,8 +94,9 @@ class RedshiftMigrationSpec extends Specification {
             ),
             Schema.empty
           )
-        )
-        .toList
+        ).get
+
+      val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaList))
 
       val expected = List(
         LogEntry.Message(Statement.TableExists("public", "com_acme_some_context_2").toFragment.toString())

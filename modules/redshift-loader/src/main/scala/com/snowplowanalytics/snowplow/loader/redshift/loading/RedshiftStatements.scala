@@ -12,7 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift.loading
 
-// This project
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
@@ -24,9 +23,6 @@ import com.snowplowanalytics.snowplow.loader.redshift.db.Statement
   * @param dbSchema common DB schema (e.g. atomic)
   * @param atomicCopy COPY FROM statement to load `events` table
   * @param shredded COPY FROM statements to load shredded tables
-  * @param vacuum VACUUM statements **including `events` table** if necessary
-  * @param analyze ANALYZE statements **including `events` table** if necessary
-  * @param discovery original discovery object
   */
 case class RedshiftStatements(
   dbSchema: String,
@@ -67,7 +63,6 @@ object RedshiftStatements {
     * on passed `steps` argument
     *
     * @param target Redshift storage target configuration
-    * @param steps SQL steps
     * @param atomicCopy a way to copy data into atomic events table
     * @param shreddedStatements statements for shredded tables (include COPY,
     *                           ANALYZE and VACUUM)
@@ -86,8 +81,6 @@ object RedshiftStatements {
     * SQL statements for particular shredded type, grouped by their purpose
     *
     * @param copy main COPY FROM statement to load shredded type in its dedicate table
-    * @param analyze ANALYZE SQL-statement for dedicated table
-    * @param vacuum VACUUM SQL-statement for dedicate table
     */
   private case class ShreddedStatements(copy: Statement.ShreddedCopy)
 

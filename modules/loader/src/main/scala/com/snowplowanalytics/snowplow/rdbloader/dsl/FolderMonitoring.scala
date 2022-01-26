@@ -157,6 +157,8 @@ object FolderMonitoring {
     } yield ()
 
     for {
+      // leaving table creating outside of trasaction because create table is not allowed to be part of it in some data
+      // warehouses
       _                 <- Transaction[F, C].transact(alertingTable)
       onlyS3Batches     <- Transaction[F, C].run(FolderMonitoringDao[C].foldersMinusManifest)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)

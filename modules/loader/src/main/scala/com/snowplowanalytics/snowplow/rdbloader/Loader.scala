@@ -78,7 +78,6 @@ object Loader {
           Logging[F].info(show"Loader State: $state")
         }
 
-    // TODO initialize fomr setup
     val process = Stream.eval(Manifest.init) >>
       loading.merge(folderMonitoring).merge(noOpScheduling).merge(healthCheck).merge(stateLogging)
 

@@ -12,7 +12,6 @@
  */
 package com.snowplowanalytics.snowplow
 
-import cats._
 import cats.data._
 import cats.implicits._
 

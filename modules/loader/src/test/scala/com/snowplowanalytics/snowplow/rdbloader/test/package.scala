@@ -16,10 +16,6 @@ package object test {
   /** Pure effect. It can only change [[TestState]] and never actually produce side-effects */
   type Pure[A] = EitherT[CState[TestState, *], Throwable, A]
 
-//  implicit def functorPure: Functor[Pure] = new Functor[Pure]{
-//    override def map[A, B](fa: Pure[A])(f: A => B): Pure[B] = fa.map(f)
-//  }
-
   object Pure {
     def apply[A](f: TestState => (TestState, A)): Pure[A] = EitherT.right(CState(f))
     def liftWith[I, A](f: I   => A)(a: I): Pure[A]        = EitherT.right(CState((s: TestState) => (s, f(a))))

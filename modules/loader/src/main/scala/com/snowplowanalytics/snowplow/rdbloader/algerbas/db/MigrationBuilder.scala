@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.algerbas.db
 
 import cats.{Applicative, Monad, ~>}
@@ -10,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, Shredd
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Iglu
 
 trait MigrationBuilder[C[_]] {
-  def build(schemas: List[DSchemaList]): LoaderAction[C, MigrationBuilder.Migration[C]]
+  def build(items: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]]
 }
 
 object MigrationBuilder {
@@ -20,10 +32,10 @@ object MigrationBuilder {
     discovery: DataDiscovery
   ): LoaderAction[F, MigrationBuilder.Migration[C]] = {
     val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
-      case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
-        EitherT(Iglu[F].getSchemas(vendor, name, model)).map(_.some)
+      case s @ ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
+        EitherT(Iglu[F].getSchemas(vendor, name, model)).map(l => MigrationItem(s, l).some)
       case ShreddedType.Json(_, _) =>
-        EitherT.rightT[F, LoaderError](none[DSchemaList])
+        EitherT.rightT[F, LoaderError](none[MigrationItem])
     }
 
     val s = for {
@@ -36,6 +48,8 @@ object MigrationBuilder {
     s.mapK(runK)
   }
 
+  final case class MigrationItem(shreddedType: ShreddedType, schemaList: DSchemaList)
+
   final case class Migration[C[_]](preTransaction: C[Unit], inTransaction: C[Unit]) {
     def addPreTransaction(statement: C[Unit])(implicit F: Monad[C]): Migration[C] =
       Migration[C](preTransaction *> statement, inTransaction)
@@ -43,7 +57,6 @@ object MigrationBuilder {
       Migration[C](preTransaction, inTransaction *> statement)
   }
   object Migration {
-    def empty[C[_]: Applicative]: Migration[C]     = MigrationBuilder.Migration[C](Applicative[C].unit, Applicative[C].unit)
-    def emptyC[C[_]: Applicative]: C[Migration[C]] = Applicative[C].pure(empty)
+    def empty[C[_]: Applicative]: Migration[C] = MigrationBuilder.Migration[C](Applicative[C].unit, Applicative[C].unit)
   }
 }

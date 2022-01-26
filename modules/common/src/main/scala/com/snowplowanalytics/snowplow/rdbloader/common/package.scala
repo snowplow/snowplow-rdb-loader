@@ -18,6 +18,8 @@ import io.circe._
 import cats.Id
 import cats.effect.Clock
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.iglu.client.ClientError
@@ -63,4 +65,11 @@ package object common {
     Decoder.decodeString.emap {
       s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
+
+  implicit class ShredPropertyTransformer(val shredProperty: LoaderMessage.ShreddedType.ShredProperty) extends AnyVal {
+    def toSdkProperty: Data.ShredProperty = shredProperty match {
+      case LoaderMessage.ShreddedType.Contexts => Data.Contexts(Data.CustomContexts)
+      case LoaderMessage.ShreddedType.SelfDescribingEvent => Data.UnstructEvent
+    }
+  }
 }

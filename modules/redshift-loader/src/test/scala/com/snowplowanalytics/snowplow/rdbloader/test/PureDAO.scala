@@ -5,20 +5,7 @@ import com.snowplowanalytics.snowplow.loader.redshift.db.{RsDao, Statement}
 import cats.syntax.all._
 import doobie.Read
 
-case class PureDAO(executeQuery: Statement => Pure[Any], executeUpdate: Statement => Pure[Int]) {
-
-  /** If certain predicate met, return `update` action, otherwise do usual `executeUpdate` */
-  def withExecuteUpdate(predicate: (Statement, TestState) => Boolean, update: Pure[Int]): PureDAO = {
-    val updated = (sql: Statement) => {
-      Pure { (ts: TestState) =>
-        if (predicate(sql, ts))
-          (ts, update)
-        else (ts, executeUpdate(sql))
-      }.flatten
-    }
-    this.copy(executeUpdate = updated)
-  }
-}
+case class PureDAO(executeQuery: Statement => Pure[Any], executeUpdate: Statement => Pure[Int])
 
 object PureDAO {
 

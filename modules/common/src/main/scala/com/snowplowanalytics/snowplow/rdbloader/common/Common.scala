@@ -33,7 +33,7 @@ object Common {
 
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1, 0, 0))
-  val AtomicType         = ShreddedType(AtomicSchema, Format.TSV)
+  val AtomicType         = ShreddedType(AtomicSchema, Format.TSV, ShreddedType.SelfDescribingEvent)
   val AtomicPath: String = entityPath(AtomicType)
 
   val FolderTimeFormatter: DateTimeFormatter =

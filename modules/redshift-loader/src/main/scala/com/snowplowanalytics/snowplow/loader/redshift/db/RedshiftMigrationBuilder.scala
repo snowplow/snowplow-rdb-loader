@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2021 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -28,10 +28,11 @@ class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) ex
   import RedshiftMigrationBuilder._
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build(schemas: List[DSchemaList]): LoaderAction[C, MigrationBuilder.Migration[C]] =
+  def build(schemas: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]] =
     schemas.traverseFilter(buildBlock).map(fromBlocks)
 
-  private def buildBlock(schemas: DSchemaList): LoaderAction[C, Option[Block]] = {
+  private def buildBlock(migrationItem: MigrationBuilder.MigrationItem): LoaderAction[C, Option[Block]] = {
+    val schemas = migrationItem.schemaList
     val tableName = StringUtils.getTableName(schemas.latest)
 
     val migrate: C[Either[LoaderError, Option[Block]]] = for {

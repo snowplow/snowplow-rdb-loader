@@ -46,7 +46,7 @@ sealed trait ShreddedType {
 
   /** Check if this type is special atomic type */
   def isAtomic = this match {
-    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
+    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
       vendor == Common.AtomicSchema.vendor && name == Common
         .AtomicSchema
         .name && model == Common.AtomicSchema.version.model
@@ -57,6 +57,11 @@ sealed trait ShreddedType {
   /** Build valid table name for the shredded type */
   def getTableName: String =
     s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
+
+  def getShredProperty: LoaderMessage.ShreddedType.ShredProperty = this match {
+    case ShreddedType.Tabular(info) => info.shredProperty
+    case ShreddedType.Json(info, _) => info.shredProperty
+  }
 
 }
 
@@ -101,7 +106,12 @@ object ShreddedType {
     * @param name self-describing type's name
     * @param model self-describing type's SchemaVer model
     */
-  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
+  final case class Info(base: S3.Folder,
+                        vendor: String,
+                        name: String,
+                        model: Int,
+                        shredJob: Semver,
+                        shredProperty: LoaderMessage.ShreddedType.ShredProperty) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
   }
 
@@ -117,11 +127,11 @@ object ShreddedType {
     commonType: LoaderMessage.ShreddedType
   ): DiscoveryAction[F, ShreddedType] =
     commonType match {
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
     }
 
@@ -235,7 +245,7 @@ object ShreddedType {
     extractSchemaKey(shredpath) match {
       case Some((vendor, name, model, format)) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, vendor, name, model, shredJob)
+        val result = Info(prefix, vendor, name, model, shredJob, LoaderMessage.ShreddedType.SelfDescribingEvent)
         (format, result).asRight
       case None =>
         DiscoveryFailure.ShreddedTypeKeyFailure(key).asLeft

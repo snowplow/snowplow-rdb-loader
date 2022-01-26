@@ -52,7 +52,8 @@ object LoaderMessageSpec {
       "types" : [
         {
           "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
-          "format" : "TSV"
+          "format" : "TSV",
+          "shredProperty": "SELFDESCRIBING_EVENT"
         }
       ],
       "timestamps" : {
@@ -73,7 +74,7 @@ object LoaderMessageSpec {
   val ValidMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),
     List(
-      LoaderMessage.ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV)
+      LoaderMessage.ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV, LoaderMessage.ShreddedType.SelfDescribingEvent)
     ),
     LoaderMessage.Timestamps(
       Instant.ofEpochMilli(1600342341145L),

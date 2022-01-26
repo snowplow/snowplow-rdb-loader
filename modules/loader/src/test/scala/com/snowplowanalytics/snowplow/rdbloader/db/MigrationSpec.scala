@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder.Migration
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
@@ -30,31 +31,34 @@ import com.snowplowanalytics.snowplow.rdbloader.test._
 import org.specs2.mutable.Specification
 
 class MigrationSpec extends Specification {
+  import MigrationSpec._
   "build" should {
     "build Migration with table creation for ShreddedType.Tabular" in {
       val types =
         List(
           ShreddedType.Tabular(
             ShreddedType.Info(
-              S3.Folder.coerce("s3://shredded/archive"),
+              s3archive,
               "com.acme",
               "some_context",
               2,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             )
           ),
           ShreddedType.Json(
             ShreddedType.Info(
-              S3.Folder.coerce("s3://shredded/archive"),
+              s3archive,
               "com.acme",
               "some_event",
               1,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             ),
             S3.Key.coerce("s3://shredded/jsonpaths")
           )
         )
-      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
+      val input = DataDiscovery(s3archive, types, Compression.Gzip)
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
@@ -68,6 +72,7 @@ class MigrationSpec extends Specification {
       state.getLog must beEqualTo(expected)
       value.rethrow must beRight.like {
         case Migration(preTransaction, _) =>
+          // Because inTransaction is not implemented in the PureMigrationBuilder, there is nothing to check.
           preTransaction.runS.getLog must beEqualTo(
             List(LogEntry.Message("premigration List(iglu:com.acme/some_context/jsonschema/2-0-0)"))
           )
@@ -79,15 +84,16 @@ class MigrationSpec extends Specification {
         List(
           ShreddedType.Tabular(
             ShreddedType.Info(
-              S3.Folder.coerce("s3://shredded/archive"),
+              s3archive,
               "com.snowplowanalytics.snowplow",
               "atomic",
               1,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             )
           )
         )
-      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
+      val input = DataDiscovery(s3archive, types, Compression.Gzip)
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
@@ -162,6 +168,8 @@ object MigrationSpec {
     )
     )
   )
+
+  val s3archive = S3.Folder.coerce("s3://shredded/archive")
 
   val schemaListThree = SchemaList
     .unsafeBuildWithReorder(ModelGroupSet.groupSchemas(NonEmptyList.of(schema200, schema201)).head)
