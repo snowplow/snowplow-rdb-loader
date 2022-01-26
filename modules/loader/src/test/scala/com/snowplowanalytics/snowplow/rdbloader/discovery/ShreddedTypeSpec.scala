@@ -50,7 +50,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       val path = "vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001"
       val key = S3.Key.coerce(s"s3://rdb-test/$path")
       val result = ShreddedType.transformPath(key, Semver(0,13,0))
-      val expected = (LoaderMessage.Format.JSON, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+      val expected = (LoaderMessage.Format.JSON, Info(S3.Folder.coerce("s3://rdb-test"), "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0), LoaderMessage.ShreddedType.SelfDescribingEvent))
       result must beRight(expected)
     }
 
@@ -58,7 +58,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=json/model=1/part-00000-00001")
 
       val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-      val expected = (LoaderMessage.Format.JSON, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0)))
+      val expected = (LoaderMessage.Format.JSON, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,13,0), LoaderMessage.ShreddedType.SelfDescribingEvent))
 
       val result = ShreddedType.transformPath(key, Semver(0,13,0))
       result must beRight(expected)
@@ -68,7 +68,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       val key = S3.Key.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/vendor=com.snowplowanalytics.snowplow/name=submit_form/format=tsv/model=1/part-00000-00001")
 
       val expectedPrefix = S3.Folder.coerce("s3://snowplow-shredded/good/run=2017-06-14-12-07-11/")
-      val expected = (LoaderMessage.Format.TSV, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0)))
+      val expected = (LoaderMessage.Format.TSV, Info(expectedPrefix, "com.snowplowanalytics.snowplow", "submit_form", 1, Semver(0,16,0), LoaderMessage.ShreddedType.SelfDescribingEvent))
 
       val result = ShreddedType.transformPath(key, Semver(0,16,0))
       result must beRight(expected)
@@ -102,7 +102,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
 
-      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0))
+      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0), LoaderMessage.ShreddedType.SelfDescribingEvent)
       val discoveryAction = ShreddedType.discoverJsonPath[Pure]("eu-west-1", None, info)
 
       val (state, _) = (discoveryAction.flatMap(_ => discoveryAction)).value.run(TestState.init).value

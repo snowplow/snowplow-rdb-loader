@@ -28,10 +28,11 @@ class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) ex
   import RedshiftMigrationBuilder._
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build(schemas: List[DSchemaList]): LoaderAction[C, MigrationBuilder.Migration[C]] =
+  def build(schemas: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]] =
     schemas.traverseFilter(buildBlock).map(fromBlocks)
 
-  private def buildBlock(schemas: DSchemaList): LoaderAction[C, Option[Block]] = {
+  private def buildBlock(migrationItem: MigrationBuilder.MigrationItem): LoaderAction[C, Option[Block]] = {
+    val schemas = migrationItem.schemaList
     val tableName = StringUtils.getTableName(schemas.latest)
 
     val migrate: C[Either[LoaderError, Option[Block]]] = for {

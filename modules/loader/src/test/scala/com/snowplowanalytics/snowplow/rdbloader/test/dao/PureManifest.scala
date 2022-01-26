@@ -32,7 +32,7 @@ object PureManifest {
     S3.Folder.coerce("s3://bucket/folder/"),
     List(
       LoaderMessage
-        .ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV)
+        .ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV, LoaderMessage.ShreddedType.SelfDescribingEvent)
     ),
     LoaderMessage.Timestamps(
       Instant.ofEpochMilli(1600342341145L),

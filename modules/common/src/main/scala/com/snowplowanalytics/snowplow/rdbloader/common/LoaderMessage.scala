@@ -81,7 +81,13 @@ object LoaderMessage {
                               min: Option[Instant],
                               max: Option[Instant])
 
-  final case class ShreddedType(schemaKey: SchemaKey, format: Format)
+  final case class ShreddedType(schemaKey: SchemaKey, format: Format, shredProperty: ShreddedType.ShredProperty)
+  object ShreddedType {
+    sealed trait ShredProperty extends Product with Serializable
+    case object Contexts extends ShredProperty
+    case object SelfDescribingEvent extends ShredProperty
+  }
+
 
   final case class Processor(artifact: String, version: Semver)
 
@@ -121,6 +127,27 @@ object LoaderMessage {
     deriveEncoder[ShreddedType]
   implicit val loaderMessageShreddedTypeDecoder: Decoder[ShreddedType] =
     deriveDecoder[ShreddedType]
+  implicit val loaderMessageShredPropertyEncoder: Encoder[ShreddedType.ShredProperty] =
+    Encoder.encodeString.contramap {
+      case ShreddedType.Contexts => "CONTEXTS"
+      case ShreddedType.SelfDescribingEvent => "SELFDESCRIBING_EVENT"
+    }
+  implicit val loaderMessageShredPropertyDecoder: Decoder[ShreddedType.ShredProperty] =
+    Decoder.decodeString.emap { t =>
+      t.toLowerCase.replace("_", "") match {
+        case "contexts" => ShreddedType.Contexts.asRight[String]
+        case "selfdescribingevent" => ShreddedType.SelfDescribingEvent.asRight[String]
+        case other => s"ShredProperty $other is not supported. Supported values: CONTEXTS, SELFDESCRIBING_EVENT".asLeft[ShreddedType.ShredProperty]
+      }
+    }
+  implicit val loaderMessageShredPropertyContextsEncoder: Encoder[ShreddedType.Contexts.type ] =
+    deriveEncoder[ShreddedType.Contexts.type ]
+  implicit val loaderMessageShredPropertyContextsDecoder: Decoder[ShreddedType.Contexts.type ] =
+    deriveDecoder[ShreddedType.Contexts.type ]
+  implicit val loaderMessageShredPropertyUnstructEventEncoder: Encoder[ShreddedType.SelfDescribingEvent.type ] =
+    deriveEncoder[ShreddedType.SelfDescribingEvent.type ]
+  implicit val loaderMessageShredPropertyUnstructEventDecoder: Decoder[ShreddedType.SelfDescribingEvent.type ] =
+    deriveDecoder[ShreddedType.SelfDescribingEvent.type ]
   implicit val loaderMessageProcessorEncoder: Encoder[Processor] =
     deriveEncoder[Processor]
   implicit val loaderMessageProcessorDecoder: Decoder[Processor] =

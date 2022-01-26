@@ -10,7 +10,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, Shredd
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Iglu
 
 trait MigrationBuilder[C[_]] {
-  def build(schemas: List[DSchemaList]): LoaderAction[C, MigrationBuilder.Migration[C]]
+  def build(items: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]]
 }
 
 object MigrationBuilder {
@@ -20,10 +20,10 @@ object MigrationBuilder {
     discovery: DataDiscovery
   ): LoaderAction[F, MigrationBuilder.Migration[C]] = {
     val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
-      case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
-        EitherT(Iglu[F].getSchemas(vendor, name, model)).map(_.some)
+      case s @ ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
+        EitherT(Iglu[F].getSchemas(vendor, name, model)).map(l => MigrationItem(s, l).some)
       case ShreddedType.Json(_, _) =>
-        EitherT.rightT[F, LoaderError](none[DSchemaList])
+        EitherT.rightT[F, LoaderError](none[MigrationItem])
     }
 
     val s = for {
@@ -35,6 +35,8 @@ object MigrationBuilder {
 
     s.mapK(runK)
   }
+
+  final case class MigrationItem(shreddedType: ShreddedType, schemaList: DSchemaList)
 
   final case class Migration[C[_]](preTransaction: C[Unit], inTransaction: C[Unit]) {
     def addPreTransaction(statement: C[Unit])(implicit F: Monad[C]): Migration[C] =

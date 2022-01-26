@@ -16,7 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RsDao, Statement}
 import com.snowplowanalytics.snowplow.loader.redshift.loading.{RedshiftLoader, RedshiftStatements}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
@@ -42,7 +42,7 @@ class RedshiftLoaderSpec extends Specification {
           Statement.ShreddedCopy(
             "atomic",
             ShreddedType.Tabular(
-              ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0))
+              ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0), shredProperty)
             ),
             "eu-central-1",
             1,
@@ -72,7 +72,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "atomic",
               ShreddedType.Tabular(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0))
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0), shredProperty)
               ),
               "eu-central-1",
               1,
@@ -100,7 +100,7 @@ class RedshiftLoaderSpec extends Specification {
           Statement.ShreddedCopy(
             "schema",
             ShreddedType.Tabular(
-              ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0))
+              ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0), shredProperty)
             ),
             "eu-central-1",
             1,
@@ -132,7 +132,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "schema",
               ShreddedType.Tabular(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0))
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1, 0, 0), shredProperty)
               ),
               "eu-central-1",
               1,
@@ -155,15 +155,15 @@ class RedshiftLoaderSpec extends Specification {
 
       val shreddedTypes = List(
         ShreddedType.Json(
-          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0)),
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0), shredProperty),
           "s3://assets/event_1.json".key
         ),
         ShreddedType.Json(
-          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1, 5, 0)),
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1, 5, 0), shredProperty),
           "s3://assets/context_2.json".key
         ),
         ShreddedType.Tabular(
-          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1, 5, 0))
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1, 5, 0), shredProperty)
         )
       )
       val discovery = DataDiscovery(S3.Folder.coerce("s3://bucket/path/run=1/"), shreddedTypes, Compression.Gzip)
@@ -197,7 +197,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "atomic",
               ShreddedType.Json(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0)),
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0), shredProperty),
                 "s3://assets/event_1.json".key
               ),
               "us-east-1",
@@ -217,7 +217,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "atomic",
               ShreddedType.Json(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1, 5, 0)),
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1, 5, 0), shredProperty),
                 "s3://assets/context_2.json".key
               ),
               "us-east-1",
@@ -237,7 +237,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "atomic",
               ShreddedType.Tabular(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1, 5, 0))
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1, 5, 0), shredProperty)
               ),
               "us-east-1",
               1,
@@ -275,5 +275,7 @@ object RedshiftLoaderSpec {
     1,
     None
   )
+
+  val shredProperty = LoaderMessage.ShreddedType.SelfDescribingEvent
 
 }

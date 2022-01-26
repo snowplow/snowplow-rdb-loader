@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder.Migration
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
@@ -40,7 +41,8 @@ class MigrationSpec extends Specification {
               "com.acme",
               "some_context",
               2,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             )
           ),
           ShreddedType.Json(
@@ -49,7 +51,8 @@ class MigrationSpec extends Specification {
               "com.acme",
               "some_event",
               1,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             ),
             S3.Key.coerce("s3://shredded/jsonpaths")
           )
@@ -83,7 +86,8 @@ class MigrationSpec extends Specification {
               "com.snowplowanalytics.snowplow",
               "atomic",
               1,
-              Semver(0, 17, 0)
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
             )
           )
         )

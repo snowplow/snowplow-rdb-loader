@@ -36,11 +36,11 @@ class DataDiscoverySpec extends Specification {
     "should DataDiscovery with several shredded types" >> {
       val shreddedTypes = List(
         ShreddedType.Json(
-          ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1, 5, 0)),
+          ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.ShreddedType.SelfDescribingEvent),
           S3.Key.coerce("s3://assets/event_1.json")
         ),
         ShreddedType.Json(
-          ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1, 5, 0)),
+          ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1, 5, 0), LoaderMessage.ShreddedType.SelfDescribingEvent),
           S3.Key.coerce("s3://assets/context_1.json")
         )
       )
@@ -63,7 +63,7 @@ class DataDiscoverySpec extends Specification {
         S3.Folder.coerce("s3://bucket/folder/"),
         List(
           ShreddedType.Tabular(
-            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-a", 1, Semver(1, 1, 2, None))
+            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-a", 1, Semver(1, 1, 2, None), LoaderMessage.ShreddedType.SelfDescribingEvent)
           )
         ),
         Compression.None
@@ -135,14 +135,14 @@ class DataDiscoverySpec extends Specification {
         S3.Folder.coerce("s3://bucket/folder/"),
         List(
           ShreddedType.Json(
-            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-a", 1, Semver(1, 1, 2, None)),
+            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-a", 1, Semver(1, 1, 2, None), LoaderMessage.ShreddedType.SelfDescribingEvent),
             S3.Key
               .coerce(
                 "s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json"
               )
           ),
           ShreddedType.Json(
-            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-b", 1, Semver(1, 1, 2, None)),
+            ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"), "com.acme", "event-b", 1, Semver(1, 1, 2, None), LoaderMessage.ShreddedType.SelfDescribingEvent),
             S3.Key
               .coerce(
                 "s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"
@@ -190,11 +190,13 @@ object DataDiscoverySpec {
     List(
       LoaderMessage.ShreddedType(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
-        LoaderMessage.Format.JSON
+        LoaderMessage.Format.JSON,
+        LoaderMessage.ShreddedType.SelfDescribingEvent
       ),
       LoaderMessage.ShreddedType(
         SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(1, 0, 0)),
-        LoaderMessage.Format.JSON
+        LoaderMessage.Format.JSON,
+        LoaderMessage.ShreddedType.SelfDescribingEvent
       )
     ),
     LoaderMessage.Timestamps(
@@ -213,11 +215,13 @@ object DataDiscoverySpec {
     List(
       LoaderMessage.ShreddedType(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
-        LoaderMessage.Format.TSV
+        LoaderMessage.Format.TSV,
+        LoaderMessage.ShreddedType.SelfDescribingEvent
       ),
       LoaderMessage.ShreddedType(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 1, 0)),
-        LoaderMessage.Format.TSV
+        LoaderMessage.Format.TSV,
+        LoaderMessage.ShreddedType.SelfDescribingEvent
       )
     ),
     LoaderMessage.Timestamps(
