@@ -15,13 +15,13 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Com
 
 import blobstore.fs.FileStore
 import blobstore.BasePath
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Shredded
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 
 object file {
 
   def getSink[F[_]: Concurrent: ContextShift](blocker: Blocker, root: URI, compression: Compression, counter: Window => F[Int])
                                              (window: Window)
-                                             (path: Shredded.Path): Pipe[F, Shredded.Data, Unit] = {
+                                             (path: Transformed.Path): Pipe[F, Transformed.Data, Unit] = {
     val p = BasePath.empty
       .withPathFromRoot(Chain.fromSeq(s"${window.getDir}/${path.getDir}".split("/")).filter(_.nonEmpty))
       .withIsDir(Some(false))
