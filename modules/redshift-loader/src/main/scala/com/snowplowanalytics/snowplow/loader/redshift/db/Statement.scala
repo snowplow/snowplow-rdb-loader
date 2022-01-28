@@ -173,6 +173,7 @@ object Statement {
                | TRUNCATECOLUMNS
                | ACCEPTINVCHARS
                | $frCompression""".stripMargin
+        case ShreddedType.Widerow(_) => sql"not supported"
       }
     }
   }

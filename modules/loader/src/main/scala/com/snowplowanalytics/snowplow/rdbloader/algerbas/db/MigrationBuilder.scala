@@ -20,7 +20,8 @@ object MigrationBuilder {
     discovery: DataDiscovery
   ): LoaderAction[F, MigrationBuilder.Migration[C]] = {
     val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
-      case s @ ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
+      case s @ (_: ShreddedType.Tabular | _: ShreddedType.Widerow) =>
+        val ShreddedType.Info(_, vendor, name, model, _, _) = s.info
         EitherT(Iglu[F].getSchemas(vendor, name, model)).map(l => MigrationItem(s, l).some)
       case ShreddedType.Json(_, _) =>
         EitherT.rightT[F, LoaderError](none[MigrationItem])
