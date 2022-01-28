@@ -67,8 +67,8 @@ object ShreddedTypesAccumulator {
     val withFormat: Set[ShreddedType] =
       inventory
         .map { schemaKey =>
-          if (isTabular(schemaKey)) ShreddedType(schemaKey, Format.TSV)
-          else ShreddedType(schemaKey, Format.JSON)
+          if (isTabular(schemaKey)) ShreddedType(schemaKey, Format.TSV, ShreddedType.SelfDescribingEvent)
+          else ShreddedType(schemaKey, Format.JSON, ShreddedType.SelfDescribingEvent)
         }
     accumulator.add(withFormat)
   }

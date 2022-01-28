@@ -46,7 +46,7 @@ object Completion {
                               awsQueue: AWSQueue[F])
                              (window: Window, state: State): F[Unit] = {
     val shreddedTypes: List[ShreddedType] = state.types.toList.map { key =>
-      if (isTabular(key)) ShreddedType(key, Format.TSV) else ShreddedType(key, Format.JSON)
+      if (isTabular(key)) ShreddedType(key, Format.TSV, ShreddedType.SelfDescribingEvent) else ShreddedType(key, Format.JSON, ShreddedType.SelfDescribingEvent)
     }
     for {
       timestamps <- Clock[F].instantNow.map { now =>
