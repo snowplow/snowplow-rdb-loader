@@ -11,6 +11,8 @@ import io.circe.syntax.EncoderOps
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
@@ -46,7 +48,16 @@ object Completion {
                               awsQueue: AWSQueue[F])
                              (window: Window, state: State): F[Unit] = {
     val shreddedTypes: List[ShreddedType] =
-      state.types.toList.map { key => ShreddedType(key, findFormat(key)) }
+      state.types.toList.map {
+        shreddedType => {
+          val schemaKey = shreddedType.schemaKey
+          val shredProperty = shreddedType.shredProperty match {
+            case _: Data.Contexts => ShreddedType.Contexts
+            case Data.UnstructEvent => ShreddedType.SelfDescribingEvent
+          }
+          ShreddedType(schemaKey, findFormat(schemaKey), shredProperty)
+        }
+      }
     for {
       timestamps <- Clock[F].instantNow.map { now =>
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)

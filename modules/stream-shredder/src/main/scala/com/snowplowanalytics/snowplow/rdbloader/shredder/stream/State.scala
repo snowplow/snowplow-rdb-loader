@@ -11,7 +11,7 @@ import cats.implicits._
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
 
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.generic.{Status, Record}
@@ -21,7 +21,7 @@ case class State(total: Long,
                  bad: Long,
                  minCollector: Option[Instant],
                  maxCollector: Option[Instant],
-                 types: Set[SchemaKey],
+                 types: Set[Data.ShreddedType],
                  sinks: Int) {
   def show: String =
     List(
@@ -29,7 +29,7 @@ case class State(total: Long,
       s"bad=$bad",
       s"minCollector=${minCollector.map(_.toString).getOrElse("null")}",
       s"maxCollector=${maxCollector.map(_.toString).getOrElse("null")}",
-      s"types=[${types.toList.map(_.toSchemaUri).mkString(",")}]",
+      s"types=[${types.toList.map(_.schemaKey.toSchemaUri).mkString(",")}]",
       s"sinks=$sinks"
     ).mkString(";")
 }
@@ -139,7 +139,7 @@ object State {
       case Left(_) =>
         Monoid[State].empty.copy(total = 1, bad = 1)
       case Right(event) =>
-        State(1, 0, Some(event.collector_tstamp), Some(event.collector_tstamp), event.inventory.map(_.schemaKey), 0)
+        State(1, 0, Some(event.collector_tstamp), Some(event.collector_tstamp), event.inventory, 0)
     }
 
   def combineOption[A](f: (A, A) => A, a: Option[A], b: Option[A]): Option[A] =
