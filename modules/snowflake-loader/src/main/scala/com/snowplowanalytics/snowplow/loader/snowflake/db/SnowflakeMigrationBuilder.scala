@@ -21,6 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
 
 class SnowflakeMigrationBuilder[C[_]: Monad: Logging: SfDao](dbSchema: String) extends MigrationBuilder[C] {
@@ -33,11 +34,23 @@ class SnowflakeMigrationBuilder[C[_]: Monad: Logging: SfDao](dbSchema: String) e
     val newColumnName = getColumnName(migrationItem)
     val addNewColumn = Monad[C].pure(addColumn(newColumnName, migrationItem).map(_.some))
     val emptyBlock = Monad[C].pure(Option.empty[Block].asRight[LoaderError])
-    val result = Control.getColumns[C](dbSchema, EventTable)
-      .map(_.contains(newColumnName))
-      .ifM(emptyBlock, addNewColumn)
+    val result: C[Either[LoaderError, Option[Block]]] =
+      migrationCheck(migrationItem) match {
+        case Right(_) =>
+          Control.getColumns[C](dbSchema, EventTable)
+            .map(_.contains(newColumnName))
+            .ifM(emptyBlock, addNewColumn)
+        case Left(err) =>
+          Monad[C].pure(LoaderError.MigrationError(err).asLeft[Option[Block]])
+      }
     LoaderAction.apply[C, Option[Block]](result)
   }
+
+  private def migrationCheck(migrationItem: MigrationBuilder.MigrationItem): Either[String, Unit] =
+    migrationItem.shreddedType match {
+      case _: ShreddedType.Widerow => ().asRight
+      case s => s"Migration for ${s.show} can't be executed because format of ${s.show} isn't supported by Snowflake Loader".asLeft
+    }
 
   private def fromBlocks(blocks: List[Block]): MigrationBuilder.Migration[C] =
     blocks.foldLeft(MigrationBuilder.Migration.empty[C]) {

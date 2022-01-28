@@ -9,6 +9,7 @@ import com.snowplowanalytics.iglu.schemaddl.IgluSchema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties._
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
@@ -88,6 +89,31 @@ class SnowflakeMigrationSpec extends Specification {
           in.runS.getLog must beEmpty
       }
     }
+
+    "throw error when given shred type is not supported" in {
+      implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.init)
+      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema)
+
+      val shreddedType = ShreddedType.Tabular(
+        ShreddedType.Info(
+          s3Folder,
+          schemaKey.vendor,
+          schemaKey.name,
+          schemaKey.version.model,
+          Semver(0, 17, 0),
+          LoaderMessage.ShreddedType.SelfDescribingEvent
+        )
+      )
+
+      val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaListTwo))
+
+      val (state, value) = migration.build(input).run
+
+      state.getLog must beEmpty
+      value.rethrow must beLeft.like {
+        case LoaderError.MigrationError(_) => ok
+      }
+    }
   }
 }
 
@@ -142,7 +168,7 @@ object SnowflakeMigrationSpec {
                          s3Folder: S3.Folder = SnowflakeMigrationSpec.s3Folder,
                          shredProperty: LoaderMessage.ShreddedType.ShredProperty = LoaderMessage.ShreddedType.SelfDescribingEvent
                         ): ShreddedType =
-    ShreddedType.Tabular(
+    ShreddedType.Widerow(
       ShreddedType.Info(
         s3Folder,
         schemaKey.vendor,
