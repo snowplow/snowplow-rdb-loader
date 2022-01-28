@@ -15,6 +15,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks
 
 import java.nio.file.Path
+import java.time.Instant
 
 import cats.implicits._
 
@@ -79,6 +80,17 @@ class ProcessingSpec extends Specification {
       good must have size(2)
       good.map(_.data.value) mustEqual expectedGoodEvents
     }
+
+    "create bad row when timestamp is invalid" in {
+      val timestampLowerLimit = Instant.parse("0000-01-02T00:00:00.00Z")
+      val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/2/input/events", format = wideRowFormat, timestampLowerLimit = Some(timestampLowerLimit))
+
+      val expectedBadEvents = getResourceLines("/processing-spec/2/output/bad")
+
+      bad must have size(2)
+      replaceFailureTimestamps(bad.map(_.data.value)).toSet mustEqual replaceFailureTimestamps(expectedBadEvents).toSet
+      good must have size(1)
+    }
   }
 }
 
@@ -121,10 +133,12 @@ object ProcessingSpec {
     }
 
   def transformTestEvents(resourcePath: String,
-                          format: ShredderConfig.Formats): (TransformedList, TransformedList) = {
+                          format: ShredderConfig.Formats,
+                          timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList) = {
     val transformer = createTransformer(format)
+    val validations = ShredderConfig.Validations(timestampLowerLimit)
     val eventStream: Stream[IO, Windowed[IO, Parsed]] = parsedEventStream(resourcePath)
-    val pipe = Processing.transform[IO](transformer)
+    val pipe = Processing.transform[IO](transformer, validations)
     val transformed = pipe(eventStream).compile.toList.unsafeRunSync().flatMap {
       case Record.Data(_, _, i) => Some(i)
       case Record.EndWindow(_, _, _) => None
