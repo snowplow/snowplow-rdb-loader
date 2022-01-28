@@ -58,10 +58,7 @@ sealed trait ShreddedType {
   def getTableName: String =
     s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
 
-  def getShredProperty: LoaderMessage.ShreddedType.ShredProperty = this match {
-    case ShreddedType.Tabular(info) => info.shredProperty
-    case ShreddedType.Json(info, _) => info.shredProperty
-  }
+  def getShredProperty: LoaderMessage.ShreddedType.ShredProperty = info.shredProperty
 
 }
 
@@ -94,6 +91,12 @@ object ShreddedType {
       s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
+  }
+
+  final case class Widerow(info: Info) extends ShreddedType {
+    def getLoadPath: String = s"${info.base}${Common.GoodPrefix}"
+
+    def show: String = s"${info.toCriterion.asString} WIDEROW"
   }
 
   /**
@@ -133,6 +136,9 @@ object ShreddedType {
       case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON, shredProperty) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.WIDEROW, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+        (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
     }
 
   /**
