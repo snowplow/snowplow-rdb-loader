@@ -12,7 +12,7 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Format, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -41,13 +41,12 @@ object Completion {
    * @param state all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: Sync](compression: Compression,
-                              isTabular: SchemaKey => Boolean,
+                              findFormat: SchemaKey => LoaderMessage.Format,
                               root: URI,
                               awsQueue: AWSQueue[F])
                              (window: Window, state: State): F[Unit] = {
-    val shreddedTypes: List[ShreddedType] = state.types.toList.map { key =>
-      if (isTabular(key)) ShreddedType(key, Format.TSV) else ShreddedType(key, Format.JSON)
-    }
+    val shreddedTypes: List[ShreddedType] =
+      state.types.toList.map { key => ShreddedType(key, findFormat(key)) }
     for {
       timestamps <- Clock[F].instantNow.map { now =>
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
