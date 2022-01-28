@@ -119,7 +119,8 @@ object Migration {
   def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu,
             C[_]: Monad: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
     val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
-      case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
+      case s @ (_: ShreddedType.Tabular | _: ShreddedType.Widerow) =>
+        val ShreddedType.Info(_, vendor, name, model, _, _) = s.info
         EitherT(Iglu[F].getSchemas(vendor, name, model)).map(_.some)
       case ShreddedType.Json(_, _) =>
         EitherT.rightT[F, LoaderError](none[DSchemaList])

@@ -114,7 +114,7 @@ object Load {
             inTransactionMigrations *>
             run[F](setLoading, discovery.discovery) *>
             setStage(Stage.Committing) *>
-            Manifest.add[F](discovery.origin) *>
+            Manifest.add[F](discovery.origin.toManifestItem) *>
             Manifest
               .get[F](discovery.discovery.base)
               .map(opt => opt.map(_.ingestion).asRight)

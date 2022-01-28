@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format, ShredProperty}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
 
 /**
  * Various common utility functions
@@ -33,16 +33,16 @@ object Common {
 
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
-  val AtomicType = ShreddedType(AtomicSchema, Format.TSV, ShredProperty.SelfDescribingEvent)
+  val AtomicType = TypesInfo.Shredded.Type(AtomicSchema, TypesInfo.Shredded.ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
   val AtomicPath: String = entityPath(AtomicType)
 
   val FolderTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss").withZone(ZoneId.from(ZoneOffset.UTC))
 
-  def entityPath(entity: ShreddedType) =
+  def entityPath(entity: TypesInfo.Shredded.Type) =
     s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
 
-  def entityPathFull(base: S3.Folder, entity: ShreddedType): S3.Folder =
+  def entityPathFull(base: S3.Folder, entity: TypesInfo.Shredded.Type): S3.Folder =
     S3.Folder.append(base, entityPath(entity))
 
   /**
@@ -73,14 +73,14 @@ object Common {
       .replaceAll("""\.""", "_")
       .toLowerCase
 
-  def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
-    formats.default match {
-      case LoaderMessage.Format.TSV =>
-        val notJson = !formats.json.exists(c => c.matches(schemaKey))
-        val notSkip = !formats.skip.exists(c => c.matches(schemaKey))
+  def isTabular(s: Formats.Shred)(schemaKey: SchemaKey): Boolean =
+    s.default match {
+      case LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV =>
+        val notJson = !s.json.exists(c => c.matches(schemaKey))
+        val notSkip = !s.skip.exists(c => c.matches(schemaKey))
         notJson && notSkip
-      case LoaderMessage.Format.JSON =>
-        formats.tsv.exists(c => c.matches(schemaKey))
+      case LoaderMessage.TypesInfo.Shredded.ShreddedFormat.JSON =>
+        s.tsv.exists(c => c.matches(schemaKey))
     }
 
   /** Registry embedded into RDB Loader jar */

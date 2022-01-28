@@ -55,6 +55,8 @@
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
   "formats": {
+    # Denotes the type of the transformation (shred or widerow)
+    "transformationType": "widerow",
     # Format used by default (TSV or JSON)
     # Optional, default value TSV
     "default": "TSV",
@@ -80,5 +82,12 @@
     "sentry": {
       "dsn": "http://sentry.acme.com"
     }
+  }
+
+  # Optional. Enable features that are still in beta, or which are here to enable smoother upgrades
+  "featureFlags": {
+    # Read/write in the legacy version 1 shredding complete message format.
+    # This should be enabled during upgrade from older versions of the loader.
+    "legacyMessageFormat": false
   }
 }
