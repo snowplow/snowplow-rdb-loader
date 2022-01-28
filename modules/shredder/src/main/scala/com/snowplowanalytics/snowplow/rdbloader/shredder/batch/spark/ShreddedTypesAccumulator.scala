@@ -18,6 +18,8 @@ import org.apache.spark.util.AccumulatorV2
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.ShreddedTypesAccumulator._
 
@@ -63,13 +65,19 @@ object ShreddedTypesAccumulator {
   /** Save set of shredded types into accumulator, for master to send to SQS */
   def recordShreddedType(accumulator: ShreddedTypesAccumulator,
                          isTabular: SchemaKey => Boolean)
-                        (inventory: Set[SchemaKey]): Unit = {
+                        (inventory: Set[Data.ShreddedType]): Unit = {
     val withFormat: Set[ShreddedType] =
-      inventory
-        .map { schemaKey =>
-          if (isTabular(schemaKey)) ShreddedType(schemaKey, Format.TSV)
-          else ShreddedType(schemaKey, Format.JSON)
+      inventory.map {
+        shreddedType => {
+          val schemaKey = shreddedType.schemaKey
+          val shredProperty = shreddedType.shredProperty match {
+            case _: Data.Contexts => ShreddedType.Contexts
+            case Data.UnstructEvent => ShreddedType.SelfDescribingEvent
+          }
+          val format = if (isTabular(schemaKey)) Format.TSV else Format.JSON
+          ShreddedType(schemaKey, format, shredProperty)
         }
+      }
     accumulator.add(withFormat)
   }
 }

@@ -145,7 +145,7 @@ class ShredJob(@transient val spark: SparkSession,
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
         Shredded.fromEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(withDupeContext).value match {
           case Right(shredded) =>
-            ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(withDupeContext.inventory.map(_.schemaKey))
+            ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, isTabular)(withDupeContext.inventory)
             timestampsAccumulator.add(event)
             eventsCounter.add(1L)
             shredded.map(_.text)
@@ -164,8 +164,7 @@ class ShredJob(@transient val spark: SparkSession,
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
     val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && shredded.isEmpty()  // RDD.isEmpty called as last resort
-    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV) :: shreddedTypes
-
+    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, Format.TSV, ShreddedType.SelfDescribingEvent) :: shreddedTypes
     LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
   }
 }
