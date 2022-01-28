@@ -19,7 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Transformed, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sources.{Parsed, ParsedF}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated.BuildInfo
@@ -55,7 +55,7 @@ object Processing {
       .interruptWhen(resources.halt)
       .through(windowing)
       .evalTap(State.update(resources.windows))
-      .through(transform[F](transformer))
+      .through(transform[F](transformer, config.validations))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
       .compile
@@ -128,11 +128,13 @@ object Processing {
         generic.Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
     }
 
-  def transform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F]): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
+  def transform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
+                                                validations: ShredderConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
     _.flatMap { record =>
       val shreddedRecord = record.traverse { parsed =>
         val res = for {
-          event <- EitherT.fromEither[F](parsed)
+          event       <- EitherT.fromEither[F](parsed)
+          _           <- EitherT.fromEither[F](ShredderValidations(Application, event, validations).toLeft(()))
           transformed <- transformer.goodTransform(event)
         } yield transformed
         res.leftMap(transformer.badTransform).value
