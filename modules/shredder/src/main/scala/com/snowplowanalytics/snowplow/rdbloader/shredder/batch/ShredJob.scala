@@ -150,7 +150,7 @@ class ShredJob(@transient val spark: SparkSession,
     val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
 
     val wideRowGoodTransform = (event: Event) => {
-      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = true))(event.inventory.map(_.schemaKey))
+      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = true))(event.inventory)
       timestampsAccumulator.add(event)
       eventsCounter.add(1L)
       List(Transformed.wideRowEvent(event))
@@ -159,7 +159,7 @@ class ShredJob(@transient val spark: SparkSession,
     val shredGoodTransform = (event: Event) =>
       Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
         case Right(shredded) =>
-          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = false))(event.inventory.map(_.schemaKey))
+          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = false))(event.inventory)
           timestampsAccumulator.add(event)
           eventsCounter.add(1L)
           shredded
@@ -201,7 +201,7 @@ class ShredJob(@transient val spark: SparkSession,
       case Formats.WideRow => Format.WIDEROW
       case _: Formats.Shred => Format.TSV
     }
-    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, atomicSchemaFormat) :: shreddedTypes
+    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, atomicSchemaFormat, ShreddedType.SelfDescribingEvent) :: shreddedTypes
 
     LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
   }
