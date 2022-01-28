@@ -8,11 +8,12 @@ import cats.effect.{Sync, Clock}
 
 import io.circe.syntax.EncoderOps
 
-import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Format, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -34,28 +35,27 @@ object Completion {
    * Finalize the batch by sending a `ShreddingComplete` SQS message
    *
    * @param compression a compression type used in the batch
-   * @param isTabular a predicate to derive type of output for a schema key
+   * @param getTypes a function converts set of event inventory items to TypesInfo
    * @param root S3 batch root (with output=good and output=bad)
    * @param awsQueue AWSQueue instance to send the message to
+   * @param legacyMessageFormat Feature flag to use legacy shredding complete version 1
    * @param window run id (when batch has been started)
    * @param state all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: Sync](compression: Compression,
-                              isTabular: SchemaKey => Boolean,
+                              getTypes: Set[Data.ShreddedType] => TypesInfo,
                               root: URI,
-                              awsQueue: AWSQueue[F])
+                              awsQueue: AWSQueue[F],
+                              legacyMessageFormat: Boolean)
                              (window: Window, state: State): F[Unit] = {
-    val shreddedTypes: List[ShreddedType] = state.types.toList.map { key =>
-      if (isTabular(key)) ShreddedType(key, Format.TSV) else ShreddedType(key, Format.JSON)
-    }
     for {
       timestamps <- Clock[F].instantNow.map { now =>
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
       }
       base = getBasePath(S3.Folder.coerce(root.toString), window)
       count = LoaderMessage.Count(state.total - state.bad)
-      message = LoaderMessage.ShreddingComplete(base, shreddedTypes, timestamps, compression, MessageProcessor, Some(count))
-      body = message.selfDescribingData.asJson.noSpaces
+      message = LoaderMessage.ShreddingComplete(base, getTypes(state.types), timestamps, compression, MessageProcessor, Some(count))
+      body = message.selfDescribingData(legacyMessageFormat).asJson.noSpaces
       _ <- awsQueue.sendMessage(Some(MessageGroupId), body)
     } yield ()
   }
