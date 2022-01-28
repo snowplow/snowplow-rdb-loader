@@ -87,6 +87,12 @@ object ShreddedType {
     def show: String = s"${info.toCriterion.asString} TSV"
   }
 
+  final case class Widerow(info: Info) extends ShreddedType {
+    def getLoadPath: String = s"${info.base}${Common.GoodPrefix}"
+
+    def show: String = s"${info.toCriterion.asString} WIDEROW"
+  }
+
   /**
    * Raw metadata that can be parsed from S3 Key.
    * It cannot be counted as "final" shredded type,
@@ -123,6 +129,9 @@ object ShreddedType {
             Json(info, jsonPath)
           }
         }
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.WIDEROW, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+        (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
     }
 
   /**
