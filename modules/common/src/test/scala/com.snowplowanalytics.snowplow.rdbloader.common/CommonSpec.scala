@@ -49,7 +49,7 @@ class CommonSpec extends Specification {
 
 object CommonSpec {
 
-  val formats = ShredderConfig.Formats(
+  val formats = ShredderConfig.Formats.Shred(
     LoaderMessage.Format.TSV,
     List(
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
