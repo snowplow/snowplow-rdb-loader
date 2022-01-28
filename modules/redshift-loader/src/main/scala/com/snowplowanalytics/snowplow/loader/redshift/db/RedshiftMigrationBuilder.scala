@@ -21,7 +21,7 @@ import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, Com
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 
 class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) extends MigrationBuilder[C] {
@@ -47,11 +47,23 @@ class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) ex
           )
     } yield block
 
-    val result = RedshiftDdl
-      .tableExists[C](dbSchema, tableName)
-      .ifM(migrate, Monad[C].pure(createTable(schemas).some.asRight[LoaderError]))
+    val result: C[Either[LoaderError, Option[Block]]] =
+      migrationCheck(migrationItem) match {
+        case Right(_) =>
+          RedshiftDdl
+            .tableExists[C](dbSchema, tableName)
+            .ifM(migrate, Monad[C].pure(createTable(schemas).some.asRight[LoaderError]))
+        case Left(err) =>
+          Monad[C].pure(LoaderError.MigrationError(err).asLeft[Option[Block]])
+      }
     LoaderAction.apply[C, Option[Block]](result)
   }
+
+  private def migrationCheck(migrationItem: MigrationBuilder.MigrationItem): Either[String, Unit] =
+    migrationItem.shreddedType match {
+      case _: ShreddedType.Tabular | _: ShreddedType.Json => ().asRight
+      case _ => "Migration for widerow format can't be executed because widerow format isn't supported by Redshift Loader".asLeft
+    }
 
   private def fromBlocks(blocks: List[Block]): MigrationBuilder.Migration[C] =
     blocks.foldLeft(MigrationBuilder.Migration.empty[C]) {

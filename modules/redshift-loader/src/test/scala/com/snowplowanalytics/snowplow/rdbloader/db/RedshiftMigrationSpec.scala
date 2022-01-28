@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RedshiftMigrationBuilder, RsDao, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
@@ -33,69 +33,12 @@ import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO}
 import org.specs2.mutable.Specification
 
 class RedshiftMigrationSpec extends Specification {
+  import RedshiftMigrationSpec._
+
   "build" should {
     "build Migration with table creation for ShreddedType.Tabular" in {
       implicit val dao: RsDao[Pure] = PureDAO.interpreter(PureDAO.init)
       lazy val migration            = new RedshiftMigrationBuilder[Pure]("public")
-
-      val s3Folder = S3.Folder.coerce("s3://shredded/archive")
-      val shreddedType = ShreddedType.Tabular(
-        ShreddedType.Info(
-          s3Folder,
-          "com.acme",
-          "some_context",
-          2,
-          Semver(0, 17, 0),
-          LoaderMessage.ShreddedType.SelfDescribingEvent
-        )
-      )
-      val create = CreateTable(
-        "public.com_acme_some_context_2",
-        List(
-          Column(
-            "schema_vendor",
-            RedshiftVarchar(128),
-            Set(CompressionEncoding(ZstdEncoding)),
-            Set(Nullability(NotNull))
-          ),
-          Column(
-            "schema_name",
-            RedshiftVarchar(128),
-            Set(CompressionEncoding(ZstdEncoding)),
-            Set(Nullability(NotNull))
-          ),
-          Column(
-            "schema_format",
-            RedshiftVarchar(128),
-            Set(CompressionEncoding(ZstdEncoding)),
-            Set(Nullability(NotNull))
-          ),
-          Column(
-            "schema_version",
-            RedshiftVarchar(128),
-            Set(CompressionEncoding(ZstdEncoding)),
-            Set(Nullability(NotNull))
-          ),
-          Column("root_id", RedshiftChar(36), Set(CompressionEncoding(RawEncoding)), Set(Nullability(NotNull))),
-          Column("root_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-          Column("ref_root", RedshiftVarchar(255), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-          Column("ref_tree", RedshiftVarchar(1500), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-          Column("ref_parent", RedshiftVarchar(255), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull)))
-        ),
-        Set(ForeignKeyTable(NonEmptyList.one("root_id"), RefTable("public.events", Some("event_id")))),
-        Set(Diststyle(Key), DistKeyTable("root_id"), SortKeyTable(None, NonEmptyList.one("root_tstamp")))
-      )
-
-      val schemaList = DSchemaList
-        .buildSingleSchema(
-          SelfDescribingSchema(
-            SchemaMap(
-              SchemaKey("com.acme", "some_context", "jsonschema", Full(2, 0, 0))
-            ),
-            Schema.empty
-          )
-        )
-        .get
 
       val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaList))
 
@@ -128,6 +71,31 @@ class RedshiftMigrationSpec extends Specification {
           inTransaction.runS.getLog must beEqualTo(expectedMigration)
       }
     }
+
+    "throw error when given shred type is not supported" in {
+      implicit val dao: RsDao[Pure] = PureDAO.interpreter(PureDAO.init)
+      lazy val migration            = new RedshiftMigrationBuilder[Pure]("public")
+
+      val shreddedType = ShreddedType.Widerow(
+        ShreddedType.Info(
+          s3Folder,
+          "com.acme",
+          "some_context",
+          2,
+          Semver(0, 17, 0),
+          LoaderMessage.ShreddedType.SelfDescribingEvent
+        )
+      )
+
+      val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaList))
+
+      val (state, value) = migration.build(input).run
+
+      state.getLog must beEmpty
+      value.rethrow must beLeft.like {
+        case LoaderError.MigrationError(_) => ok
+      }
+    }
   }
 
   "updateTable" should {
@@ -139,7 +107,7 @@ class RedshiftMigrationSpec extends Specification {
       val result = migration.updateTable(
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0)),
         List("one", "two"),
-        RedshiftMigrationSpec.schemaListSingle
+        schemaListSingle
       )
 
       result must beLeft.like {
@@ -152,7 +120,7 @@ class RedshiftMigrationSpec extends Specification {
       val result = migration.updateTable(
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0)),
         List("one", "two"),
-        RedshiftMigrationSpec.schemaListTwo
+        schemaListTwo
       )
 
       val alterTable = AlterTable(
@@ -172,7 +140,7 @@ class RedshiftMigrationSpec extends Specification {
       val result = migration.updateTable(
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 2)),
         List("one", "two"),
-        RedshiftMigrationSpec.schemaListTwo
+        schemaListTwo
       )
 
       result must beLeft
@@ -182,7 +150,7 @@ class RedshiftMigrationSpec extends Specification {
       val result = migration.updateTable(
         SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2, 0, 0)),
         List("one"),
-        RedshiftMigrationSpec.schemaListThree
+        schemaListThree
       )
 
       val alterTable = AlterTable(
@@ -261,4 +229,64 @@ object RedshiftMigrationSpec {
   val schemaListThree = DSchemaList
     .unsafeBuildWithReorder(ModelGroupSet.groupSchemas(NonEmptyList.of(schema200, schema201)).head)
     .getOrElse(throw new RuntimeException("Cannot create SchemaList"))
+
+  val s3Folder = S3.Folder.coerce("s3://shredded/archive")
+
+  val shreddedType = ShreddedType.Tabular(
+    ShreddedType.Info(
+      s3Folder,
+      "com.acme",
+      "some_context",
+      2,
+      Semver(0, 17, 0),
+      LoaderMessage.ShreddedType.SelfDescribingEvent
+    )
+  )
+
+  val create = CreateTable(
+    "public.com_acme_some_context_2",
+    List(
+      Column(
+        "schema_vendor",
+        RedshiftVarchar(128),
+        Set(CompressionEncoding(ZstdEncoding)),
+        Set(Nullability(NotNull))
+      ),
+      Column(
+        "schema_name",
+        RedshiftVarchar(128),
+        Set(CompressionEncoding(ZstdEncoding)),
+        Set(Nullability(NotNull))
+      ),
+      Column(
+        "schema_format",
+        RedshiftVarchar(128),
+        Set(CompressionEncoding(ZstdEncoding)),
+        Set(Nullability(NotNull))
+      ),
+      Column(
+        "schema_version",
+        RedshiftVarchar(128),
+        Set(CompressionEncoding(ZstdEncoding)),
+        Set(Nullability(NotNull))
+      ),
+      Column("root_id", RedshiftChar(36), Set(CompressionEncoding(RawEncoding)), Set(Nullability(NotNull))),
+      Column("root_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+      Column("ref_root", RedshiftVarchar(255), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+      Column("ref_tree", RedshiftVarchar(1500), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+      Column("ref_parent", RedshiftVarchar(255), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull)))
+    ),
+    Set(ForeignKeyTable(NonEmptyList.one("root_id"), RefTable("public.events", Some("event_id")))),
+    Set(Diststyle(Key), DistKeyTable("root_id"), SortKeyTable(None, NonEmptyList.one("root_tstamp")))
+  )
+
+  val schemaList = DSchemaList
+    .buildSingleSchema(
+      SelfDescribingSchema(
+        SchemaMap(
+          SchemaKey("com.acme", "some_context", "jsonschema", Full(2, 0, 0))
+        ),
+        Schema.empty
+      )
+    ).get
 }

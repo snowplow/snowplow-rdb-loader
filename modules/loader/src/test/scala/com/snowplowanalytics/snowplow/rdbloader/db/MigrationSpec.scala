@@ -56,6 +56,16 @@ class MigrationSpec extends Specification {
               LoaderMessage.ShreddedType.SelfDescribingEvent
             ),
             S3.Key.coerce("s3://shredded/jsonpaths")
+          ),
+          ShreddedType.Widerow(
+            ShreddedType.Info(
+              S3.Folder.coerce("s3://shredded/archive"),
+              "com.acme",
+              "widerow",
+              1,
+              Semver(0, 17, 0),
+              LoaderMessage.ShreddedType.SelfDescribingEvent
+            )
           )
         )
       val input = DataDiscovery(s3archive, types, Compression.Gzip)
@@ -63,6 +73,7 @@ class MigrationSpec extends Specification {
       val expected = List(
         PureTransaction.NoTransactionMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_context/jsonschema/2-0-0"),
+        LogEntry.Message("Fetch iglu:com.acme/widerow/jsonschema/1-0-0"),
         LogEntry.Message("MigrationBuilder build"),
         PureTransaction.NoTransactionMessage
       )
@@ -74,7 +85,7 @@ class MigrationSpec extends Specification {
         case Migration(preTransaction, _) =>
           // Because inTransaction is not implemented in the PureMigrationBuilder, there is nothing to check.
           preTransaction.runS.getLog must beEqualTo(
-            List(LogEntry.Message("premigration List(iglu:com.acme/some_context/jsonschema/2-0-0)"))
+            List(LogEntry.Message("premigration List(iglu:com.acme/some_context/jsonschema/2-0-0, iglu:com.acme/widerow/jsonschema/1-0-0)"))
           )
       }
     }
