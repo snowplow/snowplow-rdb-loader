@@ -20,7 +20,7 @@ import scala.concurrent.duration._
 import cats.data.EitherT
 import cats.effect.IO
 import org.specs2.mutable.Specification
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, RegionSpec}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.config.components.{PasswordConfig, TunnelConfig}
 import cron4s.Cron
@@ -48,7 +48,7 @@ class ConfigSpec extends Specification {
     "be able to parse minimal target" in {
       val result = getConfig("/loader-mystorage.config.minimal.hocon", testParseConfig)
       val expected = Config(
-        Region("eu-central-1"),
+        RegionSpec.DefaultTestRegion,
         None,
         emptyMonitoring,
         exampleQueueName,
@@ -172,5 +172,10 @@ object ConfigSpec {
     Files.readString(configExamplePath)
   }
 
-  def testParseConfig(conf: String): EitherT[IO, String, Config[MyTarget]] = Config.fromString[IO, MyTarget](conf)
+  def testParseConfig(conf: String): EitherT[IO, String, Config[MyTarget]] = {
+    val impl = Config.implicits(RegionSpec.testRegionConfigDecoder)
+    import impl._
+    val configDecoder: Decoder[Config[MyTarget]] = deriveDecoder[Config[MyTarget]]
+    Config.fromString[IO, MyTarget](conf, configDecoder)
+  }
 }

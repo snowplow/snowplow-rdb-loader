@@ -51,12 +51,15 @@ object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString[F[_]: Sync, T <: StorageTarget: Decoder](
-    s: String
-  ): EitherT[F, String, Config[T]] = {
+  def fromString[F[_]: Sync, T <: StorageTarget: Decoder](s: String): EitherT[F, String, Config[T]] = {
     val impl = implicits()
     import impl._
-    implicit val configDecoder: Decoder[Config[T]] = deriveDecoder[Config[T]]
+    val configDecoder: Decoder[Config[T]] = deriveDecoder[Config[T]]
+    fromString(s, configDecoder)
+  }
+
+  def fromString[F[_]: Sync, T <: StorageTarget: Decoder](s: String, configDecoder: Decoder[Config[T]]): EitherT[F, String, Config[T]] = {
+    implicit val implConfigDecoder: Decoder[Config[T]] = configDecoder
     ConfigUtils.fromStringF[F, Config[T]](s)
   }
 
