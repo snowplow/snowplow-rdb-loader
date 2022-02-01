@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
 import com.snowplowanalytics.snowplow.loader.redshift.db.RsDao
 import com.snowplowanalytics.snowplow.loader.redshift.db.Statement._
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.FolderMonitoringDao
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.FolderMonitoringDao
 
 class RedshiftFolderMonitoringDao[C[_]: RsDao: Monad](target: RedshiftTarget) extends FolderMonitoringDao[C] {
   override def dropAlertingTempTable: C[Unit] = RsDao[C].executeUpdate(DropAlertingTempTable).as(())

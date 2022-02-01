@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-package com.snowplowanalytics.snowplow.rdbloader.algerbas.db
+package com.snowplowanalytics.snowplow.rdbloader.algebras.db
 
 import cats.{Monad, MonadThrow}
 import cats.implicits._

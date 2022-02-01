@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake.db
 
 import cats.syntax.all._
 import cats.effect.{Concurrent, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{HealthCheck, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{HealthCheck, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.Transaction
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Monitoring}
 

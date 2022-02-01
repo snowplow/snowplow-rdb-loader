@@ -39,8 +39,8 @@ jobs:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build and publish loader to Docker Hub
-      run: sbt "project loader" docker:publish
+    - name: Build and publish redshift-loader to Docker Hub
+      run: sbt "project redshiftLoader" docker:publish
 
     - name: Build and publish streaming shredder to Docker Hub
       run: sbt "project streamShredder" docker:publish
@@ -55,6 +55,11 @@ jobs:
       run: |
         export SKIP_TEST=true
         sbt 'project loader' assembly
+
+    - name: Build redshift-loader jar
+      run: |
+        export SKIP_TEST=true
+        sbt 'project redshiftLoader' assembly
 
     - name: Build shredder jar
       run: |
@@ -81,6 +86,7 @@ jobs:
         tag_name: ${{ steps.ver.outputs.project_version }}
         files: |
           modules/loader/target/scala-2.12/snowplow-rdb-loader-${{ steps.ver.outputs.project_version }}.jar
+          modules/loader/target/scala-2.12/snowplow-rdb-redshiftLoader-${{ steps.ver.outputs.project_version }}.jar
           modules/stream-shredder/target/scala-2.12/snowplow-rdb-stream-shredder-${{ steps.ver.outputs.project_version }}.jar
           modules/shredder/target/scala-2.12/snowplow-rdb-shredder-${{ steps.ver.outputs.project_version }}.jar
       env:

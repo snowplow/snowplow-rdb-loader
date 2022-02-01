@@ -21,7 +21,7 @@ import cats.syntax.option._
 import cats.syntax.functor._
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Effect, Resource, Sync, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{
   FolderMonitoringDao,
   HealthCheck,
   Manifest,
@@ -29,7 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{
   TargetLoader,
   Transaction
 }
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl.TargetEnvironmentBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.dsl.TargetEnvironmentBuilder
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import doobie.ConnectionIO
 import doobie.implicits._

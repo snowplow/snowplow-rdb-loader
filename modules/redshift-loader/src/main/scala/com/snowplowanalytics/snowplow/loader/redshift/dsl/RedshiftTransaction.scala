@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.loader.redshift.dsl
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Transaction
 import doobie.ConnectionIO
 
 object RedshiftTransaction {

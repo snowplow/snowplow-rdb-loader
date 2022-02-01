@@ -2,7 +2,7 @@ package com.snowplowanalytics.snowplow.rdbloader.test.dao
 
 import cats.syntax.all._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -31,8 +31,11 @@ object PureManifest {
   val ValidMessage = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),
     List(
-      LoaderMessage
-        .ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV, LoaderMessage.ShreddedType.SelfDescribingEvent)
+      LoaderMessage.ShreddedType(
+        SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+        LoaderMessage.Format.TSV,
+        LoaderMessage.ShreddedType.SelfDescribingEvent
+      )
     ),
     LoaderMessage.Timestamps(
       Instant.ofEpochMilli(1600342341145L),

@@ -16,7 +16,7 @@ import cats.~>
 import cats.arrow.FunctionK
 import cats.data.{EitherT, State}
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Transaction
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 object PureTransaction {

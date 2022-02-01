@@ -18,7 +18,7 @@ import cats.effect.{Clock, ConcurrentEffect, MonadThrow, Resource, Timer}
 import cats.effect.implicits._
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db._
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db._
 import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}

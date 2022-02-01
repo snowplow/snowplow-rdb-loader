@@ -31,8 +31,6 @@ object PureControl {
       override def makeBusy(folder: Folder): Resource[Pure, Unit] =
         Resource.eval(Pure.log(s"Control makeBusy $folder"))
 
-      override def isBusy: Pure[Boolean] = Pure.log("Control isBusy").as(true)
-
       override def incrementMessages: Pure[State] = Pure.pure(State(Load.Status.Idle, Instant.MIN, 0, Map.empty, 0, 0))
     }
 

@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift.db
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.HealthCheck
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.HealthCheck
 
 class RedshiftHealthCheck[C[_]: RsDao] extends HealthCheck[C] {
 

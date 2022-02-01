@@ -15,16 +15,13 @@ package com.snowplowanalytics.snowplow.rdbloader.state
 import cats.effect.concurrent.Semaphore
 import cats.{Defer, Monad, ~>}
 import cats.syntax.all._
-import cats.effect.{Clock, Concurrent, Resource, Timer}
-import fs2.Stream
+import cats.effect.{Clock, Concurrent, Resource}
 import fs2.concurrent.SignallingRef
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.loading.{Load, Stage}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
-
-import scala.concurrent.duration.DurationInt
 
 /**
   * A single set of mutable objects and functions to manipulate them

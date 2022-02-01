@@ -2,7 +2,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.data.{EitherT, State => CState}
 import cats.effect.{Clock, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db._
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.rdbloader.test.dao.{

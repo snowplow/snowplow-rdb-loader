@@ -2,7 +2,6 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RsDao, Statement}
-import cats.syntax.all._
 import doobie.Read
 
 case class PureDAO(executeQuery: Statement => Pure[Any], executeUpdate: Statement => Pure[Int])

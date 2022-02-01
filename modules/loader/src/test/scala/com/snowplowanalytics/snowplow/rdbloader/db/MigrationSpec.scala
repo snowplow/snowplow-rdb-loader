@@ -19,8 +19,8 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{CommonProperties, ObjectProperty, StringProperty}
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder.Migration
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder.Migration
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage

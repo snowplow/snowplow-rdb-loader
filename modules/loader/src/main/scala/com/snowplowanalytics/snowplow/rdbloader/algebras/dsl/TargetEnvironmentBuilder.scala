@@ -10,10 +10,10 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl
+package com.snowplowanalytics.snowplow.rdbloader.algebras.dsl
 
 import cats.effect.Resource
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{
   FolderMonitoringDao,
   HealthCheck,
   Manifest,

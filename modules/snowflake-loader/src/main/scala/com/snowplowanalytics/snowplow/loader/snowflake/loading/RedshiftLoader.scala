@@ -11,7 +11,7 @@ import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.loader.snowflake.config.RedshiftTarget
 import com.snowplowanalytics.snowplow.loader.snowflake.db.{RsDao, SfDao, Statement}
 import com.snowplowanalytics.snowplow.loader.snowflake.loading.RedshiftStatements.getStatements
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.TargetLoader
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 
 class RedshiftLoader[
   F[_]: Effect: Control,

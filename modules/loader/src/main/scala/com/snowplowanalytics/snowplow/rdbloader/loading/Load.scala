@@ -18,7 +18,7 @@ import java.time.Instant
 import cats.{Monad, MonadThrow, Show, ~>}
 import cats.syntax.all._
 import cats.effect.{Clock, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{Manifest, MigrationBuilder, TargetLoader, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{Manifest, MigrationBuilder, TargetLoader, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 // This project

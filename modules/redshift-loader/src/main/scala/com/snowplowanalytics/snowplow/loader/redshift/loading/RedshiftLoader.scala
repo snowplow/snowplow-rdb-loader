@@ -21,7 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RsDao, Statement}
 import com.snowplowanalytics.snowplow.loader.redshift.loading.RedshiftStatements.getStatements
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.TargetLoader
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 
 class RedshiftLoader[C[_]: Monad: Logging: RsDao: Control](target: RedshiftTarget, region: String)
     extends TargetLoader[C] {

@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration                       => DMigration, SchemaList => DSchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{MigrationBuilder, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{MigrationBuilder, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, Logging}

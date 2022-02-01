@@ -19,7 +19,7 @@ import cats.effect.concurrent.Ref
 import fs2.Stream
 import fs2.text.utf8Encode
 import doobie.util.Get
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.{FolderMonitoringDao, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.{FolderMonitoringDao, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Folders
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload

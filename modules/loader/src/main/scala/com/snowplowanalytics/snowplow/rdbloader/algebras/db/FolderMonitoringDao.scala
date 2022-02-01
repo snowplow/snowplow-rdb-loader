@@ -10,22 +10,21 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.algerbas.db
+package com.snowplowanalytics.snowplow.rdbloader.algebras.db
 
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 /**
-  * Module containing specific for target loading
-  * Works in three steps:
-  * 1. Discover all data in shredded.good
-  * 2. Construct SQL-statements
-  * 3. Load data into target
-  * Errors of discovering steps are accumulating
+  * @tparam C - ConnectionIO
+  *
   */
-trait TargetLoader[C[_]] {
-  def run(discovery: DataDiscovery): C[Unit]
+trait FolderMonitoringDao[C[_]] {
+  def dropAlertingTempTable: C[Unit]
+  def createAlertingTempTable: C[Unit]
+  def foldersCopy(source: S3.Folder): C[Unit]
+  def foldersMinusManifest: C[List[S3.Folder]]
 }
 
-object TargetLoader {
-  def apply[C[_]](implicit ev: TargetLoader[C]): TargetLoader[C] = ev
+object FolderMonitoringDao {
+  def apply[C[_]](implicit ev: FolderMonitoringDao[C]): FolderMonitoringDao[C] = ev
 }

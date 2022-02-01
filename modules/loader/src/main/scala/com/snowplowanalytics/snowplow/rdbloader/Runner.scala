@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 import cats.Parallel
 import cats.effect._
 import cats.syntax.all._
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl.TargetEnvironmentBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.dsl.TargetEnvironmentBuilder
 import doobie.ConnectionIO
 import io.circe.Decoder
 import org.typelevel.log4cats.slf4j.Slf4jLogger

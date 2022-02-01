@@ -22,9 +22,9 @@ import com.snowplowanalytics.snowplow.loader.redshift.db.{
   Statement
 }
 import com.snowplowanalytics.snowplow.loader.redshift.loading.RedshiftLoader
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Transaction
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl.TargetEnvironmentBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.dsl.TargetEnvironmentBuilder
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.db.helpers.DAO
 import com.snowplowanalytics.snowplow.rdbloader.dsl.EnvironmentBuilder.CommonEnvironment

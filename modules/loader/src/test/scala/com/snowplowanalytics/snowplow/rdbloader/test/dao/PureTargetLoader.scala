@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.test.dao
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.TargetLoader
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.test.Pure
 

@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.test.dao
 
 import cats.implicits.toFunctorOps
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.FolderMonitoringDao
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.FolderMonitoringDao
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.test.Pure
 

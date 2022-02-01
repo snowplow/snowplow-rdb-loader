@@ -17,7 +17,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.syntax.all._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, Processor, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression

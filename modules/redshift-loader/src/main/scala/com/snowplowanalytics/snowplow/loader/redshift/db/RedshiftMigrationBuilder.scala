@@ -19,7 +19,7 @@ import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration                       => DMigration, SchemaList => DSchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
@@ -32,7 +32,7 @@ class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) ex
     schemas.traverseFilter(buildBlock).map(fromBlocks)
 
   private def buildBlock(migrationItem: MigrationBuilder.MigrationItem): LoaderAction[C, Option[Block]] = {
-    val schemas = migrationItem.schemaList
+    val schemas   = migrationItem.schemaList
     val tableName = StringUtils.getTableName(schemas.latest)
 
     val migrate: C[Either[LoaderError, Option[Block]]] = for {

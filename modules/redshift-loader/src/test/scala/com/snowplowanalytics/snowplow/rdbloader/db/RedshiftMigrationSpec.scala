@@ -22,13 +22,13 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.loader.redshift.db.{RedshiftMigrationBuilder, RsDao, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder.Migration
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder.Migration
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO}
 import org.specs2.mutable.Specification
 
@@ -94,7 +94,8 @@ class RedshiftMigrationSpec extends Specification {
             ),
             Schema.empty
           )
-        ).get
+        )
+        .get
 
       val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaList))
 
