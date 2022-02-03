@@ -19,7 +19,7 @@ import doobie.{ConnectionIO, Read}
   * An effect declaration of communicating with a DB.
   * Typically, it represents a second effect from the main app, i.e.
   * communication with DB happens within `C` effect and then it's
-  * translated with [[Transaction]] into `F`.
+  * translated with Transaction into `F`.
   *
   * This is done mostly to mimic doobie's `ConnectionIO` behavior,
   * which is is a separate effect (not `IO`). Also we cannot have
