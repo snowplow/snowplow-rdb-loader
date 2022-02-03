@@ -27,21 +27,18 @@ import doobie.util.transactor.Strategy
 import java.util.Properties
 
 /**
-  * An algebra responsible for executing effect `C` (typically coming
-  * from [[DAO]], which itself is a pure declaration of the fact that
-  * app needs to communicate with a DB) into effect `F`, representing
-  * an IO transaction.
+  * An algebra responsible for executing effect `C` into effect `F`, representing
+  * an database transaction. It is best explained in doobie's documentation for Transactor.
   *
   * In other words, multiple `C` effects chained into a single one
   * will be executed within a single `F` transaction. However N
   * chained `F` effects will be executed with N transactions
   *
-  * It's important to note that `C` effects can be not only [[DAO]],
-  * but also have other interpreters. And those effects do not have
-  * transactional semantics
+  * It's important to note that `C` doesn't have to wrap statement
+  * in begin and end transaction. Custom commit strategy could be provided.
   *
-  * @tparam F transaction IO effect
-  * @tparam C DB-interaction effect
+  * @tparam F IO effect
+  * @tparam C DB transaction effect
   */
 trait Transaction[F[_], C[_]] {
 
@@ -68,7 +65,7 @@ trait Transaction[F[_], C[_]] {
     * 1. If we downcasted `Logging[F]` into `Logging[C]` and then ran
     *    it through `transact` it means that a connection will be allocated
     *    for that action, but it doesn't really require it
-    * 2. Downcasted actions do not have transactional semantics as usual `DAO[C]`
+    * 2. Downcasted actions do not have transactional semantics as usual `XxxDao[C]`
     */
   def arrowBack: F ~> C
 }

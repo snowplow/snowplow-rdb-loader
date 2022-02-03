@@ -16,7 +16,7 @@ import cats.Monad
 import cats.implicits._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration                       => DMigration, SchemaList => DSchemaList}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => DMigration, SchemaList => DSchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
@@ -27,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 class RedshiftMigrationBuilder[C[_]: Monad: Logging: RsDao](dbSchema: String) extends MigrationBuilder[C] {
   import RedshiftMigrationBuilder._
 
-  /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
+  /** Inspect DB state and create a MigrationBuilder.Migration object that contains all necessary actions */
   def build(schemas: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]] =
     schemas.traverseFilter(buildBlock).map(fromBlocks)
 
