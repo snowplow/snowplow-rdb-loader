@@ -65,14 +65,12 @@ lazy val loader = project
   .in(file("modules/loader"))
   .settings(
     name := "snowplow-rdb-loader",
-    Docker / packageName := "snowplow/snowplow-rdb-loader",
     initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
   )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
-  .settings(BuildSettings.dockerSettings)
   .settings(BuildSettings.dynVerSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
@@ -108,7 +106,7 @@ lazy val redshiftLoader = project
   .in(file("modules/redshift-loader"))
   .settings(
     name := "snowplow-redshift-loader",
-    Docker / packageName := "snowplow/snowplow-rdb-loader",
+    Docker / packageName := "snowplow/rdb-loader-redshift",
     initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
   )
