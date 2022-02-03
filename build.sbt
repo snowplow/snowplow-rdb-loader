@@ -126,6 +126,30 @@ lazy val redshiftLoader = project
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
+lazy val snowflakeLoader = project
+  .in(file("modules/snowflake-loader"))
+  .settings(
+    name := "snowplow-snowflake-loader",
+    Docker / packageName := "snowplow/snowplow-snowflake-loader",
+    initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
+    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
+  .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    libraryDependencies ++= Seq(
+      Dependencies.enumeratum,
+      Dependencies.snowflakeJdbc
+    )
+  )
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
 lazy val shredder = project
   .in(file("modules/shredder"))
   .settings(
