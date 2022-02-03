@@ -57,7 +57,7 @@ lazy val common: Project = project
       Dependencies.specs2,
       Dependencies.monocle,
       Dependencies.monocleMacro
-    )
+    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
   )
   .enablePlugins(BuildInfoPlugin)
 
@@ -97,7 +97,7 @@ lazy val loader = project
       Dependencies.catsEffLaws,
       Dependencies.scalaCheck,
       Dependencies.catsTesting
-    )
+    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
   )
   .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
@@ -158,7 +158,7 @@ lazy val shredder = project
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
-    )
+    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
   )
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
