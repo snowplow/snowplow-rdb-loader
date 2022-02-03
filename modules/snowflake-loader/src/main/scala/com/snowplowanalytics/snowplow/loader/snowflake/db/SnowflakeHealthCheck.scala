@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.HealthCheck
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.HealthCheck
 
 class SnowflakeHealthCheck[C[_]: SfDao] extends HealthCheck[C] {
 

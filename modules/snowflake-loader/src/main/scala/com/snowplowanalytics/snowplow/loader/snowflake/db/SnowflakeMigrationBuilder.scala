@@ -18,7 +18,7 @@ import cats.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage

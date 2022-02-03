@@ -3,7 +3,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake.db
 import cats.Monad
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging

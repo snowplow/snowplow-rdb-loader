@@ -2,7 +2,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake.dsl
 
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Resource, Timer}
 import com.snowplowanalytics.snowplow.loader.snowflake.config.SnowflakeTarget
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Transaction
 import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
 import doobie.ConnectionIO
 

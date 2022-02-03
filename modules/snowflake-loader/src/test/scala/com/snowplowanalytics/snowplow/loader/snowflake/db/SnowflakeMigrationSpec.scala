@@ -15,7 +15,7 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
 import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
 import com.snowplowanalytics.snowplow.loader.snowflake.test._

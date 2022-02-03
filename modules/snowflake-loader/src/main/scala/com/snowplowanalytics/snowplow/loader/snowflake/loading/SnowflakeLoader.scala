@@ -8,7 +8,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.TargetLoader
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 import com.snowplowanalytics.snowplow.rdbloader.loading.Stage
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SfDao

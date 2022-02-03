@@ -7,8 +7,8 @@ import doobie.ConnectionIO
 import doobie.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.dsl.TargetEnvironmentBuilder
-import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.Transaction
+import com.snowplowanalytics.snowplow.rdbloader.algebras.dsl.TargetEnvironmentBuilder
+import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Transaction
 import com.snowplowanalytics.snowplow.rdbloader.db.helpers.DAO
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.EnvironmentBuilder.CommonEnvironment
