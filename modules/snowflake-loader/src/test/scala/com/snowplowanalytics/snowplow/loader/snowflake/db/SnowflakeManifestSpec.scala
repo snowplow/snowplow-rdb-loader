@@ -2,7 +2,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake.db
 
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.loader.snowflake.test.PureDAO
+import com.snowplowanalytics.snowplow.loader.snowflake.test._
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.CreateTable
 import org.specs2.mutable.Specification
 
@@ -20,7 +20,7 @@ class SnowflakeManifestSpec extends Specification{
       lazy val manifest = new SnowflakeManifest[Pure](dbSchema)
 
       val expected = List(
-        LogEntry.Message(Statement.TableExists(dbSchema, tableName).toFragment.toString)
+        LogEntry.Message(Statement.TableExists(dbSchema, tableName).toTestString)
       )
 
       val (state, value) = manifest.initialize.value.run(TestState.init).value
@@ -39,14 +39,14 @@ class SnowflakeManifestSpec extends Specification{
       lazy val manifest = new SnowflakeManifest[Pure](dbSchema)
 
       val expected = List(
-        LogEntry.Message(Statement.TableExists(dbSchema, tableName).toFragment.toString),
+        LogEntry.Message(Statement.TableExists(dbSchema, tableName).toTestString),
         LogEntry.Message(
           CreateTable(
             dbSchema,
             tableName,
             SnowflakeManifest.Columns,
             Some(SnowflakeManifest.ManifestPK)
-          ).toStatement.toFragment.toString
+          ).toStatement.toTestString
         ),
         LogEntry.Message("The manifest table has been created")
       )

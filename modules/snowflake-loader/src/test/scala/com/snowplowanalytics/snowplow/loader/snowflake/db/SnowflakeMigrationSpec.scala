@@ -17,7 +17,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.algerbas.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
-import com.snowplowanalytics.snowplow.loader.snowflake.test.PureDAO
+import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
+import com.snowplowanalytics.snowplow.loader.snowflake.test._
 
 import org.specs2.mutable.Specification
 
@@ -33,7 +34,7 @@ class SnowflakeMigrationSpec extends Specification {
 
       val expected = List(
         LogEntry.Message(
-          Statement.GetColumns(dbSchema, tableName).toFragment.toString
+          Statement.GetColumns(dbSchema, tableName).toTestString
         )
       )
       val expectedMigration = List(
@@ -44,9 +45,9 @@ class SnowflakeMigrationSpec extends Specification {
           AlterTable.AddColumn(
             dbSchema,
             tableName,
-            "unstruct_event_com_acme_some_context_1",
+            "UNSTRUCT_EVENT_COM_ACME_SOME_CONTEXT_1",
             SnowflakeDatatype.JsonObject
-          ).toStatement.toFragment.toString
+          ).toStatement.toTestString
         ),
         LogEntry.Message(
           "New column is created for schema key iglu:com.acme/some_context/jsonschema/1-0-1"
@@ -64,9 +65,12 @@ class SnowflakeMigrationSpec extends Specification {
     }
 
     "not add new column when column with same name exists" in {
+      val showColumnRow = Statement.GetColumns.ShowColumnRow(
+        "", "", "UNSTRUCT_EVENT_COM_ACME_SOME_CONTEXT_1", "", "", Some(""), "", Some(""), Some(""), "", Some("")
+      )
       def getResult(s: TestState)(query: Statement): Any =
         query match {
-          case Statement.GetColumns(`dbSchema`, `tableName`) => List("unstruct_event_com_acme_some_context_1")
+          case Statement.GetColumns(`dbSchema`, `tableName`) => List(showColumnRow)
           case statement => PureDAO.getResult(s)(statement)
         }
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
@@ -76,7 +80,7 @@ class SnowflakeMigrationSpec extends Specification {
 
       val expected = List(
         LogEntry.Message(
-          Statement.GetColumns(dbSchema, tableName).toFragment.toString
+          Statement.GetColumns(dbSchema, tableName).toTestString
         )
       )
 
@@ -119,7 +123,7 @@ class SnowflakeMigrationSpec extends Specification {
 
 object SnowflakeMigrationSpec {
   val dbSchema = "public"
-  val tableName = SnowflakeMigrationBuilder.EventTable
+  val tableName = SnowflakeLoader.EventTable
   val schemaKey = SchemaKey("com.acme", "some_context", "jsonschema", Full(1, 0, 0))
   val schema100 = SelfDescribingSchema(
     SchemaMap(schemaKey),

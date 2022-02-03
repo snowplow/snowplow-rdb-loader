@@ -32,12 +32,52 @@ object Statement {
   }
 
   case class GetColumns(schema: String, tableName: String) extends Statement {
-    def toFragment: Fragment =
-      sql"""|SELECT column_name
-            |FROM information_schema.columns
-            |WHERE TABLE_SCHEMA = $schema
-            |AND TABLE_NAME = $tableName
-            |ORDER BY ordinal_position""".stripMargin
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const0(s"$schema.$tableName")
+      // Since querying information_schema is significantly slower,
+      // 'show columns' is used. Visit following link for more information:
+      // https://community.snowflake.com/s/article/metadata-operations-throttling
+      sql"SHOW COLUMNS IN TABLE $frTableName"
+    }
+  }
+  object GetColumns {
+    case class ShowColumnRow(tableName: String,
+                             schemaName: String,
+                             columnName: String,
+                             dataType: String,
+                             isNull: String,
+                             default: Option[String],
+                             kind: String,
+                             expression: Option[String],
+                             comment: Option[String],
+                             databaseName: String,
+                             autoincrement: Option[String])
+  }
+
+  case class CopyInto(schema: String,
+                      table: String,
+                      stageName: String,
+                      columns: List[String],
+                      loadPath: String,
+                      maxError: Option[Int]) extends Statement {
+    def toFragment: Fragment = {
+      // TODO: Add auth option
+      val frOnError = maxError match {
+        case Some(value) => Fragment.const0(s"ON_ERROR = SKIP_FILE_$value")
+        case None => Fragment.empty
+      }
+      val frCopy = Fragment.const0(s"$schema.$table($columnsForCopy)")
+      val frSelectColumns = Fragment.const0(columnsForSelect)
+      val frSelectTable = Fragment.const0(s"@$schema.$stageName/$loadPath")
+      sql"""|COPY INTO $frCopy
+            |FROM (
+            |  SELECT $frSelectColumns FROM $frSelectTable
+            |)
+            |$frOnError""".stripMargin
+    }
+
+    def columnsForCopy: String = columns.mkString(",")
+    def columnsForSelect: String = columns.map(c => s"$$1:$c").mkString(",")
   }
 
   // Manifest

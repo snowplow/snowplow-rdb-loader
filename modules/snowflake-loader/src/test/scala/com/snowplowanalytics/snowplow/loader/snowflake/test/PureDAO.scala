@@ -11,17 +11,17 @@ object PureDAO {
   def getResult(s: TestState)(query: Statement): Any =
     query match {
       case Statement.TableExists(_, _)       => false
-      case Statement.GetColumns(_, _)        => List("some_column")
+      case Statement.GetColumns(_, _)        => List()
       case Statement.ManifestGet(_, _)       => None
       case _                                 => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
   def custom(getResult: TestState => Statement => Any): PureDAO = {
     def executeQuery(query: Statement): Pure[Any] =
-      Pure((s: TestState) => (s.log(query.toFragment.toString()), getResult(s)(query).asInstanceOf[Any]))
+      Pure((s: TestState) => (s.log(query.toTestString), getResult(s)(query).asInstanceOf[Any]))
 
     def executeUpdate(sql: Statement): Pure[Int] =
-      Pure((s: TestState) => (s.log(sql.toFragment.toString()), 1))
+      Pure((s: TestState) => (s.log(sql.toTestString), 1))
 
     PureDAO(q => executeQuery(q), executeUpdate)
   }

@@ -23,7 +23,6 @@ import io.circe.{Decoder, DecodingFailure}
 /** Common loader configuration interface, extracted from configuration file */
 case class SnowflakeTarget(
   auth: SnowflakeTarget.AuthMethod,
-  awsRegion: String,
   snowflakeRegion: String,
   username: String,
   password: PasswordConfig,
@@ -31,6 +30,7 @@ case class SnowflakeTarget(
   warehouse: String,
   database: String,
   schema: String,
+  stage: String,
   maxError: Option[Int],
   jdbcHost: Option[String]
 ) extends StorageTarget

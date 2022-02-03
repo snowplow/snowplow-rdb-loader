@@ -32,7 +32,7 @@ class SnowflakeEnvironmentBuilder[F[_]: Clock: ConcurrentEffect: ContextShift: T
     implicit val sfDao: DAO[ConnectionIO, Statement] = DAO.connectionIO[Statement]
 
     lazy val target: SnowflakeTarget = cli.config.storage
-    lazy val snowflakeLoader         = new SnowflakeLoader[ConnectionIO](target, cli.config.region.name)
+    lazy val snowflakeLoader         = new SnowflakeLoader[ConnectionIO](target)
     lazy val snowflakeMonitoring     = new SnowflakeFolderMonitoringDao[ConnectionIO](target)
 
     for {

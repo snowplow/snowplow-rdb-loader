@@ -1,6 +1,9 @@
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
 import cats.{Functor, Monad}
+import cats.implicits._
+
+import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.GetColumns.ShowColumnRow
 
 /** Set of common functions to control DB entities */
 object Control {
@@ -11,5 +14,6 @@ object Control {
 
   /** List all columns in the table */
   def getColumns[C[_]: Monad: SfDao](dbSchema: String, tableName: String): C[List[String]] =
-    SfDao[C].executeQueryList[String](Statement.GetColumns(dbSchema, tableName))
+    SfDao[C].executeQueryList[ShowColumnRow](Statement.GetColumns(dbSchema, tableName))
+      .map(_.map(_.columnName))
 }
