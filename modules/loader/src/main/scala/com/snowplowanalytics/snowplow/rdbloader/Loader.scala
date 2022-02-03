@@ -134,7 +134,10 @@ object Loader {
               _        <- Control[F].incrementLoaded
             } yield ()
           case Left(alert) =>
-            discovery.ack *> Control[F].getAndResetAttempts.void *> Monitoring[F].alert(alert)
+            discovery.ack *>
+              Control[F].getAndResetAttempts.void *>
+              Logging[F].warning(s"Loading of ${discovery.data.origin.base} has failed. ${alert.message}") *>
+              Monitoring[F].alert(alert)
 
         }
       } yield ()
