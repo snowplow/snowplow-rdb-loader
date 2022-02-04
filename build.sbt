@@ -130,7 +130,7 @@ lazy val snowflakeLoader = project
   .in(file("modules/snowflake-loader"))
   .settings(
     name := "snowplow-snowflake-loader",
-    Docker / packageName := "snowplow/snowplow-snowflake-loader",
+    Docker / packageName := "snowplow/rdb-loader-snowflake",
     initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
     Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
   )
