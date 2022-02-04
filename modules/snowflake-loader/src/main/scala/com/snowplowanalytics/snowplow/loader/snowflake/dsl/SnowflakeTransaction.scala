@@ -39,10 +39,8 @@ object SnowflakeTransaction {
     val GcpRegions = List("us-central1", "europe-west2", "europe-west4")
     //val AzureRegions = List("west-us-2", "central-us", "east-us-2", "us-gov-virginia", "canada-central", "west-europe", "switzerland-north", "southeast-asia", "australia-east")
 
-    /**
-      * Host corresponds to Snowflake full account name which might include cloud platform and region
-      * See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
-      */
+    // Host corresponds to Snowflake full account name which might include cloud platform and region
+    // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
     jdbcHost match {
       case Some(overrideHost) => overrideHost
       case None =>
