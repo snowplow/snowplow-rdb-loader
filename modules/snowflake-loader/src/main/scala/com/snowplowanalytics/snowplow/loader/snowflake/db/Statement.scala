@@ -81,9 +81,9 @@ object Statement {
   }
 
   // Manifest
-  case class ManifestAdd(schema: String, message: LoaderMessage.ShreddingComplete) extends Statement {
+  case class ManifestAdd(schema: String, table: String, message: LoaderMessage.ShreddingComplete) extends Statement {
     def toFragment: Fragment = {
-      val tableName = Fragment.const(s"$schema.manifest")
+      val tableName = Fragment.const(s"$schema.$table")
       val types     = message.types.asJson.noSpaces
       sql"""INSERT INTO $tableName
         (base, types, shredding_started, shredding_completed,
@@ -99,14 +99,16 @@ object Statement {
     }
   }
 
-  case class ManifestGet(schema: String, base: S3.Folder) extends Statement {
+  case class ManifestGet(schema: String, table: String, base: S3.Folder) extends Statement {
     // Order of columns must remain the same to conform Entity properties
-    def toFragment: Fragment =
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const0(s"$schema.$table")
       sql"""SELECT ingestion_tstamp,
                    base, types, shredding_started, shredding_completed,
                    min_collector_tstamp, max_collector_tstamp,
                    compression, processor_artifact, processor_version, count_good
-            FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+            FROM $frTableName WHERE base = $base"""
+    }
   }
 
   // Migration
@@ -118,5 +120,38 @@ object Statement {
             |  WHERE  TABLE_SCHEMA = $schema
             |  AND    TABLE_NAME = $tableName)
             | AS COL""".stripMargin
+  }
+
+  // Alerting
+  case class CreateAlertingTempTable(schema: String, table: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(s"$schema.$table")
+      sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
+    }
+  }
+  case class DropAlertingTempTable(schema: String, table: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(s"$schema.$table")
+      sql"DROP TABLE IF EXISTS $frTableName"
+    }
+  }
+  case class FoldersMinusManifest(schema: String,
+                                  alertTable: String,
+                                  manifestTable: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(s"$schema.$alertTable")
+      val frManifest  = Fragment.const(s"$schema.$manifestTable")
+      sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
+    }
+  }
+  case class FoldersCopy(schema: String,
+                         table: String,
+                         stageName: String,
+                         loadPath: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(table)
+      val frPath      = Fragment.const0(s"@$schema.$stageName/$loadPath")
+      sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
+    }
   }
 }

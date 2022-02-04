@@ -45,7 +45,7 @@ class SnowflakeLoaderSpec extends Specification {
           Statement.CopyInto(
             target.schema,
             SnowflakeLoader.EventTable,
-            target.stage,
+            target.transformedStage,
             SnowflakeLoader.getColumns(discovery),
             loadPath,
             target.maxError
@@ -111,7 +111,7 @@ class SnowflakeLoaderSpec extends Specification {
       val copyInto = Statement.CopyInto(
         target.schema,
         SnowflakeLoader.EventTable,
-        target.stage,
+        target.transformedStage,
         columns,
         loadPath,
         target.maxError
@@ -136,7 +136,8 @@ object SnowflakeLoaderSpec {
     "sf-warehouse",
     "sf-database",
     "sf-schema",
-    "sf-stage",
+    "sf-transformed-stage",
+    "sf-monitoring-stage",
     Some(10),
     None
   )

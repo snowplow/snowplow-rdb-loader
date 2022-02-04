@@ -55,7 +55,7 @@ object SnowflakeLoader {
     CopyInto(
       target.schema,
       EventTable,
-      target.stage,
+      target.transformedStage,
       columns,
       loadPath,
       target.maxError

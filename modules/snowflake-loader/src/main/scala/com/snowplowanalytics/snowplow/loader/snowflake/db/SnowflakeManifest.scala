@@ -30,10 +30,10 @@ class SnowflakeManifest[C[_]: SfDao: Monad: Logging](schema: String) extends Man
     } yield ()
 
   override def add(message: LoaderMessage.ShreddingComplete): C[Unit] =
-    SfDao[C].executeUpdate(Statement.ManifestAdd(schema, message)).void
+    SfDao[C].executeUpdate(Statement.ManifestAdd(schema, ManifestTable, message)).void
 
   override def get(base: Folder): C[Option[Manifest.Entry]] =
-    SfDao[C].executeQueryOption[Entry](Statement.ManifestGet(schema, base))(Entry.entryRead)
+    SfDao[C].executeQueryOption[Entry](Statement.ManifestGet(schema, ManifestTable, base))(Entry.entryRead)
 }
 
 object SnowflakeManifest {

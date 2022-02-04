@@ -12,7 +12,7 @@ object PureDAO {
     query match {
       case Statement.TableExists(_, _)       => false
       case Statement.GetColumns(_, _)        => List()
-      case Statement.ManifestGet(_, _)       => None
+      case Statement.ManifestGet(_, _, _)    => None
       case _                                 => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 

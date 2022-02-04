@@ -30,7 +30,8 @@ case class SnowflakeTarget(
   warehouse: String,
   database: String,
   schema: String,
-  stage: String,
+  transformedStage: String,
+  folderMonitoringStage: Option[String],
   maxError: Option[Int],
   jdbcHost: Option[String]
 ) extends StorageTarget
