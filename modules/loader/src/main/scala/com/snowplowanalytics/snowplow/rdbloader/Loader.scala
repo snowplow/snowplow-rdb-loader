@@ -104,33 +104,36 @@ object Loader {
   def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
                        C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
+    val folder = discovery.data.origin.base
+
     val prepare: Resource[F, Unit] = for {
       _        <- StateMonitoring.run(control.get, discovery.extend).background
       makeBusy  = control.makeBusy
-      _        <- makeBusy(discovery.data.origin.base)
+      _        <- makeBusy(folder)
     } yield ()
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
     val addFailure: Throwable => F[Boolean] =
-      control.addFailure(config.retryQueue)(discovery.data.origin.base)(_)
+      control.addFailure(config.retryQueue)(folder)(_)
 
     val loading: F[Unit] = prepare.use { _ =>
       for {
-        start  <- Clock[F].instantNow
-        result <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
-        _      <- result match {
+        start    <- Clock[F].instantNow
+        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
+        attempts <- control.getAndResetAttempts(folder)
+        _        <- discovery.ack
+        _        <- result match {
           case Right(ingested) =>
             val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
             for {
-              loaded   <- ingested.map(Monad[F].pure).getOrElse(now)
-              _        <- discovery.ack
-              attempts <- control.getAndResetAttempts
-              _        <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
-              _        <- control.incrementLoaded
+              loaded <- ingested.map(Monad[F].pure).getOrElse(now)
+              _      <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
+              _      <- control.removeFailure(folder)
+              _      <- control.incrementLoaded
             } yield ()
           case Left(alert) =>
-            discovery.ack *> control.getAndResetAttempts.void *> Monitoring[F].alert(alert)
+            Monitoring[F].alert(alert)
 
         }
       } yield ()
