@@ -42,6 +42,19 @@ case class Control[F[_]](private val state: State.Ref[F]) {
 
   def incrementAttempts: F[Unit] =
     state.update { state => state.copy(attempts = state.attempts + 1) }
+
+  /**
+    * Get total amount of attempts to load the folder
+    * `state.attempts` stores attempts made within current session
+    * (session is everything within `Load` module), but Loader could
+    * make an attempt to load it before and in case of failure put it into
+    * RetryQueue. In case it was in retry queue - amount of attempts will be
+    * summed
+    *
+    * @param base the folder to get attempts for. If RetryQueue is empty
+    *             just current state will be used. Otherwise the RetryQueue
+    *             will be queried
+    */
   def getAndResetAttempts(implicit F: Functor[F]): F[Int] =
     state.getAndUpdate(state => state.copy(attempts = 0)).map(_.attempts)
 
@@ -77,6 +90,10 @@ case class Control[F[_]](private val state: State.Ref[F]) {
       case Some(config) => Retries.addFailure[F](config, state)(base, error)
       case None => Monad[F].pure(false)
     }
+
+  /** Remove folder from internal RetryQueue */
+  def removeFailure(base: S3.Folder): F[Unit] =
+    state.update { original => original.copy(failures = original.failures - base) }
 
   def makePaused(implicit F: Monad[F], C: Clock[F], L: Logging[F]): MakePaused[F] =
     who => {
