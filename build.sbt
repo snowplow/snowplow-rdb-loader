@@ -11,7 +11,7 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val root = project.in(file(".")).aggregate(common, aws, loader, redshiftLoader, shredder, streamShredder)
+lazy val root = project.in(file(".")).aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, shredder, streamShredder)
 
 lazy val aws = project
   .in(file("modules/aws"))
