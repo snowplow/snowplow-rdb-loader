@@ -21,6 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 import org.specs2.mutable.Specification
+import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
 
 class RetriesSpec extends Specification {
@@ -28,15 +29,17 @@ class RetriesSpec extends Specification {
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val C: Clock[IO] = Clock.create[IO]
 
+  val NotImportantDuration: FiniteDuration = 1.day
+
   "addFailure" should {
     "create a new failure in global failures store" in {
-      val NotImportantDuration: FiniteDuration = 1.day
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = S3.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom")
 
       val result = for {
         state <- State.mk[IO]
+        _ <- state.update(s => s.copy(attempts = s.attempts + 1)) // Imitate internal Load failure
         result <- Retries.addFailure[IO](config, state)(folder, error)
         (failures, attempts) <- state.get.map(s => (s.failures, s.attempts))
       } yield (result, failures, attempts)
@@ -44,7 +47,7 @@ class RetriesSpec extends Specification {
       result.unsafeRunSync() must beLike {
         case (true, failures, attempts) =>
           // These global attempts are incremented by Load
-          attempts must beEqualTo(0)
+          attempts must beEqualTo(1)
 
           failures.get(folder) must beSome.like {
             case Retries.LoadFailure(e, 1, a, b) if a == b && e == error => ok
@@ -54,14 +57,16 @@ class RetriesSpec extends Specification {
     }
 
     "update an existing failure" in {
-      val NotImportantDuration: FiniteDuration = 1.day
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = S3.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom two")
 
       val result = for {
         state <- State.mk[IO]
-        _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom one"))
+        _ <- state.update(s => s.copy(attempts = 1))  // Imitate internal Load failure
+        _ <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom one"))
+        _ <- state.update(s => s.copy(attempts = 0)) // Loader resets attempts meanwhile
+        _ <- state.update(s => s.copy(attempts = 1))  // Imitate internal Load failure
         result <- Retries.addFailure[IO](config, state)(folder, error)
         (failures, attempts) <- state.get.map(s => (s.failures, s.attempts))
       } yield (result, failures, attempts)
@@ -69,7 +74,7 @@ class RetriesSpec extends Specification {
       result.unsafeRunSync() must beLike {
         case (true, failures, attempts) =>
           // These global attempts are incremented by Load
-          attempts must beEqualTo(0)
+          attempts must beEqualTo(1)
 
           failures.get(folder) must beSome.like {
             case Retries.LoadFailure(e, 2, a, b) if a.isBefore(b) && e == error => ok
@@ -79,13 +84,13 @@ class RetriesSpec extends Specification {
     }
 
     "drop a failure if it reached max attempts" in {
-      val NotImportantDuration: FiniteDuration = 1.day
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = S3.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom final")
 
       val result = for {
         state <- State.mk[IO]
+        _      <- state.update(s => s.copy(attempts = 1))  // All subsequent addFailure assume one in-Load failure happened each time
         _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom one"))
         _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom two"))
         _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom three"))
@@ -96,7 +101,31 @@ class RetriesSpec extends Specification {
       result.unsafeRunSync() must beLike {
         case (false, failures, attempts) if failures.isEmpty =>
           // These global attempts are incremented by Load
-          attempts must beEqualTo(0)
+          attempts must beEqualTo(1)
+      }
+    }
+
+    "work together with getAndResetAttempts" in {
+      val config = Config.RetryQueue(NotImportantDuration, 10, 20, NotImportantDuration)
+      val folder = S3.Folder.coerce("s3://bucket/1/")
+      val error = new RuntimeException("boom final")
+
+      val result = for {
+        state <- State.mk[IO]
+        _      <- state.update(s => s.copy(attempts = 2))  // All subsequent addFailure assume two in-Load failures happened each time
+        _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom one"))
+        _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom two"))
+        _      <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom three"))
+        result <- Retries.addFailure[IO](config, state)(folder, error)
+        totalAttempts <- Control(state).getAndResetAttempts(folder)
+        (failures, attempts) <- state.get.map(s => (s.failures, s.attempts))
+      } yield (result, failures, attempts, totalAttempts)
+
+      result.unsafeRunSync() must beLike {
+        case (true, failures, attempts, totalAttempts) if failures.nonEmpty =>
+          // These global attempts are incremented by Load
+          attempts must beEqualTo(0)        // Reset by getAndResetAttempts
+          totalAttempts must beEqualTo(10)  // Accumulated
       }
     }
   }

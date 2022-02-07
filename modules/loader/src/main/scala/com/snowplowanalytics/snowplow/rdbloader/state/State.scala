@@ -39,7 +39,10 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
  *        Used to find out about degraded infra - if state is not updated for long enough
  *        it likely means that the database is unresponsive
  * @param attempts amount of attempts the Loader took to load **current** folder
+ *                 within current load attempt - it might take new attempts because of
+ *                 RetryQueue. Retry Queue maintains its own counter
  *                 zero'ed after every message ack'ed
+ *
  * @param loaded amount of folders the loader managed to load
  * @param messages total amount of message received
  */

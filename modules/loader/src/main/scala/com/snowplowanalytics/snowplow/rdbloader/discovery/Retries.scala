@@ -76,13 +76,32 @@ object Retries {
   implicit val folderOrdering: Ordering[S3.Folder] =
     Ordering[String].on(_.toString)
 
-  /** Information about past failure */
+  /**
+    * Information about past failure 
+    *
+    * @param lastError an exception that has been raised last time (a previous one 
+    *                  could be different). It's generally a rule that these exception 
+    *                  also pass Retry.isWorth predicate
+    * @param attempts amount of *total* attempts that were taked to load the folder,
+    *                 i.e. if loading failed 3 times within `Load`, added to retry queue,
+    *                 picked up by Load again and failed 3 times - it will be 6
+    * @param first timestamp of the first failure occured
+    * @param last timestamp of the lastError occured (cannot be earlier than `first`)
+    */
   final case class LoadFailure(lastError: Throwable,
                                attempts: Int,
                                first: Instant,
                                last: Instant) {
-    def update(error: Throwable, now: Instant): LoadFailure =
-      LoadFailure(error, attempts + 1, first, now)
+    /**
+      * Update an existing in-RetryQueue failure with new details
+      *
+      * @param error new last error, previous one will be thrown away
+      * @param now timestamp
+      * @param currentAttempts
+      * @return
+      */
+    def update(error: Throwable, now: Instant, currentAttempts: Int): LoadFailure =
+      LoadFailure(error, currentAttempts + attempts, first, now)
   }
 
   /**
@@ -148,6 +167,8 @@ object Retries {
 
   /**
    * Add a failure into failure queue
+   * Amount of taken attempts come from the state (i.e. control.incrementAttempt sets it)
+   *
    * @return true if the folder has been added or false if folder has been dropped
    *         (too many attempts to load or too many stored failures)
    */
@@ -157,13 +178,13 @@ object Retries {
         if (original.failures.size >= config.size) (original, false)
         else original.failures.get(base) match {
           case Some(existing) if existing.attempts < config.maxAttempts =>
-            val failures = original.failures + (base -> existing.update(error, now))
+            val failures = original.failures + (base -> existing.update(error, now, original.attempts))
             (original.copy(failures = failures), true)
           case Some(_) =>
             val failures = original.failures - base
             (original.copy(failures = failures), false)
           case None if Retry.isWorth(error) =>
-            val failures = original.failures + (base -> Retries.LoadFailure(error, 1, now, now))
+            val failures = original.failures + (base -> Retries.LoadFailure(error, original.attempts, now, now))
             (original.copy(failures = failures), true)
           case None =>
             (original, false)
