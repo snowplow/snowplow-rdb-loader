@@ -30,6 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessa
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
+
 /**
  * Module responsible for periodic attempts to re-load recently failed folders.
  * It works together with internal manifest of failed runs from `State` and
@@ -155,14 +156,14 @@ object Retries {
       state.modify { original =>
         if (original.failures.size >= config.size) (original, false)
         else original.failures.get(base) match {
-          case Some(existing) if existing.attempts >= config.maxAttempts =>
+          case Some(existing) if existing.attempts < config.maxAttempts =>
             val failures = original.failures + (base -> existing.update(error, now))
             (original.copy(failures = failures), true)
           case Some(_) =>
             val failures = original.failures - base
             (original.copy(failures = failures), false)
           case None if Retry.isWorth(error) =>
-            val failures = original.failures + (base -> Retries.LoadFailure(error, 0, now, now))
+            val failures = original.failures + (base -> Retries.LoadFailure(error, 1, now, now))
             (original.copy(failures = failures), true)
           case None =>
             (original, false)
