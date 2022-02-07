@@ -137,7 +137,7 @@ object SnowflakeLoaderSpec {
     "sf-database",
     "sf-schema",
     "sf-transformed-stage",
-    "sf-monitoring-stage",
+    Some("sf-monitoring-stage"),
     Some(10),
     None
   )
