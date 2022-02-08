@@ -45,7 +45,7 @@ object Dependencies {
     val jacksonModule    = "2.12.3" // Override incompatible version in spark runtime
 
     // Java (Loader)
-    val slf4j            = "1.7.32"
+    val slf4j            = "1.7.36"
     val redshift         = "1.2.55.1083"
     val aws              = "1.12.31"
     val aws2             = "2.17.59"
