@@ -14,14 +14,18 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db.ast
 
+import doobie.Fragment
+import doobie.implicits._
+
 case class Column(name: String,
                   dataType: SnowflakeDatatype,
                   notNull: Boolean = false,
                   unique: Boolean = false) extends Ddl {
-  def toDdl: String = {
+  def toDdl: Fragment = {
     val datatype = dataType.toDdl
-    val constraints = ((if (notNull) "NOT NULL" else "") :: (if (unique) "UNIQUE" else "") :: Nil).filterNot(_.isEmpty)
-    val renderedConstraints = if (constraints.isEmpty) "" else " " + constraints.mkString(" ")
-    s"$name $datatype" + renderedConstraints
+    val frNotNull = if (notNull) Fragment.const0("NOT NULL") else Fragment.empty
+    val frUnique = if (unique) Fragment.const0(" UNIQUE") else Fragment.empty
+    val frName = Fragment.const0(name)
+    sql"$frName $datatype $frNotNull$frUnique"
   }
 }

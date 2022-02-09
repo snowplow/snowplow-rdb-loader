@@ -6,7 +6,8 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.FolderMonitoringDao
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.loader.snowflake.db.{SfDao, Statement, SnowflakeManifest, Control}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{Column, SnowflakeDatatype}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.{SfDao, Statement, SnowflakeManifest, DbUtils}
 import com.snowplowanalytics.snowplow.loader.snowflake.config.SnowflakeTarget
 
 class SnowflakeFolderMonitoringDao[C[_]: SfDao: MonadThrow](target: SnowflakeTarget) extends FolderMonitoringDao[C] {
@@ -15,12 +16,21 @@ class SnowflakeFolderMonitoringDao[C[_]: SfDao: MonadThrow](target: SnowflakeTar
   override def dropAlertingTempTable: C[Unit] = {
     // Since this function is called first while checking the folders,
     // resume warehouse is only added in here.
-    Control.resumeWarehouse[C](target.warehouse) *>
-      SfDao[C].executeUpdate(Statement.DropAlertingTempTable(target.schema, AlertingTempTableName)).as(())
+    DbUtils.resumeWarehouse[C](target.warehouse) *>
+      SfDao[C].executeUpdate(Statement.DropTable(target.schema, AlertingTempTableName)).as(())
   }
 
-  override def createAlertingTempTable: C[Unit] =
-    SfDao[C].executeUpdate(Statement.CreateAlertingTempTable(target.schema, AlertingTempTableName)).as(())
+  override def createAlertingTempTable: C[Unit] = {
+    SfDao[C].executeUpdate(
+      Statement.CreateTable(
+        target.schema,
+        AlertingTempTableName,
+        List(Column("run_id", SnowflakeDatatype.Varchar(512))),
+        None,
+        temporary = true
+      )
+    ).as(())
+  }
 
   override def foldersCopy(source: Folder): C[Unit] = {
     val runId = source.split("/").last

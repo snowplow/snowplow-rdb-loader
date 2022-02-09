@@ -16,7 +16,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
-import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
 import com.snowplowanalytics.snowplow.loader.snowflake.test._
 
@@ -43,12 +43,12 @@ class SnowflakeMigrationSpec extends Specification {
           "Creating new column for schema key iglu:com.acme/some_context/jsonschema/1-0-1"
         ),
         LogEntry.Message(
-          AlterTable.AddColumn(
+          Statement.AddColumn(
             dbSchema,
             tableName,
             "UNSTRUCT_EVENT_COM_ACME_SOME_CONTEXT_1",
             SnowflakeDatatype.JsonObject
-          ).toStatement.toTestString
+          ).toTestString
         ),
         LogEntry.Message(
           "New column is created for schema key iglu:com.acme/some_context/jsonschema/1-0-1"

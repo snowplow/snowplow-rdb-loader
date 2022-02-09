@@ -6,7 +6,7 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.GetColumns.ShowColumnRow
 
 /** Set of common functions to control DB entities */
-object Control {
+object DbUtils {
   def renameTable[C[_]: Functor: SfDao](schema: String, from: String, to: String): C[Unit] = ???
 
   def tableExists[C[_]: SfDao](dbSchema: String, tableName: String): C[Boolean] =

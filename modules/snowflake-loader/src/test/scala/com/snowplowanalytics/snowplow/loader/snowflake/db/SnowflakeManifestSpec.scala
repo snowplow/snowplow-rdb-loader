@@ -3,7 +3,6 @@ package com.snowplowanalytics.snowplow.loader.snowflake.db
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.loader.snowflake.test._
-import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.CreateTable
 import org.specs2.mutable.Specification
 
 class SnowflakeManifestSpec extends Specification{
@@ -43,18 +42,18 @@ class SnowflakeManifestSpec extends Specification{
         LogEntry.Message(Statement.WarehouseResume(warehouse).toTestString),
         LogEntry.Message(Statement.TableExists(dbSchema, tableName).toTestString),
         LogEntry.Message(
-          CreateTable(
+          Statement.CreateTable(
             dbSchema,
             tableName,
             SnowflakeManifest.Columns,
             Some(SnowflakeManifest.ManifestPK)
-          ).toStatement.toTestString
+          ).toTestString
         ),
         LogEntry.Message("The manifest table has been created")
       )
 
       val (state, value) = manifest.initialize.value.run(TestState.init).value
-
+      
       state.getLog must beEqualTo(expected)
       value must beRight
     }

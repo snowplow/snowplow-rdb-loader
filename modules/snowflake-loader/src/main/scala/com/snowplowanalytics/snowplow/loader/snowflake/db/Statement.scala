@@ -8,8 +8,11 @@ import doobie.implicits._
 
 import io.circe.syntax._
 
+import cats.implicits._
+
 import com.snowplowanalytics.snowplow.rdbloader.db.helpers.FragmentEncoder
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.ast._
 
 trait Statement {
   /** Transform to doobie `Fragment`, closer to the end-of-the-world */
@@ -26,9 +29,27 @@ object Statement {
     def toFragment: Fragment = sql"SELECT 1"
   }
 
-  case class CreateTable(ddl: ast.CreateTable) extends Statement {
-    def toFragment: Fragment =
-      Fragment.const0(ddl.toDdl)
+  case class CreateTable(schema: String,
+                         name: String,
+                         columns: List[Column],
+                         primaryKey: Option[PrimaryKeyConstraint],
+                         temporary: Boolean = false) extends Statement {
+    def toFragment: Fragment = {
+      val frConstraint = primaryKey.map(c => fr", ${c.toDdl}").getOrElse(Fragment.empty)
+      val frCols = columns.map(_.toDdl).intercalate(fr",")
+      val frTemp = if (temporary) Fragment.const("TEMPORARY") else Fragment.empty
+      val frTableName = Fragment.const0(s"$schema.$name")
+      sql"""CREATE ${frTemp}TABLE IF NOT EXISTS $frTableName (
+           $frCols$frConstraint
+         )"""
+    }
+  }
+
+  case class DropTable(schema: String, table: String) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const(s"$schema.$table")
+      sql"DROP TABLE IF EXISTS $frTableName"
+    }
   }
 
   case class GetColumns(schema: String, tableName: String) extends Statement {
@@ -52,6 +73,17 @@ object Statement {
                              comment: Option[String],
                              databaseName: String,
                              autoincrement: Option[String])
+  }
+
+  case class AddColumn(schema: String,
+                       table: String,
+                       column: String,
+                       datatype: SnowflakeDatatype) extends Statement {
+    def toFragment: Fragment = {
+      val frTableName = Fragment.const0(s"$schema.$table")
+      val frColumn = Fragment.const0(column)
+      sql"ALTER TABLE $frTableName ADD COLUMN $frColumn ${datatype.toDdl}"
+    }
   }
 
   case class CopyInto(schema: String,
@@ -123,18 +155,6 @@ object Statement {
   }
 
   // Alerting
-  case class CreateAlertingTempTable(schema: String, table: String) extends Statement {
-    def toFragment: Fragment = {
-      val frTableName = Fragment.const(s"$schema.$table")
-      sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
-    }
-  }
-  case class DropAlertingTempTable(schema: String, table: String) extends Statement {
-    def toFragment: Fragment = {
-      val frTableName = Fragment.const(s"$schema.$table")
-      sql"DROP TABLE IF EXISTS $frTableName"
-    }
-  }
   case class FoldersMinusManifest(schema: String,
                                   alertTable: String,
                                   manifestTable: String) extends Statement {
@@ -156,7 +176,9 @@ object Statement {
   }
 
   case class WarehouseResume(warehouse: String) extends Statement {
-    def toFragment: Fragment =
-      sql"ALTER WAREHOUSE $warehouse RESUME"
+    def toFragment: Fragment = {
+      val frWarehouse = Fragment.const0(warehouse)
+      sql"ALTER WAREHOUSE $frWarehouse RESUME"
+    }
   }
 }

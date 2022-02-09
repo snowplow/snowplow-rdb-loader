@@ -18,25 +18,24 @@ class SnowflakeManifest[C[_]: SfDao: MonadThrow: Logging](schema: String, wareho
 
   override def initialize: C[Unit] =
     for {
-      _      <- Control.resumeWarehouse[C](warehouse)
-      exists <- Control.tableExists[C](schema, ManifestTable)
+      _      <- DbUtils.resumeWarehouse[C](warehouse)
+      exists <- DbUtils.tableExists[C](schema, ManifestTable)
       _ <- if (exists) MonadThrow[C].unit
            else create <* Logging[C].info("The manifest table has been created")
     } yield ()
 
   override def add(message: LoaderMessage.ShreddingComplete): C[Unit] =
-    Control.resumeWarehouse[C](warehouse) *>
+    DbUtils.resumeWarehouse[C](warehouse) *>
       SfDao[C].executeUpdate(Statement.ManifestAdd(schema, ManifestTable, message)).void
 
   override def get(base: Folder): C[Option[Manifest.Entry]] =
-    Control.resumeWarehouse[C](warehouse) *>
+    DbUtils.resumeWarehouse[C](warehouse) *>
       SfDao[C].executeQueryOption[Entry](Statement.ManifestGet(schema, ManifestTable, base))(Entry.entryRead)
 
-  private def getManifestDef: CreateTable =
-    CreateTable(schema, ManifestTable, Columns, Some(ManifestPK))
-
   private def create: C[Unit] =
-    SfDao[C].executeUpdate(Statement.CreateTable(getManifestDef)).void
+    SfDao[C].executeUpdate(
+      Statement.CreateTable(schema, ManifestTable, Columns, Some(ManifestPK))
+    ).void
 }
 
 object SnowflakeManifest {

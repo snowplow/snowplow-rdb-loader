@@ -11,7 +11,7 @@ import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 import com.snowplowanalytics.snowplow.rdbloader.loading.Stage
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.loader.snowflake.db.{Control => DbUtils}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.DbUtils
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SfDao
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.AtomicDef
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.CopyInto

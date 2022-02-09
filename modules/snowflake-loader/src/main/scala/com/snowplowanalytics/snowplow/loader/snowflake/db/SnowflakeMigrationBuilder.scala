@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.algebras.db.MigrationBuilder
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
 
 class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: String, warehouse: String) extends MigrationBuilder[C] {
@@ -32,7 +32,7 @@ class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: Stri
     SnowflakeLoader.shreddedTypeCheck(schemas.map(_.shreddedType)) match {
       case Right(_) =>
         for {
-          columns <- EitherT.right(Control.getColumns[C](dbSchema, SnowflakeLoader.EventTable))
+          columns <- EitherT.right(DbUtils.getColumns[C](dbSchema, SnowflakeLoader.EventTable))
           res     <- schemas.traverseFilter(buildBlock(_, columns)).map(fromBlocks)
         } yield res
       case Left(err) => EitherT.leftT(LoaderError.MigrationError(err))
@@ -48,7 +48,7 @@ class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: Stri
 
   private def fromBlocks(blocks: List[Block]): MigrationBuilder.Migration[C] = {
     val migrationInit = MigrationBuilder.Migration.empty[C]
-      .addPreTransaction(Control.resumeWarehouse[C](warehouse))
+      .addPreTransaction(DbUtils.resumeWarehouse[C](warehouse))
     blocks.foldLeft(migrationInit) {
       case (migration, block) if block.isEmpty =>
         val action = Logging[C].warning(s"Empty migration for schema key ${block.target.toSchemaUri}")
@@ -67,7 +67,7 @@ class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: Stri
       // TODO: Should we change the datatype according prefix of column similar to this
       // or should it be always 'VARIANT'
       // https://github.com/snowplow-incubator/snowplow-snowflake-loader/blob/master/loader/src/main/scala/com.snowplowanalytics.snowflake.loader/Loader.scala#L264
-      List(AlterTable.AddColumn(dbSchema, SnowflakeLoader.EventTable, newColumn, getColumnType(item)).toStatement),
+      List(Statement.AddColumn(dbSchema, SnowflakeLoader.EventTable, newColumn, getColumnType(item))),
       target
     ).asRight
   }
