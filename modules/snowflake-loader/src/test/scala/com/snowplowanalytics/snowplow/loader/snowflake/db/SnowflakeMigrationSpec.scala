@@ -28,7 +28,7 @@ class SnowflakeMigrationSpec extends Specification {
   "build" should {
     "add new column when column with same name does not exist" in {
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.init)
-      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema)
+      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema, warehouse)
 
       val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaListTwo))
 
@@ -38,6 +38,7 @@ class SnowflakeMigrationSpec extends Specification {
         )
       )
       val expectedMigration = List(
+        LogEntry.Message(Statement.WarehouseResume(warehouse).toTestString),
         LogEntry.Message(
           "Creating new column for schema key iglu:com.acme/some_context/jsonschema/1-0-1"
         ),
@@ -74,7 +75,7 @@ class SnowflakeMigrationSpec extends Specification {
           case statement => PureDAO.getResult(s)(statement)
         }
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
-      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema)
+      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema, warehouse)
 
       val input = List(MigrationBuilder.MigrationItem(shreddedType, schemaListTwo))
 
@@ -83,20 +84,23 @@ class SnowflakeMigrationSpec extends Specification {
           Statement.GetColumns(dbSchema, tableName).toTestString
         )
       )
+      val expectedMigration = List(
+        LogEntry.Message(Statement.WarehouseResume(warehouse).toTestString)
+      )
 
       val (state, value) = migration.build(input).run
 
       state.getLog must beEqualTo(expected)
       value.rethrow must beRight.like {
         case MigrationBuilder.Migration(pre, in) =>
-          pre.runS.getLog must beEmpty
+          pre.runS.getLog must beEqualTo(expectedMigration)
           in.runS.getLog must beEmpty
       }
     }
 
     "throw error when given shred type is not supported" in {
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.init)
-      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema)
+      lazy val migration = new SnowflakeMigrationBuilder[Pure](dbSchema, warehouse)
 
       val shreddedType = ShreddedType.Tabular(
         ShreddedType.Info(
@@ -124,6 +128,7 @@ class SnowflakeMigrationSpec extends Specification {
 object SnowflakeMigrationSpec {
   val dbSchema = "public"
   val tableName = SnowflakeLoader.EventTable
+  val warehouse = "testwarehouse"
   val schemaKey = SchemaKey("com.acme", "some_context", "jsonschema", Full(1, 0, 0))
   val schema100 = SelfDescribingSchema(
     SchemaMap(schemaKey),

@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import cats.Monad
+import cats.MonadThrow
 import cats.data.EitherT
 import cats.implicits._
 
@@ -25,28 +25,31 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.{AlterTable, SnowflakeDatatype}
 import com.snowplowanalytics.snowplow.loader.snowflake.loading.SnowflakeLoader
 
-class SnowflakeMigrationBuilder[C[_]: Monad: Logging: SfDao](dbSchema: String) extends MigrationBuilder[C] {
+class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: String, warehouse: String) extends MigrationBuilder[C] {
   import SnowflakeMigrationBuilder._
 
   override def build(schemas: List[MigrationBuilder.MigrationItem]): LoaderAction[C, MigrationBuilder.Migration[C]] =
     SnowflakeLoader.shreddedTypeCheck(schemas.map(_.shreddedType)) match {
-      case Right(_) => schemas.traverseFilter(buildBlock).map(fromBlocks)
+      case Right(_) =>
+        for {
+          columns <- EitherT.right(Control.getColumns[C](dbSchema, SnowflakeLoader.EventTable))
+          res     <- schemas.traverseFilter(buildBlock(_, columns)).map(fromBlocks)
+        } yield res
       case Left(err) => EitherT.leftT(LoaderError.MigrationError(err))
     }
 
-  private def buildBlock(migrationItem: MigrationBuilder.MigrationItem): LoaderAction[C, Option[Block]] = {
+  private def buildBlock(migrationItem: MigrationBuilder.MigrationItem, columns: List[String]): LoaderAction[C, Option[Block]] = {
     val newColumnName = getColumnName(migrationItem).toUpperCase
-    val addNewColumn = Monad[C].pure(addColumn(newColumnName, migrationItem).map(_.some))
-    val emptyBlock = Monad[C].pure(Option.empty[Block].asRight[LoaderError])
-    val result: C[Either[LoaderError, Option[Block]]] =
-      Control.getColumns[C](dbSchema, SnowflakeLoader.EventTable)
-        .map(_.contains(newColumnName))
-        .ifM(emptyBlock, addNewColumn)
+    val addNewColumn = MonadThrow[C].pure(addColumn(newColumnName, migrationItem).map(_.some))
+    val emptyBlock = MonadThrow[C].pure(Option.empty[Block].asRight[LoaderError])
+    val result = if (columns.contains(newColumnName)) emptyBlock else addNewColumn
     LoaderAction.apply[C, Option[Block]](result)
   }
 
-  private def fromBlocks(blocks: List[Block]): MigrationBuilder.Migration[C] =
-    blocks.foldLeft(MigrationBuilder.Migration.empty[C]) {
+  private def fromBlocks(blocks: List[Block]): MigrationBuilder.Migration[C] = {
+    val migrationInit = MigrationBuilder.Migration.empty[C]
+      .addPreTransaction(Control.resumeWarehouse[C](warehouse))
+    blocks.foldLeft(migrationInit) {
       case (migration, block) if block.isEmpty =>
         val action = Logging[C].warning(s"Empty migration for schema key ${block.target.toSchemaUri}")
         migration.addPreTransaction(action.void)
@@ -56,6 +59,7 @@ class SnowflakeMigrationBuilder[C[_]: Monad: Logging: SfDao](dbSchema: String) e
           Logging[C].info(s"New column is created for schema key ${b.target.toSchemaUri}")
         migration.addPreTransaction(action)
     }
+  }
 
   private def addColumn(newColumn: String, item: MigrationBuilder.MigrationItem): Either[LoaderError, Block] = {
     val target = item.schemaList.latest.schemaKey

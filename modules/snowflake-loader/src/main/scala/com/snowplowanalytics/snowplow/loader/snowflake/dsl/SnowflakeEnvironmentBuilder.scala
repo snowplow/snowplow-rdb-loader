@@ -38,9 +38,9 @@ class SnowflakeEnvironmentBuilder[F[_]: Clock: ConcurrentEffect: ContextShift: T
     for {
       implicit0(snowflakeTransaction: Transaction[F, ConnectionIO]) <- SnowflakeTransaction
         .interpreter[F](target, commonEnv.blocker)
-      snowflakeMigrator    = new SnowflakeMigrationBuilder[ConnectionIO](target.schema)
-      snowflakeManifest    = new SnowflakeManifest[ConnectionIO](target.schema)
-      snowflakeHealthCheck = new SnowflakeHealthCheck[ConnectionIO]
+      snowflakeMigrator    = new SnowflakeMigrationBuilder[ConnectionIO](target.schema, target.warehouse)
+      snowflakeManifest    = new SnowflakeManifest[ConnectionIO](target.schema, target.warehouse)
+      snowflakeHealthCheck = new SnowflakeHealthCheck[ConnectionIO](target.warehouse)
     } yield new TargetEnvironmentBuilder.TargetEnvironment[F] (
       transaction         = snowflakeTransaction,
       healthCheck         = snowflakeHealthCheck,

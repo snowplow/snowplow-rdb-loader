@@ -11,6 +11,7 @@ import com.snowplowanalytics.snowplow.rdbloader.state.Control
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
 import com.snowplowanalytics.snowplow.rdbloader.loading.Stage
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.loader.snowflake.db.{Control => DbUtils}
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SfDao
 import com.snowplowanalytics.snowplow.loader.snowflake.db.ast.AtomicDef
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.CopyInto
@@ -32,6 +33,7 @@ class SnowflakeLoader[C[_]: MonadThrow: Logging: SfDao: Control](target: Snowfla
       case Right(_) =>
         val copyStatement = getStatement(discovery, target)
         for {
+          _ <- DbUtils.resumeWarehouse[C](target.warehouse)
           _ <- Logging[C].info(s"Loading ${discovery.base}")
           _ <- loadFolder(copyStatement)
           _ <- Logging[C].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")

@@ -12,9 +12,14 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
+import cats.MonadThrow
+import cats.implicits._
+
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.HealthCheck
 
-class SnowflakeHealthCheck[C[_]: SfDao] extends HealthCheck[C] {
+class SnowflakeHealthCheck[C[_]: MonadThrow: SfDao](warehouse: String) extends HealthCheck[C] {
 
-  override def select1: C[Int] = SfDao[C].executeQuery[Int](Statement.Select1)
+  override def select1: C[Int] =
+    Control.resumeWarehouse[C](warehouse) *>
+      SfDao[C].executeQuery[Int](Statement.Select1)
 }

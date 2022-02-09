@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import cats.{Functor, Monad}
+import cats.{Functor, Monad, MonadThrow}
 import cats.implicits._
 
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.GetColumns.ShowColumnRow
@@ -16,4 +16,10 @@ object Control {
   def getColumns[C[_]: Monad: SfDao](dbSchema: String, tableName: String): C[List[String]] =
     SfDao[C].executeQueryList[ShowColumnRow](Statement.GetColumns(dbSchema, tableName))
       .map(_.map(_.columnName))
+
+  def resumeWarehouse[C[_]: MonadThrow: SfDao](warehouse: String): C[Unit] =
+    SfDao[C].executeUpdate(Statement.WarehouseResume(warehouse)).void
+      .recoverWith {
+        case _: net.snowflake.client.jdbc.SnowflakeSQLException => MonadThrow[C].unit
+      }
 }

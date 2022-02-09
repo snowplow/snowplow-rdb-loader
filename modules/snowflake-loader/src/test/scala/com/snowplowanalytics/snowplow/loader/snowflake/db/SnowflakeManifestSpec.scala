@@ -17,9 +17,10 @@ class SnowflakeManifestSpec extends Specification{
           case statement => PureDAO.getResult(s)(statement)
         }
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
-      lazy val manifest = new SnowflakeManifest[Pure](dbSchema)
+      lazy val manifest = new SnowflakeManifest[Pure](dbSchema, warehouse)
 
       val expected = List(
+        LogEntry.Message(Statement.WarehouseResume(warehouse).toTestString),
         LogEntry.Message(Statement.TableExists(dbSchema, tableName).toTestString)
       )
 
@@ -36,9 +37,10 @@ class SnowflakeManifestSpec extends Specification{
           case statement => PureDAO.getResult(s)(statement)
         }
       implicit val dao: SfDao[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
-      lazy val manifest = new SnowflakeManifest[Pure](dbSchema)
+      lazy val manifest = new SnowflakeManifest[Pure](dbSchema, warehouse)
 
       val expected = List(
+        LogEntry.Message(Statement.WarehouseResume(warehouse).toTestString),
         LogEntry.Message(Statement.TableExists(dbSchema, tableName).toTestString),
         LogEntry.Message(
           CreateTable(
@@ -63,4 +65,5 @@ class SnowflakeManifestSpec extends Specification{
 object SnowflakeManifestSpec {
   val dbSchema = "public"
   val tableName = SnowflakeManifest.ManifestTable
+  val warehouse = "testwarehouse"
 }

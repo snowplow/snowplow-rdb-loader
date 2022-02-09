@@ -154,4 +154,9 @@ object Statement {
       sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
     }
   }
+
+  case class WarehouseResume(warehouse: String) extends Statement {
+    def toFragment: Fragment =
+      sql"ALTER WAREHOUSE $warehouse RESUME"
+  }
 }

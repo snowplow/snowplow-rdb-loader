@@ -38,6 +38,7 @@ class SnowflakeLoaderSpec extends Specification {
       val (state, result) = loader.run(discovery).run
 
       val expected = List(
+        LogEntry.Message(Statement.WarehouseResume(target.warehouse).toTestString),
         LogEntry.Message(s"Loading $base"),
         LogEntry.Message("setStage copying into events table"),
         LogEntry.Message("COPY events"),

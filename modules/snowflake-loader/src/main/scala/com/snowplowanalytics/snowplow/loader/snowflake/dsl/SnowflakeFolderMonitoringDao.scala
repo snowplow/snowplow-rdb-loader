@@ -6,14 +6,18 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.FolderMonitoringDao
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.loader.snowflake.db.{SfDao, Statement, SnowflakeManifest}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.{SfDao, Statement, SnowflakeManifest, Control}
 import com.snowplowanalytics.snowplow.loader.snowflake.config.SnowflakeTarget
 
 class SnowflakeFolderMonitoringDao[C[_]: SfDao: MonadThrow](target: SnowflakeTarget) extends FolderMonitoringDao[C] {
   import SnowflakeFolderMonitoringDao._
 
-  override def dropAlertingTempTable: C[Unit] =
-    SfDao[C].executeUpdate(Statement.DropAlertingTempTable(target.schema, AlertingTempTableName)).as(())
+  override def dropAlertingTempTable: C[Unit] = {
+    // Since this function is called first while checking the folders,
+    // resume warehouse is only added in here.
+    Control.resumeWarehouse[C](target.warehouse) *>
+      SfDao[C].executeUpdate(Statement.DropAlertingTempTable(target.schema, AlertingTempTableName)).as(())
+  }
 
   override def createAlertingTempTable: C[Unit] =
     SfDao[C].executeUpdate(Statement.CreateAlertingTempTable(target.schema, AlertingTempTableName)).as(())
