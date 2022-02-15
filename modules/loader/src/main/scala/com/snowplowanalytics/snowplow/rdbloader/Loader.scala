@@ -17,8 +17,7 @@ import scala.concurrent.duration._
 import cats.{Monad, Apply}
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, Timer, MonadThrow, Concurrent}
-import cats.effect.implicits._
+import cats.effect.{Clock, Timer, MonadThrow, Concurrent}
 
 import fs2.Stream
 
@@ -28,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
-import com.snowplowanalytics.snowplow.rdbloader.state.Control
+import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
 
 object Loader {
 
@@ -105,19 +104,16 @@ object Loader {
                        C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
     val folder = discovery.data.origin.base
-
-    val prepare: Resource[F, Unit] = for {
-      _        <- StateMonitoring.run(control.get, discovery.extend).background
-      makeBusy  = control.makeBusy
-      _        <- makeBusy(folder)
-    } yield ()
+    val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
+    val backgroundCheck: F[Unit] => F[Unit] =
+      StateMonitoring.inBackground[F](control.get, busy, discovery.extend)
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
     val addFailure: Throwable => F[Boolean] =
       control.addFailure(config.retryQueue)(folder)(_)
 
-    val loading: F[Unit] = prepare.use { _ =>
+    val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
         result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)

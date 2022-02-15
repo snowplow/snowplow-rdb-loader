@@ -116,7 +116,7 @@
     "size": 64,
     # How many attempt to make for each folder
     # After the limit is reached new failures are dropped
-    "maxAttempts": 6,
+    "maxAttempts": 3,
     # Artificial pause after each failed folder being added to the queue
     "interval": "5 seconds"
   }
