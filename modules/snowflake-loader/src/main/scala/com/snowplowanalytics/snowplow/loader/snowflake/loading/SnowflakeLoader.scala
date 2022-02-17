@@ -72,7 +72,8 @@ object SnowflakeLoader {
       target.transformedStage,
       columns,
       loadPath,
-      target.maxError
+      target.maxError,
+      true
     )
   }
 

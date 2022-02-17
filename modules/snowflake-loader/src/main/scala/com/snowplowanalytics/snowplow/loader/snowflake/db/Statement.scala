@@ -103,13 +103,14 @@ object Statement {
                       stageName: String,
                       columns: List[String],
                       loadPath: String,
-                      maxError: Option[Int]) extends Statement {
+                      maxError: Option[Int],
+                      stripNullValues: Boolean) extends Statement {
     def toFragment: Fragment = {
-      // TODO: Add auth option
       val frOnError = maxError match {
-        case Some(value) => Fragment.const0(s"ON_ERROR = SKIP_FILE_$value")
+        case Some(value) => Fragment.const(s"ON_ERROR = SKIP_FILE_$value")
         case None => Fragment.empty
       }
+      val frStripNullValues = Fragment.const0(s"STRIP_NULL_VALUES = ${stripNullValues.toString.toUpperCase}")
       val frCopy = Fragment.const0(s"$schema.$table($columnsForCopy)")
       val frSelectColumns = Fragment.const0(columnsForSelect)
       val frSelectTable = Fragment.const0(s"@$schema.$stageName/$loadPath")
@@ -117,7 +118,7 @@ object Statement {
             |FROM (
             |  SELECT $frSelectColumns FROM $frSelectTable
             |)
-            |$frOnError""".stripMargin
+            |$frOnError$frStripNullValues""".stripMargin
     }
 
     def columnsForCopy: String = columns.mkString(",")

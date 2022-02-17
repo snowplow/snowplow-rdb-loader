@@ -61,7 +61,8 @@ class SnowflakeLoaderSpec extends Specification {
             target.transformedStage,
             SnowflakeLoader.getColumns(discovery),
             loadPath,
-            target.maxError
+            target.maxError,
+            true
           ).toTestString
         ),
         LogEntry.Message(s"Folder [$base] has been loaded (not committed yet)")
@@ -127,7 +128,8 @@ class SnowflakeLoaderSpec extends Specification {
         target.transformedStage,
         columns,
         loadPath,
-        target.maxError
+        target.maxError,
+        true
       )
 
       val expectedColumnsForCopy = "col1,col2,col_3"
