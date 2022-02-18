@@ -131,6 +131,7 @@ lazy val shredder = project.in(file("modules/shredder"))
       Dependencies.sparkSQL,
       Dependencies.jacksonModule,
       Dependencies.jacksonDatabind,
+      Dependencies.jacksonCbor,
       // Scala (test only)
       Dependencies.circeOptics,
       Dependencies.specs2,
