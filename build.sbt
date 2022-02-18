@@ -162,6 +162,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
       Dependencies.slf4j,
       Dependencies.protobuf,
       Dependencies.commons,
+      Dependencies.kafkaClients,
       // Scala
       Dependencies.log4cats,
       Dependencies.fs2Blobstore,
