@@ -56,6 +56,18 @@
       "collector": "snplow.acme.com",
     },
 
+    # An endpoint for alerts and infromational events
+    # Everything sent to snowplow collector (as properly formed self-describing events)
+    # will also be sent to the webhook as POST payloads with self-describing JSONs
+    "webhook": {
+      # An actual HTTP endpoint
+      "endpoint": "https://webhook.acme.com",
+      # Set of arbitrary key-value pairs attached to the payload
+      "tags": {
+        "pipeline": "production"
+      }
+    },
+
     # Optional, for tracking runtime exceptions
     "sentry": {
       "dsn": "http://sentry.acme.com"
