@@ -12,12 +12,14 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import fs2.Stream
-import cats.Monad
+import cats.MonadThrow
 import cats.implicits._
+
+import fs2.Stream
 
 import cats.effect.implicits._
 import cats.effect.{Timer, Concurrent}
+import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -31,22 +33,30 @@ object HealthCheck {
             C[_]: DAO](config: Option[Config.HealthCheck]): Stream[F, Unit] =
     config match {
       case Some(config) =>
-        Stream.awakeDelay[F](config.frequency)
-          .evalMap { _ => perform[F, C].timeoutTo(config.timeout, Concurrent[F].pure(false)) }
-          .evalMap {
-            case true => Logging[F].info("DB is healthy and responsive")
-            case false =>
-              val msg = s"DB couldn't complete a healthcheck query in ${config.timeout}"
-              val alert = Monitoring.AlertPayload.warn(msg)
-              Monitoring[F].alert(alert) *> Logging[F].warning(msg)
-          }
-
+        Stream.eval(Ref.of[F, Boolean](true)).flatMap { previousHealthy =>
+          Stream.awakeDelay[F](config.frequency)
+            .evalMap { _ => perform[F, C].timeoutTo(config.timeout, Concurrent[F].pure(false)) }
+            .evalMap {
+              case true =>
+                previousHealthy.set(true) *> Logging[F].info("DB is healthy and responsive")
+              case false =>
+                previousHealthy.getAndSet(false).flatMap { was =>
+                  val msg = s"DB couldn't complete a healthcheck query in ${config.timeout}"
+                  val alert = if (was) Monitoring[F].alert(Monitoring.AlertPayload.warn(msg)) else Concurrent[F].unit
+                  alert *> Logging[F].warning(msg)
+                }
+            }
+        }
       case None =>
         Stream.empty
     }
 
-  def perform[F[_]: Transaction[*[_], C]: Monad, C[_]: DAO]: F[Boolean] =
+  def perform[F[_]: Transaction[*[_], C]: MonadThrow, C[_]: DAO]: F[Boolean] =
     Transaction[F, C]
       .run(DAO[C].executeQuery[Int](Statement.Select1))
-      .map(_ == 1)
+      .attempt
+      .map {
+        case Right(1) => true
+        case _ => false
+      }
 }
