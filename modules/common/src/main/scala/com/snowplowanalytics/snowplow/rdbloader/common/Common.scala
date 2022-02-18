@@ -77,6 +77,7 @@ object Common {
   def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
     formats match {
       case Formats.WideRow => false
+      case Formats.Parquet => false
       case s: Formats.Shred =>
         s.default match {
           case LoaderMessage.Format.TSV =>
@@ -86,6 +87,7 @@ object Common {
           case LoaderMessage.Format.JSON =>
             s.tsv.exists(c => c.matches(schemaKey))
           case LoaderMessage.Format.WIDEROW => false
+          case LoaderMessage.Format.PARQUET => false
         }
     }
 

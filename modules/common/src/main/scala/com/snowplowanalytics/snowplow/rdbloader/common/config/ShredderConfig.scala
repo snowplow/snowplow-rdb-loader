@@ -144,6 +144,8 @@ object ShredderConfig {
   object Formats {
     final case object WideRow extends Formats
 
+    final case object Parquet extends Formats
+
     final case class Shred(default: LoaderMessage.Format,
                            tsv: List[SchemaCriterion],
                            json: List[SchemaCriterion],
@@ -295,6 +297,8 @@ object ShredderConfig {
             cur.as[Formats.Shred]
           case Right("widerow") =>
             cur.as[Formats.WideRow.type]
+          case Right("parquet") =>
+            cur.as[Formats.Parquet.type]
           case Right(other) =>
             Left(DecodingFailure(s"Format type $other is not supported yet. Supported types: 'shred', 'widerow'", typeCur.history))
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
@@ -310,6 +314,9 @@ object ShredderConfig {
     implicit val wideRowFormatsConfigDecoder: Decoder[Formats.WideRow.type] =
       deriveDecoder[Formats.WideRow.type]
 
+    implicit val parquetFormatsConfigDecoder: Decoder[Formats.Parquet.type] =
+      deriveDecoder[Formats.Parquet.type]
+
     implicit val validationsDecoder: Decoder[Validations] =
       deriveDecoder[Validations]
   }
@@ -317,6 +324,7 @@ object ShredderConfig {
   def configCheck[A <: ShredderConfig](config: A): Either[String, A] =
     config.formats match {
       case Formats.WideRow => config.asRight
+      case Formats.Parquet => config.asRight
       case s: Formats.Shred =>
         val overlaps = s.findOverlaps
         val message =

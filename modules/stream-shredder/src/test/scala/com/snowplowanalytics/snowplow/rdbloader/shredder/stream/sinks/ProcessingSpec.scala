@@ -44,29 +44,31 @@ import org.specs2.mutable.Specification
 
 class ProcessingSpec extends Specification {
   import ProcessingSpec._
+  import Processing._
   "transform" should {
     "shred events correctly" in {
       val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/1/input/events", format = shredFormat)
 
-      val pathsToCheck = List(
-        Transformed.Path.Shredded.Tabular("com.snowplowanalytics.snowplow", "atomic", 1),
-        Transformed.Path.Shredded.Tabular("com.snowplowanalytics.snowplow", "consent_document", 1),
-        Transformed.Path.Shredded.Tabular("com.optimizely", "state", 1)
-      )
-      val expectedTransformedMap = getExpectedTransformedEvents(good, pathsToCheck, 1, LoaderMessage.Format.TSV)
+      val testFileNameMap = List(
+        Transformed.Shredded.Tabular("com.snowplowanalytics.snowplow", "atomic", 1, dummyTransformedData).getPath -> "atomic",
+        Transformed.Shredded.Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, dummyTransformedData).getPath -> "consent_document",
+        Transformed.Shredded.Tabular("com.optimizely", "state", 1, dummyTransformedData).getPath -> "optimizely_state"
+      ).toMap
+
+      val expectedTransformedMap = getExpectedTransformedEvents(good, testFileNameMap, 1, LoaderMessage.Format.TSV)
 
       val expectedBadEvent = getResourceLines("/processing-spec/1/output/bad").head
 
       bad must have size(1)
-      bad.head.data.value mustEqual expectedBadEvent
+      bad.head.data.str must beSome(expectedBadEvent)
       good must have size(46)
       // Checks whether transformed events are identical with the expected ones.
       // Only the paths in "pathsToCheck" are compared to not add
       // all shredded events to the test folder.
-      good must contain(beLike[(Transformed.Path, Transformed.Data)] {
-        case (path: Transformed.Path.Shredded, data) if pathsToCheck.contains(path) =>
-          expectedTransformedMap(path) must contain(data.value)
-        case (_: Transformed.Path.Shredded, _) => ok
+      good must contain(beLike[(SinkPath, Transformed.Data)] {
+        case (path: SinkPath, data) if testFileNameMap.contains(path) =>
+          expectedTransformedMap(path) must contain(data.str.get)
+        case _ => ok
       }).forall
     }
 
@@ -77,9 +79,9 @@ class ProcessingSpec extends Specification {
       val expectedGoodEvents = getResourceLines("/processing-spec/1/output/good/widerow/events")
 
       bad must have size(1)
-      bad.head.data.value mustEqual expectedBadEvent
+      bad.head.data.str.get mustEqual expectedBadEvent
       good must have size(2)
-      good.map(_.data.value) mustEqual expectedGoodEvents
+      good.map(_.data.str.get) mustEqual expectedGoodEvents
     }
 
     "create bad row when timestamp is invalid" in {
@@ -89,27 +91,29 @@ class ProcessingSpec extends Specification {
       val expectedBadEvents = getResourceLines("/processing-spec/2/output/bad")
 
       bad must have size(2)
-      replaceFailureTimestamps(bad.map(_.data.value)).toSet mustEqual replaceFailureTimestamps(expectedBadEvents).toSet
+      replaceFailureTimestamps(bad.map(_.data.str.get)).toSet mustEqual replaceFailureTimestamps(expectedBadEvents).toSet
       good must have size(1)
     }
   }
 }
 
 object ProcessingSpec {
-  type TransformedList = List[(Transformed.Path, Transformed.Data)]
-  type TransformedMap = Map[Transformed.Path.Shredded, List[String]]
+  import Processing._
+
+  type TransformedList = List[(SinkPath, Transformed.Data)]
+  type TransformedMap = Map[SinkPath, List[String]]
 
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
-  implicit class TransformedPathClassify(value: (Transformed.Path, Transformed.Data)) {
-    def getBad: Option[(Transformed.Path, Transformed.Data)] =
-      if (value.path.getDir.contains(BadPathPrefix)) Some(value) else None
+  implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data)) {
+    def getBad: Option[(SinkPath, Transformed.Data)] =
+      if (value.path.value.contains(BadPathPrefix)) Some(value) else None
 
-    def getGood: Option[(Transformed.Path, Transformed.Data)] =
+    def getGood: Option[(SinkPath, Transformed.Data)] =
       if (getBad.isDefined) None else Some(value)
 
-    def path: Transformed.Path = value._1
+    def path: SinkPath = value._1
 
     def data: Transformed.Data = value._2
   }
@@ -125,6 +129,7 @@ object ProcessingSpec {
   val shredFormat = ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List.empty, List.empty, List.empty)
   val testBlocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
   val defaultWindow = Window(1, 1, 1, 1, 1)
+  val dummyTransformedData = Transformed.Data.DString("")
 
   def transformTestEvents(resourcePath: String,
                           isTabular: SchemaKey => Boolean = defaultIsTabular,
@@ -161,18 +166,16 @@ object ProcessingSpec {
   }
 
   def getExpectedTransformedEvents(transformedList: TransformedList,
-                                   pathsToCheck: List[Transformed.Path.Shredded],
+                                   testFileNameMap: Map[SinkPath, String],
                                    testNumber: Int,
                                    format: LoaderMessage.Format): TransformedMap =
     transformedList.flatMap {
-      case (path: Transformed.Path.Shredded, _) if pathsToCheck.contains(path) =>
-        Some(getResourceForShreddedPath(s"/processing-spec/${testNumber}/output/good/${format.path}", path))
+      case (path: SinkPath, _) if testFileNameMap.contains(path) =>
+        val testFilePath = s"/processing-spec/${testNumber}/output/good/${format.path}/${testFileNameMap(path)}"
+        Some((path, getResourceLines(testFilePath)))
       case _ =>
         None
     }.toMap
-
-  def getResourceForShreddedPath(initPath: String, shreddedPath: Transformed.Path.Shredded): (Transformed.Path.Shredded, List[String]) =
-    (shreddedPath, getResourceLines(s"$initPath/${shreddedPath.vendor}-${shreddedPath.name}"))
 
   val replaceFailureTimestamp: Json => Json =
     root.data.failure.timestamp.string.set(DefaultTimestamp)

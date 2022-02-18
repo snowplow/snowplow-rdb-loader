@@ -14,7 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 
-import cats.{Monad, Show}
+import cats.Monad
 import cats.implicits._
 
 import cats.data.{EitherT, NonEmptyList}
@@ -37,89 +37,64 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 
 /** Represents transformed data in blob storage */
-case class Transformed(path: Transformed.Path, data: Transformed.Data) {
 
-  def wideRow: Option[WideRowTuple] = path match {
-    case p: Transformed.Path.WideRow =>
-      val outputType = if (p.good) "good" else "bad"
-      (outputType, data.value).some
-    case _ => None
-  }
-
-  def shredded: Option[ShreddedTuple] = path match {
-    case p: Transformed.Path.Shredded =>
-      val outputType = if (p.isGood) "good" else "bad"
-      (outputType, p.vendor, p.name, p.format.path, p.model, data.value).some
-    case _ => None
-  }
-
-  def split: (Transformed.Path, Transformed.Data) = (path, data)
+sealed trait Transformed {
+  def data: Transformed.Data
 }
 
 object Transformed {
-  case class Data(value: String) extends AnyVal
+  sealed trait Data
+  object Data {
+    case class DString(value: String) extends Data
+    case class ListAny(value: List[Any]) extends Data
+  }
 
   /**
-   * Represents the path of the transformed data in blob storage
+   * Represents the path of the shredded data in blob storage.
+   * It has all the necessary abstract methods which are needed
+   * to determine the path of the shredded data.
    */
-  sealed trait Path {
-    def getDir: String
+  sealed trait Shredded extends Transformed {
+    def isGood: Boolean
+    def vendor: String
+    def name: String
+    def format: Format
+    def model: Int
+    def data: Data.DString
   }
-  object Path {
-    /**
-     * Represents the path of the shredded data in blob storage.
-     * It has all the necessary abstract methods which are needed
-     * to determine the path of the shredded data.
-     */
-    sealed trait Shredded extends Path {
-      def isGood: Boolean
-      def vendor: String
-      def name: String
-      def format: Format
-      def model: Int
-      def getDir: String = {
-        val init = if (isGood) "output=good" else "output=bad"
-        s"$init/vendor=$vendor/name=$name/format=${format.path.toLowerCase}/model=$model/"
-      }
+
+  object Shredded {
+    /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
+    case class Json(isGood: Boolean, vendor: String, name: String, model: Int, data: Data.DString) extends Shredded {
+      val format: Format = Format.JSON
     }
 
-    object Shredded {
-      /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
-      case class Json(isGood: Boolean, vendor: String, name: String, model: Int) extends Shredded {
-        val format: Format = Format.JSON
-      }
-
-      /** Data will be represented as TSV, with RDB Loader loading it directly */
-      case class Tabular(vendor: String, name: String, model: Int) extends Shredded {
-        val isGood = true   // We don't support TSV shredding for bad data
-        val format: Format = Format.TSV
-      }
+    /** Data will be represented as TSV, with RDB Loader loading it directly */
+    case class Tabular(vendor: String, name: String, model: Int, data: Data.DString) extends Shredded {
+      val isGood = true   // We don't support TSV shredding for bad data
+      val format: Format = Format.TSV
     }
-
-    /**
-     * Represents the path of the wide-row formatted data in blob storage.
-     * Since the event is only converted to JSON format without any shredding
-     * operation, we only need the information for whether event is good or
-     * bad to determine the path in blob storage.
-     */
-    case class WideRow(good: Boolean) extends Path {
-      def getDir: String =
-        if (good) "output=good/" else "output=bad/"
-    }
-
-    implicit val pathShow: Show[Transformed.Path] =
-      Show(_.getDir)
   }
+
+  /**
+   * Represents the path of the wide-row formatted data in blob storage.
+   * Since the event is only converted to JSON format without any shredding
+   * operation, we only need the information for whether event is good or
+   * bad to determine the path in blob storage.
+   */
+  case class WideRow(good: Boolean, data: Data.DString) extends Transformed
+
+  case class Parquet(data: Data.ListAny) extends Transformed
 
   def transformBadRow(badRow: BadRow, formats: ShredderConfig.Formats): Transformed = {
     formats match {
       case _: ShredderConfig.Formats.Shred =>
         val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-        val data = Transformed.Data(badRow.compact)
-        Transformed(Path.Shredded.Json(false, vendor, name, model), data)
-      case ShredderConfig.Formats.WideRow =>
-        val data = Transformed.Data(badRow.compact)
-        Transformed(Path.WideRow(false), data)
+        val data = Transformed.Data.DString(badRow.compact)
+        Shredded.Json(false, vendor, name, model, data)
+      case ShredderConfig.Formats.WideRow | ShredderConfig.Formats.Parquet =>
+        val data = Transformed.Data.DString(badRow.compact)
+        WideRow(false, data)
     }
   }
 
@@ -146,12 +121,17 @@ object Transformed {
       .leftMap { error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)) }
       .map { shredded =>
         val data = EventUtils.alterEnrichedEvent(event, atomicLengths)
-        val atomic = Transformed(Path.Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model), Transformed.Data(data))
+        val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
         atomic :: shredded
       }
 
   def wideRowEvent(event: Event): Transformed =
-    Transformed(Path.WideRow(good = true), Transformed.Data(event.toJson(true).noSpaces))
+    WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
+
+  def parquetEvent[F[_]: Monad: RegistryLookup: Clock](atomicLengths: Map[String, Int])(event: Event): Transformed = {
+    val data = EventUtils.alterEnrichedEventAny(event, atomicLengths)
+    Parquet(Data.ListAny(data))
+  }
 
   /**
    * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity,
@@ -168,11 +148,11 @@ object Transformed {
     if (tabular) {
       EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
         val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
-        Transformed(Path.Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model), Transformed.Data((meta ++ columns).mkString("\t")))
+        Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString((meta ++ columns).mkString("\t")))
       }
     } else
       EitherT.pure[F, FailureDetails.LoaderIgluError](
-        Transformed(Path.Shredded.Json(true, vendor, name, hierarchy.entity.schema.version.model), Transformed.Data(hierarchy.dumpJson))
+        Shredded.Json(true, vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString(hierarchy.dumpJson))
       )
   }
 }

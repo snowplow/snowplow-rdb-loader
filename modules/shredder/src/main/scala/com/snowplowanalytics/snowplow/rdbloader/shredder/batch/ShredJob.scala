@@ -74,9 +74,8 @@ class ShredJob(@transient val spark: SparkSession,
   def isTabular(shredType: SchemaKey): Boolean =
     Common.isTabular(formats)(shredType)
 
-  def findFormat(wideRow: Boolean)(schemaKey: SchemaKey): Format = {
-    if (wideRow) Format.WIDEROW
-    else if (isTabular(schemaKey)) Format.TSV
+  def findShreddedFormat(schemaKey: SchemaKey): Format = {
+    if (isTabular(schemaKey)) Format.TSV
     else Format.JSON
   }
 
@@ -90,6 +89,8 @@ class ShredJob(@transient val spark: SparkSession,
   def run(folderName: String,
           atomicLengths: Map[String, Int],
           eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
+    import ShredJob._
+
     val jobStarted: Instant = Instant.now()
     val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
     val outFolder: S3.Folder = S3.Folder.coerce(config.output.path.toString).append(folderName)
@@ -150,16 +151,23 @@ class ShredJob(@transient val spark: SparkSession,
     val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
 
     val wideRowGoodTransform = (event: Event) => {
-      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = true))(event.inventory)
+      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, _ => Format.WIDEROW)(event.inventory)
       timestampsAccumulator.add(event)
       eventsCounter.add(1L)
       List(Transformed.wideRowEvent(event))
     }
 
+    val parquetGoodTransform = (event: Event) => {
+      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, _ => Format.PARQUET)(event.inventory)
+      timestampsAccumulator.add(event)
+      eventsCounter.add(1L)
+      List(Transformed.parquetEvent[Id](atomicLengths)(event))
+    }
+
     val shredGoodTransform = (event: Event) =>
       Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
         case Right(shredded) =>
-          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = false))(event.inventory)
+          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findShreddedFormat)(event.inventory)
           timestampsAccumulator.add(event)
           eventsCounter.add(1L)
           shredded
@@ -170,6 +178,7 @@ class ShredJob(@transient val spark: SparkSession,
     val goodTransform = config.formats match {
       case Formats.WideRow => wideRowGoodTransform
       case _: Formats.Shred => shredGoodTransform
+      case Formats.Parquet => parquetGoodTransform
     }
     val badTransform = (badRow: BadRow) =>
       Transformed.transformBadRow(badRow, config.formats)
@@ -190,6 +199,9 @@ class ShredJob(@transient val spark: SparkSession,
         Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
       case _: Formats.Shred =>
         Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.shredded), outFolder)
+      case Formats.Parquet =>
+        Sink.writeParquet(spark, config.output.compression, transformed.flatMap(_.parquet), outFolder)
+        Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
     }
 
     val shreddedTypes = shreddedTypesAccumulator.value.toList
@@ -200,6 +212,7 @@ class ShredJob(@transient val spark: SparkSession,
     val atomicSchemaFormat = config.formats match {
       case Formats.WideRow => Format.WIDEROW
       case _: Formats.Shred => Format.TSV
+      case Formats.Parquet => Format.PARQUET
     }
     val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, atomicSchemaFormat, ShreddedType.SelfDescribingEvent) :: shreddedTypes
 
@@ -264,5 +277,31 @@ object ShredJob {
         System.err.println("Incomplete folders discovered has timed out")
     }
 
+  }
+
+  type WideRowTuple = (String, String)
+  type ParquetTuple = (String, List[Any])
+  type ShreddedTuple = (String, String, String, String, Int, String)
+
+  private implicit class TransformedOps(t: Transformed) {
+    def wideRow: Option[WideRowTuple] = t match {
+      case p: Transformed.WideRow =>
+        val outputType = if (p.good) "good" else "bad"
+        (outputType, p.data.value).some
+      case _ => None
+    }
+
+    def shredded: Option[ShreddedTuple] = t match {
+      case p: Transformed.Shredded =>
+        val outputType = if (p.isGood) "good" else "bad"
+        (outputType, p.vendor, p.name, p.format.path, p.model, p.data.value).some
+      case _ => None
+    }
+
+    def parquet: Option[ParquetTuple] = t match {
+      case p: Transformed.Parquet =>
+        ("good", p.data.value).some
+      case _ => None
+    }
   }
 }

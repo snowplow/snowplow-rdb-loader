@@ -52,6 +52,7 @@ object LoaderMessage {
     final case object TSV extends Format
     final case object JSON extends Format
     final case object WIDEROW extends Format
+    final case object PARQUET extends Format
     // Another options can be Parquet and InAtomic for Snowflake-like structure
 
     def fromString(str: String): Either[String, Format] =
@@ -59,6 +60,7 @@ object LoaderMessage {
         case "TSV" => TSV.asRight
         case "JSON" => JSON.asRight
         case "WIDEROW" => WIDEROW.asRight
+        case "PARQUET" => WIDEROW.asRight
         case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
       }
 
