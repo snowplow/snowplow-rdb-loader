@@ -12,30 +12,31 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.good
+package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.good.widerow
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec._
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats.WideRow
 
 import org.specs2.mutable.Specification
 
-class WideRowSpec extends Specification with ShredJobSpec {
+class WideRowJsonSpec extends Specification with ShredJobSpec {
   override def appName = "wide-row"
   sequential
   "A job which is configured for wide row output" should {
-    runShredJob(events = ResourceFile("/widerow/input-events"), wideRow = true)
+    runShredJob(events = ResourceFile("/widerow/json/input-events"), wideRow = Some(WideRow.JSON))
 
     "transform the enriched event to wide row" in {
       val Some((lines, _)) = readPartFile(dirs.goodRows)
-      val expected = readResourceFile(ResourceFile("/widerow/output-widerows"))
+      val expected = readResourceFile(ResourceFile("/widerow/json/output-widerows"))
       lines.toSet mustEqual(expected.toSet)
     }
 
     "write bad rows" in {
       val Some((lines, _)) = readPartFile(dirs.badRows)
-      val expected = readResourceFile(ResourceFile("/widerow/output-badrows"))
+      val expected = readResourceFile(ResourceFile("/widerow/json/output-badrows"))
         .map(_.replace(VersionPlaceholder, BuildInfo.version))
       lines.toSet mustEqual(expected.toSet)
     }

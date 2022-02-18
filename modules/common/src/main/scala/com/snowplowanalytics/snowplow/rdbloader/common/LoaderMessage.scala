@@ -93,9 +93,31 @@ object LoaderMessage {
         def fromString(str: String): Either[String, WideRowFormat] =
           str match {
             case "JSON" => JSON.asRight
-            case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
+            case "PARQUET" => Parquet.asRight
+            case _ => s"$str is unexpected format. Parquet and JSON are possible options".asLeft
           }
         case object JSON extends WideRowFormat
+        case object Parquet extends WideRowFormat
+      }
+
+      def latestByModel(types: List[WideRow.Type]): List[WideRow.Type] =
+        types.groupBy {
+          case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
+            (vendor, name, model, snowplowEntity)
+        }
+          .toList
+          .flatMap { case (_, grouped) =>
+            grouped.sorted.lastOption
+          }
+
+      implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] = math.Ordering.by(_.toString)
+
+      implicit val wideRowTypeOrdering: math.Ordering[WideRow.Type] = {
+        implicit val schemaKeyOrdering = SchemaKey.ordering
+        math.Ordering.by {
+          case WideRow.Type(schemaKey, snowplowEntity) =>
+            (snowplowEntity, schemaKey)
+        }
       }
     }
   }

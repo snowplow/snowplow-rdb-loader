@@ -34,6 +34,7 @@ trait SparkSpec extends BeforeAfterAll {
     .setAppName(appName)
     .set("spark.serializer", classOf[KryoSerializer].getName())
     .set("spark.kryo.registrationRequired", "true")
+    .set("spark.sql.session.timeZone", "UTC")
     .registerKryoClasses(Serialization.classesToRegister)
   var spark: SparkSession =
     SparkSession.builder()
