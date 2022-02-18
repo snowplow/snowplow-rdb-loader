@@ -160,6 +160,7 @@ lazy val streamShredder = project.in(file("modules/stream-shredder"))
       // Java
       Dependencies.dynamodb,
       Dependencies.slf4j,
+      Dependencies.protobuf,
       // Scala
       Dependencies.log4cats,
       Dependencies.fs2Blobstore,
