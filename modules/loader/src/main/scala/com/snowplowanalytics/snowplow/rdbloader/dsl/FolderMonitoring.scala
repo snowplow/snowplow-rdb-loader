@@ -25,6 +25,7 @@ import cats.effect.{Timer, Sync, Concurrent}
 import cats.effect.concurrent.{ Ref, Semaphore }
 
 import doobie.util.Get
+
 import fs2.Stream
 import fs2.text.utf8Encode
 
@@ -181,8 +182,6 @@ object FolderMonitoring {
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
 
-  val FailBeforeAlarm = 3
-
   /**
    * Same as [[run]], but without parsing preparation
    * The stream ignores a first failure just printing an error, hoping it's transient,
@@ -221,7 +220,7 @@ object FolderMonitoring {
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
                   val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
                   val payload = Monitoring.AlertPayload.warn(msg)
-                  if (failedBefore >= FailBeforeAlarm) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
+                  if (failedBefore >= folders.failBeforeAlarm) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
                   else Logging[F].warning(msg)
                 }
               } *> lock.release

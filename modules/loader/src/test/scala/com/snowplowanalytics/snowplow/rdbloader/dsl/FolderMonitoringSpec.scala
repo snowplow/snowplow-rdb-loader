@@ -94,7 +94,7 @@ class FolderMonitoringSpec extends Specification {
     "produce new keys with interval" in {
       implicit val T = IO.timer(scala.concurrent.ExecutionContext.global)
       val result = FolderMonitoring
-        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/"), None, S3.Folder.coerce("s3://acme/shredder-output/"), None))
+        .getOutputKeys[IO](Config.Folders(1.second, S3.Folder.coerce("s3://acme/logs/"), None, S3.Folder.coerce("s3://acme/shredder-output/"), None, 3))
         .take(2)
         .compile
         .toList
