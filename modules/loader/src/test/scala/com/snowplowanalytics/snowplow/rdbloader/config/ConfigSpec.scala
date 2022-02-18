@@ -21,6 +21,8 @@ import cats.data.EitherT
 
 import cats.effect.IO
 
+import org.http4s.syntax.all._
+
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, RegionSpec}
@@ -83,7 +85,7 @@ object ConfigSpec {
     Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
-    None,
+    Some(Config.Webhook(uri"https://webhook.acme.com", Map("pipeline" -> "production"))),
     Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days), 3)),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
