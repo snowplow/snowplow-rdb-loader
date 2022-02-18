@@ -42,6 +42,7 @@ class ConfigSpec extends Specification {
         exampleRetryQueue,
         exampleStorage,
         exampleSchedules,
+        exampleTimeouts,
       )
       result must beRight(expected)
     }
@@ -55,7 +56,8 @@ class ConfigSpec extends Specification {
         exampleQueueName,
         None,
         exampleStorage,
-        emptySchedules
+        emptySchedules,
+        exampleTimeouts,
       )
       result must beRight(expected)
     }
@@ -82,7 +84,7 @@ object ConfigSpec {
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
     None,
-    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days))),
+    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/shredder-output/"), Some(7.days), Some(3))),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
   val emptyMonitoring = Config.Monitoring(None, None, None, None, None, None)
@@ -106,6 +108,7 @@ object ConfigSpec {
     30.minutes, 64, 3, 5.seconds
   ))
   val emptySchedules: Config.Schedules = Config.Schedules(Nil)
+  val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()

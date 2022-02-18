@@ -43,7 +43,8 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              messageQueue: String,
                                              retryQueue: Option[RetryQueue],
                                              storage: D,
-                                             schedules: Schedules)
+                                             schedules: Schedules,
+                                             timeouts: Timeouts)
 
 object Config {
 
@@ -67,8 +68,9 @@ object Config {
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration])
+  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration], failBeforeAlarm: Option[Int])
   final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
+  final case class Timeouts(loading: FiniteDuration, nonLoading: FiniteDuration, sqsVisibility: FiniteDuration)
 
 
   /**
@@ -99,6 +101,9 @@ object Config {
 
     implicit val metricsDecoder: Decoder[Metrics] =
       deriveDecoder[Metrics]
+
+    implicit val timeoutsDecoder: Decoder[Timeouts] =
+      deriveDecoder[Timeouts]
 
     implicit val http4sUriDecoder: Decoder[Uri] =
       Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))

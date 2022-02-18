@@ -30,6 +30,7 @@ import cats.effect.laws.util.TestContext
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.test.SyncLogging
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 
 class StateMonitoringSpec extends Specification {
@@ -56,7 +57,7 @@ class StateMonitoringSpec extends Specification {
       val (error, _, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoring.DefaultExtendPeriod * 3)
+            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 3)
       } 
 
       isBusy must beFalse   // dealocation runs even if it fails
@@ -67,7 +68,7 @@ class StateMonitoringSpec extends Specification {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoring.DefaultExtendPeriod * 2)
+            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
       }
 
       logs must beEqualTo(List(
@@ -82,17 +83,17 @@ class StateMonitoringSpec extends Specification {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoring.DefaultExtendPeriod * 2) *>
+            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2) *>
             state.update(StateMonitoringSpec.setStage(Stage.MigrationPre)) *>
             timer.clock.instantNow.flatMap(now => state.update(_.copy(updated = now))) *>
-            timer.sleep(StateMonitoring.DefaultExtendPeriod * 2)
+            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
       }
 
       logs must beEqualTo(List(
         "INFO Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Extending processing for 270 seconds",
         "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Spent 8 minutes at this stage. Extending processing for 270 seconds",
         "INFO Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at pre-transaction migrations. Extending processing for 270 seconds",
-        "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 8 minutes at this stage. Extending processing for 270 seconds"
+        "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 7 minutes at this stage. Extending processing for 270 seconds"
       ))
       isBusy must beFalse
       error must beNone
@@ -101,6 +102,8 @@ class StateMonitoringSpec extends Specification {
 }
 
 object StateMonitoringSpec {
+
+  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
 
   def checkRun(init: State => State) = {
     implicit val ec: TestContext =
@@ -116,7 +119,7 @@ object StateMonitoringSpec {
       state     <- State.mk[IO]
       _         <- state.update(init)
 
-      error      = StateMonitoring.run[IO](state.get, _ => IO.unit)
+      error      = StateMonitoring.run[IO](Timeouts, state.get, _ => IO.unit)
       result    <- (error, logStore.get).tupled
     } yield result
 
@@ -140,7 +143,7 @@ object StateMonitoringSpec {
       busyRef   <- Ref.of[IO, Boolean](true)
       busy       = Resource.make(IO.pure(busyRef))(res => res.set(false)).void
 
-      error      = StateMonitoring.inBackground(state.get, busy, _ => IO.unit)(action(state, T)).attempt.map(_.swap.toOption)
+      error      = StateMonitoring.inBackground(Timeouts, state.get, busy, _ => IO.unit)(action(state, T)).attempt.map(_.swap.toOption)
       result    <- (error, logStore.get.map(_.reverse), busyRef.get).tupled
     } yield result
 

@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.implicits._
 
 import cats.effect.{Timer, Sync, ConcurrentEffect}
@@ -67,7 +69,7 @@ object AWS {
     S3Store(S3AsyncClient.builder().region(Region.of(region)).build())
   }
 
-  def s3Interpreter[F[_]: ConcurrentEffect: Timer](client: S3Store[F]): AWS[F] = new AWS[F] {
+  def awsInterpreter[F[_]: ConcurrentEffect: Timer](client: S3Store[F], sqsVisibility: FiniteDuration): AWS[F] = new AWS[F] {
     /** * Transform S3 object summary into valid S3 key string */
     def getKey(path: S3Path): S3.BlobObject = {
       val key = S3.Key.coerce(s"s3://${path.bucket}/${path.key}")
@@ -125,7 +127,7 @@ object AWS {
     }
 
     def readSqs(name: String): Stream[F, Message[F, String]] =
-      SQS.readQueue(name).map { case (msg, ack, extend) => Message(msg.body(), ack, extend) }
+      SQS.readQueue(name, sqsVisibility.toSeconds.toInt).map { case (msg, ack, extend) => Message(msg.body(), ack, extend) }
   }
 }
 

@@ -106,7 +106,7 @@ object Loader {
     val folder = discovery.data.origin.base
     val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
     val backgroundCheck: F[Unit] => F[Unit] =
-      StateMonitoring.inBackground[F](control.get, busy, discovery.extend)
+      StateMonitoring.inBackground[F](config.timeouts, control.get, busy, discovery.extend)
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
