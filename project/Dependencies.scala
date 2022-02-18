@@ -42,7 +42,7 @@ object Dependencies {
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.3"
-    val jacksonModule    = "2.12.3" // Override incompatible version in spark runtime
+    val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
 
     // Java (Loader)
     val slf4j            = "1.7.32"
@@ -108,8 +108,11 @@ object Dependencies {
   val sparkCore         = "org.apache.spark"             %% "spark-core"               % V.spark           % Provided
   val sparkSQL          = "org.apache.spark"             %% "spark-sql"                % V.spark           % Provided
   val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
-  val jacksonModule     = "com.fasterxml.jackson.module" %% "jackson-module-scala"     % V.jacksonModule
-  val jacksonDatabind   = "com.fasterxml.jackson.core"   % "jackson-databind"          % V.jacksonModule
+
+  val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonModule
+  val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
+
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
