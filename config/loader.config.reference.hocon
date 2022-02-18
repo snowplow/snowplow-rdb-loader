@@ -95,6 +95,8 @@
       "until": "7 days"
       # Path to shredded archive
       "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+      # How many times the check can fail before generating an alarm instead of warning
+      "failBeforeAlarm": 3
     },
 
     # Periodic DB health-check, raising a warning if DB hasn't responded to `SELECT 1`
@@ -119,5 +121,24 @@
     "maxAttempts": 3,
     # Artificial pause after each failed folder being added to the queue
     "interval": "5 seconds"
+  },
+
+  "timeouts": {
+    # How long loading (actual COPY statements) can take before considering Redshift unhealthy
+    # Without any progress (i.e. different subfolder) within this period, loader
+    # will abort the transaction
+    "loading": "1 hour",
+
+    # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
+    # before considering Redshift unhealthy
+    "nonLoading": "10 minutes"
+
+    # SQS visibility timeout is the time window in which a message must be
+    # deleted (acknowledged). Otherwise it is considered abandoned.
+    # If a message has been pulled, but hasn't been deleted, the next time
+    # it will re-appear in another consumer is equal to the visibility timeout
+    # Another consequence is that if Loader has failed on a message processing,
+    # the next time it will get this (or anything) from a queue has this delay
+    "sqsVisibility": "5 minutes"
   }
 }

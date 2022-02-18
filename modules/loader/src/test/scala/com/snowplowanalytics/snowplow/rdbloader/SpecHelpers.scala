@@ -40,6 +40,7 @@ object SpecHelpers {
     ConfigSpec.exampleRetryQueue,
     ConfigSpec.exampleStorage,
     ConfigSpec.exampleSchedules,
+    ConfigSpec.exampleTimeouts,
   )
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 

@@ -14,8 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
-import scala.concurrent.duration._
-
 import cats.{MonadThrow, Monad}
 import cats.implicits._
 
@@ -57,21 +55,6 @@ object Retries {
   type Failures = Map[S3.Folder, LoadFailure]
 
   type RetryQueue[F[_]] = InspectableQueue[F, Message[F, DataDiscovery.WithOrigin]]
-
-  /** How often try to pull failures */
-  val RetryPeriod: FiniteDuration = 30.minutes
-
-  /**
-   * An artificial pause between discoveries, exists to make sure
-   * the SQS discovery stream has priority over retry queue
-   */
-  val RetryRate: FiniteDuration = 5.seconds
-
-  /** Maximum amount of stored retries. All failures are dropped once the limit is reached */
-  val MaxSize = 64
-
-  /** How many attempts to make before giving up a folder */
-  val MaxAttempts = 3
 
   implicit val folderOrdering: Ordering[S3.Folder] =
     Ordering[String].on(_.toString)
