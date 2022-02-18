@@ -52,6 +52,7 @@ object Dependencies {
     val jSch             = "0.1.55"
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
+    val commons          = "2.7"    // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -128,6 +129,7 @@ object Dependencies {
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
+  val commons           = "commons-io"             % "commons-io"               % V.commons
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
