@@ -110,7 +110,7 @@ object ConfigSpec {
     30.minutes, 64, 3, 5.seconds
   ))
   val emptySchedules: Config.Schedules = Config.Schedules(Nil)
-  val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
+  val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes, 2.seconds)
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()

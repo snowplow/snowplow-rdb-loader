@@ -90,9 +90,10 @@ object Loader {
       Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.get.map(_.failures))
     val discovery = sqsDiscovery.merge(retryDiscovery)
 
-    discovery
-      .pauseWhen[F](control.isBusy)
-      .evalMap(processDiscovery[F, C](config, control))
+    Stream.eval(Timer[F].sleep(config.timeouts.settle) *> Logging[F].debug("Got over settle timeout")) ++
+      discovery
+        .pauseWhen[F](control.isBusy)
+        .evalMap(processDiscovery[F, C](config, control))
   }
 
   /**

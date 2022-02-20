@@ -14,12 +14,17 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.concurrent.duration._
 
+import java.time.{ ZonedDateTime, ZoneId }
+import java.time.temporal.ChronoUnit
+
 import cats.implicits._
 
-import cats.effect.{Timer, Concurrent, Sync}
+import cats.effect.{Timer, Concurrent, Sync, Clock, BracketThrow}
 
 import fs2.Stream
 import fs2.concurrent.Signal
+
+import cron4s.lib.javatime._
 
 import eu.timepit.fs2cron.ScheduledStreams
 import eu.timepit.fs2cron.cron4s.Cron4sScheduler
@@ -75,7 +80,7 @@ object NoOperation {
           }
     }
 
-    Stream(paused: _*).parJoinUnbounded
+    Stream.eval(start[F](schedules, makePaused)).flatMap { _ => Stream(paused: _*).parJoinUnbounded }
   }
 
   /** Block the execution until `Status.Idle` appears in the signal */
@@ -88,5 +93,68 @@ object NoOperation {
       case loading: Status.Loading =>
         Logging[F].warning(show"Cannot pause Loader in non-Idle state. $loading").as(false)
     }.head.compile.drain
+
+  /** 
+   * Check all available schedules before the start of the stream and check if current timestamp
+   * is within any known window. If it is within a window - pause the app until the schedule is over
+   */
+  def start[F[_]: Logging: Timer: Sync](schedules: List[Schedule], makePaused: MakePaused[F]): F[Unit] =
+    schedules.traverse_ { schedule =>
+      getTime[F].flatMap { now =>
+        if (isInWindow(schedule, now)) pauseOnce[F](schedule, now, makePaused)
+        else Logging[F].debug(show"No overlap with ${schedule.name}")
+      }
+    }
+
+  /** Special on-start pause action */
+  def pauseOnce[F[_]: Timer: BracketThrow: Logging](schedule: Schedule, from: ZonedDateTime, makePaused: MakePaused[F]) = {
+    val duration = getPauseDuration(schedule, from)
+    val start = show"Loader has started within no-op window of ${schedule.name}, "
+    val warn = if (duration._1 == 0)
+      Logging[F].warning(show"$start, but couldn't find out how long to sleep. Ignroging the initial pause")
+    else 
+      Logging[F].warning(show"$start, pausing for ${duration}")
+    warn *> makePaused(schedule.name).use { _ => Timer[F].sleep(duration) } *> Logging[F].info(s"Unpausing ${schedule.name}")
+  }
+    
+  /**
+   * Check if the schedule active at the moment (i.e. Loader should not be running)
+   * Used when the app starts in the middle of no-op window
+   */
+  def isActive[F[_]: Clock: Sync](schedule: Schedule): F[Boolean] =
+    getTime[F].map(now => isInWindow(schedule, now))
+
+  def isInWindow(schedule: Schedule, now: ZonedDateTime): Boolean =
+    getBoundaries(schedule, now) match {
+      case Some((start, end)) =>
+        now.isAfter(start) && now.isBefore(end)
+      case None =>
+        // In production this happens in a very rare case when
+        // the function is called at 00:00 AND at the first day of Mar, May, Jul, Oct, Dec
+        // see https://github.com/alonsodomin/cron4s/issues/158 and spec
+        false
+    }
+
+  def getPauseDuration(schedule: Schedule, from: ZonedDateTime): FiniteDuration =
+    getBoundaries(schedule, from) match {
+      case Some((_, toUnpause)) =>
+        val seconds = ChronoUnit.SECONDS.between(from, toUnpause)
+        if (seconds <= 0) 0.seconds else seconds.seconds
+      case None =>
+        0.seconds
+    }
+
+  /** Calculate start and end of schedule */
+  def getBoundaries(schedule: Schedule, from: ZonedDateTime): Option[(ZonedDateTime, ZonedDateTime)] =
+    schedule.when.step(from, -1) match {
+      case Some(start) =>
+        val end = start.plusSeconds(schedule.duration.toSeconds) // Should be somewhere in future, relative to from
+        Some((start, end))
+      case None =>
+        None
+    }
+
+  def getTime[F[_]: Clock: Sync]: F[ZonedDateTime] =
+    Clock[F].instantNow.flatMap(now => Sync[F].delay(ZonedDateTime.ofInstant(now, ZoneId.systemDefault())))
 
 }

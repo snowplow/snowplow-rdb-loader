@@ -103,7 +103,7 @@ class StateMonitoringSpec extends Specification {
 
 object StateMonitoringSpec {
 
-  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
+  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes, 2.seconds)
 
   def checkRun(init: State => State) = {
     implicit val ec: TestContext =
