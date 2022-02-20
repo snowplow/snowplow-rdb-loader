@@ -64,7 +64,10 @@ object Loader {
         .evalMap { _ => control.get.map(_.showExtended) }
         .evalMap { state => Logging[F].info(show"Loader State: $state") }
 
-    val process = Stream.eval(Manifest.initialize[F, C](config.storage)).flatMap { _ =>
+    val init: F[Unit] = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
+      Manifest.initialize[F, C](config.storage)
+
+    val process = Stream.eval(init).flatMap { _ =>
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)

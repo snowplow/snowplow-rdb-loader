@@ -36,6 +36,7 @@
   "schedules": {
     # Periodic schedules to stop loading, e.g. for Redshift maintenance window
     # Any amount of schedules is supported, but recommended to not overlap them
+    # The scuedule works with machine's local timezone (and UTC is recommended)
     "noOperation": [
       {
         # Human-readable name of the no-op window
