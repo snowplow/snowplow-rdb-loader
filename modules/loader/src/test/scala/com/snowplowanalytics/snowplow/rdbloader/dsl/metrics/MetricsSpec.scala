@@ -36,7 +36,7 @@ class MetricsSpec extends Specification {
     def monotonic(unit: TimeUnit): Id[Long] = 0L
   }
 
-  "getMetrics" should {
+  "getCompletedMetrics" should {
     "compute the metrics" in {
       val countGood = 42L
       val collectorLatencyMin = 120L
@@ -58,15 +58,15 @@ class MetricsSpec extends Specification {
         Some(Count(countGood))
       )
 
-      val expected = Metrics.KVMetrics(
-        Metrics.KVMetric(Metrics.CountGoodName, countGood.toString),
-        Some(Metrics.KVMetric(Metrics.CollectorLatencyMinName, collectorLatencyMin.toString)),
-        Some(Metrics.KVMetric(Metrics.CollectorLatencyMaxName, collectorLatencyMax .toString)),
-        Metrics.KVMetric(Metrics.ShredderStartLatencyName, shredderStartLatency.toString),
-        Metrics.KVMetric(Metrics.ShredderEndLatencyName, shredderEndLatency .toString)
+      val expected = Metrics.KVMetrics.LoadingCompleted(
+        Metrics.KVMetric.CountGood(countGood.toString),
+        Some(Metrics.KVMetric.CollectorLatencyMin(collectorLatencyMin.toString)),
+        Some(Metrics.KVMetric.CollectorLatencyMax(collectorLatencyMax .toString)),
+        Metrics.KVMetric.ShredderLatencyStart(shredderStartLatency.toString),
+        Metrics.KVMetric.ShredderLatencyEnd(shredderEndLatency .toString)
       )
 
-      val actual = Metrics.getMetrics[Id](loaded)
+      val actual = Metrics.getCompletedMetrics[Id](loaded)
 
       actual === expected
     }
