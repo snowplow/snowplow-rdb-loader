@@ -23,6 +23,7 @@ import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 object HealthCheck {
 
@@ -37,13 +38,15 @@ object HealthCheck {
           Stream.awakeDelay[F](config.frequency)
             .evalMap { _ => perform[F, C].timeoutTo(config.timeout, Concurrent[F].pure(false)) }
             .evalMap {
-              case true =>
-                previousHealthy.set(true) *> Logging[F].info("DB is healthy and responsive")
-              case false =>
+              case h @ true =>
+                val report = Monitoring[F].reportMetrics(Metrics.getHealthMetrics(h))
+                previousHealthy.set(true) *> report *> Logging[F].info("DB is healthy and responsive")
+              case h @ false =>
                 previousHealthy.getAndSet(false).flatMap { was =>
                   val msg = s"DB couldn't complete a healthcheck query in ${config.timeout}"
                   val alert = if (was) Monitoring[F].alert(Monitoring.AlertPayload.warn(msg)) else Concurrent[F].unit
-                  alert *> Logging[F].warning(msg)
+                  val report = Monitoring[F].reportMetrics(Metrics.getHealthMetrics(h))
+                  alert *> report *> Logging[F].warning(msg)
                 }
             }
         }
