@@ -136,8 +136,8 @@ object Load {
       _       <- Logging[F].info(s"Folder ${loaded.base} loaded successfully")
       success  = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
       _       <- Monitoring[F].success(success)
-      metrics <- Metrics.getMetrics[F](loaded)
+      metrics <- Metrics.getCompletedMetrics[F](loaded)
       _       <- Monitoring[F].reportMetrics(metrics)
-      _       <- Logging[F].info(metrics.toHumanReadableString)
+      _       <- Logging[F].info(metrics.show)
     } yield ()
 }
