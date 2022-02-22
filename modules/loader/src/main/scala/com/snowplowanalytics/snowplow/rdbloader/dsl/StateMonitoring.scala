@@ -29,6 +29,9 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 object StateMonitoring {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
 
   /** If we extend for exact SQS VisibilityTimeout it could be too late and SQS returns an error */
   val ExtendAllowance: FiniteDuration = 30.seconds
