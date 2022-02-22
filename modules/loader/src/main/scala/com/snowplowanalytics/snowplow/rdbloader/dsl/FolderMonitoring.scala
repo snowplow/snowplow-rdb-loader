@@ -61,6 +61,9 @@ object FolderMonitoring {
 
   val ShreddingComplete = "shredding_complete.json"
 
+  // Can be configured, but need to provide default value
+  val FailBeforeAlarm = 3
+
   /**
    * Check if S3 key name represents a date more recent than a `since`
    *
@@ -220,7 +223,8 @@ object FolderMonitoring {
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
                   val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
                   val payload = Monitoring.AlertPayload.warn(msg)
-                  if (failedBefore >= folders.failBeforeAlarm) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
+                  val maxAttempts = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
+                  if (failedBefore >= maxAttempts) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
                   else Logging[F].warning(msg)
                 }
               } *> lock.release
