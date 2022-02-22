@@ -40,6 +40,8 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
  */
 object Retries {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
    * Internal manifest of recent failures
