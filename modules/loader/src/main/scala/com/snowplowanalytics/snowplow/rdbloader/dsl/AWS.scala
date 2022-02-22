@@ -44,7 +44,7 @@ trait AWS[F[_]] { self =>
 
   def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
 
-  def readKey(path: S3.Key): F[Option[String]]
+  def readKey(path: S3.Key): F[Either[Throwable, String]]
 
   /** Check if S3 key exist */
   def keyExists(key: S3.Key): F[Boolean]
@@ -76,7 +76,7 @@ object AWS {
       S3.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
     }
 
-    def readKey(path: Key): F[Option[String]] = {
+    def readKey(path: Key): F[Either[Throwable, String]] = {
       val (bucket, s3Key) = S3.splitS3Key(path)
       client
         .get(S3Path(bucket, s3Key, None), 1024)
@@ -84,7 +84,6 @@ object AWS {
         .to(Array)
         .map(array => new String(array))
         .attempt
-        .map(_.toOption)
     }
 
     def listS3(folder: S3.Folder, recursive: Boolean): Stream[F, S3.BlobObject] = {
@@ -98,7 +97,7 @@ object AWS {
     }
 
     /**
-     * Check if some `file` exists in S3 `path`
+     * Check if some `key` exists in S3 `path`
      *
      * @param key valid S3 key (without trailing slash)
      * @return true if file exists, false if file doesn't exist or not available
