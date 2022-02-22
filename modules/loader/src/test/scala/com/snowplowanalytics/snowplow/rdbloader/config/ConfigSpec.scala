@@ -45,6 +45,7 @@ class ConfigSpec extends Specification {
         exampleStorage,
         exampleSchedules,
         exampleTimeouts,
+        exampleRetries,
       )
       result must beRight(expected)
     }
@@ -60,6 +61,7 @@ class ConfigSpec extends Specification {
         exampleStorage,
         emptySchedules,
         exampleTimeouts,
+        exampleRetries.copy(cumulativeBound = None),
       )
       result must beRight(expected)
     }
@@ -111,6 +113,7 @@ object ConfigSpec {
   ))
   val emptySchedules: Config.Schedules = Config.Schedules(Nil)
   val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
+  val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()

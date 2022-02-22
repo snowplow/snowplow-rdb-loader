@@ -84,7 +84,7 @@ object Load {
           migrations  <- Migration.build[F, C](redshiftConfig.storage.schema, discovery.discovery)
           _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
           transaction  = getTransaction[C](redshiftConfig, setStage, discovery)(migrations.inTransaction)
-          result      <- Retry.retryLoad(incrementAttempt, Transaction[F, C].transact(transaction))
+          result      <- Retry.retryLoad(config.retries, incrementAttempt, Transaction[F, C].transact(transaction))
         } yield result
     }
 
