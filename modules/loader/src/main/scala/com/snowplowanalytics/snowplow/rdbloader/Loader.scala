@@ -62,7 +62,7 @@ object Loader {
     val stateLogging: Stream[F, Unit] =
       Stream.awakeDelay[F](StateLoggingFrequency)
         .evalMap { _ => control.get.map(_.showExtended) }
-        .evalMap { state => Logging[F].info(show"Loader State: $state") }
+        .evalMap { state => Logging[F].info(state) }
 
     val init: F[Unit] = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Manifest.initialize[F, C](config.storage)

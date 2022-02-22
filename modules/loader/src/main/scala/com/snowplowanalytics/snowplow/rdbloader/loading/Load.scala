@@ -116,7 +116,8 @@ object Load {
         case None =>
           val setLoading: String => F[Unit] =
             table => setStage(Stage.Loading(table))
-          setStage(Stage.MigrationIn) *>
+          Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
+            setStage(Stage.MigrationIn) *>
             inTransactionMigrations *>
             RedshiftLoader.run[F](config, setLoading, discovery.discovery) *>
             setStage(Stage.Committing) *>
@@ -131,13 +132,15 @@ object Load {
   def congratulate[F[_]: Clock: Monad: Logging: Monitoring](attempts: Int,
                                                             started: Instant,
                                                             ingestion: Instant,
-                                                            loaded: LoaderMessage.ShreddingComplete): F[Unit] =
+                                                            loaded: LoaderMessage.ShreddingComplete): F[Unit] = {
+    val attemptsSuffix = if (attempts > 0) s" after ${attempts} attempts" else ""
     for {
-      _       <- Logging[F].info(s"Folder ${loaded.base} loaded successfully")
+      _       <- Logging[F].info(s"Folder ${loaded.base} loaded successfully$attemptsSuffix")
       success  = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
       _       <- Monitoring[F].success(success)
       metrics <- Metrics.getCompletedMetrics[F](loaded)
       _       <- Monitoring[F].reportMetrics(metrics)
       _       <- Logging[F].info(metrics.show)
     } yield ()
+  }
 }

@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, MonadThrow}
+import cats.{Applicative, MonadThrow, Show}
 import cats.implicits._
 
 import cats.effect.Timer
@@ -41,7 +41,7 @@ object Retry {
   }
 
   def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(show"${e.toString} Transaction aborted. ${d.toString}")
+    Logging[F].error(show"Transaction aborted. $d. Caught exception: ${e.toString}")
 
   /** Check if error is worth retrying */
   def isWorth(e: Throwable): Boolean = {
@@ -91,4 +91,15 @@ object Retry {
       }
     }
   }
+
+  implicit val detailsShow: Show[RetryDetails] =
+    Show.show {
+      case RetryDetails.WillDelayAndRetry(next, soFar, _) =>
+        val nextSec = show"${next.toSeconds} seconds"
+        val attempts = if (soFar == 0) "for the first time" else if (soFar == 1) s"after one retry" else s"after ${soFar} retries"
+        show"Sleeping for $nextSec $attempts"
+      case RetryDetails.GivingUp(soFar, _) =>
+        val attempts = if (soFar == 0) "without retries" else if (soFar == 1) s"after one retry" else s"after ${soFar} retries"
+        s"Giving up after $attempts"
+    }
 }
