@@ -25,7 +25,7 @@ import fs2.concurrent.InspectableQueue
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache, FolderMonitoring}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
 
@@ -176,19 +176,19 @@ object Retries {
     }
 
   def readShreddingComplete[F[_]: AWS: MonadThrow](folder: S3.Folder): F[LoaderMessage.ShreddingComplete] = {
-    val fullPath = folder.withKey("shredding_complete.json")
+    val fullPath = folder.withKey(FolderMonitoring.ShreddingComplete)
     AWS[F]
       .readKey(fullPath)
       .flatMap {
-        case Some(content) =>
+        case Right(content) =>
           LoaderMessage.fromString(content) match {
             case Right(message: LoaderMessage.ShreddingComplete) =>
               MonadThrow[F].pure(message)
             case Left(error) =>
               MonadThrow[F].raiseError[LoaderMessage.ShreddingComplete](new RuntimeException(error))
           }
-        case None =>
-          MonadThrow[F].raiseError(new RuntimeException(s"S3 Key $fullPath could not be found or read"))
+        case Left(error) =>
+          MonadThrow[F].raiseError(error)
       }
   }
 }
