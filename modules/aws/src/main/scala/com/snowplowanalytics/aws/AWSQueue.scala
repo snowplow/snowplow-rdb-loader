@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.aws
 
-import cats.effect.{Resource, Sync}
+import cats.effect.{Resource, Concurrent}
 
 import software.amazon.awssdk.regions.Region
 
@@ -31,7 +31,7 @@ object AWSQueue {
     final case object SQS extends QueueType
   }
 
-  def build[F[_]: Sync](queueType: QueueType, queueName: String, region: String): Resource[F, AWSQueue[F]] = {
+  def build[F[_]: Concurrent](queueType: QueueType, queueName: String, region: String): Resource[F, AWSQueue[F]] = {
     queueType match {
       case QueueType.SQS =>
         SQS.mkClientBuilder(_.region(Region.of(region))).map { client =>

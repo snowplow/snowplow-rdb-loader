@@ -17,6 +17,8 @@ import scala.concurrent.duration.FiniteDuration
 import cats._
 import cats.implicits._
 
+import fs2.Stream
+
 import com.snowplowanalytics.snowplow.rdbloader.{ DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction }
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -71,9 +73,9 @@ object DataDiscovery {
    * @param config generic storage target configuration
    * @param state mutable state to keep logging information
    */
-  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
     AWS[F]
-      .readSqs(config.messageQueue)
+      .readSqs(config.messageQueue, stop)
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.data) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>

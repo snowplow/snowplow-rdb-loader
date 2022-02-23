@@ -15,7 +15,7 @@ package com.snowplowanalytics.aws.sqs
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
 
-import cats.effect.{Timer, Resource, Sync}
+import cats.effect.{Timer, Resource, Sync, Concurrent}
 import cats.implicits._
 
 import fs2.Stream
@@ -25,13 +25,13 @@ import software.amazon.awssdk.services.sqs.model.{GetQueueUrlRequest, DeleteMess
 
 object SQS {
 
-  def mkClient[F[_]: Sync]: Resource[F, SqsClient] =
+  def mkClient[F[_]: Concurrent]: Resource[F, SqsClient] =
     mkClientBuilder(identity[SqsClientBuilder])
 
-  def mkClientBuilder[F[_]: Sync](build: SqsClientBuilder => SqsClientBuilder): Resource[F, SqsClient] =
+  def mkClientBuilder[F[_]: Concurrent](build: SqsClientBuilder => SqsClientBuilder): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient](build(SqsClient.builder()).build()))
 
-  def readQueue[F[_]: Timer: Sync](queueName: String, visibilityTimeout: Int): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  def readQueue[F[_]: Timer: Concurrent](queueName: String, visibilityTimeout: Int, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest
@@ -44,6 +44,7 @@ object SQS {
     Stream.resource(mkClient.evalMap(getUrl[F](queueName))).flatMap { case (client, queueUrl) =>
       Stream
         .awakeEvery[F](1.second)
+        .pauseWhen(stop)
         .flatMap { _ =>
           val messages = Sync[F].delay(client.receiveMessage(getRequest(queueUrl))).map(_.messages().asScala)
           Stream
