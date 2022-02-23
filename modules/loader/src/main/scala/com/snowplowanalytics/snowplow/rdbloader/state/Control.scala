@@ -63,6 +63,9 @@ case class Control[F[_]](private val state: State.Ref[F]) {
     state.get
   def signal: Signal[F, State] =
     state
+  def getFailures(implicit F: Functor[F]): F[Retries.Failures] =
+    get.map(_.getFailures)
+
 
   def setStage(stage: Stage)(implicit C: Clock[F], F: Monad[F]): F[Unit] =
     C.instantNow.flatMap { now =>
