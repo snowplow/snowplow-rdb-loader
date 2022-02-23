@@ -90,7 +90,7 @@ object Loader {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages)
     val retryDiscovery: DiscoveryStream[F] =
-      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.get.map(_.failures))
+      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.getFailures)
     val discovery = sqsDiscovery.merge(retryDiscovery)
 
     discovery

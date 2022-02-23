@@ -16,12 +16,15 @@ import scala.concurrent.duration._
 
 import cats.effect.{ IO, Clock, ContextShift }
 
-import com.snowplowanalytics.snowplow.rdbloader.state.State
+import fs2.concurrent.InspectableQueue
+
+import com.snowplowanalytics.snowplow.rdbloader.state.{ State, Control }
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 import org.specs2.mutable.Specification
-import com.snowplowanalytics.snowplow.rdbloader.state.Control
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
+import java.time.Instant
 
 
 class RetriesSpec extends Specification {
@@ -127,6 +130,105 @@ class RetriesSpec extends Specification {
           attempts must beEqualTo(0)        // Reset by getAndResetAttempts
           totalAttempts must beEqualTo(10)  // Accumulated
       }
+    }
+  }
+
+  "pullFailures" should {
+    "not pull to a non-empty queue" in {
+
+      val NotImportantTime = Instant.ofEpochMilli(100000000000L)
+      val Size = 10
+      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
+
+
+      implicit val T = IO.timer(concurrent.ExecutionContext.global)
+      implicit val L = Logging.noOp[IO]
+
+      val getFailures = IO.pure(Map(
+        FolderOne -> Retries.LoadFailure(new RuntimeException("boom"), 1, NotImportantTime, NotImportantTime),
+      ))
+
+      val result = for {
+        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+
+        _          <- q.enqueue1(FolderTwo)
+        _          <- Retries.pullFailures[IO](Size, q, getFailures)
+        sizeBefore <- q.getSize
+        deqeued    <- Retries.periodicDequeue(q, 100.millis).compile.toList
+        sizeAfter  <- q.getSize
+      } yield (sizeBefore, deqeued, sizeAfter)
+
+      val (sizeBefore, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()
+
+      sizeBefore must beEqualTo(1)
+      deqeued must beEqualTo(List(FolderTwo))
+      sizeAfter must beEqualTo(0)
+    }
+
+    "pull all items" in {
+      val NotImportantTime = Instant.ofEpochMilli(100000000000L)
+      val Size = 10
+      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
+
+      implicit val T = IO.timer(concurrent.ExecutionContext.global)
+      implicit val L = Logging.noOp[IO]
+
+      val getFailures = IO.pure(Map(
+        FolderOne -> Retries.LoadFailure(new RuntimeException("boom"), 1, NotImportantTime, NotImportantTime),
+        FolderTwo -> Retries.LoadFailure(new RuntimeException("boom-two"), 1, NotImportantTime, NotImportantTime),
+      ))
+
+      val result = for {
+        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+
+        _          <- Retries.pullFailures[IO](Size, q, getFailures)
+        sizeBefore <- q.getSize
+        deqeued    <- Retries.periodicDequeue(q, 100.millis).compile.toList
+        sizeAfter  <- q.getSize
+      } yield (sizeBefore, deqeued, sizeAfter)
+
+      val (sizeBefore, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()
+
+      sizeBefore must beEqualTo(2)
+      deqeued must beEqualTo(List(FolderOne, FolderTwo))
+      sizeAfter must beEqualTo(0)
+    }
+
+    "not block if max is the same as of queue capacity" in {
+      val NotImportantTime = Instant.ofEpochMilli(100000000000L)
+      val Size = 3
+      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
+      val FolderThree = S3.Folder.coerce("s3://bucket/3/")
+      val FolderFour = S3.Folder.coerce("s3://bucket/4/")
+
+      implicit val T = IO.timer(concurrent.ExecutionContext.global)
+      implicit val L = Logging.noOp[IO]
+
+      def getFailures = IO.pure(Map(
+        FolderOne -> Retries.LoadFailure(new RuntimeException("boom"), 1, NotImportantTime, NotImportantTime),
+        FolderTwo -> Retries.LoadFailure(new RuntimeException("boom-two"), 1, NotImportantTime, NotImportantTime),
+        FolderThree -> Retries.LoadFailure(new RuntimeException("boom-three"), 1, NotImportantTime, NotImportantTime),
+        FolderFour -> Retries.LoadFailure(new RuntimeException("boom-folder"), 1, NotImportantTime, NotImportantTime),
+      ))
+
+      val result = for {
+        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+
+        exception  <- Retries.pullFailures[IO](Size, q, getFailures).timeout(100.millis).attempt
+        sizeBefore <- q.getSize
+        deqeued    <- Retries.periodicDequeue(q, 100.millis).compile.toList
+        sizeAfter  <- q.getSize
+      } yield (sizeBefore, exception, deqeued, sizeAfter)
+
+      val (sizeBefore, exception, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()
+
+      exception must beRight
+      sizeBefore must beEqualTo(Size)
+      deqeued must beEqualTo(List(FolderOne, FolderTwo, FolderThree))
+      sizeAfter must beEqualTo(0)
     }
   }
 }
