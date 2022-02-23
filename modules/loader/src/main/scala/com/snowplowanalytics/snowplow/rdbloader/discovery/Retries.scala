@@ -14,12 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.{MonadThrow, Monad}
 import cats.implicits._
 
 import cats.effect.{Timer, Concurrent, Clock}
 
-import fs2.Stream
+import fs2.{ Stream, Pipe }
 import fs2.concurrent.InspectableQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
@@ -50,11 +52,10 @@ object Retries {
    * into the manifest respected a maximum amount of attempt - it helps
    * to avoid infinite loading, where a problematic folders gets back
    * into queue again and again
-   *
    */
   type Failures = Map[S3.Folder, LoadFailure]
 
-  type RetryQueue[F[_]] = InspectableQueue[F, Message[F, DataDiscovery.WithOrigin]]
+  type RetryQueue[F[_]] = InspectableQueue[F, S3.Folder]
 
   implicit val folderOrdering: Ordering[S3.Folder] =
     Ordering[String].on(_.toString)
@@ -98,24 +99,32 @@ object Retries {
   def run[F[_]: AWS: Cache: Logging: Timer: Concurrent](region: String, assets: Option[S3.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
     config match {
       case Some(config) =>
-        val mkStream = InspectableQueue
-          .bounded[F, Message[F, DataDiscovery.WithOrigin]](config.size)
-          .map(get[F](region, assets, config, failures))
-        Stream.eval(mkStream).flatten
+        Stream
+          .eval(InspectableQueue.bounded[F, S3.Folder](config.size))
+          .flatMap(get[F](region, assets, config, failures))
       case None =>
         Stream.empty
     }
 
-  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String, assets: Option[S3.Folder], config: Config.RetryQueue, failures: F[Failures])
+  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String,
+                                                        assets: Option[S3.Folder],
+                                                        config: Config.RetryQueue,
+                                                        failures: F[Failures])
                                                        (queue: RetryQueue[F]): DiscoveryStream[F] = {
     Stream
       .awakeDelay[F](config.period)
-      .flatMap { _ => pullFailures[F](queue, failures) }
+      .evalTap { _ => pullFailures[F](config.size, queue, failures) }
+      .flatMap { _ => periodicDequeue[F, S3.Folder](queue, config.interval) }
+      .through(readMessages[F](region, assets))
+  }
+
+  /** Confert S3 paths to respective discoveries */
+  def readMessages[F[_]: AWS: Cache: Logging: MonadThrow](region: String,
+                                                          assets: Option[S3.Folder]): Pipe[F, S3.Folder, Message[F, DataDiscovery.WithOrigin]] =
+    folders => folders
       .evalMap(readShreddingComplete[F])
       .evalMapFilter(fromLoaderMessage[F](region, assets))
       .map(mkMessage[F, DataDiscovery.WithOrigin])
-      .metered(config.interval)
-  }
 
   def fromLoaderMessage[F[_]: Monad: AWS: Cache: Logging](region: String, assets: Option[S3.Folder])
                                                          (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
@@ -128,18 +137,31 @@ object Retries {
         Logging[F].warning(show"Failed to re-discover data after a failure. $error").as(none)
     }
 
-  def pullFailures[F[_]: Monad: Logging](queue: RetryQueue[F], failures: F[Failures]): Stream[F, S3.Folder] = {
-    val pull: F[List[S3.Folder]] =
-      queue.getSize.flatMap { size =>
-        if (size == 0) {
-          failures.map(_.keys.toList.sorted).flatMap { failures =>
-            if (failures.isEmpty) Logging[F].debug("No failed folders for retry, skipping the pull").as(Nil)
-            else Monad[F].pure(failures)
-          }
-        } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull").as(Nil)
+  /**
+   * Pull failures from a global manifest of failures and enqueues them into local queue
+   * It never tries to enqueue if not all items were processed, which helps to make sure
+   * that no item is enqueued twice
+   * @param max a size of the queue, to make sure the action is not blocking because of underprovision
+   */
+  def pullFailures[F[_]: Monad: Logging](max: Int, queue: RetryQueue[F], failures: F[Failures]): F[Unit] =
+    queue.getSize.flatMap { size =>
+      if (size == 0) {
+        failures.map(_.keys.toList.sorted).flatMap {
+          case Nil => Logging[F].debug("No failed folders for retry, skipping the pull")
+          case list => list.take(max).traverse_(queue.enqueue1)
+        }
+      } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull")
+    }
+
+  def periodicDequeue[F[_]: Monad: Timer, A](queue: InspectableQueue[F, A], interval: FiniteDuration): Stream[F, A] = {
+    def go: Stream[F, A] =
+      Stream.eval(queue.getSize).flatMap { size =>
+        if (size == 0) Stream.empty
+        else Stream.eval(queue.dequeue1 <* Timer[F].sleep(interval)) ++ go
+
       }
 
-    Stream.evals(pull)
+    go
   }
 
   def mkMessage[F[_]: Logging, A](a: A): Message[F, A] = {
@@ -149,7 +171,7 @@ object Retries {
   }
 
   /**
-   * Add a failure into failure queue
+   * Add a failure into (or remove from if attempts exceeded) failure queue
    * Amount of taken attempts come from the state (i.e. control.incrementAttempt sets it)
    *
    * @return true if the folder has been added or false if folder has been dropped
