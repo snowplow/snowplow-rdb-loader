@@ -53,7 +53,7 @@ trait AWS[F[_]] { self =>
   def getEc2Property(name: String): F[Array[Byte]]
 
   /** Read text payloads from SQS string */
-  def readSqs(name: String): Stream[F, Message[F, String]]
+  def readSqs(name: String, stop: Stream[F, Boolean]): Stream[F, Message[F, String]]
 }
 
 object AWS {
@@ -125,8 +125,8 @@ object AWS {
       }
     }
 
-    def readSqs(name: String): Stream[F, Message[F, String]] =
-      SQS.readQueue(name, sqsVisibility.toSeconds.toInt).map { case (msg, ack, extend) => Message(msg.body(), ack, extend) }
+    def readSqs(name: String, stop: Stream[F, Boolean]): Stream[F, Message[F, String]] =
+      SQS.readQueue(name, sqsVisibility.toSeconds.toInt, stop).map { case (msg, ack, extend) => Message(msg.body(), ack, extend) }
   }
 }
 
