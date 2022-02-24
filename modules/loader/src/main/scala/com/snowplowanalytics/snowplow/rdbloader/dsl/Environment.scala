@@ -68,7 +68,7 @@ object Environment {
       amazonS3 <- AWS.getClient[F](cli.config.region.name)
 
       cache = Cache.cacheInterpreter[F](cacheMap)
-      aws = AWS.s3Interpreter[F](amazonS3)
+      aws = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility)
       state <- State.mk[F]
     } yield (cache, aws, state)
 

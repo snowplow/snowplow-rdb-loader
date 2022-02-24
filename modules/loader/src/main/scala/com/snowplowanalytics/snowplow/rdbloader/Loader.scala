@@ -17,8 +17,7 @@ import scala.concurrent.duration._
 import cats.{Monad, Apply}
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, Timer, MonadThrow, Concurrent}
-import cats.effect.implicits._
+import cats.effect.{Clock, Timer, MonadThrow, Concurrent}
 
 import fs2.Stream
 
@@ -28,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
-import com.snowplowanalytics.snowplow.rdbloader.state.Control
+import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
 
 object Loader {
 
@@ -63,9 +62,12 @@ object Loader {
     val stateLogging: Stream[F, Unit] =
       Stream.awakeDelay[F](StateLoggingFrequency)
         .evalMap { _ => control.get.map(_.showExtended) }
-        .evalMap { state => Logging[F].info(show"Loader State: $state") }
+        .evalMap { state => Logging[F].info(state) }
 
-    val process = Stream.eval(Manifest.initialize[F, C](config.storage)).flatMap { _ =>
+    val init: F[Unit] = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
+      Manifest.initialize[F, C](config.storage)
+
+    val process = Stream.eval(init).flatMap { _ =>
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)
@@ -86,9 +88,9 @@ object Loader {
   def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
                  C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery.discover[F](config, control.incrementMessages)
+      DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
     val retryDiscovery: DiscoveryStream[F] =
-      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.get.map(_.failures))
+      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.getFailures)
     val discovery = sqsDiscovery.merge(retryDiscovery)
 
     discovery
@@ -104,33 +106,33 @@ object Loader {
   def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
                        C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
-    val prepare: Resource[F, Unit] = for {
-      _        <- StateMonitoring.run(control.get, discovery.extend).background
-      makeBusy  = control.makeBusy
-      _        <- makeBusy(discovery.data.origin.base)
-    } yield ()
+    val folder = discovery.data.origin.base
+    val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
+    val backgroundCheck: F[Unit] => F[Unit] =
+      StateMonitoring.inBackground[F](config.timeouts, control.get, busy, discovery.extend)
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
     val addFailure: Throwable => F[Boolean] =
-      control.addFailure(config.retryQueue)(discovery.data.origin.base)(_)
+      control.addFailure(config.retryQueue)(folder)(_)
 
-    val loading: F[Unit] = prepare.use { _ =>
+    val loading: F[Unit] = backgroundCheck {
       for {
-        start  <- Clock[F].instantNow
-        result <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
-        _      <- result match {
+        start    <- Clock[F].instantNow
+        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
+        attempts <- control.getAndResetAttempts
+        _        <- discovery.ack
+        _        <- result match {
           case Right(ingested) =>
             val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
             for {
-              loaded   <- ingested.map(Monad[F].pure).getOrElse(now)
-              _        <- discovery.ack
-              attempts <- control.getAndResetAttempts
-              _        <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
-              _        <- control.incrementLoaded
+              loaded <- ingested.map(Monad[F].pure).getOrElse(now)
+              _      <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
+              _      <- control.removeFailure(folder)
+              _      <- control.incrementLoaded
             } yield ()
           case Left(alert) =>
-            discovery.ack *> control.getAndResetAttempts.void *> Monitoring[F].alert(alert)
+            Monitoring[F].alert(alert)
 
         }
       } yield ()
