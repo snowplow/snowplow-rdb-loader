@@ -17,6 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 import java.util.UUID
 import java.time.Instant
 import java.time.format.DateTimeParseException
+import java.sql.Timestamp
 
 import io.circe.Json
 import cats.Monad
@@ -100,8 +101,8 @@ object EventUtils {
   }
 
   def alterEnrichedEventAny[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): List[Any] = {
-    def transformDate(s: String): Instant =
-      Instant.parse(s)
+    def transformDate(s: String): Timestamp =
+      Timestamp.from(Instant.parse(s))
     def truncate(key: String, value: String): String =
       lengths.get(key) match {
         case Some(len) => value.take(len)

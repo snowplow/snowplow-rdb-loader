@@ -44,10 +44,8 @@ object Sink {
       .text(outFolder)
   }
 
-  def writeParquet(spark: SparkSession, sparkSchema: StructType, data: RDD[(String, List[Any])], outFolder: String): Unit = {
-    val rows = data.map {
-      case (_, d) => Row.fromSeq(d)
-    }
+  def writeParquet(spark: SparkSession, sparkSchema: StructType, data: RDD[List[Any]], outFolder: String): Unit = {
+    val rows = data.map(Row.fromSeq)
     spark.createDataFrame(rows, sparkSchema)
       .write
       .mode(SaveMode.Append)

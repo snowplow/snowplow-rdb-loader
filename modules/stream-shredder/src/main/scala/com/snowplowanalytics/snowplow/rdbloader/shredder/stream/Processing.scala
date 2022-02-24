@@ -148,6 +148,9 @@ object Processing {
                 Transformed.shredEvent(iglu, isTabular, atomicLengths, Application)(event)
               case ShredderConfig.Formats.WideRow =>
                 EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(event)))
+              case ShredderConfig.Formats.Parquet =>
+                // TODO: Parquet format should be properly handled here.
+                EitherT.pure[F, BadRow](List.empty[Transformed])
             }
           }
         } yield transformed
@@ -172,8 +175,7 @@ object Processing {
           s"$init/vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/"
         case p: Transformed.WideRow =>
           if (p.good) "output=good/" else "output=bad/"
-        case p: Transformed.Parquet =>
-          if (p.good) "output=good/" else "output=bad/"
+        case _: Transformed.Parquet => "output=good/"
       }
       SinkPath(path)
     }

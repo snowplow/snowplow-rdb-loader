@@ -200,7 +200,7 @@ class ShredJob(@transient val spark: SparkSession,
       case _: Formats.Shred =>
         Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.shredded), outFolder)
       case Formats.Parquet =>
-        Sink.writeParquet(spark, config.output.compression, transformed.flatMap(_.parquet), outFolder)
+        Sink.writeParquet(spark, SparkSchema.Atomic, transformed.flatMap(_.parquet), outFolder.append("output=good"))
         Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
     }
 
@@ -280,7 +280,6 @@ object ShredJob {
   }
 
   type WideRowTuple = (String, String)
-  type ParquetTuple = (String, List[Any])
   type ShreddedTuple = (String, String, String, String, Int, String)
 
   private implicit class TransformedOps(t: Transformed) {
@@ -298,9 +297,8 @@ object ShredJob {
       case _ => None
     }
 
-    def parquet: Option[ParquetTuple] = t match {
-      case p: Transformed.Parquet =>
-        ("good", p.data.value).some
+    def parquet: Option[List[Any]] = t match {
+      case p: Transformed.Parquet => p.data.value.some
       case _ => None
     }
   }
