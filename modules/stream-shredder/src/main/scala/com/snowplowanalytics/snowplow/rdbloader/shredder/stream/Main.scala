@@ -16,8 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.stream
 
 import cats.effect.{IOApp, IO, ExitCode, Sync}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, ShredderCliConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated.BuildInfo
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -29,15 +28,16 @@ object Main extends IOApp {
   val InvalidConfig: ExitCode = ExitCode(2)
 
   def run(args: List[String]): IO[ExitCode] =
-    ShredderCliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args: Seq[String]) match {
-      case Right(ShredderCliConfig(iglu, _, Config(_, _, region, _, _, queueUrl, s: Shredder.Stream, _, formats, _))) =>
-        Resources.mk[IO](iglu, region).use { resources =>
-          logger[IO].info(s"Starting RDB Shredder with $s config") *>
-            Processing.run[IO](resources, s, formats, queueUrl).as(ExitCode.Success)
-        }
-      case Right(_) =>
-        logger[IO].error(s"Trying to launch Stream Shredder with non-stream config").as(InvalidConfig)
-      case Left(e) =>
-        logger[IO].error(s"Configuration error: $e").as(InvalidConfig)
-    }
+    for {
+      parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
+      res <- parsed match {
+        case Right(cliConfig) =>
+          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue).use { resources =>
+            logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
+              Processing.run[IO](resources, cliConfig.config).as(ExitCode.Success)
+          }
+        case Left(e) =>
+          logger[IO].error(s"Configuration error: $e").as(InvalidConfig)
+      }
+    } yield res
 }

@@ -27,7 +27,7 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType, Count, Timestamps}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
@@ -41,50 +41,9 @@ package object rdbloader {
 
   /** Lift value into  */
   object LoaderAction {
-    def unit[F[_]: Applicative]: LoaderAction[F, Unit] =
-      EitherT.liftF(Applicative[F].unit)
-
-    def liftE[F[_]: Applicative, A](either: Either[LoaderError, A]): LoaderAction[F, A] =
-      EitherT.fromEither[F](either)
-
-    def liftF[F[_]: Functor, A](action: F[A]): LoaderAction[F, A] =
-      EitherT.liftF[F, LoaderError, A](action)
-
-    def apply[F[_], A](actionE: ActionE[F, A]): LoaderAction[F, A] =
+    def apply[F[_], A](actionE: F[Either[LoaderError, A]]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)
-
-    def raiseError[F[_]: Applicative, A](error: LoaderError): LoaderAction[F, A] =
-      liftE(error.asLeft)
-
-    def pure[F[_]: Applicative, A](a: A): LoaderAction[F, A] =
-      EitherT.pure[F, LoaderError](a)
   }
-
-  implicit class ActionOps[F[_], A](a: F[A]) {
-    def liftA(implicit F: Applicative[F]): LoaderAction[F, A] =
-      LoaderAction.liftF(a)
-  }
-
-  /** Non-short-circuiting version of `TargetLoading` */
-  type ActionE[F[_], A] = F[Either[LoaderError, A]]
-
-  /**
-    * Helper function to traverse multiple validated results inside a single `Action`
-    *
-    * @param f collection of results, e.g. `IO[List[Validated[Result]]]`
-    * @param ff helper function to transform end result, e.g. `ValidatedNel[String, A] => Either[String, A]`
-    * @tparam F outer action, such as `IO`
-    * @tparam G collection, such as `List`
-    * @tparam H inner-effect type, such as `Validation`
-    * @tparam J result effect, without constraints
-    * @tparam A result
-    * @return traversed and transformed action, where `H` replaced with `J` by `ff`
-    */
-  def sequenceInF[F[_]: Functor,
-                  G[_]: Traverse,
-                  H[_]: Applicative,
-                  J[_], A](f: F[G[H[A]]], ff: H[G[A]] => J[G[A]]): F[J[G[A]]] =
-    f.map(x => ff(x.sequence))
 
   /** IO-free result validation */
   type DiscoveryStep[A] = Either[DiscoveryFailure, A]

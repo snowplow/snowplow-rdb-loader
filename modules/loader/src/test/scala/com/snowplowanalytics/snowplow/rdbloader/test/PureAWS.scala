@@ -21,13 +21,16 @@ object PureAWS {
     def sinkS3(path: Key, overwrite: Boolean): Pipe[Pure, Byte, Unit] =
       in => in.map(_ => ())
 
+    def readKey(path: Key): Pure[Either[Throwable, String]] =
+      Pure.pure(Left(new NotImplementedError("Not used in tests")))
+
     def keyExists(key: Key): Pure[Boolean] =
       Pure.pure(results.keyExists(key))
 
     def getEc2Property(name: String): Pure[Array[Byte]] =
       Pure.pure(Array.empty[Byte])
 
-    def readSqs(name: String): fs2.Stream[Pure, Message[Pure, String]] =
+    def readSqs(name: String, stop: Stream[Pure, Boolean]): Stream[Pure, Message[Pure, String]] =
       fs2.Stream.empty
   }
 }

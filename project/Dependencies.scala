@@ -22,12 +22,15 @@ object Dependencies {
     val badrows          = "2.1.0"
     val analyticsSdk     = "2.1.0"
     val pureconfig       = "0.16.0"
+    val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
     val cats             = "2.2.0"
+    val catsEffect       = "2.5.4"
     val manifest         = "0.3.0"
     val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
+    val fs2Cron          = "0.5.0"
     val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
@@ -38,15 +41,19 @@ object Dependencies {
     // Scala (Shredder)
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.14.1"
+    val schemaDdl        = "0.14.3"
+    val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
 
     // Java (Loader)
     val slf4j            = "1.7.32"
     val redshift         = "1.2.55.1083"
-    val aws              = "1.11.1019"
-    val aws2             = "2.16.23"
+    val aws              = "1.12.161"
+    val aws2             = "2.17.59"
     val jSch             = "0.1.55"
     val sentry           = "1.7.30"
+    val protobuf         = "3.16.1" // Fix CVE
+    val commons          = "2.7"    // Fix CVE
+    val kafkaClients     = "2.7.2"  // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -75,11 +82,14 @@ object Dependencies {
   val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"              % V.circe
   val pureconfig        = "com.github.pureconfig"      %% "pureconfig"                        % V.pureconfig
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
+  val cron4sCirce       = "com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
   val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
   val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
   val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
+  val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val doobie            = "org.tpolecat"               %% "doobie-core"                       % V.doobie
+  val doobieHikari      = "org.tpolecat"               %% "doobie-hikari"                     % V.doobie
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
   val monocle           = "com.github.julien-truffaut" %% "monocle-core"                      % V.monocle
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
@@ -90,14 +100,19 @@ object Dependencies {
   val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
 
   // Scala (Shredder)
-  val eventsManifest    = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
-  val schemaDdl         = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
-  val circeJawn         = "io.circe"              %% "circe-jawn"                   % V.circe
-  val circeLiteral      = "io.circe"              %% "circe-literal"                % V.circe
-  val circeOptics       = "io.circe"              %% "circe-optics"                 % V.circe           % Test
-  val sparkCore         = "org.apache.spark"      %% "spark-core"                   % V.spark           % Provided
-  val sparkSQL          = "org.apache.spark"      %% "spark-sql"                    % V.spark           % Provided
-  val fs2Io             = "co.fs2"                %% "fs2-io"                       % V.fs2
+  val eventsManifest    = "com.snowplowanalytics"        %% "snowplow-events-manifest" % V.eventsManifest
+  val schemaDdl         = "com.snowplowanalytics"        %% "schema-ddl"               % V.schemaDdl
+  val circeJawn         = "io.circe"                     %% "circe-jawn"               % V.circe
+  val circeLiteral      = "io.circe"                     %% "circe-literal"            % V.circe
+  val circeOptics       = "io.circe"                     %% "circe-optics"             % V.circe           % Test
+  val sparkCore         = "org.apache.spark"             %% "spark-core"               % V.spark           % Provided
+  val sparkSQL          = "org.apache.spark"             %% "spark-sql"                % V.spark           % Provided
+  val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
+
+  val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonModule
+  val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
+
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
@@ -108,16 +123,23 @@ object Dependencies {
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
   val sqs               = "com.amazonaws"         % "aws-java-sdk-sqs"          % V.aws
+  val sns               = "com.amazonaws"         % "aws-java-sdk-sns"          % V.aws
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
 
   val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
+  val aws2sns           = "software.amazon.awssdk" % "sns"                      % V.aws2
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
+  val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
+  val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
+  val commons           = "commons-io"             % "commons-io"               % V.commons
+  val kafkaClients      = "org.apache.kafka"       % "kafka-clients"            % V.kafkaClients
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
   val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
   val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
   val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
+  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
 }

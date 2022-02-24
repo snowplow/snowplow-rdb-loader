@@ -17,7 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{SparkSession, SaveMode, DataFrameWriter}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 
 object Sink {
 

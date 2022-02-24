@@ -12,45 +12,24 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import java.time.Instant
+
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.global
 
-import cats.syntax.either._
-
-import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConfiguration}
-import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
-import com.amazonaws.services.sqs.{AmazonSQSClientBuilder, AmazonSQS}
-import com.amazonaws.services.sqs.model.SendMessageRequest
-
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated.BuildInfo
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.RunInterval
 
 object Discovery {
 
   final val FinalKeyName = "shredding_complete.json"
 
-  final val MaxRetries = 10
-  final val RetryBaseDelay = 1000 // milliseconds
-  final val RetryMaxDelay = 20 * 1000 // milliseconds
-
   /** Amount of folders at the end of archive that will be checked for corrupted state */
   final val FoldersToCheck = 512
-
-  /** Common retry policy for S3 and SQS (jitter) */
-  final val RetryPolicy =
-    new RetryPolicy(
-      (_: AmazonWebServiceRequest, _: AmazonClientException, retriesAttempted: Int) =>
-        retriesAttempted < MaxRetries,
-      new PredefinedBackoffStrategies.FullJitterBackoffStrategy(RetryBaseDelay, RetryMaxDelay),
-      MaxRetries,
-      true
-    )
 
   private final val MessageProcessorVersion = Semver
     .decodeSemver(BuildInfo.version)
@@ -59,16 +38,20 @@ object Discovery {
   final val MessageProcessor: LoaderMessage.Processor =
     LoaderMessage.Processor(BuildInfo.name, MessageProcessorVersion)
 
-
   /**
    * Get an async computation, looking for incomplete folders
    * (ones where shredding hasn't completed successfully) and
    * list of folders ready to be shredded
    */
-  def getState(region: String, enrichedFolder: Folder, shreddedFolder: Folder): (Future[List[S3.Folder]], List[S3.Folder]) = {
-    val client = createS3Client(region)
-    val enrichedDirs = Cloud.listDirs(client, enrichedFolder)
-    val shreddedDirs = Cloud.listDirs(client, shreddedFolder)
+  def getState(enrichedFolder: Folder,
+               shreddedFolder: Folder,
+               runInterval: RunInterval,
+               now: Instant,
+               listDirs: Folder => List[Folder],
+               keyExists: S3.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
+    val since = getConcrete(runInterval, now)
+    val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
+    val shreddedDirs = listDirs(shreddedFolder)
 
     val enrichedFolderNames = enrichedDirs.map(Folder.coerce).map(_.folderName)
     val shreddedFolderNames = shreddedDirs.map(Folder.coerce).map(_.folderName)
@@ -81,7 +64,7 @@ object Discovery {
 
     val incomplete = Future {
       intersecting.collect {
-        case folder if !Cloud.keyExists(client, shreddedFolder.append(folder).withKey(FinalKeyName)) =>
+        case folder if !keyExists(shreddedFolder.append(folder).withKey(FinalKeyName)) =>
           enrichedFolder.append(folder)
       }
     }(global)
@@ -90,57 +73,58 @@ object Discovery {
     (incomplete, unshredded)
   }
 
+  def getConcrete(runInterval: RunInterval, now: Instant): Option[Instant] = {
+    val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
+    (runInterval.sinceTimestamp.map(_.value), instantForDuration) match {
+      case (None, None) => None
+      case (i1@Some(v1), i2@Some(v2)) => if (v1.isAfter(v2)) i1 else i2
+      case (v1, None) => v1
+      case (None, v2) => v2
+    }
+  }
 
   /**
-   * Send SQS message and save thumb file on S3, signalising that the folder
+   * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format.
+   * This function extracts timestamp in the folder names and returns the ones in the
+   * given interval. Folders that does not have this format are included in the result also.
+   */
+  def findIntervalFolders(folders: List[Folder], since: Option[Instant], until: Option[Instant]): List[Folder] =
+    (since, until) match {
+      case (None, None) => folders
+      case _ =>
+        folders.filter { f =>
+          val folderName = f.folderName
+          !folderName.startsWith("run=") || {
+            val time = folderName.stripPrefix("run=")
+            Common.parseFolderTime(time).fold(
+              _ => true,
+              time => since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time))
+            )
+          }
+        }
+    }
+
+  /**
+   * Send message to queue and save thumb file on S3, signalising that the folder
    * has been shredded and can be loaded now
-   *
-   * @param message final message produced by the shredder
-   * @param region AWS region
-   * @param queue SQS queue name
    */
   def seal(message: LoaderMessage.ShreddingComplete,
-           region: String,
-           queue: String): Unit = {
-    val sqsClient: AmazonSQS = createSqsClient(region)
-    val s3Client: AmazonS3 = createS3Client(region)
-
-    val sqsMessage: SendMessageRequest =
-      new SendMessageRequest()
-        .withQueueUrl(queue)
-        .withMessageBody(message.selfDescribingData.asString)
-        .withMessageGroupId("shredding")
-
+           sendToQueue: (String, String) => Either[Throwable, Unit],
+           putToS3: (String,String, String) => Either[Throwable, Unit]): Unit = {
     val (bucket, key) = S3.splitS3Key(message.base.withKey(FinalKeyName))
 
-    Either.catchNonFatal(sqsClient.sendMessage(sqsMessage)) match {
+    sendToQueue("shredding", message.selfDescribingData.asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to SQS for ${message.base}", e)
+        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to queue for ${message.base}", e)
       case _ =>
         ()
     }
 
-    Either.catchNonFatal(s3Client.putObject(bucket, key, message.selfDescribingData.asString)) match {
+    putToS3(bucket, key, message.selfDescribingData.asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to SQS but could not write ${message.base.withKey(FinalKeyName)}", e)
+        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to queue but could not write ${message.base.withKey(FinalKeyName)}", e)
       case _ =>
         ()
     }
   }
-
-  /** Create SQS client with built-in retry mechanism (jitter) */
-  def createSqsClient(region: String): AmazonSQS =
-    AmazonSQSClientBuilder
-      .standard()
-      .withRegion(region)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
-      .build()
-
-  /** Create S3 client with built-in retry mechanism (jitter) */
-  def createS3Client(region: String): AmazonS3 =
-    AmazonS3ClientBuilder
-      .standard()
-      .withRegion(region)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
-      .build()
 }

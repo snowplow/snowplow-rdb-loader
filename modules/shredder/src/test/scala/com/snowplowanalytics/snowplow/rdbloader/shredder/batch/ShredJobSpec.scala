@@ -46,9 +46,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ShredderConfig, ShredderCliConfig, Region}
 
 
 // Specs2
@@ -216,41 +214,24 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: Shredder.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
+  private def storageConfig(shredder: ShredderConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
     val configPlain = s"""|{
-    |name = "Acme Redshift"
-    |id = "123e4567-e89b-12d3-a456-426655440000"
-    |region = "us-east-1"
-    |jsonpaths = null
-    |compression = "NONE"
-    |messageQueue = "messages"
-    |shredder = {
-    |  "type": "batch",
-    |  "input": "${shredder.input}",
-    |  "output" = {
-    |    "path": "${shredder.output.path}",
-    |    "compression": "${shredder.output.compression.toString.toUpperCase}"
-    |  }
+    |"input": "${shredder.input}",
+    |"output" = {
+    |  "path": "${shredder.output.path}",
+    |  "compression": "${shredder.output.compression.toString.toUpperCase}",
+    |  "region": "us-east-1"
     |},
-    |storage = {
-    | "type": "redshift",
-    | "host": "redshift.amazonaws.com",
-    | "database": "snowplow",
-    | "port": 5439,
-    | "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-    | "schema": "atomic",
-    | "username": "admin",
-    | "password": "Supersecret1",
-    | "jdbc": { "ssl": true },
-    | "maxError": 1,
-    | "sshTunnel": null
-    |},
-    |monitoring = {"snowplow": null, "sentry": null},
-    |formats = { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] },
-    |steps = []
+    |"queue": {
+    |  "type": "SQS"
+    |  "queueName": "test-sqs"
+    |  "region": "us-east-1"
+    |}
+    |"monitoring": {"snowplow": null, "sentry": null},
+    |"formats": { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] }
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
   }
@@ -326,9 +307,17 @@ object ShredJobSpec {
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
-  def getShredder(lines: Lines, dirs: OutputDirs): Shredder.Batch = {
+  def getShredder(lines: Lines, dirs: OutputDirs): ShredderConfig.Batch = {
     val input = mkTmpFile("input", createParents = true, containing = Some(lines))
-    Shredder.Batch(input.toURI, Shredder.Output(dirs.output.toURI, Shredder.Compression.None))
+    ShredderConfig.Batch(
+      input.toURI,
+      ShredderConfig.Output(dirs.output.toURI, ShredderConfig.Compression.None, Region("eu-central-1")),
+      ShredderConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
+      ShredderConfig.Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil),
+      ShredderConfig.Monitoring(None),
+      ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
+      ShredderConfig.RunInterval(None, None, None)
+    )
   }
 }
 
@@ -358,17 +347,12 @@ trait ShredJobSpec extends SparkSpec {
       (Array.empty[String], None)
     }
 
-    ShredderCliConfig.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
+    ShredderCliConfig.Batch.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
-        cli.config.shredder match {
-          case b: Shredder.Batch =>
-            val job = new ShredJob(spark,cli.igluConfig,  cli.config.formats, b)
-            val result = job.run("", Map.empty, dedupeConfig)
-            deleteRecursively(new File(b.input))
-            result
-          case other =>
-            throw new RuntimeException(s"Shredder configuration $other is not for Spark")
-        }
+        val job = new ShredJob(spark,cli.igluConfig,  cli.config.formats, cli.config)
+        val result = job.run("", Map.empty, dedupeConfig)
+        deleteRecursively(new File(cli.config.input))
+        result
       case Left(e) =>
         throw new RuntimeException(s"Cannot parse test configuration. Error: $e")
     }
