@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
-import java.time.{ZoneId, Instant}
+import java.time.{ ZonedDateTime, ZoneId, Instant}
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 
@@ -21,7 +21,7 @@ import scala.util.{ Try, Success, Failure }
 
 import cats.implicits._
 
-import cats.effect.{ContextShift, Resource, Timer, IO}
+import cats.effect.{ContextShift, Resource, Timer, IO }
 import cats.effect.concurrent.Ref
 
 import fs2.Stream
@@ -79,27 +79,105 @@ class NoOperationSpec extends Specification {
       }
     }
 
-     "execute two overlapping schedules" in {
-       val everySecond = Cron.unsafeParse("* * * ? * *")
-       val input = List(
-         Schedule("first", everySecond, 400.millis),   // responsible for job1, job3
-         Schedule("second", everySecond, 1100.millis),  // responsible for job2, job4
-       )
-       val test = NoOperationSpec.run(4)(input)
+    "execute two overlapping schedules" in {
+      val everySecond = Cron.unsafeParse("* * * ? * *")
+      val input = List(
+        Schedule("first", everySecond, 400.millis),   // responsible for job1, job3
+        Schedule("second", everySecond, 1100.millis),  // responsible for job2, job4
+      )
+      val test = NoOperationSpec.run(4)(input)
 
-       test must haveJobs {
-         case List(job1, job2, job3, job4) =>
-           job3.start - job1.start must beEqualTo(1000L)
-           job4.stop - job2.start must beEqualTo(3100L)
-           job4.start - job2.start must beEqualTo(2000L)
+      test must haveJobs {
+        case List(job1, job2, job3, job4) =>
+          job3.start - job1.start must beEqualTo(1000L)
+          job4.stop - job2.start must beEqualTo(3100L)
+          job4.start - job2.start must beEqualTo(2000L)
 
-           // Doesn't prove anything - just make sure jobs are as expected
-           job1.duration must beEqualTo(400L)
-           job2.duration must beEqualTo(1100L)
-           job3.duration must beEqualTo(400L)
-           job4.duration must beEqualTo(1100L)
-       }
-     }
+          // Doesn't prove anything - just make sure jobs are as expected
+          job1.duration must beEqualTo(400L)
+          job2.duration must beEqualTo(1100L)
+          job3.duration must beEqualTo(400L)
+          job4.duration must beEqualTo(1100L)
+      }
+    }
+  }
+
+  "NoOperation.isInWindow" should {
+    "recognize when timestamp is in window" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T06:59:59.00Z")
+
+      NoOperation.isInWindow(input, tstamp) must beTrue
+    }
+
+    "recognize when timestamp is not in window" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T07:00:01.00Z")
+
+      NoOperation.isInWindow(input, tstamp) must beFalse
+    }
+
+    "recognize when timestamp is not in window in a month after <31 days" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-03-01T06:00:00.00Z")
+
+      NoOperation.isInWindow(input, tstamp) must beTrue
+    }.pendingUntilFixed("https://github.com/alonsodomin/cron4s/issues/158")
+  }
+
+  "NoOperation.getBoundaries" should {
+    "return valid window for a timestamp within boundaries" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T06:50:00.00Z")
+
+      val expected = (utc("2021-02-03T06:00:00.00Z"), utc("2021-02-03T07:00:00.00Z"))
+
+      NoOperation.getBoundaries(input, tstamp) must beSome(expected)
+    }
+
+    "return past window for a timestamp after specified duration" in {
+      // isInWindow protects from false positives
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T09:50:00.00Z")
+
+      val expected = (utc("2021-02-03T06:00:00.00Z"), utc("2021-02-03T07:00:00.00Z"))
+
+      NoOperation.getBoundaries(input, tstamp) must beSome(expected)
+    }
+
+    "return past window for a timestamp before specified duration" in {
+      // isInWindow protects from false positives
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T05:59:59.00Z")
+
+      val expected = (utc("2021-02-02T06:00:00.00Z"), utc("2021-02-02T07:00:00.00Z"))
+
+      NoOperation.getBoundaries(input, tstamp) must beSome(expected)
+    }
+  }
+
+  "NoOperation.getPauseDuration" should {
+    "return positive duration for valid window" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T06:50:00.00Z")
+
+      NoOperation.getPauseDuration(input, tstamp) must beEqualTo(10.minutes)
+    }
+
+    "return 0 if window is behind" in {
+      val every6am = Cron.unsafeParse("0 0 6 * * ?")
+      val input = Schedule("first", every6am, 1.hour)
+      val tstamp = utc("2021-02-03T07:00:10.00Z")
+
+      NoOperation.getPauseDuration(input, tstamp) must beEqualTo(0.seconds)
+    }
   }
 }
 
@@ -199,4 +277,6 @@ object NoOperationSpec {
   def createMakePaused(state: Ref[IO, State]): MakePaused[IO] =
     who => Resource.make(pause(state, who))(unpause(state, who)).void
 
+  def utc(str: String): ZonedDateTime =
+    ZonedDateTime.ofInstant(Instant.parse(str), ZoneId.of("UTC"))
 }

@@ -36,6 +36,7 @@
   "schedules": {
     # Periodic schedules to stop loading, e.g. for Redshift maintenance window
     # Any amount of schedules is supported, but recommended to not overlap them
+    # The schedule works with machine's local timezone (and UTC is recommended)
     "noOperation": [
       {
         # Human-readable name of the no-op window
@@ -54,6 +55,18 @@
     "snowplow": {
       "appId": "redshift-loader",
       "collector": "snplow.acme.com",
+    },
+
+    # An endpoint for alerts and infromational events
+    # Everything sent to snowplow collector (as properly formed self-describing events)
+    # will also be sent to the webhook as POST payloads with self-describing JSONs
+    "webhook": {
+      # An actual HTTP endpoint
+      "endpoint": "https://webhook.acme.com",
+      # Set of arbitrary key-value pairs attached to the payload
+      "tags": {
+        "pipeline": "production"
+      }
     },
 
     # Optional, for tracking runtime exceptions
@@ -95,6 +108,8 @@
       "until": "7 days"
       # Path to shredded archive
       "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+      # How many times the check can fail before generating an alarm instead of warning
+      "failBeforeAlarm": 3
     },
 
     # Periodic DB health-check, raising a warning if DB hasn't responded to `SELECT 1`
@@ -104,6 +119,21 @@
       # How long to wait for a response
       "timeout": "15 seconds"
     }
+  },
+
+  # Immediate retries configuration
+  # Unlike retryQueue these retries happen immediately, without proceeding to another message
+  "retries": {
+    # Starting backoff period
+    "backoff": "30 seconds"
+    # A strategy to use when deciding on next backoff
+    "strategy": "EXPONENTIAL"
+    # How many attempts to make before sending the message into retry queue
+    # If missing - the loader will be retrying until cumulative bound
+    "attempts": 3,
+    # When backoff reaches this delay the Loader will stop retrying
+    # Missing cumulativeBound with missing attempts will force to retry inifintely
+    "cumulativeBound": "1 hour"
   },
 
   # Additional backlog of recently failed folders that could be automatically retried
@@ -119,5 +149,24 @@
     "maxAttempts": 3,
     # Artificial pause after each failed folder being added to the queue
     "interval": "5 seconds"
+  },
+
+  "timeouts": {
+    # How long loading (actual COPY statements) can take before considering Redshift unhealthy
+    # Without any progress (i.e. different subfolder) within this period, loader
+    # will abort the transaction
+    "loading": "1 hour",
+
+    # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
+    # before considering Redshift unhealthy
+    "nonLoading": "10 minutes"
+
+    # SQS visibility timeout is the time window in which a message must be
+    # deleted (acknowledged). Otherwise it is considered abandoned.
+    # If a message has been pulled, but hasn't been deleted, the next time
+    # it will re-appear in another consumer is equal to the visibility timeout
+    # Another consequence is that if Loader has failed on a message processing,
+    # the next time it will get this (or anything) from a queue has this delay
+    "sqsVisibility": "5 minutes"
   }
 }

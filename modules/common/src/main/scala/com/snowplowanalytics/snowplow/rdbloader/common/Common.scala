@@ -12,6 +12,11 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
+import java.time.format.DateTimeFormatter
+import java.time.{Instant, ZoneId, ZoneOffset}
+
+import cats.syntax.either._
+
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
@@ -30,6 +35,9 @@ object Common {
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
   val AtomicType = ShreddedType(AtomicSchema, Format.TSV)
   val AtomicPath: String = entityPath(AtomicType)
+
+  val FolderTimeFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss").withZone(ZoneId.from(ZoneOffset.UTC))
 
   def entityPath(entity: ShreddedType) =
     s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
@@ -86,4 +94,7 @@ object Common {
     def unapply(s: String): Option[Int] =
       try { Some(s.toInt) } catch { case _: NumberFormatException => None }
   }
+
+  def parseFolderTime(t: String): Either[Throwable, Instant] =
+    Either.catchNonFatal(Instant.from(FolderTimeFormatter.parse(t)))
 }
