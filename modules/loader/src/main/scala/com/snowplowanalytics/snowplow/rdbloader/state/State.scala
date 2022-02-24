@@ -23,10 +23,10 @@ import fs2.concurrent.SignallingRef
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.InstantOps
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
-import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Idle
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Paused
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
+import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
 
 /**
  * Primary state of the loader
@@ -39,7 +39,7 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
  *        Used to find out about degraded infra - if state is not updated for long enough
  *        it likely means that the database is unresponsive
  * @param attempts amount of attempts the Loader took to load **current** folder
- *                 zero'ed after every message ack'ed
+ *
  * @param loaded amount of folders the loader managed to load
  * @param messages total amount of message received
  */
@@ -51,8 +51,10 @@ case class State(loading: Load.Status,
                  messages: Int) {
 
   /** Start loading a folder */
-  def start(folder: S3.Folder): State =
-    this.copy(loading = Load.Status.start(folder), attempts = 0)
+  def start(folder: S3.Folder): State = {
+    val attempts = failures.get(folder).map(_.attempts).getOrElse(0)
+    this.copy(loading = Load.Status.start(folder), attempts = attempts)
+  }
   def idle: State =
     this.copy(loading = Load.Status.Idle)
   def paused(who: String): State =
@@ -72,6 +74,12 @@ case class State(loading: Load.Status,
   def show: String =
     show"Total $messages messages received, $loaded loaded"
 
+  def getFailures: Failures =
+    loading match {
+      case Load.Status.Loading(folder, _) => failures - folder
+      case _ => failures
+    }
+
   def showExtended: String = {
     val statusInfo = show"Loader is in ${loading} state".some
     val attemptsInfo = loading match {
@@ -79,7 +87,7 @@ case class State(loading: Load.Status,
       case Paused(_) => none
       case Loading(_, _) => show"$attempts attempts has been made to load current folder".some
     }
-    val failuresInfo = if (failures.nonEmpty) show"${failures.size} failed folders in retry queue".some else none[String]
+    val failuresInfo = if (getFailures.nonEmpty) show"${getFailures.size} failed folders in retry queue".some else none[String]
     val updatedInfo = s"Last state update at ${updated.formatted}".some
     List(show.some, statusInfo, attemptsInfo, failuresInfo, updatedInfo).unite.mkString("; ")
   }
