@@ -30,6 +30,7 @@ object Serialization {
     classOf[Hierarchy],
     classOf[Instant],
     classOf[Transformed],
+    classOf[Transformed.Data.DString],
     classOf[Transformed.WideRow],
     classOf[Transformed.Shredded.Json],
     classOf[Transformed.Shredded.Tabular],
