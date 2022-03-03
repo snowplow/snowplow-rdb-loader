@@ -8,13 +8,12 @@ import cats.effect.{Sync, Clock}
 
 import io.circe.syntax.EncoderOps
 
-import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -43,32 +42,20 @@ object Completion {
    * @param state all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: Sync](compression: Compression,
-                              findFormat: SchemaKey => LoaderMessage.Format,
+                              getTypes: Set[Data.ShreddedType] => TypesInfo,
                               root: URI,
                               awsQueue: AWSQueue[F])
-                             (window: Window, state: State): F[Unit] = {
-    val shreddedTypes: List[ShreddedType] =
-    state.types.toList.map {
-      shreddedType => {
-        val schemaKey = shreddedType.schemaKey
-        val shredProperty = shreddedType.shredProperty match {
-          case _: Data.Contexts => ShreddedType.Contexts
-          case Data.UnstructEvent => ShreddedType.SelfDescribingEvent
-        }
-        ShreddedType(schemaKey, findFormat(schemaKey), shredProperty)
-      }
-    }
+                             (window: Window, state: State): F[Unit] =
     for {
       timestamps <- Clock[F].instantNow.map { now =>
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
       }
       base = getBasePath(S3.Folder.coerce(root.toString), window)
       count = LoaderMessage.Count(state.total - state.bad)
-      message = LoaderMessage.ShreddingComplete(base, shreddedTypes, timestamps, compression, MessageProcessor, Some(count))
+      message = LoaderMessage.ShreddingComplete(base, getTypes(state.types), timestamps, compression, MessageProcessor, Some(count))
       body = message.selfDescribingData.asJson.noSpaces
       _ <- awsQueue.sendMessage(Some(MessageGroupId), body)
     } yield ()
-  }
 
   def getBasePath(bucket: String, prefix: String, window: Window): S3.Folder =
     S3.Folder.coerce(s"s3://$bucket/$prefix${window.getDir}")

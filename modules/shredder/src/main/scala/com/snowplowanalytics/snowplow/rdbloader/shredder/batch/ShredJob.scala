@@ -30,9 +30,6 @@ import org.apache.spark.sql.SparkSession
 
 // Snowplow
 import com.snowplowanalytics.snowplow.badrows.Processor
-import com.snowplowanalytics.snowplow.badrows.BadRow
-
-import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
@@ -41,12 +38,12 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed, ShredderValidations}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.Discovery.MessageProcessor
-import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
+import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{singleton, TypesAccumulator, TimestampsAccumulator}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.singleton._
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -56,29 +53,19 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
  * @param spark Spark session used throughout the job
  * @param shredConfig parsed command-line arguments
  */
-class ShredJob(@transient val spark: SparkSession,
-               igluConfig: Json,
-               formats: Formats,
-               config: ShredderConfig.Batch) extends Serializable {
+class ShredJob[T](@transient val spark: SparkSession,
+                  igluConfig: Json,
+                  transformer: Transformer[T],
+                  config: ShredderConfig.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   // Accumulator to track shredded types
-  val shreddedTypesAccumulator = new ShreddedTypesAccumulator
-  sc.register(shreddedTypesAccumulator)
+  val typesAccumulator: TypesAccumulator[T] = transformer.typesAccumulator
+  sc.register(typesAccumulator)
 
   // Accumulator to track min and max timestamps
-  val timestampsAccumulator = new TimestampsAccumulator
+  val timestampsAccumulator: TimestampsAccumulator = transformer.timestampsAccumulator
   sc.register(timestampsAccumulator)
-
-  /** Check if `shredType` should be transformed into TSV */
-  def isTabular(shredType: SchemaKey): Boolean =
-    Common.isTabular(formats)(shredType)
-
-  def findFormat(wideRow: Boolean)(schemaKey: SchemaKey): Format = {
-    if (wideRow) Format.WIDEROW
-    else if (isTabular(schemaKey)) Format.TSV
-    else Format.JSON
-  }
 
   /**
    * Runs the shred job by:
@@ -88,7 +75,6 @@ class ShredJob(@transient val spark: SparkSession,
    *  - writing out JSON contexts as well as properly-formed and malformed events
    */
   def run(folderName: String,
-          atomicLengths: Map[String, Int],
           eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
     val jobStarted: Instant = Instant.now()
     val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
@@ -149,61 +135,22 @@ class ShredJob(@transient val spark: SparkSession,
     // Events that could not be parsed
     val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
 
-    val wideRowGoodTransform = (event: Event) => {
-      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = true))(event.inventory)
-      timestampsAccumulator.add(event)
-      eventsCounter.add(1L)
-      List(Transformed.wideRowEvent(event))
-    }
-
-    val shredGoodTransform = (event: Event) =>
-      Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
-        case Right(shredded) =>
-          ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, findFormat(wideRow = false))(event.inventory)
-          timestampsAccumulator.add(event)
-          eventsCounter.add(1L)
-          shredded
-        case Left(badRow) =>
-          List(Transformed.transformBadRow(badRow, config.formats))
-      }
-
-    val goodTransform = config.formats match {
-      case Formats.WideRow => wideRowGoodTransform
-      case _: Formats.Shred => shredGoodTransform
-    }
-    val badTransform = (badRow: BadRow) =>
-      Transformed.transformBadRow(badRow, config.formats)
-
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
     val transformed = (shreddedBad ++ result.events).flatMap {
       case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        goodTransform(withDupeContext)
-      case Left(badRow) => List(badTransform(badRow))
+        transformer.goodTransform(withDupeContext, eventsCounter)
+      case Left(badRow) => List(transformer.badTransform(badRow))
     }
 
     // Final output
-    config.formats match {
-      case Formats.WideRow =>
-        Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
-      case _: Formats.Shred =>
-        Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.shredded), outFolder)
-    }
+    transformer.sink(spark, config.output.compression, transformed, outFolder)
 
-    val shreddedTypes = shreddedTypesAccumulator.value.toList
     val batchTimestamps = timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
-
-    val isEmpty = batchTimestamps.isEmpty && shreddedTypes.isEmpty && transformed.isEmpty()  // RDD.isEmpty called as last resort
-    val atomicSchemaFormat = config.formats match {
-      case Formats.WideRow => Format.WIDEROW
-      case _: Formats.Shred => Format.TSV
-    }
-    val finalShreddedTypes = if (isEmpty) Nil else ShreddedType(Common.AtomicSchema, atomicSchemaFormat, ShreddedType.SelfDescribingEvent) :: shreddedTypes
-
-    LoaderMessage.ShreddingComplete(outFolder, finalShreddedTypes, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
+    LoaderMessage.ShreddingComplete(outFolder, transformer.typesInfo, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
   }
 }
 
@@ -246,10 +193,15 @@ object ShredJob {
       }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 
+    val transformer = config.formats match {
+      case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
+      case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+    }
+
     unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
-      val job = new ShredJob(spark, igluConfig, config.formats, config)
-      val completed = job.run(folder.folderName, atomicLengths, eventsManifest)
+      val job = new ShredJob(spark, igluConfig, transformer, config)
+      val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3)
     }
 

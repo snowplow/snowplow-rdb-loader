@@ -21,6 +21,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -58,7 +59,7 @@ sealed trait ShreddedType {
   def getTableName: String =
     s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
 
-  def getShredProperty: LoaderMessage.ShreddedType.ShredProperty = info.shredProperty
+  def getSnowplowEntity: LoaderMessage.SnowplowEntity = info.snowplowEntity
 
 }
 
@@ -114,7 +115,7 @@ object ShreddedType {
                         name: String,
                         model: Int,
                         shredJob: Semver,
-                        shredProperty: LoaderMessage.ShreddedType.ShredProperty) {
+                        snowplowEntity: LoaderMessage.SnowplowEntity) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
   }
 
@@ -122,21 +123,29 @@ object ShreddedType {
     * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail,
     * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
     */
-  def fromCommon[F[_]: Monad: Cache: AWS](
+  def fromCommonShred[F[_]: Monad: Cache: AWS](
     base: S3.Folder,
     shredJob: Semver,
     region: String,
     jsonpathAssets: Option[S3.Folder],
-    commonType: LoaderMessage.ShreddedType
+    commonType: TypesInfo.Shredded.Type
   ): DiscoveryAction[F, ShreddedType] =
     commonType match {
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV, shredProperty) =>
+      case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.TSV, shredProperty) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON, shredProperty) =>
+      case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.WIDEROW, shredProperty) =>
+    }
+
+  def fromCommonWideRow[F[_]: Monad: Cache: AWS](
+     base: S3.Folder,
+     shredJob: Semver,
+     commonType: TypesInfo.WideRow.Type
+   ): DiscoveryAction[F, ShreddedType] =
+    commonType match {
+      case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
         val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
     }
@@ -245,13 +254,13 @@ object ShreddedType {
     * @param shredJob version of shred job to decide what path format should be present
     * @return either discovery failure or info (which in turn can be tabular (true) or JSON (false))
     */
-  def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (LoaderMessage.Format, Info)] = {
+  def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (TypesInfo.Shredded.ShreddedFormat, Info)] = {
     val (bucket, path)       = S3.splitS3Key(key)
     val (subpath, shredpath) = splitFilepath(path)
     extractSchemaKey(shredpath) match {
       case Some((vendor, name, model, format)) =>
         val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, vendor, name, model, shredJob, LoaderMessage.ShreddedType.SelfDescribingEvent)
+        val result = Info(prefix, vendor, name, model, shredJob, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
         (format, result).asRight
       case None =>
         DiscoveryFailure.ShreddedTypeKeyFailure(key).asLeft
@@ -267,16 +276,16 @@ object ShreddedType {
     * @param subpath S3 subpath of four `SchemaKey` elements
     * @return valid schema key if found
     */
-  def extractSchemaKey(subpath: String): Option[(String, String, Int, LoaderMessage.Format)] =
+  def extractSchemaKey(subpath: String): Option[(String, String, Int, TypesInfo.Shredded.ShreddedFormat)] =
     subpath match {
       case ShreddedSubpathPattern(vendor, name, model) =>
         scala.util.Try(model.toInt).toOption match {
-          case Some(m) => Some((vendor, name, m, LoaderMessage.Format.JSON))
+          case Some(m) => Some((vendor, name, m, TypesInfo.Shredded.ShreddedFormat.JSON))
           case None    => None
         }
       case ShreddedSubpathPatternTabular(vendor, name, model) =>
         scala.util.Try(model.toInt).toOption match {
-          case Some(m) => Some((vendor, name, m, LoaderMessage.Format.TSV))
+          case Some(m) => Some((vendor, name, m, TypesInfo.Shredded.ShreddedFormat.TSV))
           case None    => None
         }
       case _ =>

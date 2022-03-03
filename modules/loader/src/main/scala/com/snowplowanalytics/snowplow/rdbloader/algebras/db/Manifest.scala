@@ -30,7 +30,7 @@ trait Manifest[C[_]] {
 
   def initialize: C[Unit]
 
-  def add(message: LoaderMessage.ShreddingComplete): C[Unit]
+  def add(item: LoaderMessage.ManifestItem): C[Unit]
 
   def get(base: S3.Folder): C[Option[Manifest.Entry]]
 
@@ -49,11 +49,11 @@ object Manifest {
     }
 
   /** Create manifest table */
-  case class Entry(ingestion: Instant, meta: LoaderMessage.ShreddingComplete)
+  case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)
 
   object Entry {
     implicit val entryRead: Read[Entry] =
-      (Read[java.sql.Timestamp], Read[LoaderMessage.ShreddingComplete]).mapN {
+      (Read[java.sql.Timestamp], Read[LoaderMessage.ManifestItem]).mapN {
         case (ingestion, meta) =>
           Entry(ingestion.toInstant, meta)
       }
