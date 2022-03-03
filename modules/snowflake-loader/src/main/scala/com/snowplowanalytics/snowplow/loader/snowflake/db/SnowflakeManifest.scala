@@ -36,7 +36,7 @@ class SnowflakeManifest[C[_]: SfDao: MonadThrow: Logging](schema: String, wareho
            else create <* Logging[C].info("The manifest table has been created")
     } yield ()
 
-  override def add(message: LoaderMessage.ShreddingComplete): C[Unit] =
+  override def add(message: LoaderMessage.ManifestItem): C[Unit] =
     DbUtils.resumeWarehouse[C](warehouse) *>
       SfDao[C].executeUpdate(Statement.ManifestAdd(schema, ManifestTable, message)).void
 

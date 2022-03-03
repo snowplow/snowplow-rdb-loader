@@ -93,7 +93,7 @@ object Monitoring {
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
   val LoadSucceededSchema =
-    SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(2, 0, 0))
+    SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 0))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =

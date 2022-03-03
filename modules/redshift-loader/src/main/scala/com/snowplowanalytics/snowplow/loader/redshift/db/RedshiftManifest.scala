@@ -67,7 +67,7 @@ class RedshiftManifest[C[_]: RsDao: Logging: Monad](schema: String) extends Mani
 
   def create: C[Unit] = RsDao[C].executeUpdate(Statement.CreateTable(getManifestDef)).void
 
-  override def add(message: LoaderMessage.ShreddingComplete): C[Unit] =
+  override def add(message: LoaderMessage.ManifestItem): C[Unit] =
     RsDao[C].executeUpdate(Statement.ManifestAdd(schema, message)).void
 
   override def get(base: Folder): C[Option[Entry]] =

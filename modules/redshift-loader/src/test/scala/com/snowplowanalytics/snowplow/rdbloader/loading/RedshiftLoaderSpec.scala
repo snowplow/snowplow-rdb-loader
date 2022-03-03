@@ -272,6 +272,6 @@ object RedshiftLoaderSpec {
     None
   )
 
-  val shredProperty = LoaderMessage.ShreddedType.SelfDescribingEvent
+  val shredProperty = LoaderMessage.SnowplowEntity.SelfDescribingEvent
 
 }

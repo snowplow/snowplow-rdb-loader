@@ -73,12 +73,12 @@ class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: Stri
   }
 
   private def getColumnName(item: MigrationBuilder.MigrationItem): String =
-    SnowplowEvent.transformSchema(item.shreddedType.getShredProperty.toSdkProperty, item.schemaList.latest.schemaKey)
+    SnowplowEvent.transformSchema(item.shreddedType.getSnowplowEntity.toSdkProperty, item.schemaList.latest.schemaKey)
 
   private def getColumnType(item: MigrationBuilder.MigrationItem): SnowflakeDatatype =
-    item.shreddedType.getShredProperty match {
-      case LoaderMessage.ShreddedType.Contexts => SnowflakeDatatype.JsonArray
-      case LoaderMessage.ShreddedType.SelfDescribingEvent => SnowflakeDatatype.JsonObject
+    item.shreddedType.getSnowplowEntity match {
+      case LoaderMessage.SnowplowEntity.Contexts => SnowflakeDatatype.JsonArray
+      case LoaderMessage.SnowplowEntity.SelfDescribingEvent => SnowflakeDatatype.JsonObject
     }
 
 }

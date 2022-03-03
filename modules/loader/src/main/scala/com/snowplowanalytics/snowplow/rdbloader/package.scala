@@ -25,7 +25,7 @@ import io.circe.parser.parse
 import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{Message, S3}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, Format, ShreddedType, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, StringEnum}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure}
@@ -56,11 +56,8 @@ package object rdbloader {
   implicit val getFolder: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
 
-  implicit val getFormat: Get[Format] =
-    Get[String].temap(Format.fromString)
-
-  implicit val getListShreddedType: Get[List[ShreddedType]] =
-    Get[String].temap(str => parse(str).flatMap(_.as[List[ShreddedType]]).leftMap(_.show))
+  implicit val getListManifestType: Get[List[ManifestType]] =
+    Get[String].temap(str => parse(str).flatMap(_.as[List[ManifestType]]).leftMap(_.show))
 
   implicit val getCompression: Get[Compression] =
     Get[String].temap(str => StringEnum.fromString[Compression](str))

@@ -83,7 +83,7 @@ class RedshiftMigrationSpec extends Specification {
           "some_context",
           2,
           Semver(0, 17, 0),
-          LoaderMessage.ShreddedType.SelfDescribingEvent
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
         )
       )
 
@@ -239,7 +239,7 @@ object RedshiftMigrationSpec {
       "some_context",
       2,
       Semver(0, 17, 0),
-      LoaderMessage.ShreddedType.SelfDescribingEvent
+      LoaderMessage.SnowplowEntity.SelfDescribingEvent
     )
   )
 

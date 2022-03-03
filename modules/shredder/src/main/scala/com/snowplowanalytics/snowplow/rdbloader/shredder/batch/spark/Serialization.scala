@@ -60,8 +60,6 @@ object Serialization {
     Class.forName("scala.math.Ordering$Reverse"),
     classOf[org.apache.spark.sql.catalyst.InternalRow],
     Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils$$anonfun$1"),  // Ordering
-    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$TSV$"),
-    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$Format$JSON$"),
     classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
     classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
