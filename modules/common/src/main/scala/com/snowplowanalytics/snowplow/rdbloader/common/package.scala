@@ -66,10 +66,10 @@ package object common {
       s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
 
-  implicit class ShredPropertyTransformer(val shredProperty: LoaderMessage.ShreddedType.ShredProperty) extends AnyVal {
-    def toSdkProperty: Data.ShredProperty = shredProperty match {
-      case LoaderMessage.ShreddedType.Contexts => Data.Contexts(Data.CustomContexts)
-      case LoaderMessage.ShreddedType.SelfDescribingEvent => Data.UnstructEvent
+  implicit class ShredPropertyTransformer(val snowplowEntity: LoaderMessage.SnowplowEntity) extends AnyVal {
+    def toSdkProperty: Data.ShredProperty = snowplowEntity match {
+      case LoaderMessage.SnowplowEntity.Contexts => Data.Contexts(Data.CustomContexts)
+      case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
     }
   }
 }

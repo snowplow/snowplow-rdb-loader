@@ -16,11 +16,14 @@ import java.time.Instant
 
 import io.circe.Json
 import io.circe.literal._
+import io.circe.syntax._
+import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 
 import org.specs2.mutable.Specification
 
@@ -36,26 +39,43 @@ class LoaderMessageSpec extends Specification {
     "encode into valid self-describing JSON" >> {
       val result = LoaderMessageSpec.ValidMessage.selfDescribingData
       val expected = SelfDescribingData(
-        SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,1)),
+        LoaderMessage.ShreddingCompleteKey,
         LoaderMessageSpec.ValidMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
       )
       result must beEqualTo(expected)
+    }
+  }
+
+  "manifestType encoder" should {
+    "drop null values in output json" >> {
+      val manifestType = LoaderMessage.ManifestType(
+        LoaderMessage.ShreddingCompleteKey,
+        "TSV",
+        None
+      )
+      val jsonStr = manifestType.asJson.noSpaces
+      jsonStr.contains("transformation") must beFalse
+      val decoded = parse(jsonStr).flatMap(_.as[LoaderMessage.ManifestType])
+      decoded must beRight(manifestType)
     }
   }
 }
 
 object LoaderMessageSpec {
   val ValidMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/1-0-1",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
     "data": {
       "base" : "s3://bucket/folder/",
-      "types" : [
-        {
-          "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
-          "format" : "TSV",
-          "shredProperty": "SELFDESCRIBING_EVENT"
-        }
-      ],
+      "typesInfo": {
+        "transformation": "SHREDDED",
+        "types": [
+          {
+            "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
+            "format" : "TSV",
+            "snowplowEntity": "SELF_DESCRIBING_EVENT"
+          }
+        ]
+      },
       "timestamps" : {
         "jobStarted" : "2020-09-17T11:32:21.145Z",
         "jobCompleted" : "2020-09-17T11:32:21.145Z",
@@ -73,8 +93,10 @@ object LoaderMessageSpec {
 
   val ValidMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),
-    List(
-      LoaderMessage.ShreddedType(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.Format.TSV, LoaderMessage.ShreddedType.SelfDescribingEvent)
+    TypesInfo.Shredded(
+      List(
+        TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), TypesInfo.Shredded.ShreddedFormat.TSV, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+      )
     ),
     LoaderMessage.Timestamps(
       Instant.ofEpochMilli(1600342341145L),

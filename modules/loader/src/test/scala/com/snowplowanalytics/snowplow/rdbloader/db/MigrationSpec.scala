@@ -43,7 +43,7 @@ class MigrationSpec extends Specification {
               "some_context",
               2,
               Semver(0, 17, 0),
-              LoaderMessage.ShreddedType.SelfDescribingEvent
+              LoaderMessage.SnowplowEntity.SelfDescribingEvent
             )
           ),
           ShreddedType.Json(
@@ -53,7 +53,7 @@ class MigrationSpec extends Specification {
               "some_event",
               1,
               Semver(0, 17, 0),
-              LoaderMessage.ShreddedType.SelfDescribingEvent
+              LoaderMessage.SnowplowEntity.SelfDescribingEvent
             ),
             S3.Key.coerce("s3://shredded/jsonpaths")
           ),
@@ -64,7 +64,7 @@ class MigrationSpec extends Specification {
               "widerow",
               1,
               Semver(0, 17, 0),
-              LoaderMessage.ShreddedType.SelfDescribingEvent
+              LoaderMessage.SnowplowEntity.SelfDescribingEvent
             )
           )
         )
@@ -100,7 +100,7 @@ class MigrationSpec extends Specification {
               "atomic",
               1,
               Semver(0, 17, 0),
-              LoaderMessage.ShreddedType.SelfDescribingEvent
+              LoaderMessage.SnowplowEntity.SelfDescribingEvent
             )
           )
         )

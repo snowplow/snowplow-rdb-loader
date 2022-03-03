@@ -17,8 +17,9 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch.good
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShreddedType
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.ShredJobSpec._
@@ -34,44 +35,48 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
   "A shredding job" should {
     "return the list of shredded types with their format without --target" in {
       val expected = Set(
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent),
-        ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.JSON, ShreddedType.Contexts),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON, ShreddedType.SelfDescribingEvent)
+        Shredded.Type(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), ShreddedFormat.JSON, SnowplowEntity.Contexts),
+        Shredded.Type(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), ShreddedFormat.JSON, SnowplowEntity.SelfDescribingEvent)
       )
-      val actual = runShredJob(inputEvent).types.toSet
-      actual ==== expected
+      runShredJob(inputEvent).typesInfo match {
+        case TypesInfo.Shredded(types) => types.toSet ==== expected
+        case _ => ko
+      }
     }
 
     "return the list of shredded types with their format with --target and no blacklist" in {
       val expected = Set(
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent),
-        ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.Contexts),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent)
+        Shredded.Type(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), ShreddedFormat.TSV, SnowplowEntity.Contexts),
+        Shredded.Type(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
       )
-      val actual = runShredJob(inputEvent, false, true).types.toSet
-      actual ==== expected
+      runShredJob(inputEvent, false, true).typesInfo match {
+        case TypesInfo.Shredded(types) => types.toSet ==== expected
+        case _ => ko
+      }
     }
 
     "return the list of shredded types with their format with --target and schema in non-empty blacklist" in {
       val linkClickSchema = SchemaCriterion("com.snowplowanalytics.snowplow", "link_click", "jsonschema", 1)
       val expected = Set(
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent),
-        ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.Contexts),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.JSON, ShreddedType.SelfDescribingEvent)
+        Shredded.Type(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), ShreddedFormat.TSV, SnowplowEntity.Contexts),
+        Shredded.Type(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), ShreddedFormat.JSON, SnowplowEntity.SelfDescribingEvent)
       )
-      val actual = runShredJob(inputEvent, false, true, List(linkClickSchema)).types.toSet
-      actual ==== expected
+      runShredJob(inputEvent, false, true, List(linkClickSchema)).typesInfo match {
+        case TypesInfo.Shredded(types) => types.toSet ==== expected
+        case _ => ko
+      }
     }
 
     "return the list of shredded types with their format with --target and schema not in non-empty blacklist" in {
       val randomSchema = SchemaCriterion("foo", "bar", "jsonschema", 1)
       val expected = Set(
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent),
-        ShreddedType(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.Contexts),
-        ShreddedType(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), Format.TSV, ShreddedType.SelfDescribingEvent)
+        Shredded.Type(SchemaKey("org.schema", "WebPage" , "jsonschema" , SchemaVer.Full(1,0,0)), ShreddedFormat.TSV, SnowplowEntity.Contexts),
+        Shredded.Type(SchemaKey("com.snowplowanalytics.snowplow", "link_click", "jsonschema", SchemaVer.Full(1,0,0)), ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
       )
-      val actual = runShredJob(inputEvent, false, true, List(randomSchema)).types.toSet
-      actual ==== expected
+      runShredJob(inputEvent, false, true, List(randomSchema)).typesInfo match {
+        case TypesInfo.Shredded(types) => types.toSet ==== expected
+        case _ => ko
+      }
     }
   }
 }
