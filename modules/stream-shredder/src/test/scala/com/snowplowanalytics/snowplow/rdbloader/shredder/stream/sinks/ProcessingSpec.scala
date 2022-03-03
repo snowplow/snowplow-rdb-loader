@@ -29,12 +29,11 @@ import io.circe.optics.JsonPath._
 import io.circe.parser.{ parse => parseCirce }
 
 import com.snowplowanalytics.iglu.client.Client
-import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
-import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.Processing
+import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.Processing.Windowed
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sources.{Parsed, file => FileSource}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.stream.sinks.generic.Record
@@ -53,7 +52,7 @@ class ProcessingSpec extends Specification {
         Transformed.Path.Shredded.Tabular("com.snowplowanalytics.snowplow", "consent_document", 1),
         Transformed.Path.Shredded.Tabular("com.optimizely", "state", 1)
       )
-      val expectedTransformedMap = getExpectedTransformedEvents(good, pathsToCheck, 1, LoaderMessage.Format.TSV)
+      val expectedTransformedMap = getExpectedTransformedEvents(good, pathsToCheck, 1, LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV)
 
       val expectedBadEvent = getResourceLines("/processing-spec/1/output/bad").head
 
@@ -119,20 +118,27 @@ object ProcessingSpec {
   val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
 
   val defaultIgluClient = Client.IgluCentral
-  val defaultIsTabular: SchemaKey => Boolean = _ => true
   val defaultAtomicLengths: Map[String, Int] = Map.empty
-  val wideRowFormat = ShredderConfig.Formats.WideRow
-  val shredFormat = ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List.empty, List.empty, List.empty)
+  val wideRowFormat = ShredderConfig.Formats.WideRow.JSON
+  val shredFormat = ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
   val testBlocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
   val defaultWindow = Window(1, 1, 1, 1, 1)
 
+  def createTransformer(formats: ShredderConfig.Formats): Transformer[IO] =
+    formats match {
+      case f: ShredderConfig.Formats.Shred =>
+        Transformer.ShredTransformer(defaultIgluClient, f, defaultAtomicLengths)
+      case f: ShredderConfig.Formats.WideRow =>
+        Transformer.WideRowTransformer(f)
+    }
+
   def transformTestEvents(resourcePath: String,
-                          isTabular: SchemaKey => Boolean = defaultIsTabular,
                           format: ShredderConfig.Formats,
-                          timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList)= {
+                          timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList) = {
+    val transformer = createTransformer(format)
     val validations = ShredderConfig.Validations(timestampLowerLimit)
     val eventStream: Stream[IO, Windowed[IO, Parsed]] = parsedEventStream(resourcePath)
-    val pipe = Processing.transform[IO](defaultIgluClient, isTabular, defaultAtomicLengths, format, validations)
+    val pipe = Processing.transform[IO](defaultIgluClient, transformer, validations)
     val transformed = pipe(eventStream).compile.toList.unsafeRunSync().flatMap {
       case Record.Data(_, _, i) => Some(i)
       case Record.EndWindow(_, _, _) => None
@@ -163,7 +169,7 @@ object ProcessingSpec {
   def getExpectedTransformedEvents(transformedList: TransformedList,
                                    pathsToCheck: List[Transformed.Path.Shredded],
                                    testNumber: Int,
-                                   format: LoaderMessage.Format): TransformedMap =
+                                   format: LoaderMessage.TypesInfo.Shredded.ShreddedFormat): TransformedMap =
     transformedList.flatMap {
       case (path: Transformed.Path.Shredded, _) if pathsToCheck.contains(path) =>
         Some(getResourceForShreddedPath(s"/processing-spec/${testNumber}/output/good/${format.path}", path))

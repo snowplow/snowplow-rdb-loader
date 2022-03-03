@@ -121,7 +121,7 @@ class SnowflakeMigrationSpec extends Specification {
           schemaKey.name,
           schemaKey.version.model,
           Semver(0, 17, 0),
-          LoaderMessage.ShreddedType.SelfDescribingEvent
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
         )
       )
 
@@ -187,7 +187,7 @@ object SnowflakeMigrationSpec {
 
   def createShreddedType(schemaKey: SchemaKey,
                          s3Folder: S3.Folder = SnowflakeMigrationSpec.s3Folder,
-                         shredProperty: LoaderMessage.ShreddedType.ShredProperty = LoaderMessage.ShreddedType.SelfDescribingEvent
+                         shredProperty: LoaderMessage.SnowplowEntity = LoaderMessage.SnowplowEntity.SelfDescribingEvent
                         ): ShreddedType =
     ShreddedType.Widerow(
       ShreddedType.Info(

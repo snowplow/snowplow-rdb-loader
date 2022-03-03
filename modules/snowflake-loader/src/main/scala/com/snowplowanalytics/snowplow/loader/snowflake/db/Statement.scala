@@ -125,7 +125,7 @@ object Statement {
   }
 
   // Manifest
-  case class ManifestAdd(schema: String, table: String, message: LoaderMessage.ShreddingComplete) extends Statement {
+  case class ManifestAdd(schema: String, table: String, message: LoaderMessage.ManifestItem) extends Statement {
     def toFragment: Fragment = {
       val tableName = Fragment.const(s"$schema.$table")
       val types     = message.types.asJson.noSpaces

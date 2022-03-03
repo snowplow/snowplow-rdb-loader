@@ -17,7 +17,7 @@ object PureManifest {
   ): Manifest[Pure] = new Manifest[Pure] {
     override def initialize: Pure[Unit] = Pure.sql("manifest initialize")
 
-    override def add(message: LoaderMessage.ShreddingComplete): Pure[Unit] =
+    override def add(message: LoaderMessage.ManifestItem): Pure[Unit] =
       Pure.sql(s"manifest add ${message.base}")
 
     override def get(base: Folder): Pure[Option[Manifest.Entry]] =
@@ -28,13 +28,13 @@ object PureManifest {
 
   }
 
-  val ValidMessage = LoaderMessage.ShreddingComplete(
+  val ValidMessage = LoaderMessage.ManifestItem(
     S3.Folder.coerce("s3://bucket/folder/"),
     List(
-      LoaderMessage.ShreddedType(
+      LoaderMessage.ManifestType(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
-        LoaderMessage.Format.TSV,
-        LoaderMessage.ShreddedType.SelfDescribingEvent
+        "TSV",
+        None
       )
     ),
     LoaderMessage.Timestamps(

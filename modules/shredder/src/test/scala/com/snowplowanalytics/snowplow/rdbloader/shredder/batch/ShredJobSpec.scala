@@ -229,6 +229,24 @@ object ShredJobSpec {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
+    val formatsSection =
+      if (wideRow)
+        s"""
+          |"formats": {
+          |  "type": "widerow"
+          |  "fileFormat": "json"
+          |}
+          |""".stripMargin
+      else
+        s"""
+          | "formats": {
+          |   "type": "shred"
+          |   "default": "$format",
+          |   "json": [$jsonCriterions],
+          |   "tsv": [ ],
+          |   "skip": [ ]
+          | }
+          |""".stripMargin
     val configPlain = s"""|{
     |"input": "${shredder.input}",
     |"output" = {
@@ -241,14 +259,11 @@ object ShredJobSpec {
     |  "queueName": "test-sqs"
     |  "region": "us-east-1"
     |}
-    |"formats": {
-    |  "type": "${if (wideRow) "widerow" else "shred"}"
-    |}
+    |$formatsSection
     |"validations": {
     |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
     |}
-    |"monitoring": {"snowplow": null, "sentry": null},
-    |"formats": { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] }
+    |"monitoring": {"snowplow": null, "sentry": null}
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
   }
@@ -346,7 +361,7 @@ object ShredJobSpec {
       input,
       ShredderConfig.Output(dirs.output.toURI, ShredderConfig.Compression.None, Region("eu-central-1")),
       ShredderConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
-      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, Nil, Nil, Nil),
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
       ShredderConfig.RunInterval(None, None, None),
@@ -385,8 +400,12 @@ trait ShredJobSpec extends SparkSpec {
 
     ShredderCliConfig.Batch.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
-        val job = new ShredJob(spark,cli.igluConfig,  cli.config.formats, cli.config)
-        val result = job.run("", Map.empty, dedupeConfig)
+        val transformer = cli.config.formats match {
+          case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
+          case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+        }
+        val job = new ShredJob(spark,cli.igluConfig, transformer, cli.config)
+        val result = job.run("", dedupeConfig)
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>

@@ -85,7 +85,7 @@ object SnowflakeLoader {
   }
 
   def getShredTypeColumn(shreddedType: ShreddedType): String = {
-    val shredProperty = shreddedType.getShredProperty.toSdkProperty
+    val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
     val info = shreddedType.info
     SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model)
   }
