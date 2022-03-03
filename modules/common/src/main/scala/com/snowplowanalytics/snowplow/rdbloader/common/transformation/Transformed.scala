@@ -26,15 +26,14 @@ import io.circe.{Json => CJson}
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
 import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Format
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 
 /** Represents transformed data in blob storage */
 case class Transformed(path: Transformed.Path, data: Transformed.Data) {
@@ -75,7 +74,7 @@ object Transformed {
       def isGood: Boolean
       def vendor: String
       def name: String
-      def format: Format
+      def format: TypesInfo.Shredded.ShreddedFormat
       def model: Int
       def getDir: String = {
         val init = if (isGood) "output=good" else "output=bad"
@@ -86,13 +85,13 @@ object Transformed {
     object Shredded {
       /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
       case class Json(isGood: Boolean, vendor: String, name: String, model: Int) extends Shredded {
-        val format: Format = Format.JSON
+        val format: TypesInfo.Shredded.ShreddedFormat = TypesInfo.Shredded.ShreddedFormat.JSON
       }
 
       /** Data will be represented as TSV, with RDB Loader loading it directly */
       case class Tabular(vendor: String, name: String, model: Int) extends Shredded {
         val isGood = true   // We don't support TSV shredding for bad data
-        val format: Format = Format.TSV
+        val format: TypesInfo.Shredded.ShreddedFormat = TypesInfo.Shredded.ShreddedFormat.TSV
       }
     }
 
@@ -109,18 +108,6 @@ object Transformed {
 
     implicit val pathShow: Show[Transformed.Path] =
       Show(_.getDir)
-  }
-
-  def transformBadRow(badRow: BadRow, formats: ShredderConfig.Formats): Transformed = {
-    formats match {
-      case _: ShredderConfig.Formats.Shred =>
-        val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-        val data = Transformed.Data(badRow.compact)
-        Transformed(Path.Shredded.Json(false, vendor, name, model), data)
-      case ShredderConfig.Formats.WideRow =>
-        val data = Transformed.Data(badRow.compact)
-        Transformed(Path.WideRow(false), data)
-    }
   }
 
   /**

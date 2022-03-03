@@ -19,6 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream,
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
@@ -131,14 +132,18 @@ object DataDiscovery {
     assets: Option[S3.Folder],
     message: LoaderMessage.ShreddingComplete
   ): LoaderAction[F, DataDiscovery] = {
-    val types = message
-      .types
-      .traverse[F, DiscoveryStep[ShreddedType]] { shreddedType =>
-        ShreddedType.fromCommon[F](message.base, message.processor.version, region, assets, shreddedType)
-      }
-      .map { steps =>
-        LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
-      }
+    val types = (message.typesInfo match {
+      case t: TypesInfo.Shredded =>
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] { s =>
+          ShreddedType.fromCommonShred[F](message.base, message.processor.version, region, assets, s)
+        }
+      case t: TypesInfo.WideRow =>
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] { s =>
+          ShreddedType.fromCommonWideRow[F](message.base, message.processor.version, s)
+        }
+    }).map { steps =>
+      LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
+    }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
       DataDiscovery(message.base, types.distinct, message.compression)
     }
@@ -149,7 +154,7 @@ object DataDiscovery {
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
-    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty && message
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message
       .count
-      .contains(0)
+      .contains(LoaderMessage.Count(0))
 }

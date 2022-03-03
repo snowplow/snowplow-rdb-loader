@@ -116,7 +116,7 @@ object Load {
             inTransactionMigrations *>
             TargetLoader[C].run(discovery.discovery) *>
             Control[C].setStage(Stage.Committing) *>
-            Manifest[C].add(discovery.origin) *>
+            Manifest[C].add(LoaderMessage.createManifestItem(discovery.origin)) *>
             Manifest[C].get(discovery.discovery.base).map(_.map(_.ingestion).asRight)
       }
     } yield result

@@ -19,7 +19,8 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.algebras.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, Processor, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
@@ -142,7 +143,7 @@ object LoadSpec {
           "json-context",
           1,
           Semver(0, 18, 0, None),
-          LoaderMessage.ShreddedType.SelfDescribingEvent
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
         ),
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json")
       )
@@ -161,11 +162,13 @@ object LoadSpec {
     dataDiscovery,
     LoaderMessage.ShreddingComplete(
       dataDiscovery.base,
-      List(
-        LoaderMessage.ShreddedType(
-          SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
-          Format.JSON,
-          LoaderMessage.ShreddedType.SelfDescribingEvent
+      TypesInfo.Shredded(
+        List(
+          TypesInfo.Shredded.Type(
+            SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
+            TypesInfo.Shredded.ShreddedFormat.JSON,
+            LoaderMessage.SnowplowEntity.SelfDescribingEvent
+          )
         )
       ),
       Timestamps(
