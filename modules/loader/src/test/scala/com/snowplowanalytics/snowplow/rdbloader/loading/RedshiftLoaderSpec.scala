@@ -15,16 +15,18 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShredProperty
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.AsSql
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureLogging, PureDAO, PureOps}
 
 import org.specs2.mutable.Specification
+
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureLogging, PureDAO, PureOps}
 
 class RedshiftLoaderSpec extends Specification {
   import RedshiftLoaderSpec._
@@ -39,7 +41,7 @@ class RedshiftLoaderSpec extends Specification {
         Statement.EventsCopy("atomic", false, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None),
         List(Statement.ShreddedCopy(
           "atomic",
-          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0), ShredProperty.Context)),
           "eu-central-1",
           1,
           "role",
@@ -53,7 +55,7 @@ class RedshiftLoaderSpec extends Specification {
         LogEntry.Sql(Statement.EventsCopy("atomic", false, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None)),
         LogEntry.Sql(Statement.ShreddedCopy(
           "atomic",
-          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0), ShredProperty.Context)),
           "eu-central-1",
           1,
           "role",
@@ -75,7 +77,7 @@ class RedshiftLoaderSpec extends Specification {
         Statement.EventsCopy("schema", true, "s3://bucket/path/run=1/".dir, "eu-central-1", 1, "role", Compression.None),
         List(Statement.ShreddedCopy(
           "schema",
-          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0), ShredProperty.Context)),
           "eu-central-1",
           1,
           "role",
@@ -91,7 +93,7 @@ class RedshiftLoaderSpec extends Specification {
         LogEntry.Sql(Statement.DropTransient("schema")),
         LogEntry.Sql(Statement.ShreddedCopy(
           "schema",
-          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0))),
+          ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 1, Semver(1,0,0), ShredProperty.Context)),
           "eu-central-1",
           1,
           "role",
@@ -110,9 +112,9 @@ class RedshiftLoaderSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
       val shreddedTypes = List(
-        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0)), "s3://assets/event_1.json".key),
-        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0)), "s3://assets/context_2.json".key),
-        ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0))),
+        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0), ShredProperty.Context), "s3://assets/event_1.json".key),
+        ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0), ShredProperty.Context), "s3://assets/context_2.json".key),
+        ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0), ShredProperty.Context)),
       )
       val discovery = DataDiscovery(S3.Folder.coerce("s3://bucket/path/run=1/"), shreddedTypes, Compression.Gzip)
 
@@ -120,9 +122,9 @@ class RedshiftLoaderSpec extends Specification {
 
       val expected = List(
         LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://bucket/path/run=1/".dir,"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0)), "s3://assets/event_1.json".key),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0)), "s3://assets/context_2.json".key),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0))),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1,5,0), ShredProperty.Context), "s3://assets/event_1.json".key),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Json(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 2, Semver(1,5,0), ShredProperty.Context), "s3://assets/context_2.json".key),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy("atomic",ShreddedType.Tabular(ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "context", 3, Semver(1,5,0), ShredProperty.Context)),"us-east-1",10,"arn:aws:iam::123456789876:role/RedshiftLoadRole",Compression.Gzip)),
       )
 
       val transactionsExpectation = state.getLog must beEqualTo(expected)

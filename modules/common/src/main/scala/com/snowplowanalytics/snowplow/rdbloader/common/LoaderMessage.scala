@@ -81,7 +81,15 @@ object LoaderMessage {
                               min: Option[Instant],
                               max: Option[Instant])
 
-  final case class ShreddedType(schemaKey: SchemaKey, format: Format)
+  final case class ShreddedType(schemaKey: SchemaKey, format: Format, shredProperty: ShredProperty)
+
+  /** Analogous to Analytics SDK `ShredProperty`, but without context type */
+  sealed trait ShredProperty extends Product with Serializable
+
+  object ShredProperty {
+    case object Context extends ShredProperty
+    case object SelfDescribingEvent extends ShredProperty
+  }
 
   final case class Processor(artifact: String, version: Semver)
 
@@ -121,6 +129,19 @@ object LoaderMessage {
     deriveEncoder[ShreddedType]
   implicit val loaderMessageShreddedTypeDecoder: Decoder[ShreddedType] =
     deriveDecoder[ShreddedType]
+  implicit val loaderMessageShredPropertyEncoder: Encoder[ShredProperty] =
+    Encoder.encodeString.contramap {
+      case ShredProperty.Context => "CONTEXTS"
+      case ShredProperty.SelfDescribingEvent => "SELFDESCRIBING_EVENT"
+    }
+  implicit val loaderMessageShredPropertyDecoder: Decoder[ShredProperty] =
+    Decoder.decodeString.emap { t =>
+      t.toLowerCase.replace("_", "") match {
+        case "context" => ShredProperty.Context.asRight[String]
+        case "selfdescribingevent" => ShredProperty.SelfDescribingEvent.asRight[String]
+        case other => s"ShredProperty $other is not supported. Supported values: CONTEXT, SELFDESCRIBING_EVENT".asLeft[ShredProperty]
+      }
+    }
   implicit val loaderMessageProcessorEncoder: Encoder[Processor] =
     deriveEncoder[Processor]
   implicit val loaderMessageProcessorDecoder: Decoder[Processor] =

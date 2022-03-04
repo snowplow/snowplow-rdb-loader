@@ -1,6 +1,7 @@
 {
   "messageQueue": "test-queue"
   "storage" : {
+    "type": "redshift"
     "host": "redshift.amazonaws.com"
     "database": "snowplow"
     "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole"

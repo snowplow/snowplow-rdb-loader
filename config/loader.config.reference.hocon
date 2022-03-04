@@ -13,6 +13,8 @@
 
   # Warehouse connection details
   "storage" : {
+    # The destination DB
+    "type": "redshift",
     # Redshift hostname
     "host": "redshift.amazonaws.com",
     # Database name
