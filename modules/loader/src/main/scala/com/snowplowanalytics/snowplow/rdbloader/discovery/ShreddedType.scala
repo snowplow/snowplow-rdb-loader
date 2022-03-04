@@ -21,6 +21,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShredProperty
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -43,7 +44,7 @@ sealed trait ShreddedType {
 
   /** Check if this type is special atomic type */
   def isAtomic = this match {
-    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
+    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
       vendor == Common.AtomicSchema.vendor && name == Common.AtomicSchema.name && model == Common.AtomicSchema.version.model
     case _ =>
       false
@@ -95,8 +96,10 @@ object ShreddedType {
    * @param vendor self-describing type's vendor
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
+   * @param shredJob version of the shredder produced the data
+   * @param shredProperty what kind of Snowplow entity it is (context or event)
    */
-  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver) {
+  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver, shredProperty: ShredProperty) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
   }
 
@@ -110,11 +113,11 @@ object ShreddedType {
                                           jsonpathAssets: Option[S3.Folder],
                                           commonType: LoaderMessage.ShreddedType): DiscoveryAction[F, ShreddedType] =
     commonType match {
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.TSV, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
-      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob)
+      case LoaderMessage.ShreddedType(schemaKey, LoaderMessage.Format.JSON, shredProperty) =>
+        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
         Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info)) { either =>
           either.map { jsonPath =>
             Json(info, jsonPath)
@@ -146,11 +149,6 @@ object ShreddedType {
      """/name=(?<name>[a-zA-Z0-9-_]+)""" +
      """/format=tsv""" +
      """/model=(?<model>[1-9][0-9]*)$""").r
-
-  /**
-   * vendor + name + format + version + filename
-   */
-  private val MinShreddedPathLengthModern = 5
 
   /**
    * Check where JSONPaths file for particular shredded type exists:
@@ -215,26 +213,6 @@ object ShreddedType {
   }
 
   /**
-   * Parse S3 key path into shredded type
-   *
-   * @param key valid S3 key
-   * @param shredJob version of shred job to decide what path format should be present
-   * @return either discovery failure or info (which in turn can be tabular (true) or JSON (false))
-   */
-  def transformPath(key: S3.Key, shredJob: Semver): Either[DiscoveryFailure, (LoaderMessage.Format, Info)] = {
-    val (bucket, path) = S3.splitS3Key(key)
-    val (subpath, shredpath) = splitFilepath(path)
-    extractSchemaKey(shredpath) match {
-      case Some((vendor, name, model, format)) =>
-        val prefix = S3.Folder.coerce("s3://" + bucket + "/" + subpath)
-        val result = Info(prefix, vendor, name, model, shredJob)
-        (format, result).asRight
-      case None =>
-        DiscoveryFailure.ShreddedTypeKeyFailure(key).asLeft
-    }
-  }
-
-  /**
    * Extract `SchemaKey` from subpath, which can be
    * json-style (post-0.12.0) vendor=com.acme/name=schema-name/format=jsonschema/version=1-0-0
    * tsv-style (post-0.16.0) vendor=com.acme/name=schema-name/format=jsonschema/version=1
@@ -257,22 +235,5 @@ object ShreddedType {
         }
       case _ =>
         None
-    }
-
-  /**
-   * Split S3 filepath (without bucket name) into subpath and shreddedpath
-   * Works both for legacy and modern format. Omits file
-   *
-   * `path/to/shredded/good/run=2017-05-02-12-30-00/vendor=com.acme/name=event/format=jsonschema/version=1-0-0/part-0001`
-   * ->
-   * `(path/to/shredded/good/run=2017-05-02-12-30-00/, vendor=com.acme/name=event/format=jsonschema/version=1-0-0)`
-   *
-   * @param path S3 key without bucket name
-   * @return pair of subpath and shredpath
-   */
-  private def splitFilepath(path: String): (String, String) =
-    path.split("/").reverse.splitAt(MinShreddedPathLengthModern) match {
-      case (reverseSchema, reversePath) =>
-        (reversePath.reverse.mkString("/"), reverseSchema.tail.reverse.mkString("/"))
     }
 }

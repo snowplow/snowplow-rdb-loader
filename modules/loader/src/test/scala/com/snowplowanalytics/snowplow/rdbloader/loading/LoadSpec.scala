@@ -24,18 +24,18 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format, ShredProperty}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Transaction, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
 
+import org.specs2.mutable.Specification
+
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
-
-import org.specs2.mutable.Specification
 
 class LoadSpec extends Specification {
   import LoadSpec.{isBeforeFirstCommit, failCommit, arn}
@@ -48,7 +48,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), ShredProperty.Context),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
@@ -96,7 +96,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0)),"s3://assets/com.acme/json_context_1.json".key)
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), ShredProperty.Context),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
@@ -159,7 +159,7 @@ object LoadSpec {
       ShreddedType.Json(
         ShreddedType.Info(
           S3.Folder.coerce("s3://shredded/base/"),
-          "com.acme", "json-context", 1, Semver(0,18,0, None)
+          "com.acme", "json-context", 1, Semver(0,18,0, None), ShredProperty.Context
         ),
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
       )
@@ -191,7 +191,8 @@ object LoadSpec {
       List(
         LoaderMessage.ShreddedType(
           SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
-          Format.JSON
+          Format.JSON,
+          ShredProperty.Context
         )
       ),
       Timestamps(

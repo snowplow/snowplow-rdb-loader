@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{ShreddedType, Format, ShredProperty}
 
 /**
  * Various common utility functions
@@ -33,7 +33,7 @@ object Common {
 
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1,0,0))
-  val AtomicType = ShreddedType(AtomicSchema, Format.TSV)
+  val AtomicType = ShreddedType(AtomicSchema, Format.TSV, ShredProperty.SelfDescribingEvent)
   val AtomicPath: String = entityPath(AtomicType)
 
   val FolderTimeFormatter: DateTimeFormatter =

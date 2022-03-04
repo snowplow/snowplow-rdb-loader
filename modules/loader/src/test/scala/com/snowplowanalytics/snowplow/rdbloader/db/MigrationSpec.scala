@@ -24,15 +24,16 @@ import com.snowplowanalytics.iglu.schemaddl.redshift._
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShredProperty
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, Iglu, Transaction, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureLogging, PureDAO, PureTransaction}
 
 import org.specs2.mutable.Specification
+
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureIglu, PureLogging, PureDAO, PureTransaction}
 
 class MigrationSpec extends Specification {
   "build" should {
@@ -48,14 +49,16 @@ class MigrationSpec extends Specification {
             "com.acme",
             "some_context",
             2,
-            Semver(0, 17, 0)
+            Semver(0, 17, 0),
+            ShredProperty.Context
           )),
           ShreddedType.Json(ShreddedType.Info(
             S3.Folder.coerce("s3://shredded/archive"),
             "com.acme",
             "some_event",
             1,
-            Semver(0, 17, 0)
+            Semver(0, 17, 0),
+            ShredProperty.Context
           ), S3.Key.coerce("s3://shredded/jsonpaths"))
         )
       val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
@@ -112,14 +115,16 @@ class MigrationSpec extends Specification {
             "com.snowplowanalytics.snowplow",
             "atomic",
             1,
-            Semver(0, 17, 0)
+            Semver(0, 17, 0),
+            ShredProperty.Context
           )),
           ShreddedType.Tabular(ShreddedType.Info(
             S3.Folder.coerce("s3://shredded/archive"),
             "com.acme",
             "some_event",
             1,
-            Semver(0, 17, 0)
+            Semver(0, 17, 0),
+            ShredProperty.Context
           ))
         )
       val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip)
