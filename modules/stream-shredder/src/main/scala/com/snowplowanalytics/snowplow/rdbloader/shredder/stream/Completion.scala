@@ -35,7 +35,7 @@ object Completion {
    * Finalize the batch by sending a `ShreddingComplete` SQS message
    *
    * @param compression a compression type used in the batch
-   * @param isTabular a predicate to derive type of output for a schema key
+   * @param getTypes a function converts set of event inventory items to TypesInfo
    * @param root S3 batch root (with output=good and output=bad)
    * @param awsQueue AWSQueue instance to send the message to
    * @param window run id (when batch has been started)

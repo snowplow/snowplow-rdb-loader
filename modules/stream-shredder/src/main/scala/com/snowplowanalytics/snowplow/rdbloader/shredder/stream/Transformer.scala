@@ -17,6 +17,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 
+/**
+ * Includes common operations needed during event transformation
+ */
 sealed trait Transformer[F[_]] extends Product with Serializable {
   def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]]
   def badTransform(badRow: BadRow): Transformed

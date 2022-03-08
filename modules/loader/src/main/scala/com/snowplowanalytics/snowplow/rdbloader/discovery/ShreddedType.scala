@@ -19,7 +19,7 @@ import cats.implicits._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
-import com.snowplowanalytics.snowplow.rdbloader.DiscoveryAction
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryAction, DiscoveryStep}
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
@@ -123,31 +123,29 @@ object ShreddedType {
     * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail,
     * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
     */
-  def fromCommonShred[F[_]: Monad: Cache: AWS](
+  def fromCommon[F[_]: Monad: Cache: AWS](
     base: S3.Folder,
     shredJob: Semver,
     region: String,
     jsonpathAssets: Option[S3.Folder],
-    commonType: TypesInfo.Shredded.Type
-  ): DiscoveryAction[F, ShreddedType] =
-    commonType match {
-      case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.TSV, shredProperty) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
-        (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
-      case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
-        Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
-    }
-
-  def fromCommonWideRow[F[_]: Monad: Cache: AWS](
-     base: S3.Folder,
-     shredJob: Semver,
-     commonType: TypesInfo.WideRow.Type
-   ): DiscoveryAction[F, ShreddedType] =
-    commonType match {
-      case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
-        val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
-        (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
+    typesInfo: TypesInfo
+  ): F[List[DiscoveryStep[ShreddedType]]] =
+    typesInfo match {
+      case t: TypesInfo.Shredded =>
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] {
+          case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.TSV, shredProperty) =>
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
+          case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
+        }
+      case t: TypesInfo.WideRow =>
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] {
+          case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
+        }
     }
 
   /**

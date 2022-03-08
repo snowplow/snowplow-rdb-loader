@@ -15,11 +15,10 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import scala.concurrent.duration.FiniteDuration
 import cats._
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStep, DiscoveryStream, LoaderAction, LoaderError}
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Message, S3}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
 
@@ -132,18 +131,10 @@ object DataDiscovery {
     assets: Option[S3.Folder],
     message: LoaderMessage.ShreddingComplete
   ): LoaderAction[F, DataDiscovery] = {
-    val types = (message.typesInfo match {
-      case t: TypesInfo.Shredded =>
-        t.types.traverse[F, DiscoveryStep[ShreddedType]] { s =>
-          ShreddedType.fromCommonShred[F](message.base, message.processor.version, region, assets, s)
-        }
-      case t: TypesInfo.WideRow =>
-        t.types.traverse[F, DiscoveryStep[ShreddedType]] { s =>
-          ShreddedType.fromCommonWideRow[F](message.base, message.processor.version, s)
-        }
-    }).map { steps =>
-      LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
-    }
+    val types = ShreddedType.fromCommon[F](message.base, message.processor.version, region, assets, message.typesInfo)
+      .map { steps =>
+        LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
+      }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
       DataDiscovery(message.base, types.distinct, message.compression)
     }
