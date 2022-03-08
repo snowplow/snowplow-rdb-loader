@@ -110,7 +110,7 @@ object LoaderMessage {
   /**
    * Message signalling that shredder has finished and data ready to be loaded
    * @param base root of the shredded data
-   * @param types all shredded types found in the batch
+   * @param typesInfo all types found in the batch
    * @param timestamps set of auxiliary timestamps known to shredder
    * @param processor shredder application metadata
    */

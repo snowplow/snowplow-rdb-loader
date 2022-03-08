@@ -40,6 +40,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.For
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{Sink, TypesAccumulator, TimestampsAccumulator}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.singleton._
 
+/**
+ * Includes common operations needed in Spark job during event transformation
+ * @tparam T Type of items collected in accumulator
+ */
 sealed trait Transformer[T] extends Product with Serializable {
   def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed]
   def badTransform(badRow: BadRow): Transformed

@@ -23,6 +23,12 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.TypesAccumulator._
 
+/**
+ * Accumulator to collect inventory of events in current batch in one place.
+ * Since types of shredded and widerow items are different,
+ * accumulator has type parameter.
+ * @tparam T Shredded.Type or WideRow.Type
+ */
 class TypesAccumulator[T] extends AccumulatorV2[KeyAccum[T], KeyAccum[T]] {
 
   private val accum = mutable.Set.empty[T]
