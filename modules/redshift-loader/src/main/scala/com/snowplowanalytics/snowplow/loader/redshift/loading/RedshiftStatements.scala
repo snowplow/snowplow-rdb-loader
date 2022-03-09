@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift.loading
 
+import scala.reflect.internal.util.Collections.distinctBy
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.loader.redshift.config.RedshiftTarget
@@ -43,8 +44,16 @@ object RedshiftStatements {
     region: String,
     discovery: DataDiscovery
   ): RedshiftStatements = {
+    // It is possible there are items with same schema vendor, name and model
+    // but with different snowplowEntity.
+    // In that case, data for that schema will be loaded multiple times
+    // because the path for data to be loaded is determined by only schema's vendor, name and model.
+    // In order to eliminate this possibility, we are getting items distinct by
+    // their schema vendor, name and model.
     val shreddedStatements =
-      discovery.shreddedTypes.filterNot(_.isAtomic).map(transformShreddedType(target, region, discovery.compression))
+      distinctBy(discovery.shreddedTypes) { t =>
+        (t.info.vendor, t.info.name, t.info.model)
+      }.filterNot(_.isAtomic).map(transformShreddedType(target, region, discovery.compression))
     val atomic = Statement.EventsCopy(
       target.schema,
       false,
