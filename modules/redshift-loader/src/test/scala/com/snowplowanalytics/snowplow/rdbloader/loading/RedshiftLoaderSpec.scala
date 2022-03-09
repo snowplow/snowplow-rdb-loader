@@ -254,6 +254,88 @@ class RedshiftLoaderSpec extends Specification {
       val resultExpectation       = result must beRight
       transactionsExpectation.and(resultExpectation)
     }
+
+    "take shredded types distinct by their schema vendor, name and model" >> {
+      val builder: RedshiftLoader[Pure] = new RedshiftLoader[Pure](tgt, "us-east-1")
+
+      val shreddedTypes = List(
+        ShreddedType.Tabular(
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+        ),
+        ShreddedType.Tabular(
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Contexts)
+        ),
+        ShreddedType.Tabular(
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+        )
+      )
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://bucket/path/run=1/"), shreddedTypes, Compression.Gzip)
+
+      val (state, result) = builder.run(discovery).run
+
+      val expected = List(
+        LogEntry.Message("Loading s3://bucket/path/run=1/"),
+        LogEntry.Message("setStage copying into events table"),
+        LogEntry.Message("COPY atomic.events"),
+        LogEntry.Message(
+          Statement
+            .EventsCopy(
+              "atomic",
+              false,
+              "s3://bucket/path/run=1/".dir,
+              "us-east-1",
+              1,
+              "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+              Compression.Gzip
+            )
+            .toFragment
+            .toString()
+        ),
+        LogEntry.Message(
+          "COPY atomic.com_acme_event_1 FROM s3://bucket/path/run=1/output=good/vendor=com.acme/name=event/format=tsv/model=1"
+        ),
+        LogEntry.Message("setStage copying into com_acme_event_1 table"),
+        LogEntry.Message(
+          Statement
+            .ShreddedCopy(
+              "atomic",
+              ShreddedType.Tabular(
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+              ),
+              "us-east-1",
+              1,
+              "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+              Compression.Gzip
+            )
+            .toFragment
+            .toString()
+        ),
+        LogEntry.Message(
+          "COPY atomic.com_acme_event_2 FROM s3://bucket/path/run=1/output=good/vendor=com.acme/name=event/format=tsv/model=2"
+        ),
+        LogEntry.Message("setStage copying into com_acme_event_2 table"),
+        LogEntry.Message(
+          Statement
+            .ShreddedCopy(
+              "atomic",
+              ShreddedType.Tabular(
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Contexts)
+              ),
+              "us-east-1",
+              1,
+              "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+              Compression.Gzip
+            )
+            .toFragment
+            .toString()
+        ),
+        LogEntry.Message("Folder [s3://bucket/path/run=1/] has been loaded (not committed yet)")
+      )
+
+      val transactionsExpectation = state.getLog must beEqualTo(expected)
+      val resultExpectation       = result must beRight
+      transactionsExpectation.and(resultExpectation)
+    }
   }
 }
 
