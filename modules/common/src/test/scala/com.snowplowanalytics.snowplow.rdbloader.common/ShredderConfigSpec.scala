@@ -77,6 +77,7 @@ class ShredderConfigSpec extends Specification {
           }
           "monitoring": { },
           "formats": {
+            "transformationType": "shred"
             "default": "TSV",
             "json": [ "iglu:com.acme/overlap/jsonschema/1-0-0" ],
             "tsv": [ ],
@@ -101,7 +102,7 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleOutput,
         exampleSQSConfig,
-        exampleFormats,
+        ShredderConfig.Formats.WideRow.JSON,
         exampleValidations
       )
       result must beRight(expected)
@@ -114,7 +115,7 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleDefaultOutput,
         exampleSNSConfig,
-        exampleDefaultFormats,
+        ShredderConfig.Formats.WideRow.JSON,
         emptyValidations
       )
       result must beRight(expected)
