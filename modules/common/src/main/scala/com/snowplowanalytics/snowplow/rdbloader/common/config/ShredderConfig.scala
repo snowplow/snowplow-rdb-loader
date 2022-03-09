@@ -315,14 +315,14 @@ object ShredderConfig {
 
     implicit val formatsConfigDecoder: Decoder[Formats] =
       Decoder.instance { cur =>
-        val typeCur = cur.downField("type")
+        val typeCur = cur.downField("transformationType")
         typeCur.as[String].map(_.toLowerCase) match {
           case Right("shred") =>
             cur.as[Formats.Shred]
           case Right("widerow") =>
             cur.as[Formats.WideRow]
           case Right(other) =>
-            Left(DecodingFailure(s"Format type $other is not supported yet. Supported types: 'shred', 'widerow'", typeCur.history))
+            Left(DecodingFailure(s"Transformation type $other is not supported yet. Supported types: 'shred', 'widerow'", typeCur.history))
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
             Left(DecodingFailure("Cannot find 'type' string in format configuration", typeCur.history))
           case Left(other) =>

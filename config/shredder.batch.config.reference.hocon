@@ -49,6 +49,8 @@
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
   "formats": {
+    # Denotes the type of the transformation (shred or widerow)
+    "transformationType": "shred"
     # Format used by default (TSV or JSON)
     # Optional, default value TSV
     "default": "TSV",

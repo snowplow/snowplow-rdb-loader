@@ -233,14 +233,14 @@ object ShredJobSpec {
       if (wideRow)
         s"""
           |"formats": {
-          |  "type": "widerow"
+          |  "transformationType": "widerow"
           |  "fileFormat": "json"
           |}
           |""".stripMargin
       else
         s"""
           | "formats": {
-          |   "type": "shred"
+          |   "transformationType": "shred"
           |   "default": "$format",
           |   "json": [$jsonCriterions],
           |   "tsv": [ ],

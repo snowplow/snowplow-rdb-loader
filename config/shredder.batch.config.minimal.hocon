@@ -7,4 +7,7 @@
     "type": "sns"
     "topicArn": "arn:aws:sns:eu-central-1:123456789:test-sns-topic"
   }
+  "formats": {
+    "transformationType": "shred"
+  }
 }
