@@ -193,13 +193,12 @@ object ShredJob {
       }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 
-    val transformer = config.formats match {
-      case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
-      case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
-    }
-
     unshredded.foreach { folder =>
       System.out.println(s"RDB Shredder: processing $folder")
+      val transformer = config.formats match {
+        case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
+        case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+      }
       val job = new ShredJob(spark, igluConfig, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3)
