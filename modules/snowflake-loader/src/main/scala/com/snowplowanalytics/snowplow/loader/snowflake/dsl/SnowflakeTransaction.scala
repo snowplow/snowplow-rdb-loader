@@ -74,6 +74,7 @@ object SnowflakeTransaction {
     props.put("db", config.database)
     props.put("schema", config.schema)
     props.put("application", config.appName)
+    config.role.map(r => props.put("role", r))
     props
   }
 }
