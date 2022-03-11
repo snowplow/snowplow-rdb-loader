@@ -143,6 +143,7 @@ object SnowflakeLoaderSpec {
   val target = SnowflakeTarget(
     "us-west-2",
     "sf-user",
+    Some("sf-role"),
     PasswordConfig.PlainText("sf-pass"),
     "sf-account",
     "sf-warehouse",

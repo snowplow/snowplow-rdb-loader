@@ -24,6 +24,7 @@ import io.circe.{Decoder, DecodingFailure}
 case class SnowflakeTarget(
   snowflakeRegion: String,
   username: String,
+  role: Option[String],
   password: PasswordConfig,
   account: String,
   warehouse: String,
