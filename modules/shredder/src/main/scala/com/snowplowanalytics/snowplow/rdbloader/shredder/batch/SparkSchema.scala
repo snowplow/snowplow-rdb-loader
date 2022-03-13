@@ -14,13 +14,39 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
-import org.apache.spark.sql.types.{StringType, StructField, DoubleType, StructType, IntegerType, BooleanType, TimestampType, DecimalType}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+
+import org.apache.spark.sql.types.{ArrayType, StringType, StructField, DoubleType, StructType, IntegerType, BooleanType, TimestampType, DecimalType}
 
 object SparkSchema {
 
   val CustomDecimal = DecimalType(18, 2)
 
-  val Atomic = StructType(List(
+  def build(types: List[LoaderMessage.ShreddedType]): StructType = {
+    val latestByModel = LoaderMessage.ShreddedType.latestByModel(types)
+    StructType(Atomic ::: latestByModel.sorted.map(forEntity))
+  }
+
+  def forEntity(entity: LoaderMessage.ShreddedType): StructField = {
+    val name = SnowplowEvent.transformSchema(entity.shredProperty.toSdkProperty, entity.schemaKey)
+
+    val subFields = List(
+      // TODO: Use iglu client singleton to get the iglue schema and convert it to spark fields.
+      StructField("field1", StringType, true),
+      StructField("field2", StringType, true),
+      StructField("field3", StringType, true)
+    )
+
+    val subType = entity.shredProperty match {
+      case LoaderMessage.ShreddedType.SelfDescribingEvent => StructType(subFields)
+      case LoaderMessage.ShreddedType.Contexts => ArrayType(StructType(subFields), false)
+    }
+
+    StructField(name, subType, false)
+  }
+
+  val Atomic = List(
     StructField("app_id",                   StringType,     true),
     StructField("platform",                 StringType,     true),
     StructField("etl_tstamp",               TimestampType,  true),
@@ -149,5 +175,5 @@ object SparkSchema {
     StructField("event_version",            StringType,     true),
     StructField("event_fingerprint",        StringType,     true),
     StructField("true_tstamp",              TimestampType,  true)
-  ))
+  )
 }

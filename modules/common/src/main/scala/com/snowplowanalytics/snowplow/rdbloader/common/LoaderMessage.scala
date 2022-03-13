@@ -71,6 +71,8 @@ object LoaderMessage {
         case Right(str) => fromString(str).leftMap(err => DecodingFailure(err, c.history))
         case Left(error) => error.asLeft
       } }
+
+    implicit val formatOrdering: math.Ordering[Format] = math.Ordering.by(_.toString)
   }
 
   /**
@@ -90,6 +92,26 @@ object LoaderMessage {
     sealed trait ShredProperty extends Product with Serializable
     case object Contexts extends ShredProperty
     case object SelfDescribingEvent extends ShredProperty
+
+    def latestByModel(types: List[ShreddedType]): List[ShreddedType] =
+      types.groupBy {
+        case ShreddedType(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), format, shredProperty) =>
+          (vendor, name, model, format, shredProperty)
+      }
+      .toList
+      .flatMap { case (_, grouped) =>
+        grouped.sorted.lastOption
+      }
+
+    implicit val shredPropertyOrdering: math.Ordering[ShredProperty] = math.Ordering.by(_.toString)
+
+    implicit val shreddedTypeOrdering: math.Ordering[ShreddedType] = {
+      implicit val schemaKeyOrdering = SchemaKey.ordering
+      math.Ordering.by {
+        case ShreddedType(schemaKey, format, shredProperty) =>
+          (format, shredProperty, schemaKey)
+      }
+    }
   }
 
 

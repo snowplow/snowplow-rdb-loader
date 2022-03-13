@@ -128,11 +128,6 @@ object Transformed {
   def wideRowEvent(event: Event): Transformed =
     WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
 
-  def parquetEvent[F[_]: Monad: RegistryLookup: Clock](atomicLengths: Map[String, Int])(event: Event): Transformed = {
-    val data = EventUtils.alterEnrichedEventAny(event, atomicLengths)
-    Parquet(Data.ListAny(data))
-  }
-
   /**
    * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity,
    * specifying how it should look like in destination: JSON or TSV

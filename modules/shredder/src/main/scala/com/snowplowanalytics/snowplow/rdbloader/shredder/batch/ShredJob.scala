@@ -46,6 +46,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.Discovery.MessageProcessor
+import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.singleton._
 
@@ -135,6 +136,19 @@ class ShredJob(@transient val spark: SparkSession,
           case Left(badRow) => Some(Left(badRow))
         }
       }
+      .map(
+        // For parquet we must accumulate shredded types early.
+        // For other formats we do it after handling other possible failures.
+        config.formats match {
+          case Formats.Parquet => { either =>
+            either.foreach { event =>
+              ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, _ => Format.PARQUET)(event.inventory)
+            }
+            either
+          }
+          case _ => identity
+        }
+      )
       .setName("good")
       .cache()
 
@@ -157,11 +171,13 @@ class ShredJob(@transient val spark: SparkSession,
       List(Transformed.wideRowEvent(event))
     }
 
-    val parquetGoodTransform = (event: Event) => {
-      ShreddedTypesAccumulator.recordShreddedType(shreddedTypesAccumulator, _ => Format.PARQUET)(event.inventory)
-      timestampsAccumulator.add(event)
-      eventsCounter.add(1L)
-      List(Transformed.parquetEvent[Id](atomicLengths)(event))
+    val parquetGoodTransform = {
+      val shreddedTypes = ShreddedType.latestByModel(shreddedTypesAccumulator.value.toList.sorted)
+      (event: Event) => {
+        timestampsAccumulator.add(event)
+        eventsCounter.add(1L)
+        List(ParquetUtils.parquetEvent[Id](atomicLengths, shreddedTypes)(event))
+      }
     }
 
     val shredGoodTransform = (event: Event) =>
@@ -200,7 +216,8 @@ class ShredJob(@transient val spark: SparkSession,
       case _: Formats.Shred =>
         Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.shredded), outFolder)
       case Formats.Parquet =>
-        Sink.writeParquet(spark, SparkSchema.Atomic, transformed.flatMap(_.parquet), outFolder.append("output=good"))
+        val schema = SparkSchema.build(shreddedTypesAccumulator.value.toList)
+        Sink.writeParquet(spark, schema, transformed.flatMap(_.parquet), outFolder.append("output=good"))
         Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
     }
 
