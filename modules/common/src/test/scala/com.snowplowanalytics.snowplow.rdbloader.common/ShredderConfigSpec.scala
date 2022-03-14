@@ -37,7 +37,8 @@ class ShredderConfigSpec extends Specification {
         exampleFormats,
         exampleMonitoring,
         exampleDeduplication,
-        exampleValidations
+        exampleValidations,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -51,7 +52,8 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultFormats,
         exampleDefaultMonitoring,
         exampleDeduplication,
-        emptyValidations
+        emptyValidations,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -103,7 +105,8 @@ class ShredderConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         ShredderConfig.Formats.WideRow.JSON,
-        exampleValidations
+        exampleValidations,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -116,7 +119,8 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         ShredderConfig.Formats.WideRow.JSON,
-        emptyValidations
+        emptyValidations,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -222,6 +226,7 @@ object ShredderConfigSpec {
     Some(ShredderConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
+  val exampleDefaultFeatureFlags = ShredderConfig.FeatureFlags(false)
   val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)

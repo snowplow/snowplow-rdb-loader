@@ -103,4 +103,8 @@
     # Artificial pause after each failed folder being added to the queue
     "interval": "5 seconds"
   }
+
+  "featureFlags": {
+    "legacyMessageFormat": true
+  }
 }

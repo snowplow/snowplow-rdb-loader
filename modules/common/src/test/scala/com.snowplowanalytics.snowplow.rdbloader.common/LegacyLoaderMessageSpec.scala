@@ -16,66 +16,46 @@ import java.time.Instant
 
 import io.circe.Json
 import io.circe.literal._
-import io.circe.syntax._
-import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 
 import org.specs2.mutable.Specification
 
-class LoaderMessageSpec extends Specification {
+class LegacyLoaderMessageSpec extends Specification {
   "fromMessage" should {
-    "decode ShreddingComplete message from valid JSON string" >> {
-      val payload = LoaderMessageSpec.ValidMessageJson.noSpaces
-      LoaderMessage.fromString(payload) must beRight(LoaderMessageSpec.ValidMessage)
+    "decode ShreddingComplete message from valid legacy JSON string" >> {
+      val payload = LegacyLoaderMessageSpec.ValidLegacyMessageJson.noSpaces
+      LoaderMessage.fromString(payload) must beRight(LegacyLoaderMessageSpec.ValidMessage)
     }
   }
 
   "selfDescribingData" should {
     "encode into valid self-describing JSON" >> {
-      val result = LoaderMessageSpec.ValidMessage.selfDescribingData(false)
+      val result = LegacyLoaderMessageSpec.ValidMessage.selfDescribingData(true)
       val expected = SelfDescribingData(
-        LoaderMessage.ShreddingCompleteKey,
-        LoaderMessageSpec.ValidMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
+        SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", "jsonschema", SchemaVer.Full(1,0,1)),
+        LegacyLoaderMessageSpec.ValidLegacyMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
       )
       result must beEqualTo(expected)
     }
   }
-
-  "manifestType encoder" should {
-    "drop null values in output json" >> {
-      val manifestType = LoaderMessage.ManifestType(
-        LoaderMessage.ShreddingCompleteKey,
-        "TSV",
-        None
-      )
-      val jsonStr = manifestType.asJson.noSpaces
-      jsonStr.contains("transformation") must beFalse
-      val decoded = parse(jsonStr).flatMap(_.as[LoaderMessage.ManifestType])
-      decoded must beRight(manifestType)
-    }
-  }
 }
 
-object LoaderMessageSpec {
-  val ValidMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+object LegacyLoaderMessageSpec {
+  val ValidLegacyMessageJson = json"""{
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/1-0-1",
     "data": {
       "base" : "s3://bucket/folder/",
-      "typesInfo": {
-        "transformation": "SHREDDED",
-        "types": [
-          {
-            "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
-            "format" : "TSV",
-            "snowplowEntity": "SELF_DESCRIBING_EVENT"
-          }
-        ]
-      },
+      "types" : [
+        {
+          "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
+          "format" : "TSV"
+        }
+      ],
       "timestamps" : {
         "jobStarted" : "2020-09-17T11:32:21.145Z",
         "jobCompleted" : "2020-09-17T11:32:21.145Z",
