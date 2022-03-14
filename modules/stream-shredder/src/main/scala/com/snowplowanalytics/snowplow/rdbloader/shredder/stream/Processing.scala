@@ -46,7 +46,7 @@ object Processing {
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =
-      getOnComplete(config.output.compression, transformer.typesInfo, config.output.path, resources.awsQueue, resources.windows)
+      getOnComplete(config.output.compression, transformer.typesInfo, config.output.path, resources.awsQueue, resources.windows, config.featureFlags.legacyMessageFormat)
     val sinkId: Window => F[Int] =
       getSinkId(resources.windows)
 
@@ -69,7 +69,8 @@ object Processing {
                                        getTypes: Set[Data.ShreddedType] => TypesInfo,
                                        root: URI,
                                        awsQueue: AWSQueue[F],
-                                       state: State.Windows[F])
+                                       state: State.Windows[F],
+                                       legacyMessageFormat: Boolean)
                                       (window: Window): F[Unit] = {
     val find: State.WState => Boolean = {
       case (w, status, _) => w == window && status == Status.Sealed
@@ -79,7 +80,7 @@ object Processing {
     }
 
     state.modify(State.updateState(find, update, _._3)).flatMap { state =>
-      Completion.seal[F](compression, getTypes, root, awsQueue)(window, state)
+      Completion.seal[F](compression, getTypes, root, awsQueue, legacyMessageFormat)(window, state)
     } *> logger[F].debug(s"ShreddingComplete message for ${window.getDir} has been sent")
   }
 

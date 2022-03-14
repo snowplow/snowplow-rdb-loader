@@ -83,4 +83,11 @@
       "dsn": "http://sentry.acme.com"
     }
   }
+
+  # Optional. Enable features that are still in beta, or which are here to enable smoother upgrades
+  "featureFlags": {
+    # Read/write in the legacy version 1 shredding complete message format.
+    # This should be enabled during upgrade from older versions of the loader.
+    "legacyMessageFormat": false
+  }
 }

@@ -41,7 +41,8 @@ object ShredderConfig {
                          formats: Formats,
                          monitoring: Monitoring,
                          deduplication: Deduplication,
-                         validations: Validations) extends ShredderConfig
+                         validations: Validations,
+                         featureFlags: FeatureFlags) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -57,7 +58,8 @@ object ShredderConfig {
                           output: Output,
                           queue: QueueConfig,
                           formats: Formats,
-                          validations: Validations) extends ShredderConfig
+                          validations: Validations,
+                          featureFlags: FeatureFlags) extends ShredderConfig
   object Stream {
     def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
       fromString(conf, implicits().streamConfigDecoder)
@@ -192,6 +194,8 @@ object ShredderConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
+  final case class FeatureFlags(legacyMessageFormat: Boolean)
+
   /**
    * All config implicits are put into case class because we want to make region decoder
    * replaceable to write unit tests for config parsing.
@@ -283,6 +287,9 @@ object ShredderConfig {
 
     implicit val sentryConfigDecoder: Decoder[Sentry] =
       deriveDecoder[Sentry]
+
+    implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
+      deriveDecoder[FeatureFlags]
 
     implicit val durationDecoder: Decoder[Duration] =
       Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))

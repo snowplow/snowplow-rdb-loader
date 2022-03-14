@@ -364,7 +364,8 @@ object ShredJobSpec {
       ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
-      ShredderConfig.Validations(None)
+      ShredderConfig.Validations(None),
+      ShredderConfig.FeatureFlags(false)
     )
   }
 }
