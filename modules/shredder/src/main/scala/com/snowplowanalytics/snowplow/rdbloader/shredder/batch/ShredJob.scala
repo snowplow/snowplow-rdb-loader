@@ -46,7 +46,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.{Formats, QueueConfig}
 
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.Discovery.MessageProcessor
-import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.{singleton, Sink, ShreddedTypesAccumulator, TimestampsAccumulator}
 import com.snowplowanalytics.snowplow.rdbloader.shredder.batch.spark.singleton._
 
@@ -176,7 +175,7 @@ class ShredJob(@transient val spark: SparkSession,
       (event: Event) => {
         timestampsAccumulator.add(event)
         eventsCounter.add(1L)
-        List(ParquetUtils.parquetEvent[Id](atomicLengths, shreddedTypes)(event))
+        List(SparkData.parquetEvent[Id](atomicLengths, shreddedTypes)(event))
       }
     }
 

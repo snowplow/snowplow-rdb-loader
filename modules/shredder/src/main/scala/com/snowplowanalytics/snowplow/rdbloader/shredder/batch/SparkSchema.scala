@@ -14,10 +14,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import com.snowplowanalytics.iglu.schemaddl.bigquery.{Field, Mode, Type}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField
 
-import org.apache.spark.sql.types.{ArrayType, StringType, StructField, DoubleType, StructType, IntegerType, BooleanType, TimestampType, DecimalType}
+import org.apache.spark.sql.types.{ArrayType, BooleanType, DataType, DateType, DecimalType, DoubleType, IntegerType, StringType, StructField, StructType, TimestampType}
 
 object SparkSchema {
 
@@ -30,20 +32,39 @@ object SparkSchema {
 
   def forEntity(entity: LoaderMessage.ShreddedType): StructField = {
     val name = SnowplowEvent.transformSchema(entity.shredProperty.toSdkProperty, entity.schemaKey)
+    val schema = WideField.getSchema(entity.schemaKey)
+    entity.shredProperty match {
+      case LoaderMessage.ShreddedType.SelfDescribingEvent =>
+        val ddlField = Field.build(name, schema, false)
+        structField(ddlField)
+      case LoaderMessage.ShreddedType.Contexts =>
+        val ddlField = Field.build("NOT_NEEDED", schema, true)
+        StructField(name, new ArrayType(fieldType(ddlField.fieldType), false), true)
+    }
+  }
 
-    val subFields = List(
-      // TODO: Use iglu client singleton to get the iglue schema and convert it to spark fields.
-      StructField("field1", StringType, true),
-      StructField("field2", StringType, true),
-      StructField("field3", StringType, true)
-    )
-
-    val subType = entity.shredProperty match {
-      case LoaderMessage.ShreddedType.SelfDescribingEvent => StructType(subFields)
-      case LoaderMessage.ShreddedType.Contexts => ArrayType(StructType(subFields), false)
+  def structField(ddlField: Field): StructField =
+    ddlField match {
+      case Field(name, ddlType, Mode.Nullable) =>
+        StructField(name, fieldType(ddlType), true)
+      case Field(name, ddlType, Mode.Required) =>
+        StructField(name, fieldType(ddlType), false)
+      case Field(name, ddlType, Mode.Repeated) =>
+        val itemIsNullable = true // TODO: We don't have this information!  Because BQ does not support nullable array items
+        val arrayIsNullable = true // TODO: We don't have this information!  Because BQ does not support nullable arrays.
+        StructField(name, new ArrayType(fieldType(ddlType), itemIsNullable), arrayIsNullable)
     }
 
-    StructField(name, subType, false)
+  def fieldType(ddlType: Type): DataType = ddlType match {
+    case Type.String => StringType
+    case Type.Boolean => BooleanType
+    case Type.Integer => IntegerType
+    case Type.Float => DoubleType // TODO: Bigquery ddl does not make distinction between float and double.
+    case Type.Numeric => DoubleType // TODO: Bigquery ddl never emits this type.  Would be better if it did, and we could use Spark's DecimalType
+    case Type.Date => DateType
+    case Type.DateTime => TimestampType
+    case Type.Timestamp => TimestampType
+    case Type.Record(fields) => StructType(fields.map(structField))
   }
 
   val Atomic = List(
