@@ -76,19 +76,21 @@ object Discovery {
    */
   def seal(message: LoaderMessage.ShreddingComplete,
            sendToQueue: (String, String) => Either[Throwable, Unit],
-           putToS3: (String,String, String) => Either[Throwable, Unit]): Unit = {
+           putToS3: (String,String, String) => Either[Throwable, Unit],
+           legacyMessageFormat: Boolean): Unit = {
     val (bucket, key) = S3.splitS3Key(message.base.withKey(FinalKeyName))
+    val asString = message.selfDescribingData(legacyMessageFormat).asString
 
-    sendToQueue("shredding", message.selfDescribingData.asString) match {
+    sendToQueue("shredding", asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could not send shredded types ${message.selfDescribingData.asString} to queue for ${message.base}", e)
+        throw new RuntimeException(s"Could not send shredded types $asString to queue for ${message.base}", e)
       case _ =>
         ()
     }
 
-    putToS3(bucket, key, message.selfDescribingData.asString) match {
+    putToS3(bucket, key, asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could send shredded types ${message.selfDescribingData.asString} to queue but could not write ${message.base.withKey(FinalKeyName)}", e)
+        throw new RuntimeException(s"Could send shredded types $asString to queue but could not write ${message.base.withKey(FinalKeyName)}", e)
       case _ =>
         ()
     }

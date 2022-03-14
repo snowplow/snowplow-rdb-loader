@@ -32,10 +32,13 @@ sealed trait LoaderMessage {
   import LoaderMessage._
 
   /** Convert to self-describing JSON */
-  def selfDescribingData: SelfDescribingData[Json] =
+  def selfDescribingData(legacyFormat: Boolean): SelfDescribingData[Json] =
     this match {
-      case _: LoaderMessage.ShreddingComplete =>
-        SelfDescribingData(LoaderMessage.ShreddingCompleteKey, (this: LoaderMessage).asJson)
+      case sc: LoaderMessage.ShreddingComplete =>
+        if (legacyFormat)
+          LegacyLoaderMessage.from(sc).selfDescribingData
+        else
+          SelfDescribingData(LoaderMessage.ShreddingCompleteKey, (this: LoaderMessage).asJson)
     }
 }
 
@@ -129,6 +132,10 @@ object LoaderMessage {
       .flatMap {
         case SelfDescribingData(SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", _, SchemaVer.Full(2, _, _)), data) =>
           data.as[ShreddingComplete].leftMap(e => s"Cannot decode valid ShreddingComplete payload from [${data.noSpaces}], ${e.show}")
+        case SelfDescribingData(SchemaKey("com.snowplowanalytics.snowplow.storage.rdbloader", "shredding_complete", _, SchemaVer.Full(1, _, _)), data) =>
+          data.as[LegacyLoaderMessage.ShreddingComplete]
+            .leftMap(e => s"Cannot decode valid ShreddingComplete legacy payload version 1 from [${data.noSpaces}], ${e.show}")
+            .map(LegacyLoaderMessage.unlegacify)
         case SelfDescribingData(key, data) =>
           s"Cannot extract a LoaderMessage from ${data.noSpaces} with ${key.toSchemaUri}".asLeft
       }

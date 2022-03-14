@@ -201,7 +201,7 @@ object ShredJob {
       }
       val job = new ShredJob(spark, igluConfig, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
-      Discovery.seal(completed, sendToQueue, putToS3)
+      Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }
 
     Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {
