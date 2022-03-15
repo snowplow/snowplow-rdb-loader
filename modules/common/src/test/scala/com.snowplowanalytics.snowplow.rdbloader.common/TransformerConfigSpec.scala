@@ -227,7 +227,6 @@ object TransformerConfigSpec {
   val exampleMonitoring = TransformerConfig.Monitoring(
     Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false)
   val exampleDefaultMonitoring = TransformerConfig.Monitoring(None)
   val exampleDeduplication = TransformerConfig.Deduplication(TransformerConfig.Deduplication.Synthetic.Broadcast(1))
   val emptyRunInterval = TransformerConfig.RunInterval(None, None, None)
@@ -236,6 +235,7 @@ object TransformerConfigSpec {
     Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
     Some(TransformerConfig.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
 
