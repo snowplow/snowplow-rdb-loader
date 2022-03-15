@@ -102,7 +102,7 @@ object LoaderMessage {
 
   sealed trait SnowplowEntity extends Product with Serializable
   object SnowplowEntity {
-    case object Contexts extends SnowplowEntity
+    case object Context extends SnowplowEntity
     case object SelfDescribingEvent extends SnowplowEntity
   }
 
@@ -220,19 +220,19 @@ object LoaderMessage {
     }
   implicit val loaderMessageSnowplowEntityEncoder: Encoder[SnowplowEntity] =
     Encoder.encodeString.contramap {
-      case SnowplowEntity.Contexts => "CONTEXTS"
+      case SnowplowEntity.Context => "CONTEXT"
       case SnowplowEntity.SelfDescribingEvent => "SELF_DESCRIBING_EVENT"
     }
   implicit val loaderMessageSnowplowEntityDecoder: Decoder[SnowplowEntity] =
     Decoder.decodeString.emap {
-        case "CONTEXTS" => SnowplowEntity.Contexts.asRight[String]
+        case "CONTEXT" => SnowplowEntity.Context.asRight[String]
         case "SELF_DESCRIBING_EVENT" => SnowplowEntity.SelfDescribingEvent.asRight[String]
-        case other => s"ShredProperty $other is not supported. Supported values: CONTEXTS, SELFDESCRIBING_EVENT".asLeft[SnowplowEntity]
+        case other => s"ShredProperty $other is not supported. Supported values: CONTEXT, SELFDESCRIBING_EVENT".asLeft[SnowplowEntity]
       }
-  implicit val loaderMessageShredPropertyContextsEncoder: Encoder[SnowplowEntity.Contexts.type] =
-    deriveEncoder[SnowplowEntity.Contexts.type ]
-  implicit val loaderMessageShredPropertyContextsDecoder: Decoder[SnowplowEntity.Contexts.type] =
-    deriveDecoder[SnowplowEntity.Contexts.type ]
+  implicit val loaderMessageShredPropertyContextsEncoder: Encoder[SnowplowEntity.Context.type] =
+    deriveEncoder[SnowplowEntity.Context.type ]
+  implicit val loaderMessageShredPropertyContextsDecoder: Decoder[SnowplowEntity.Context.type] =
+    deriveDecoder[SnowplowEntity.Context.type ]
   implicit val loaderMessageShredPropertyUnstructEventEncoder: Encoder[SnowplowEntity.SelfDescribingEvent.type] =
     deriveEncoder[SnowplowEntity.SelfDescribingEvent.type ]
   implicit val loaderMessageShredPropertyUnstructEventDecoder: Decoder[SnowplowEntity.SelfDescribingEvent.type] =

@@ -80,7 +80,7 @@ object Transformer {
 
   def getSnowplowEntity(shredProperty: Data.ShredProperty): LoaderMessage.SnowplowEntity =
     shredProperty match {
-      case _: Data.Contexts => LoaderMessage.SnowplowEntity.Contexts
+      case _: Data.Contexts => LoaderMessage.SnowplowEntity.Context
       case Data.UnstructEvent => LoaderMessage.SnowplowEntity.SelfDescribingEvent
     }
 

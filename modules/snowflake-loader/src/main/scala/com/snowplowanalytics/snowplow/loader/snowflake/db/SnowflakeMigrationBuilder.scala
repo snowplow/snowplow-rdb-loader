@@ -77,7 +77,7 @@ class SnowflakeMigrationBuilder[C[_]: MonadThrow: Logging: SfDao](dbSchema: Stri
 
   private def getColumnType(item: MigrationBuilder.MigrationItem): SnowflakeDatatype =
     item.shreddedType.getSnowplowEntity match {
-      case LoaderMessage.SnowplowEntity.Contexts => SnowflakeDatatype.JsonArray
+      case LoaderMessage.SnowplowEntity.Context => SnowflakeDatatype.JsonArray
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent => SnowflakeDatatype.JsonObject
     }
 
