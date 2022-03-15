@@ -198,7 +198,7 @@ object TransformerConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
-  final case class FeatureFlags(legacyMessageFormat: Boolean)
+  final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
 
   final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
   object RunInterval {
