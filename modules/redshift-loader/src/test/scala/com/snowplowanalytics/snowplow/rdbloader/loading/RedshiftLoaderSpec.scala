@@ -263,7 +263,7 @@ class RedshiftLoaderSpec extends Specification {
           ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 1, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
         ),
         ShreddedType.Tabular(
-          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Contexts)
+          ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Context)
         ),
         ShreddedType.Tabular(
           ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
@@ -319,7 +319,7 @@ class RedshiftLoaderSpec extends Specification {
             .ShreddedCopy(
               "atomic",
               ShreddedType.Tabular(
-                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Contexts)
+                ShreddedType.Info("s3://bucket/path/run=1/".dir, "com.acme", "event", 2, Semver(1, 5, 0), LoaderMessage.SnowplowEntity.Context)
               ),
               "us-east-1",
               1,

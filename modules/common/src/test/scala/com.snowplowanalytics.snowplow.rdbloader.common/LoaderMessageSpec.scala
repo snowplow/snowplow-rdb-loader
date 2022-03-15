@@ -29,20 +29,34 @@ import org.specs2.mutable.Specification
 
 class LoaderMessageSpec extends Specification {
   "fromMessage" should {
-    "decode ShreddingComplete message from valid JSON string" >> {
-      val payload = LoaderMessageSpec.ValidMessageJson.noSpaces
-      LoaderMessage.fromString(payload) must beRight(LoaderMessageSpec.ValidMessage)
+    "decode message for shredded from valid JSON string" >> {
+      val shreddedMessage = LoaderMessageSpec.ShreddedMessageJson.noSpaces
+      LoaderMessage.fromString(shreddedMessage) must beRight(LoaderMessageSpec.ShreddedMessage)
+    }
+
+    "decode message for wide row from valid JSON string" >> {
+      val wideRowMessage = LoaderMessageSpec.WideRowMessageJson.noSpaces
+      LoaderMessage.fromString(wideRowMessage) must beRight(LoaderMessageSpec.WideRowMessage)
     }
   }
 
   "selfDescribingData" should {
-    "encode into valid self-describing JSON" >> {
-      val result = LoaderMessageSpec.ValidMessage.selfDescribingData(false)
-      val expected = SelfDescribingData(
+    "encode message for shredded into valid self-describing JSON" >> {
+      val shreddedResult = LoaderMessageSpec.ShreddedMessage.selfDescribingData(false)
+      val shreddedExpected = SelfDescribingData(
         LoaderMessage.ShreddingCompleteKey,
-        LoaderMessageSpec.ValidMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
+        LoaderMessageSpec.ShreddedMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
       )
-      result must beEqualTo(expected)
+      shreddedResult must beEqualTo(shreddedExpected)
+    }
+
+    "encode message for wide row into valid self-describing JSON" >> {
+      val wideRowResult = LoaderMessageSpec.WideRowMessage.selfDescribingData(false)
+      val wideRowExpected = SelfDescribingData(
+        LoaderMessage.ShreddingCompleteKey,
+        LoaderMessageSpec.WideRowMessageJson.hcursor.downField("data").focus.getOrElse(Json.Null)
+      )
+      wideRowResult must beEqualTo(wideRowExpected)
     }
   }
 
@@ -62,7 +76,7 @@ class LoaderMessageSpec extends Specification {
 }
 
 object LoaderMessageSpec {
-  val ValidMessageJson = json"""{
+  val ShreddedMessageJson = json"""{
     "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
     "data": {
       "base" : "s3://bucket/folder/",
@@ -91,21 +105,73 @@ object LoaderMessageSpec {
     }
   }"""
 
-  val ValidMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
-    S3.Folder.coerce("s3://bucket/folder/"),
+  val WideRowMessageJson = json"""{
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+    "data": {
+      "base" : "s3://bucket/folder/",
+      "typesInfo": {
+        "transformation": "WIDEROW",
+        "fileFormat": "JSON",
+        "types": [
+          {
+            "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
+            "snowplowEntity": "SELF_DESCRIBING_EVENT"
+          },
+          {
+            "schemaKey" : "iglu:com.acme/event-b/jsonschema/2-0-0",
+            "snowplowEntity": "CONTEXT"
+          }
+        ]
+      },
+      "timestamps" : {
+        "jobStarted" : "2020-09-17T11:32:21.145Z",
+        "jobCompleted" : "2020-09-17T11:32:21.145Z",
+        "min" : null,
+        "max" : null
+      },
+      "compression": "GZIP",
+      "processor": {
+        "artifact" : "test-shredder",
+        "version" : "1.1.2"
+      },
+      "count": null
+    }
+  }"""
+
+  val base = S3.Folder.coerce("s3://bucket/folder/")
+  val timestamps = LoaderMessage.Timestamps(
+    Instant.ofEpochMilli(1600342341145L),
+    Instant.ofEpochMilli(1600342341145L),
+    None,
+    None
+  )
+  val processor = LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
+
+  val ShreddedMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
+    base,
     TypesInfo.Shredded(
       List(
         TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), TypesInfo.Shredded.ShreddedFormat.TSV, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
       )
     ),
-    LoaderMessage.Timestamps(
-      Instant.ofEpochMilli(1600342341145L),
-      Instant.ofEpochMilli(1600342341145L),
-      None,
-      None
-    ),
+    timestamps,
     Compression.Gzip,
-    LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
+    processor,
+    None
+  )
+
+  val WideRowMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
+    base,
+    TypesInfo.WideRow(
+      TypesInfo.WideRow.WideRowFormat.JSON,
+      List(
+        TypesInfo.WideRow.Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        TypesInfo.WideRow.Type(SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(2, 0, 0)), LoaderMessage.SnowplowEntity.Context),
+      )
+    ),
+    timestamps,
+    Compression.Gzip,
+    processor,
     None
   )
 }

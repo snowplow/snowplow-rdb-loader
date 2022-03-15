@@ -101,7 +101,7 @@ class SnowflakeLoaderSpec extends Specification {
           ShreddedType.Info(base.dir, "com.acme", "event", 1, shredJobVersion, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
         ),
         ShreddedType.Widerow(
-          ShreddedType.Info(base.dir, "com.acme", "context", 1, shredJobVersion, LoaderMessage.SnowplowEntity.Contexts)
+          ShreddedType.Info(base.dir, "com.acme", "context", 1, shredJobVersion, LoaderMessage.SnowplowEntity.Context)
         )
       )
       val discovery = DataDiscovery(base.dir, shreddedTypes, Compression.Gzip)

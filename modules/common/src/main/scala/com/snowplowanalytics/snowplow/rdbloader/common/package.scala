@@ -68,7 +68,7 @@ package object common {
 
   implicit class ShredPropertyTransformer(val snowplowEntity: LoaderMessage.SnowplowEntity) extends AnyVal {
     def toSdkProperty: Data.ShredProperty = snowplowEntity match {
-      case LoaderMessage.SnowplowEntity.Contexts => Data.Contexts(Data.CustomContexts)
+      case LoaderMessage.SnowplowEntity.Context => Data.Contexts(Data.CustomContexts)
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
     }
   }

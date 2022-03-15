@@ -88,7 +88,7 @@ object TypesAccumulator {
 
   private def getSnowplowEntity(shredProperty: Data.ShredProperty): SnowplowEntity =
     shredProperty match {
-      case _: Data.Contexts => SnowplowEntity.Contexts
+      case _: Data.Contexts => SnowplowEntity.Context
       case Data.UnstructEvent => SnowplowEntity.SelfDescribingEvent
     }
 }
