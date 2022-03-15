@@ -226,7 +226,7 @@ object ShredderConfigSpec {
     Some(ShredderConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
-  val exampleDefaultFeatureFlags = ShredderConfig.FeatureFlags(false)
+  val exampleDefaultFeatureFlags = ShredderConfig.FeatureFlags(false, None)
   val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)

@@ -194,7 +194,7 @@ object ShredderConfig {
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
 
-  final case class FeatureFlags(legacyMessageFormat: Boolean)
+  final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
 
   /**
    * All config implicits are put into case class because we want to make region decoder

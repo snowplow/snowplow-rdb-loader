@@ -365,7 +365,7 @@ object ShredJobSpec {
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
       ShredderConfig.Validations(None),
-      ShredderConfig.FeatureFlags(false)
+      ShredderConfig.FeatureFlags(false, None)
     )
   }
 }
@@ -404,7 +404,7 @@ trait ShredJobSpec extends SparkSpec {
           case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
           case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
         }
-        val job = new ShredJob(spark,cli.igluConfig, transformer, cli.config)
+        val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
         deleteRecursively(new File(cli.config.input))
         result

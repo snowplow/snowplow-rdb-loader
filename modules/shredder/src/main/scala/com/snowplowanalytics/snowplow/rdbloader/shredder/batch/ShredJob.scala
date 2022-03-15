@@ -106,7 +106,7 @@ class ShredJob[T](@transient val spark: SparkSession,
     // Handling of properly-formed rows; drop bad, turn proper events to `Event`
     // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
     // only one event from an event id and event fingerprint combination is kept
-    val good = common
+    val goodWithoutCache = common
       .flatMap { shredded => shredded.toOption }
       .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
       .flatMap { case (_, s) =>
@@ -119,7 +119,12 @@ class ShredJob[T](@transient val spark: SparkSession,
         }
       }
       .setName("good")
-      .cache()
+
+    // Check first if spark cache is enabled explicitly.
+    // If it is not enabled, check if CB deduplication is enabled.
+    val shouldCacheEnabled = config.featureFlags.sparkCacheEnabled.getOrElse(eventsManifest.isDefined)
+
+    val good = if (shouldCacheEnabled) goodWithoutCache.cache() else goodWithoutCache
 
     // The events counter
     // Using accumulators for counting is unreliable, but we don't
