@@ -369,7 +369,7 @@ object ShredJobSpec {
       TransformerConfig.Monitoring(None),
       TransformerConfig.Deduplication(TransformerConfig.Deduplication.Synthetic.Broadcast(1)),
       TransformerConfig.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false),
+      TransformerConfig.FeatureFlags(false, None),
       TransformerConfig.Validations(None)
     )
   }
