@@ -54,8 +54,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.Buil
  * @param shredConfig parsed command-line arguments
  */
 class ShredJob[T](@transient val spark: SparkSession,
-               transformer: Transformer[T],
-               config: TransformerConfig.Batch) extends Serializable {
+                  transformer: Transformer[T],
+                  config: TransformerConfig.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   // Accumulator to track iglu entities
@@ -88,7 +88,6 @@ class ShredJob[T](@transient val spark: SparkSession,
         } yield event
       }
       .setName("common")
-      .cache()
 
     // Find an earliest timestamp in the batch. Will be used only if CB deduplication is enabled
     val batchTimestamp: Instant =
