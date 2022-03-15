@@ -54,7 +54,6 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
  * @param shredConfig parsed command-line arguments
  */
 class ShredJob[T](@transient val spark: SparkSession,
-                  igluConfig: Json,
                   transformer: Transformer[T],
                   config: ShredderConfig.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
@@ -84,12 +83,11 @@ class ShredJob[T](@transient val spark: SparkSession,
     val common = sc.textFile(inputFolder)
       .map { line =>
         for {
-          event <- EventUtils.loadAndShred(IgluSingleton.get(igluConfig), ShredJob.BadRowsProcessor, line)
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
           _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
         } yield event
       }
       .setName("common")
-      .cache()
 
     // Find an earliest timestamp in the batch. Will be used only if CB deduplication is enabled
     val batchTimestamp: Instant =
@@ -199,7 +197,7 @@ object ShredJob {
         case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
         case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
       }
-      val job = new ShredJob(spark, igluConfig, transformer, config)
+      val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }
