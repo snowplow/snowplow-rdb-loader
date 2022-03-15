@@ -12,10 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import doobie.{ConnectionIO, Read}
+import doobie.{Read, ConnectionIO}
 import doobie.free.connection
 
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
 
 /**
  * An effect declaration of communicating with a DB.
@@ -44,29 +44,33 @@ trait DAO[C[_]] {
   /** Rollback the transaction */
   def rollback: C[Unit]
 
-
+  /** Get the DB interpreter */
+  def target: Target
 }
 
 object DAO {
 
   def apply[F[_]](implicit ev: DAO[F]): DAO[F] = ev
 
-  def connectionIO: DAO[ConnectionIO] = new DAO[ConnectionIO] {
+  def connectionIO(dbTarget: Target): DAO[ConnectionIO] = new DAO[ConnectionIO] {
     /** Execute single SQL statement (against target in interpreter) */
     def executeUpdate(sql: Statement): ConnectionIO[Int] =
-      sql.toFragment.update.run
+      dbTarget.toFragment(sql).update.run
 
     /** Execute query and parse results into `A` */
     def executeQuery[A](query: Statement)(implicit A: Read[A]): ConnectionIO[A] =
-      query.toFragment.query[A].unique
+      dbTarget.toFragment(query).query[A].unique
 
     def executeQueryList[A](query: Statement)(implicit A: Read[A]): ConnectionIO[List[A]] =
-      query.toFragment.query[A].to[List]
+      dbTarget.toFragment(query).query[A].to[List]
 
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): ConnectionIO[Option[A]] =
-      query.toFragment.query[A].option
+      dbTarget.toFragment(query).query[A].option
 
     def rollback: ConnectionIO[Unit] =
       connection.rollback
+
+    def target: Target =
+      dbTarget
   }
 }

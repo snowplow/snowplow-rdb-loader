@@ -26,15 +26,23 @@ import io.circe.parser.parse
 import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType, Count, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Format, Count, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, Config}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
 package object rdbloader {
 
   /** Stream of discovered folders. `LoaderMessage` is here for metainformation */
   type DiscoveryStream[F[_]] = Stream[F, Message[F, DataDiscovery.WithOrigin]]
+
+  /** List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables */
+  type LoadStatements = NonEmptyList[Statement.Loading]
+
+  /** A function to build a specific `Target` or error in case invalid config is passed */
+  type BuildTarget = Config[StorageTarget] => Either[String, Target]
 
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]

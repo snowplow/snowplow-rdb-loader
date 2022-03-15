@@ -52,7 +52,7 @@ object Loader {
   def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
           C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[C, F](config.monitoring.folders, config.storage, control.isBusy)
+      FolderMonitoring.run[C, F](config.monitoring.folders, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
     val healthCheck =

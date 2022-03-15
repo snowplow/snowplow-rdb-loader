@@ -10,34 +10,37 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.db
+package com.snowplowanalytics.snowplow.loader.redshift.db
 
-import cats.data.NonEmptyList
+import doobie.Fragment
 
 import com.snowplowanalytics.iglu.schemaddl.redshift._
-import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlFile
 
+import com.snowplowanalytics.snowplow.loader.redshift.Redshift.ManifestColumns
+
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, TestState, PureDAO}
-import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 import org.specs2.mutable.Specification
+
+import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 class ManifestSpec extends Specification {
   "setup" should {
     "do nothing if table already exists and columns match" in {
       def getResult(s: TestState)(statement: Statement): Any =
         statement match {
-          case Statement.TableExists("public", "manifest") => true
-          case Statement.GetColumns("manifest") => Manifest.Columns.map(_.columnName)
+          case Statement.TableExists("manifest") => true
+          case Statement.GetColumns("manifest") => ManifestColumns.map(_.columnName)
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
 
       val expected = List(
-        LogEntry.Sql(Statement.TableExists("public","manifest")),
-        LogEntry.Sql(Statement.SetSchema("public")),
+        LogEntry.Sql(Statement.TableExists("manifest")),
+        LogEntry.Sql(Statement.SetSchema),
         LogEntry.Sql(Statement.GetColumns("manifest")),
       )
 
@@ -48,7 +51,7 @@ class ManifestSpec extends Specification {
     "rename legacy table and create new if legacy already exists (even with different column order)" in {
       def getResult(s: TestState)(statement: Statement): Any =
         statement match {
-          case Statement.TableExists("public", "manifest") => true
+          case Statement.TableExists("manifest") => true
           case Statement.GetColumns("manifest") => List("commit_tstamp", "etl_tstamp", "shredded_cardinality", "event_count")
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
@@ -56,16 +59,12 @@ class ManifestSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
 
       val expected = List(
-        LogEntry.Sql(Statement.TableExists("public","manifest")),
-        LogEntry.Sql(Statement.SetSchema("public")),
+        LogEntry.Sql(Statement.TableExists("manifest")),
+        LogEntry.Sql(Statement.SetSchema),
         LogEntry.Sql(Statement.GetColumns("manifest")),
-        LogEntry.Sql(Statement.DdlFile(DdlFile(List(AlterTable("public.manifest",RenameTo("manifest_legacy")))))),
-        LogEntry.Sql(Statement.CreateTable(CreateTable(
-          "public.manifest",
-          Manifest.Columns,
-          Set.empty,
-          Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))))),
-        LogEntry.Sql(Statement.CommentOn(CommentOn("public.manifest","0.2.0")))
+        LogEntry.Sql(Statement.RenameTable("manifest", "manifest_legacy")),
+        LogEntry.Sql(Statement.CreateTable(Fragment.const0("CREATE manifest"))),   // DDL comes from DummyTarget
+        LogEntry.Sql(Statement.CommentOn("public.manifest","0.2.0"))
       )
 
       val (state, value) = Manifest.setup[Pure]("public").value.run(TestState.init).value
@@ -76,17 +75,14 @@ class ManifestSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
       val expected = List(
-        LogEntry.Sql(Statement.TableExists("public","manifest")),
-        LogEntry.Sql(Statement.CreateTable(CreateTable(
-          "public.manifest",
-          Manifest.Columns,
-          Set.empty,
-          Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))))),
-        LogEntry.Sql(Statement.CommentOn(CommentOn("public.manifest","0.2.0")))
+        LogEntry.Sql(Statement.TableExists("manifest")),
+        LogEntry.Sql(Statement.CreateTable(Fragment.const0("CREATE manifest"))),   // DDL comes from DummyTarget
+        LogEntry.Sql(Statement.CommentOn("public.manifest","0.2.0"))
       )
 
       val (state, value) = Manifest.setup[Pure]("public").value.run(TestState.init).value
-      (state.getLog must beEqualTo(expected)).and(value must beRight)
+      state.getLog must beEqualTo(expected)
+      value must beRight
     }
   }
 }

@@ -21,12 +21,11 @@ import cats.effect.MonadThrow
 import com.snowplowanalytics.iglu.core.{SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => DMigration, SchemaList => DSchemaList}
-import com.snowplowanalytics.iglu.schemaddl.redshift.{AlterTable, AlterType, CommentOn, CreateTable => DCreateTable}
-import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlGenerator, MigrationGenerator}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
 
 import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement.DdlStatement
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
 
 
@@ -85,10 +84,8 @@ object Migration {
       s"$dbSchema.$tableName"
     }
 
-    def getComment: Statement.CommentOn = {
-      val ddl = CommentOn(getTable, target.toSchemaUri)
-      Statement.CommentOn(ddl)
-    }
+    def getComment: Statement.CommentOn =
+      Statement.CommentOn(getTable, target.toSchemaUri)
   }
 
   /**
@@ -103,24 +100,24 @@ object Migration {
 
   object Item {
     /** `ALTER TABLE ALTER TYPE`. Can be combined with [[AddColumn]] in [[Block]]. Must be pre-transaction */
-    final case class AlterColumn(alterTable: AlterTable) extends Item {
+    final case class AlterColumn(alterTable: DdlStatement) extends Item {
       val statement: Statement = Statement.AlterTable(alterTable)
     }
 
     /** `ALTER TABLE ADD COLUMN`. Can be combined with [[AlterColumn]] in [[Block]]. Must be in-transaction */
-    final case class AddColumn(alterTable: AlterTable, warning: List[String]) extends Item {
+    final case class AddColumn(alterTable: DdlStatement, warning: List[String]) extends Item {
       val statement: Statement = Statement.AlterTable(alterTable)
     }
 
     /** `CREATE TABLE`. Always just one per [[Block]]. Must be in-transaction */
-    final case class CreateTable(createTable: DCreateTable) extends Item {
+    final case class CreateTable(createTable: DdlStatement) extends Item {
       val statement: Statement = Statement.CreateTable(createTable)
     }
   }
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
   def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu,
-            C[_]: Monad: Logging: DAO](dbSchema: String, discovery: DataDiscovery): F[Migration[C]] = {
+            C[_]: Monad: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
     val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
       case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
         EitherT(Iglu[F].getSchemas(vendor, name, model)).map(_.some)
@@ -132,7 +129,7 @@ object Migration {
       Transaction[F, C].arrowBack(schemas.value).flatMap {
         case Right(schemaList) =>
           schemaList
-            .traverseFilter(buildBlock[C](dbSchema))
+            .traverseFilter(buildBlock[C])
             .map(blocks => Migration.fromBlocks[C](blocks))
             .value
         case Left(error) =>
@@ -147,19 +144,19 @@ object Migration {
     Migration[F](Applicative[F].unit, Applicative[F].unit)
 
 
-  def buildBlock[F[_]: Monad: DAO](dbSchema: String)(schemas: DSchemaList): LoaderAction[F, Option[Block]] = {
+  def buildBlock[F[_]: Monad: DAO](schemas: DSchemaList): LoaderAction[F, Option[Block]] = {
     val tableName = StringUtils.getTableName(schemas.latest)
 
     val migrate: F[Either[LoaderError, Option[Block]]] = for {
-      schemaKey <- getVersion[F](dbSchema, tableName)
+      schemaKey <- getVersion[F](tableName)
       matches    = schemas.latest.schemaKey == schemaKey
       block     <- if (matches) emptyBlock[F].map(_.asRight[LoaderError])
-      else Control.getColumns[F](dbSchema, tableName).map { columns =>
-        updateTable(dbSchema, schemaKey, columns, schemas).map(_.some)
+      else Control.getColumns[F](tableName).map { columns =>
+        DAO[F].target.updateTable(schemaKey, columns, schemas).map(_.some)
       }
     } yield block
 
-    val result = Control.tableExists[F](dbSchema, tableName).ifM(migrate, Monad[F].pure(createTable(dbSchema, schemas).some.asRight[LoaderError]))
+    val result = Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(DAO[F].target.createTable(schemas).some.asRight[LoaderError]))
     LoaderAction.apply[F, Option[Block]](result)
   }
 
@@ -206,52 +203,9 @@ object Migration {
     Monad[F].pure(None)
 
   /** Find the latest schema version in the table and confirm that it is the latest in `schemas` */
-  def getVersion[F[_]: DAO](dbSchema: String, tableName: String): F[SchemaKey] =
-    DAO[F].executeQuery[SchemaKey](Statement.GetVersion(dbSchema, tableName))(readSchemaKey)
-
-  /** Check if table exists in `dbSchema` */
-  def createTable(dbSchema: String, schemas: DSchemaList): Block = {
-    val subschemas = FlatSchema.extractProperties(schemas)
-    val tableName = StringUtils.getTableName(schemas.latest)
-    val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some(dbSchema), 4096, false)
-    Block(Nil, List(Item.CreateTable(createTable)), dbSchema, schemas.latest.schemaKey)
-  }
+  def getVersion[F[_]: DAO](tableName: String): F[SchemaKey] =
+    DAO[F].executeQuery[SchemaKey](Statement.GetVersion(tableName))(readSchemaKey)
 
   val NoStatements: List[Item] = Nil
   val NoPreStatements: List[Item.AlterColumn] = Nil
-
-  /**
-   * Create updates to an existing table, specified by `current` into a final version present in `state`
-   * Can create multiple statements for both pre-transaction on in-transaction, but all of them are for
-   * single table
-   */
-  def updateTable(dbSchema: String, current: SchemaKey, columns: List[String], state: DSchemaList): Either[LoaderError, Block] =
-    state match {
-      case s: DSchemaList.Full =>
-        val migrations = s.extractSegments.map(DMigration.fromSegment)
-        migrations.find(_.from == current.version) match {
-          case Some(relevantMigration) =>
-            val ddlFile = MigrationGenerator.generateMigration(relevantMigration, 4096, Some(dbSchema))
-
-            val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
-              case ((preTransaction, inTransaction), statement) =>
-                statement match {
-                  case s @ AlterTable(_, _: AlterType) =>
-                    (Item.AlterColumn(s) :: preTransaction, inTransaction)
-                  case s @ AlterTable(_, _) =>
-                    (preTransaction, Item.AddColumn(s, ddlFile.warnings) :: inTransaction)
-                  case _ =>   // We explicitly support only ALTER TABLE here; also drops BEGIN/END
-                    (preTransaction, inTransaction)
-                }
-            }
-
-            Block(preTransaction.reverse, inTransaction.reverse, dbSchema, current.copy(version = relevantMigration.to)).asRight
-          case None =>
-            val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $state. Migration cannot be created"
-            DiscoveryFailure.IgluError(message).toLoaderError.asLeft
-        }
-      case s: DSchemaList.Single =>
-        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
-        LoaderError.MigrationError(message).asLeft
-    }
 }
