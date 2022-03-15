@@ -71,7 +71,6 @@ object DataDiscovery {
    * The stream is responsible for state changing as well
    *
    * @param config generic storage target configuration
-   * @param state mutable state to keep logging information
    */
   def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
     AWS[F]
@@ -142,7 +141,7 @@ object DataDiscovery {
   }
 
   def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
-    Logging[F].error(error)("A problem occured in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
+    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =

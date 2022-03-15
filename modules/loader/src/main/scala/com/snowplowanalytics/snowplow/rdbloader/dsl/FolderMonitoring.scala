@@ -30,7 +30,7 @@ import fs2.Stream
 import fs2.text.utf8Encode
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 
@@ -137,15 +137,14 @@ object FolderMonitoring {
    * if they exist in `manifest` table. Ones that don't exist are checked for existence
    * of `shredding_complete.json` and turned into corresponding `AlertPayload`
    * @param loadFrom list shredded folders
-   * @param redshiftConfig DB config
    * @return potentially empty list of alerts
    */
-  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Timer](loadFrom: S3.Folder, redshiftConfig: StorageTarget.Redshift): F[List[AlertPayload]] = {
+  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Timer](loadFrom: S3.Folder): F[List[AlertPayload]] = {
     val getBatches = for {
       _                 <- DAO[C].executeUpdate(DropAlertingTempTable)
       _                 <- DAO[C].executeUpdate(CreateAlertingTempTable)
-      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom, redshiftConfig.roleArn))
-      onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest(redshiftConfig.schema))
+      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom))
+      onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 
     for {
@@ -176,12 +175,12 @@ object FolderMonitoring {
    * Resulting stream has to be running in background.
    */
   def run[C[_]: DAO: Monad,
-          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders], storage: StorageTarget,
+          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders],
                                                                                    isBusy: Stream[F, Boolean]): Stream[F, Unit] =
-    (foldersCheck, storage) match {
-      case (Some(folders), redshift: StorageTarget.Redshift) =>
-        stream[C, F](folders, redshift, isBusy)
-      case (None, _: StorageTarget.Redshift) =>
+    foldersCheck match {
+      case Some(folders) =>
+        stream[C, F](folders, isBusy)
+      case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
 
@@ -190,12 +189,10 @@ object FolderMonitoring {
    * The stream ignores a first failure just printing an error, hoping it's transient,
    * but second failure in row makes the whole stream to crash
    * @param folders configuration for folders monitoring
-   * @param storage Redshift config needed for loading
-   * @param archive shredded archive path
+   * @param isBusy discrete stream signalling when folders monitoring should not work
    */
   def stream[C[_]: DAO: Monad,
              F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring](folders: Config.Folders,
-                                                                                      storage: StorageTarget.Redshift,
                                                                                       isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
@@ -206,7 +203,7 @@ object FolderMonitoring {
               val sinkAndCheck =
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.shredderOutput, outputFolder).ifM(
-                    check[C, F](outputFolder, storage)
+                    check[C, F](outputFolder)
                       .flatMap { alerts =>
                         alerts.traverse_ { payload =>
                           val warn = payload.base match {

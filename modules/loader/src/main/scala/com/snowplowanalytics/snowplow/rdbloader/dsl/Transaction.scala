@@ -83,8 +83,6 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  val RedshiftDriver = "com.amazon.redshift.jdbc42.Driver"
-
   def buildPool[F[_]: Async: ContextShift: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
@@ -94,7 +92,6 @@ object Transaction {
         case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
           Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
       }
-      url = s"jdbc:redshift://${target.host}:${target.port}/${target.database}"
       properties <- target match {
         case r: StorageTarget.Redshift =>
           r.jdbc.validation match {
@@ -107,7 +104,7 @@ object Transaction {
               Resource.eval(thrown)
           }
       }
-      xa <- HikariTransactor.newHikariTransactor[F](RedshiftDriver, url, target.username, password, ce, blocker)
+      xa <- HikariTransactor.newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
       _  <- Resource.eval(xa.configure { ds =>
         Sync[F].delay {
           ds.setAutoCommit(false)
@@ -121,9 +118,8 @@ object Transaction {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] = {
+  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
     buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](xa))
-  }
 
   /**
    * Surprisingly, for statements disallowed in transaction block we need to set autocommit

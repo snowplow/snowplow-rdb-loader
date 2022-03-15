@@ -38,7 +38,7 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
 
 class LoadSpec extends Specification {
-  import LoadSpec.{isBeforeFirstCommit, failCommit, arn}
+  import LoadSpec.{isBeforeFirstCommit, failCommit}
 
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
@@ -54,11 +54,11 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
+        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
 
@@ -79,7 +79,7 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,
       )
@@ -102,17 +102,17 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("atomic",false,"s3://shredded/base/".dir,"us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ShreddedCopy("atomic",info, "us-east-1",10,arn,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd("atomic",LoadSpec.dataDiscoveryWithOrigin.origin)),
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
+        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
       val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
@@ -124,7 +124,7 @@ class LoadSpec extends Specification {
       val Base = "s3://shredded/base/".dir
       def getResult(s: TestState)(statement: Statement): Any =
         statement match {
-          case Statement.ManifestGet("atomic", Base) =>
+          case Statement.ManifestGet(Base) =>
             Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin).some
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
@@ -140,7 +140,7 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
-        LogEntry.Sql(Statement.ManifestGet("atomic","s3://shredded/base/".dir)),
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
                                                 //       to throw an ad-hoc exception within a transaction
@@ -176,11 +176,11 @@ object LoadSpec {
 
   def withExistingRecord(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_, _) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
-      case Statement.TableExists(_, _) => false
+      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
+      case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_, _) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin))
-      case Statement.FoldersMinusManifest(_) => List()
+      case Statement.ManifestGet(_) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin))
+      case Statement.FoldersMinusManifest => List()
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
@@ -209,7 +209,7 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_, _) => ts.getLog.length == 6
+      case Statement.ManifestAdd(_) => ts.getLog.length == 6
       case _ => false
     }
 

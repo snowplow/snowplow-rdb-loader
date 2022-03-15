@@ -38,6 +38,9 @@ sealed trait StorageTarget extends Product with Serializable {
 
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
+
+  def driver: String
+  def connectionUrl: String
 }
 
 object StorageTarget {
@@ -68,8 +71,11 @@ object StorageTarget {
                             username: String,
                             password: PasswordConfig,
                             maxError: Int,
-                            sshTunnel: Option[TunnelConfig])
-    extends StorageTarget
+                            sshTunnel: Option[TunnelConfig]) extends StorageTarget {
+    def driver: String = "com.amazon.redshift.jdbc42.Driver"
+
+    def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
+  }
 
   /**
     * All possible JDBC according to Redshift documentation, except deprecated

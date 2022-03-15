@@ -12,13 +12,22 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import cats.data.NonEmptyList
 import cats.implicits._
 
-import doobie.Read
+import doobie.{Read, Fragment}
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.iglu.schemaddl.StringUtils
+import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, FlatSchema}
+import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
+
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, Migration}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
 
@@ -42,11 +51,11 @@ object PureDAO {
 
   def getResult(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_, _) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
-      case Statement.TableExists(_, _) => false
+      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
+      case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_, _) => None
-      case Statement.FoldersMinusManifest(_) => List()
+      case Statement.ManifestGet(_) => None
+      case Statement.FoldersMinusManifest => List()
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
@@ -63,7 +72,7 @@ object PureDAO {
 
   val init: PureDAO = custom(getResult)
 
-  def interpreter(results: PureDAO): DAO[Pure] = new DAO[Pure] {
+  def interpreter(results: PureDAO, tgt: Target = DummyTarget): DAO[Pure] = new DAO[Pure] {
     def executeUpdate(sql: Statement): Pure[Int] =
       results.executeUpdate(sql)
 
@@ -79,6 +88,32 @@ object PureDAO {
     def rollback: Pure[Unit] =
       Pure.modify(_.log(PureTransaction.Rollback))
 
+    def target: Target = tgt
   }
 
+  val DummyTarget = new Target {
+    def toFragment(statement: Statement): Fragment =
+      Fragment.const0(statement.toString)
+
+    def getLoadStatements(discovery: DataDiscovery): LoadStatements =
+      NonEmptyList(
+        Statement.EventsCopy(discovery.base, Compression.Gzip),
+        discovery.shreddedTypes.map { shredded =>
+          Statement.ShreddedCopy(shredded, Compression.Gzip)
+        }
+      )
+
+    def getManifest: Statement =
+      Statement.CreateTable("CREATE manifest")
+
+    def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Migration.Block] =
+      Left(LoaderError.RuntimeError("Not implemented in test suite"))
+
+    def createTable(schemas: SchemaList): Migration.Block = {
+      val subschemas = FlatSchema.extractProperties(schemas)
+      val tableName = StringUtils.getTableName(schemas.latest)
+      val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some("public"), 4096, false)
+      Block(Nil, List(Item.CreateTable(createTable.toDdl)), "public", schemas.latest.schemaKey)
+    }
+  }
 }
