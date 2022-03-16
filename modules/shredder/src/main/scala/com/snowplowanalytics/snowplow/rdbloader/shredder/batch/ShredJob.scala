@@ -175,7 +175,9 @@ class ShredJob(@transient val spark: SparkSession,
       (event: Event) => {
         timestampsAccumulator.add(event)
         eventsCounter.add(1L)
-        List(SparkData.parquetEvent[Id](atomicLengths, shreddedTypes)(event))
+        val parquet = SparkData.parquetEvent[Id](IgluSingleton.get(igluConfig).resolver, atomicLengths, shreddedTypes)(event)
+          .getOrElse(throw new RuntimeException("TODO: Handle this exception"))
+        List(parquet)
       }
     }
 
@@ -215,7 +217,8 @@ class ShredJob(@transient val spark: SparkSession,
       case _: Formats.Shred =>
         Sink.writeShredded(spark, config.output.compression, transformed.flatMap(_.shredded), outFolder)
       case Formats.Parquet =>
-        val schema = SparkSchema.build(shreddedTypesAccumulator.value.toList)
+        val schema = SparkSchema.build[Id](IgluSingleton.get(igluConfig).resolver, shreddedTypesAccumulator.value.toList)
+          .getOrElse(throw new RuntimeException("TODO: Handle this exception"))
         Sink.writeParquet(spark, schema, transformed.flatMap(_.parquet), outFolder.append("output=good"))
         Sink.writeWideRowed(spark, config.output.compression, transformed.flatMap(_.wideRow), outFolder)
     }

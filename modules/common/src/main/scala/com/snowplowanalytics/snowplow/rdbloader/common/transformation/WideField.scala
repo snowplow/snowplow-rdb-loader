@@ -17,47 +17,55 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 import java.time.Instant
 
 import cats.implicits._
-import cats.data.{NonEmptyList, Validated, ValidatedNel}
+import cats.Monad
+import cats.data.{EitherT, NonEmptyList, Validated, ValidatedNel}
+import cats.effect.Clock
 
 import io.circe.Json
-import io.circe.literal._
 
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
+import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 import com.snowplowanalytics.iglu.schemaddl.bigquery.{CastError, Field, Mode, Type}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.badrows.BadRow
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 
 object WideField {
 
-  def forEntity(stype: LoaderMessage.ShreddedType, event: Event): FieldValue =
+  def forEntity[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], stype: LoaderMessage.ShreddedType, event: Event): EitherT[F, BadRow, FieldValue] =
     stype.shredProperty match {
       case LoaderMessage.ShreddedType.SelfDescribingEvent =>
-        forUnstruct(stype, event)
+        forUnstruct(resolver, stype, event)
       case LoaderMessage.ShreddedType.Contexts =>
-        forContexts(stype, event)
+        forContexts(resolver, stype, event)
     }
 
-  def forUnstruct(stype: LoaderMessage.ShreddedType, event: Event): FieldValue = {
+  def forUnstruct[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], stype: LoaderMessage.ShreddedType, event: Event): EitherT[F, BadRow, FieldValue] = {
     event.unstruct_event.data match {
       case Some(SelfDescribingData(schemaKey, data)) if keysMatch(schemaKey, stype.schemaKey) =>
-        val schema = getSchema(schemaKey)
-        val field = Field.build("NOT_NEEDED", schema, false)
-        cast(field, data).getOrElse(throw new IllegalArgumentException("TODO: Handle this error"))
-      case _ => FieldValue.NullValue
+        for {
+          schema <- getSchema(resolver, schemaKey)
+          field = Field.build("NOT_NEEDED", schema, false)
+          v <- EitherT.fromEither[F](cast(field, data).toEither).leftMap(castingBadRow)
+        } yield v
+      case _ => EitherT.rightT(FieldValue.NullValue)
     }
   }
 
-  def forContexts(stype: LoaderMessage.ShreddedType, event: Event): FieldValue = {
-    lazy val schema = getSchema(stype.schemaKey)
-    lazy val field = Field.build("NOT_NEEDED", schema, true)
+  def forContexts[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], stype: LoaderMessage.ShreddedType, event: Event): EitherT[F, BadRow, FieldValue] = {
     val rows = (event.contexts.data ::: event.derived_contexts.data)
-      .collect {
-        case SelfDescribingData(schemaKey, data) if keysMatch(schemaKey, stype.schemaKey) =>
-            cast(field, data).getOrElse(throw new IllegalArgumentException("TODO: Handle this error"))
-      }
-    if (rows.nonEmpty) FieldValue.ArrayValue(rows) else FieldValue.NullValue
+      .filter(sdd => keysMatch(sdd.schema, stype.schemaKey))
+    if (rows.nonEmpty) {
+      for {
+        schema <- getSchema(resolver, stype.schemaKey)
+        field = Field.build("NOT_NEEDED", schema, true)
+        vs <- EitherT.fromEither[F](rows.traverse(sdd => cast(field, sdd.data)).leftMap(castingBadRow).toEither)
+      } yield FieldValue.ArrayValue(vs)
+    }
+    else EitherT.rightT(FieldValue.NullValue)
   }
 
   private def keysMatch(k1: SchemaKey, k2: SchemaKey): Boolean =
@@ -169,28 +177,14 @@ object WideField {
         }
     }
 
-  def getSchema(schemaKey: SchemaKey): Schema = {
-    // TODO: Use Iglu client singleton to get iglu schema and convert sdj's data to a Row
-    val _ = schemaKey
-    val json = json"""{
-        "$$schema": "http://iglucentral.com/schemas/com.snowplowanalytics.self-desc/schema/jsonschema/1-0-0#",
-        "type": "object",
-        "properties": {
-          "field1": {
-            "type": "string"
-          },
-          "field2": {
-            "type": "string"
-          },
-          "field3": {
-            "type": "string"
-          }
-        }
-      }"""
-    Schema.parse(json) match {
-      case Some(ok) => ok
-      case None => throw new IllegalStateException("TODO: Handle this.")
-    }
-  }
+  def getSchema[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], schemaKey: SchemaKey): EitherT[F, BadRow, Schema] =
+    for {
+      json <- EitherT(resolver.lookupSchema(schemaKey)).leftMap(resolverBadRow)
+      schema <- EitherT.fromOption[F](Schema.parse(json), parseSchemaBadRow)
+    } yield schema
+
+  def castingBadRow(error: NonEmptyList[CastError]): BadRow = ???
+  def resolverBadRow(e: ClientError.ResolutionError): BadRow = ???
+  def parseSchemaBadRow: BadRow = ???
 
 }

@@ -14,8 +14,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
+import cats.Monad
+import cats.data.EitherT
+import cats.implicits._
+import cats.effect.Clock
+
 import com.snowplowanalytics.iglu.schemaddl.bigquery.{Field, Mode, Type}
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+import com.snowplowanalytics.snowplow.badrows.BadRow
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField
 
@@ -25,23 +33,26 @@ object SparkSchema {
 
   val CustomDecimal = DecimalType(18, 2)
 
-  def build(types: List[LoaderMessage.ShreddedType]): StructType = {
+  def build[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], types: List[LoaderMessage.ShreddedType]): F[Either[BadRow, StructType]] = {
     val latestByModel = LoaderMessage.ShreddedType.latestByModel(types)
-    StructType(Atomic ::: latestByModel.sorted.map(forEntity))
+    latestByModel.sorted
+      .traverse(forEntity(resolver, _))
+      .map(forEntities => StructType(Atomic ::: forEntities))
+      .value
   }
 
-  def forEntity(entity: LoaderMessage.ShreddedType): StructField = {
-    val name = SnowplowEvent.transformSchema(entity.shredProperty.toSdkProperty, entity.schemaKey)
-    val schema = WideField.getSchema(entity.schemaKey)
-    entity.shredProperty match {
-      case LoaderMessage.ShreddedType.SelfDescribingEvent =>
-        val ddlField = Field.build(name, schema, false)
-        structField(ddlField)
-      case LoaderMessage.ShreddedType.Contexts =>
-        val ddlField = Field.build("NOT_NEEDED", schema, true)
-        StructField(name, new ArrayType(fieldType(ddlField.fieldType), false), true)
+  def forEntity[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], entity: LoaderMessage.ShreddedType): EitherT[F, BadRow, StructField] =
+    WideField.getSchema(resolver, entity.schemaKey).map { schema =>
+      val name = SnowplowEvent.transformSchema(entity.shredProperty.toSdkProperty, entity.schemaKey)
+      entity.shredProperty match {
+        case LoaderMessage.ShreddedType.SelfDescribingEvent =>
+          val ddlField = Field.build(name, schema, false)
+          structField(ddlField)
+        case LoaderMessage.ShreddedType.Contexts =>
+          val ddlField = Field.build("NOT_NEEDED", schema, true)
+          StructField(name, new ArrayType(fieldType(ddlField.fieldType), false), true)
+      }
     }
-  }
 
   def structField(ddlField: Field): StructField =
     ddlField match {

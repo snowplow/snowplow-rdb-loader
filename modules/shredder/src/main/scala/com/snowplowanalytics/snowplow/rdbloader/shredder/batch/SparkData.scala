@@ -16,23 +16,27 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
 import cats.Monad
 import cats.effect.Clock
+import cats.implicits._
 
 import org.apache.spark.sql.Row
 
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField.FieldValue
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed, WideField}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed}
+import com.snowplowanalytics.snowplow.badrows.BadRow
 
 object SparkData {
 
-  def parquetEvent[F[_]: Monad: RegistryLookup: Clock](atomicLengths: Map[String, Int], entities: List[LoaderMessage.ShreddedType])(event: Event): Transformed.Parquet = {
-    val atomic = EventUtils.alterEnrichedEventAny(event, atomicLengths)
-    val entityData = entities.map(WideField.forEntity(_, event))
-    Transformed.Parquet(Transformed.Data.ListAny(atomic ::: entityData.map(extractFieldValue)))
-  }
+  def parquetEvent[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], atomicLengths: Map[String, Int], entities: List[LoaderMessage.ShreddedType])(event: Event): F[Either[BadRow, Transformed.Parquet]] =
+    entities.traverse(WideField.forEntity[F](resolver, _, event))
+      .map { entityData =>
+        val atomic = EventUtils.alterEnrichedEventAny(event, atomicLengths)
+        Transformed.Parquet(Transformed.Data.ListAny(atomic ::: entityData.map(extractFieldValue)))
+      }
+      .value
 
   def extractFieldValue(fv: FieldValue): Any = fv match {
     case FieldValue.NullValue => null
