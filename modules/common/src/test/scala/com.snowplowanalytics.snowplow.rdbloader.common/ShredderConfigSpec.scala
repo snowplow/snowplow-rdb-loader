@@ -39,7 +39,8 @@ class ShredderConfigSpec extends Specification {
         exampleFormats,
         exampleMonitoring,
         exampleDeduplication,
-        exampleRunInterval
+        exampleRunInterval,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -53,21 +54,15 @@ class ShredderConfigSpec extends Specification {
         exampleDefaultFormats,
         exampleDefaultMonitoring,
         exampleDeduplication,
-        emptyRunInterval
+        emptyRunInterval,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
 
     "give error when unknown region given" in {
       val result = getConfig("/test.config1.hocon", ShredderConfig.Batch.fromString)
-      result.fold(
-        // Left case means there is an error while loading the config.
-        // We are expecting an error related with region here indeed.
-        err => err.contains("unknown-region-1"),
-        // Right case means that config is loaded successfully.
-        // This is not expected therefore false is returned.
-        _ => false
-      ) must beTrue
+      result must beLeft(contain("unknown-region-1"))
     }
 
     "fail if there are overlapping schema criterions" in {
@@ -86,6 +81,7 @@ class ShredderConfigSpec extends Specification {
           }
           "monitoring": { },
           "formats": {
+ "transformationType": "shred"
             "default": "TSV",
             "json": [ "iglu:com.acme/overlap/jsonschema/1-0-0" ],
             "tsv": [ ],
@@ -110,7 +106,8 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleOutput,
         exampleSQSConfig,
-        exampleFormats
+        ShredderConfig.Formats.WideRow.JSON,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -122,7 +119,8 @@ class ShredderConfigSpec extends Specification {
         exampleWindowPeriod,
         exampleDefaultOutput,
         exampleSNSConfig,
-        exampleDefaultFormats
+        ShredderConfig.Formats.WideRow.JSON,
+        exampleDefaultFeatureFlags
       )
       result must beRight(expected)
     }
@@ -162,27 +160,27 @@ class ShredderConfigSpec extends Specification {
   "Formats.findOverlaps" should {
     "find overlapping TSV and JSON" in {
       val criterion = SchemaCriterion("com.acme", "ev", "jsonschema", None)
-      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterion), List(criterion), List()).findOverlaps must beEqualTo(Set(criterion))
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List(criterion), List(criterion), List()).findOverlaps must beEqualTo(Set(criterion))
     }
 
     "find overlapping JSON and skip" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
-      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(), List(criterionA), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List(), List(criterionA), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "find overlapping skip and TSV" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionC = SchemaCriterion("com.acme", "unique", "jsonschema", Some(1))
-      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterionA), List(criterionC), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List(criterionA), List(criterionC), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "not find anything if not overlaps" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(2))
       val criterionC = SchemaCriterion("com.acme", "ev", "jsonschema", Some(3))
-      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterionA), List(criterionB), List(criterionC)).findOverlaps must beEmpty
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List(criterionA), List(criterionB), List(criterionC)).findOverlaps must beEmpty
     }
   }
 }
@@ -215,7 +213,7 @@ object ShredderConfigSpec {
     RegionSpec.DefaultTestRegion
   )
   val exampleFormats = ShredderConfig.Formats.Shred(
-    LoaderMessage.Format.TSV,
+    LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV,
     Nil,
     List(
       SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0)),
@@ -223,10 +221,11 @@ object ShredderConfigSpec {
     ),
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
-  val exampleDefaultFormats = ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, Nil, Nil, Nil)
+  val exampleDefaultFormats = ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
   val exampleMonitoring = ShredderConfig.Monitoring(
     Some(ShredderConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
+  val exampleDefaultFeatureFlags = ShredderConfig.FeatureFlags(false)
   val exampleDefaultMonitoring = ShredderConfig.Monitoring(None)
   val exampleDeduplication = ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1))
   val emptyRunInterval = ShredderConfig.RunInterval(None, None, None)

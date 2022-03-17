@@ -36,7 +36,14 @@ sealed trait ShredderConfig {
 
 object ShredderConfig {
 
-  final case class Batch(input: URI, output: Output, queue: QueueConfig, formats: Formats, monitoring: Monitoring, deduplication: Deduplication, runInterval: RunInterval) extends ShredderConfig
+  final case class Batch(input: URI,
+                         output: Output,
+                         queue: QueueConfig,
+                         formats: Formats,
+                         monitoring: Monitoring,
+                         deduplication: Deduplication,
+                         runInterval: RunInterval,
+                         featureFlags: FeatureFlags) extends ShredderConfig
   object Batch {
     def fromString(conf: String): Either[String, Batch] =
       fromString(conf, implicits().batchConfigDecoder)
@@ -47,7 +54,12 @@ object ShredderConfig {
     }
   }
 
-  final case class Stream(input: StreamInput, windowing: Duration, output: Output, queue: QueueConfig, formats: Formats) extends ShredderConfig
+  final case class Stream(input: StreamInput,
+                          windowing: Duration,
+                          output: Output,
+                          queue: QueueConfig,
+                          formats: Formats,
+                          featureFlags: FeatureFlags) extends ShredderConfig
   object Stream {
     def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
       fromString(conf, implicits().streamConfigDecoder)
@@ -139,7 +151,7 @@ object ShredderConfig {
       final case object JSON extends WideRow
     }
 
-    final case class Shred(default: LoaderMessage.Format,
+    final case class Shred(default: LoaderMessage.TypesInfo.Shredded.ShreddedFormat,
                            tsv: List[SchemaCriterion],
                            json: List[SchemaCriterion],
                            skip: List[SchemaCriterion]) extends Formats {
@@ -152,7 +164,7 @@ object ShredderConfig {
 
     object Shred {
 
-      val Default: Shred = Shred(LoaderMessage.Format.TSV, Nil, Nil, Nil)
+      val Default: Formats = Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
 
       /** Find all criterion overlaps in two lists */
       def findOverlaps(as: List[SchemaCriterion], bs: List[SchemaCriterion]): Set[SchemaCriterion] =
@@ -181,6 +193,8 @@ object ShredderConfig {
 
   final case class Monitoring(sentry: Option[Sentry])
   final case class Sentry(dsn: URI)
+
+  final case class FeatureFlags(legacyMessageFormat: Boolean)
 
   final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
   object RunInterval {
@@ -272,6 +286,9 @@ object ShredderConfig {
             }
         }
       }
+
+    implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
+      deriveDecoder[FeatureFlags]
 
     implicit val formatsConfigDecoder: Decoder[Formats] =
       Decoder.instance { cur =>
