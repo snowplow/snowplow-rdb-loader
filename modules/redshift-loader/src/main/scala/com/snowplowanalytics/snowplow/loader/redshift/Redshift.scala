@@ -171,6 +171,8 @@ object Redshift {
                          | TRUNCATECOLUMNS
                          | ACCEPTINVCHARS
                          | $frCompression""".stripMargin
+                  case ShreddedType.Widerow(_) =>
+                    throw new IllegalStateException("Widerow loading is not yet supported for Redshift")
                 }
               case Statement.CreateTransient =>
                 Fragment.const0(s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )")

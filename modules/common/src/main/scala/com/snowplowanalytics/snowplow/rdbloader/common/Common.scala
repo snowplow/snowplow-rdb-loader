@@ -75,7 +75,7 @@ object Common {
 
   def isTabular(formats: Formats)(schemaKey: SchemaKey): Boolean =
     formats match {
-      case Formats.WideRow => false
+      case _: Formats.WideRow => false
       case s: Formats.Shred =>
         s.default match {
           case LoaderMessage.Format.TSV =>

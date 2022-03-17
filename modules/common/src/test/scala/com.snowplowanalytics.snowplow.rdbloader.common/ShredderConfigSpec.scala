@@ -131,58 +131,58 @@ class ShredderConfigSpec extends Specification {
   "Formats.overlap" should {
     "confirm two identical criterions overlap" in {
       val criterion = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
-      ShredderConfig.Formats.overlap(criterion, criterion) should beTrue
+      ShredderConfig.Formats.Shred.overlap(criterion, criterion) should beTrue
     }
 
     "confirm two criterions overlap if one of them has * in place where other is concrete" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
-      ShredderConfig.Formats.overlap(criterionA, criterionB) should beTrue
+      ShredderConfig.Formats.Shred.overlap(criterionA, criterionB) should beTrue
     }
 
     "confirm two criterions do not overlap if they have different concrete models" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(2))
-      ShredderConfig.Formats.overlap(criterionA, criterionB) should beFalse
+      ShredderConfig.Formats.Shred.overlap(criterionA, criterionB) should beFalse
     }
 
     "confirm two criterions do not overlap if they have different concrete models, but overlapping revisions" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1), None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(2), Some(1))
-      ShredderConfig.Formats.overlap(criterionA, criterionB) should beFalse
+      ShredderConfig.Formats.Shred.overlap(criterionA, criterionB) should beFalse
     }
 
     "confirm two criterions do not overlap if they have same concrete models, but different revisions" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1), Some(1))
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1), Some(2))
-      ShredderConfig.Formats.overlap(criterionA, criterionB) should beFalse
+      ShredderConfig.Formats.Shred.overlap(criterionA, criterionB) should beFalse
     }
   }
 
   "Formats.findOverlaps" should {
     "find overlapping TSV and JSON" in {
       val criterion = SchemaCriterion("com.acme", "ev", "jsonschema", None)
-      ShredderConfig.Formats(LoaderMessage.Format.TSV, List(criterion), List(criterion), List()).findOverlaps must beEqualTo(Set(criterion))
+      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterion), List(criterion), List()).findOverlaps must beEqualTo(Set(criterion))
     }
 
     "find overlapping JSON and skip" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
-      ShredderConfig.Formats(LoaderMessage.Format.TSV, List(), List(criterionA), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(), List(criterionA), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "find overlapping skip and TSV" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", None)
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionC = SchemaCriterion("com.acme", "unique", "jsonschema", Some(1))
-      ShredderConfig.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionC), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
+      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterionA), List(criterionC), List(criterionB)).findOverlaps must beEqualTo(Set(criterionA, criterionB))
     }
 
     "not find anything if not overlaps" in {
       val criterionA = SchemaCriterion("com.acme", "ev", "jsonschema", Some(1))
       val criterionB = SchemaCriterion("com.acme", "ev", "jsonschema", Some(2))
       val criterionC = SchemaCriterion("com.acme", "ev", "jsonschema", Some(3))
-      ShredderConfig.Formats(LoaderMessage.Format.TSV, List(criterionA), List(criterionB), List(criterionC)).findOverlaps must beEmpty
+      ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, List(criterionA), List(criterionB), List(criterionC)).findOverlaps must beEmpty
     }
   }
 }
@@ -214,7 +214,7 @@ object ShredderConfigSpec {
     "arn:aws:sns:eu-central-1:123456789:test-sns-topic",
     RegionSpec.DefaultTestRegion
   )
-  val exampleFormats = ShredderConfig.Formats(
+  val exampleFormats = ShredderConfig.Formats.Shred(
     LoaderMessage.Format.TSV,
     Nil,
     List(
@@ -223,7 +223,7 @@ object ShredderConfigSpec {
     ),
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
-  val exampleDefaultFormats = ShredderConfig.Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil)
+  val exampleDefaultFormats = ShredderConfig.Formats.Shred(LoaderMessage.Format.TSV, Nil, Nil, Nil)
   val exampleMonitoring = ShredderConfig.Monitoring(
     Some(ShredderConfig.Sentry(URI.create("http://sentry.acme.com"))),
   )
