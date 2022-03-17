@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, Format, ShredProperty}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
@@ -48,7 +48,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), ShredProperty.Context),"s3://assets/com.acme/json_context_1.json".key)
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
@@ -57,7 +57,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
@@ -96,7 +96,7 @@ class LoadSpec extends Specification {
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
-      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), ShredProperty.Context),"s3://assets/com.acme/json_context_1.json".key)
+      val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, Semver(0,18,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
@@ -111,7 +111,7 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
-        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin)),
+        LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
@@ -125,7 +125,7 @@ class LoadSpec extends Specification {
       def getResult(s: TestState)(statement: Statement): Any =
         statement match {
           case Statement.ManifestGet(Base) =>
-            Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin).some
+            Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem).some
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
@@ -159,7 +159,7 @@ object LoadSpec {
       ShreddedType.Json(
         ShreddedType.Info(
           S3.Folder.coerce("s3://shredded/base/"),
-          "com.acme", "json-context", 1, Semver(0,18,0, None), ShredProperty.Context
+          "com.acme", "json-context", 1, Semver(0,18,0, None), LoaderMessage.SnowplowEntity.SelfDescribingEvent
         ),
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
       )
@@ -179,7 +179,7 @@ object LoadSpec {
       case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
       case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin))
+      case Statement.ManifestGet(_) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
       case Statement.FoldersMinusManifest => List()
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
@@ -188,11 +188,13 @@ object LoadSpec {
     dataDiscovery,
     LoaderMessage.ShreddingComplete(
       dataDiscovery.base,
-      List(
-        LoaderMessage.ShreddedType(
-          SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
-          Format.JSON,
-          ShredProperty.Context
+      TypesInfo.Shredded(
+        List(
+          TypesInfo.Shredded.Type(
+            SchemaKey("com.acme", "json-context", "jsonschema", SchemaVer.Full(1, 0, 2)),
+            TypesInfo.Shredded.ShreddedFormat.JSON,
+            LoaderMessage.SnowplowEntity.SelfDescribingEvent
+          )
         )
       ),
       Timestamps(

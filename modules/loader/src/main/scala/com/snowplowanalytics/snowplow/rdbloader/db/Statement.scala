@@ -76,7 +76,7 @@ object Statement {
   case class CommentOn(tableName: String, comment: String) extends Statement
 
   // Manifest
-  case class ManifestAdd(message: LoaderMessage.ShreddingComplete) extends Statement
+  case class ManifestAdd(message: LoaderMessage.ManifestItem) extends Statement
   case class ManifestGet(base: S3.Folder) extends Statement
 
   // Arbitrary-string DDL statements

@@ -127,7 +127,10 @@ object LoaderMessage {
                                      timestamps: Timestamps,
                                      compression: Compression,
                                      processor: Processor,
-                                     count: Option[Count]) extends LoaderMessage
+                                     count: Option[Count]) extends LoaderMessage {
+    def toManifestItem: ManifestItem =
+      LoaderMessage.createManifestItem(this)
+  }
 
   /** Parse raw string into self-describing JSON with [[LoaderMessage]] */
   def fromString(s: String): Either[String, LoaderMessage] =
@@ -145,6 +148,7 @@ object LoaderMessage {
           s"Cannot extract a LoaderMessage from ${data.noSpaces} with ${key.toSchemaUri}".asLeft
       }
 
+  /** An entity's type how it's stored in manifest */
   final case class ManifestType(schemaKey: SchemaKey, format: String, transformation: Option[String])
 
   final case class ManifestItem(base: S3.Folder,

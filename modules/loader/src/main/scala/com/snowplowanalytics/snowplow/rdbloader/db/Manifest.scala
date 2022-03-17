@@ -66,8 +66,8 @@ object Manifest {
       }
     } yield status
 
-  def add[F[_]: DAO: Functor](message: LoaderMessage.ShreddingComplete): F[Unit] =
-    DAO[F].executeUpdate(Statement.ManifestAdd(message)).void
+  def add[F[_]: DAO: Functor](item: LoaderMessage.ManifestItem): F[Unit] =
+    DAO[F].executeUpdate(Statement.ManifestAdd(item)).void
 
   def get[F[_]: DAO](base: S3.Folder): F[Option[Entry]] =
     DAO[F].executeQueryOption[Entry](Statement.ManifestGet(base))(Entry.entryRead)
@@ -76,13 +76,13 @@ object Manifest {
   def create[F[_]: DAO: Functor]: F[Unit] =
     DAO[F].executeUpdate(DAO[F].target.getManifest).void
 
-  case class Entry(ingestion: Instant, meta: LoaderMessage.ShreddingComplete)
+  case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)
 
   object Entry {
     import com.snowplowanalytics.snowplow.rdbloader.readTimestamps
 
     implicit val entryRead: Read[Entry] =
-      (Read[java.sql.Timestamp], Read[LoaderMessage.ShreddingComplete]).mapN { case (ingestion, meta) =>
+      (Read[java.sql.Timestamp], Read[LoaderMessage.ManifestItem]).mapN { case (ingestion, meta) =>
         Entry(ingestion.toInstant, meta)
       }
   }

@@ -46,7 +46,7 @@ class MetricsSpec extends Specification {
 
       val loaded = ShreddingComplete(
         S3.Folder.coerce("s3://shredded/run_id/"),
-        Nil,
+        TypesInfo.Shredded(Nil),
         Timestamps(
           jobStarted = now.minusSeconds(shredderStartLatency),
           jobCompleted = now.minusSeconds(shredderEndLatency),

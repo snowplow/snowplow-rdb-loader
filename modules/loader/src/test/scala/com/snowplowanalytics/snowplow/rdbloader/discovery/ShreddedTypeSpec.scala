@@ -22,20 +22,18 @@ import org.specs2.mutable.Specification
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{ Cache, AWS }
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.ShredProperty
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 import com.snowplowanalytics.snowplow.rdbloader.test.{ Pure, PureCache, PureAWS, TestState }
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-
-
 
 class ShreddedTypeSpec extends Specification with ScalaCheck {
 
   "extractSchemaKey" should {
     "parse a path for tabular output" >> {
       val input = "vendor=com.snowplow/name=event/format=tsv/model=1"
-      ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, LoaderMessage.Format.TSV))
+      ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, TypesInfo.Shredded.ShreddedFormat.TSV))
     }
   }
 
@@ -59,7 +57,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
 
-      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0), ShredProperty.SelfDescribingEvent)
+      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
       val discoveryAction = ShreddedType.discoverJsonPath[Pure]("eu-west-1", None, info)
 
       val (state, _) = (discoveryAction.flatMap(_ => discoveryAction)).value.run(TestState.init).value
