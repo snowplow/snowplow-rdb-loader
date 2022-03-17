@@ -16,6 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.shredder.batch
 
 import java.io.{FileWriter, IOException, File, BufferedWriter}
 import java.util.Base64
+import java.net.URI
 
 import scala.collection.JavaConverters._
 import scala.io.Source
@@ -27,9 +28,9 @@ import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 
 import cats.data.ValidatedNel
-import cats.syntax.either._
-import cats.syntax.validated._
+import cats.implicits._
 
+import io.circe.Json
 import io.circe.literal._
 import io.circe.optics.JsonPath._
 import io.circe.parser.{ parse => parseCirce }
@@ -61,8 +62,14 @@ object ShredJobSpec {
 
   val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
 
+  sealed trait Events
+
+  case class ResourceFile(resourcePath: String) extends Events {
+    def toUri: URI = getClass.getResource(resourcePath).toURI
+  }
+
   /** Case class representing the input lines written in a file. */
-  case class Lines(l: String*) {
+  case class Lines(l: String*) extends Events {
     val lines = l.toList
 
     /** Write the lines to a file. */
@@ -84,27 +91,31 @@ object ShredJobSpec {
     val badRows: File = new File(output, "output=bad")
   }
 
+  def read(f: String): List[String] = {
+    val source = Source.fromFile(new File(f))
+    val lines = source.getLines.toList
+    source.close()
+    lines
+  }
+
   /**
    * Read a part file at the given path into a List of Strings
    * @param root A root filepath
    * @param relativePath The relative path to the file from the root
    * @return the file contents as well as the file name
    */
-  def readPartFile(root: File, relativePath: String): Option[(List[String], String)] = {
+    def readPartFile(root: File, relativePath: String = "/"): Option[(List[String], String)] = {
     val files = listFilesWithExclusions(new File(root, relativePath), List.empty)
       .filter(s => s.contains("part-"))
-    def read(f: String): List[String] = {
-      val source = Source.fromFile(new File(f))
-      val lines = source.getLines.toList
-      source.close()
-      lines
-    }
     files.foldLeft[Option[(List[String], String)]](None) { (acc, f) =>
       val accValue = acc.getOrElse((List.empty, ""))
       val contents = accValue._1 ++ read(f)
       Some((contents, f))
     }
   }
+
+  def readResourceFile(resourceFile: ResourceFile): List[String] =
+    read(resourceFile.toUri.getPath)
 
   /** Ignore empty files on output (necessary since https://github.com/snowplow/snowplow-rdb-loader/issues/142) */
   val NonEmpty = new IOFileFilter {
@@ -214,10 +225,28 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: ShredderConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion]) = {
+  private def storageConfig(shredder: ShredderConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Boolean) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
+    val formatsSection =
+      if (wideRow)
+        s"""
+           |"formats": {
+           |  "transformationType": "widerow"
+           |  "fileFormat": "json"
+           |}
+           |""".stripMargin
+      else
+        s"""
+           | "formats": {
+           |   "transformationType": "shred"
+           |   "default": "$format",
+           |   "json": [$jsonCriterions],
+           |   "tsv": [ ],
+           |   "skip": [ ]
+           | }
+           |""".stripMargin
     val configPlain = s"""|{
     |"input": "${shredder.input}",
     |"output" = {
@@ -231,7 +260,8 @@ object ShredJobSpec {
     |  "region": "us-east-1"
     |}
     |"monitoring": {"snowplow": null, "sentry": null},
-    |"formats": { "default": "$format", "json": [$jsonCriterions], "tsv": [ ], "skip": [ ] }
+    |$formatsSection
+    |"validations": {"minimumTimestamp": "0000-01-02T00:00:00.00Z"}
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
   }
@@ -301,22 +331,39 @@ object ShredJobSpec {
       }
     }"""
 
+  val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
+
+  val clearTimestamp: Json => Json =
+    root.data.failure.timestamp.string.set(DefaultTimestamp)
+
+  def clearFailureTimestamps(jsons: List[String]): List[String] =
+    jsons
+      .map(parseCirce)
+      .sequence.map(_.map(clearTimestamp))
+      .toOption
+      .get
+      .map(_.noSpaces)
+
   /** Get environment variable wrapped into `Validation` */
   def getEnv(envvar: String): ValidatedNel[String, String] = sys.env.get(envvar) match {
     case Some(v) => v.validNel
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
-  def getShredder(lines: Lines, dirs: OutputDirs): ShredderConfig.Batch = {
-    val input = mkTmpFile("input", createParents = true, containing = Some(lines))
+  def getShredder(events: Events, dirs: OutputDirs): ShredderConfig.Batch = {
+    val input = events match {
+      case r: ResourceFile => r.toUri
+      case l: Lines => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
+    }
     ShredderConfig.Batch(
-      input.toURI,
+      input,
       ShredderConfig.Output(dirs.output.toURI, ShredderConfig.Compression.None, Region("eu-central-1")),
       ShredderConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
-      ShredderConfig.Formats(LoaderMessage.Format.TSV, Nil, Nil, Nil),
+      ShredderConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
       ShredderConfig.Monitoring(None),
       ShredderConfig.Deduplication(ShredderConfig.Deduplication.Synthetic.Broadcast(1)),
-      ShredderConfig.RunInterval(None, None, None)
+      ShredderConfig.RunInterval(None, None, None),
+      ShredderConfig.FeatureFlags(false)
     )
   }
 }
@@ -327,15 +374,17 @@ trait ShredJobSpec extends SparkSpec {
 
   val dirs = OutputDirs(randomFile("output"))
 
+  val VersionPlaceholder = "version_placeholder"
+
   /**
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(lines: Lines, crossBatchDedupe: Boolean = false, tsv: Boolean = false, jsonSchemas: List[SchemaCriterion] = Nil): LoaderMessage.ShreddingComplete  = {
-    val shredder = getShredder(lines, dirs)
+  def runShredJob(events: Events, crossBatchDedupe: Boolean = false, tsv: Boolean = false, jsonSchemas: List[SchemaCriterion] = Nil, wideRow: Boolean = false): LoaderMessage.ShreddingComplete  = {
+    val shredder = getShredder(events, dirs)
     val config = Array(
       "--iglu-config", igluConfigWithLocal,
-      "--config", storageConfig(shredder, tsv, jsonSchemas)
+      "--config", storageConfig(shredder, tsv, jsonSchemas, wideRow)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
@@ -349,8 +398,12 @@ trait ShredJobSpec extends SparkSpec {
 
     ShredderCliConfig.Batch.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
-        val job = new ShredJob(spark,cli.igluConfig,  cli.config.formats, cli.config)
-        val result = job.run("", Map.empty, dedupeConfig)
+        val transformer = cli.config.formats match {
+          case f: ShredderConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
+          case f: ShredderConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+        }
+        val job = new ShredJob(spark, transformer, cli.config)
+        val result = job.run("", dedupeConfig)
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>
