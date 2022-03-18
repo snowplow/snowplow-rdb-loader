@@ -71,7 +71,7 @@ object Load {
    *         in case of success
    */
   def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C],
-           C[_]: Monad: Logging: DAO]
+           C[_]: MonadThrow: Logging: DAO]
   (config: Config[StorageTarget],
    setStage: Stage => C[Unit],
    incrementAttempt: F[Unit],

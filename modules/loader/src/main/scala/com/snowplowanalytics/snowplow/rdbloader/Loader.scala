@@ -64,7 +64,8 @@ object Loader {
         .evalMap { _ => control.get.map(_.showExtended) }
         .evalMap { state => Logging[F].info(state) }
 
-    val init: F[Unit] = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
+    val init: F[Unit] = Transaction[F, C].resume *>
+      NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Manifest.initialize[F, C](config.storage)
 
     val process = Stream.eval(init).flatMap { _ =>
@@ -86,7 +87,7 @@ object Loader {
    * (SQS and retry queue) and performing the load operation itself
    */
   def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
-                 C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
+                 C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
     val retryDiscovery: DiscoveryStream[F] =
@@ -104,7 +105,7 @@ object Loader {
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
   def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
-                       C[_]: DAO: Monad: Logging](config: Config[StorageTarget], control: Control[F])
+                       C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
     val folder = discovery.data.origin.base
     val busy = (control.makeBusy: MakeBusy[F]).apply(folder)

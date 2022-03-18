@@ -16,6 +16,8 @@ import java.util.Base64
 
 import cats.effect.IO
 
+import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec
+
 // specs2
 import org.specs2.mutable.Specification
 
@@ -24,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 class CliConfigSpec extends Specification {
   val configB64 = new String(
     Base64.getEncoder.encode(
-      ConfigSpec.readResource("/loader.config.reference.hocon").getBytes
+      ConfigSpec.readResource("/redshift.config.reference.hocon").getBytes
     )
   )
 

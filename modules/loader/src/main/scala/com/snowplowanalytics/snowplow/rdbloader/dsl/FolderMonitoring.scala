@@ -148,6 +148,7 @@ object FolderMonitoring {
     } yield onlyS3Batches
 
     for {
+      _ <- Transaction[F, C].resume
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
       } yield foldersWithChecks.map { case (folder, exists) =>

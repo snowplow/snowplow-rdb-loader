@@ -23,12 +23,11 @@ import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{ Cache, AWS }
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 import com.snowplowanalytics.snowplow.rdbloader.test.{ Pure, PureCache, PureAWS, TestState }
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
-class ShreddedTypeSpec extends Specification with ScalaCheck {
+class TableTypeSpec extends Specification with ScalaCheck {
 
   "extractSchemaKey" should {
     "parse a path for tabular output" >> {
@@ -57,7 +56,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
 
-      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, Semver(1,0,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
       val discoveryAction = ShreddedType.discoverJsonPath[Pure]("eu-west-1", None, info)
 
       val (state, _) = (discoveryAction.flatMap(_ => discoveryAction)).value.run(TestState.init).value
@@ -71,7 +70,7 @@ class ShreddedTypeSpec extends Specification with ScalaCheck {
   }
 }
 
-object ShreddedTypeSpec {
+object TableTypeSpec {
 
   /** `Gen` instance for a vendor/name-like string */
   implicit val alphaNum: Gen[String] = for {
