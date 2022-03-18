@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.util.Properties
-
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
@@ -47,6 +45,9 @@ import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
  * @tparam C DB-interaction effect
  */
 trait Transaction[F[_], C[_]] {
+
+  /** Prepare the DB for being used (i.e. Snowflake RESUME WAREHOUSE) */
+  def resume: F[Unit]
 
   /**
    * Run a `C` effect within a transaction
@@ -92,24 +93,12 @@ object Transaction {
         case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
           Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
       }
-      properties <- target match {
-        case r: StorageTarget.Redshift =>
-          r.jdbc.validation match {
-            case Right(propertyUpdaters) =>
-              val props = new Properties()
-              propertyUpdaters.foreach(f => f(props))
-              Resource.pure[F, Properties](props)
-            case Left(error) =>
-              val thrown = Sync[F].raiseError[Properties](new IllegalArgumentException(error.message)) // Should never happen
-              Resource.eval(thrown)
-          }
-      }
       xa <- HikariTransactor.newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
       _  <- Resource.eval(xa.configure { ds =>
         Sync[F].delay {
           ds.setAutoCommit(false)
           ds.setMaximumPoolSize(PoolSize)
-          ds.setDataSourceProperties(properties) }
+          ds.setDataSourceProperties(target.properties) }
       })
     } yield xa
 
@@ -119,7 +108,7 @@ object Transaction {
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
   def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](xa))
+    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
 
   /**
    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
@@ -129,7 +118,7 @@ object Transaction {
     Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Effect](conn: Transactor[F]): Transaction[F, ConnectionIO] = {
+  def jdbcRealInterpreter[F[_]: Effect](target: StorageTarget, conn: Transactor[F]): Transaction[F, ConnectionIO] = {
 
     val NoCommitTransactor: Transactor[F] =
       conn.copy(strategy0 = NoCommitStrategy)
@@ -137,6 +126,16 @@ object Transaction {
     new Transaction[F, ConnectionIO] {
       def transact[A](io: ConnectionIO[A]): F[A] =
         conn.trans.apply(io)
+
+      def resume: F[Unit] =
+        target match {
+          case StorageTarget.Redshift(_, _, _, _, _, _, _, _, _, _) =>
+            Effect[F].unit
+          case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, _, _, _, _, _, _) =>
+            val resume = sql"USE WAREHOUSE ${Fragment.const0(warehouse)}".update.run *>
+              sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED".update.run.void
+            conn.trans.apply(resume)
+        }
 
       def run[A](io: ConnectionIO[A]): F[A] =
         NoCommitTransactor.trans.apply(io)

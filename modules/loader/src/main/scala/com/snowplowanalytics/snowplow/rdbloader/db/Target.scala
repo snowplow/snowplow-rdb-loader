@@ -14,12 +14,11 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import doobie.Fragment
 
-import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
+import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, Migration => SchemaMigration}
 
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 
 /**
  * Target represents all DB-specific logic and commands
@@ -42,10 +41,12 @@ trait Target {
   /** Get DDL of a manifest table */
   def getManifest: Statement
 
-  /** Migrate a table identified by `current` (and with known `columns`) to the new `state` */
-  def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Block]
+  /** Generate a DB-specification migration Block for updating a *separate* table */
+  def updateTable(migration: SchemaMigration): Block
 
   /** Create a table with columns dervived from list of Iglu schemas */
   def createTable(schemas: SchemaList): Block
 
+  /** Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates on `events` table */
+  def extendTable(info: ShreddedType.Info): Block
 }

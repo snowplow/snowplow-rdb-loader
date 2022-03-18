@@ -159,6 +159,23 @@ object Config {
       deriveDecoder[RetryQueue]
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
-      deriveDecoder[Config[StorageTarget]]
+      deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
+
+    /** Post-decoding validation, making sure different parts are consistent */
+    def validateConfig(config: Config[StorageTarget]): List[String] =
+      config.storage match {
+        case StorageTarget.Redshift(_, _, _, _, _, _, _, _, _, _) =>
+          Nil
+        case StorageTarget.Snowflake(_, _, _, _, _, _, _, _, _, _, folderMonitoringStage, _, _) =>
+          (config.monitoring.folders, folderMonitoringStage) match {
+            case (Some(_), Some(_)) => Nil
+            case (None, None) => Nil
+            case (Some(_), None) =>
+              List("Snowflake Loader is configured with Folders Monitoring, but appropriate storage.folderMonitoringStage is missing")
+            case (None, Some(name)) =>
+              List(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing - both should either present or missing")
+
+          }
+      }
   }
 }

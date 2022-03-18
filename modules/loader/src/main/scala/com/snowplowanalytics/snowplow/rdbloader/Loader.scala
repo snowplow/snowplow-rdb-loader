@@ -64,7 +64,8 @@ object Loader {
         .evalMap { _ => control.get.map(_.showExtended) }
         .evalMap { state => Logging[F].info(state) }
 
-    val init: F[Unit] = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
+    val init: F[Unit] = Transaction[F, C].resume *>
+      NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Manifest.initialize[F, C](config.storage)
 
     val process = Stream.eval(init).flatMap { _ =>
