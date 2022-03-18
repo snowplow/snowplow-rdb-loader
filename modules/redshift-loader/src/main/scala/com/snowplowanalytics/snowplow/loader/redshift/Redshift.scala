@@ -204,25 +204,23 @@ object Redshift {
               case Statement.GetColumns(tableName) =>
                 sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName"""
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(s"${schema}.manifest")
-                val types = message.types.asJson.noSpaces
-                // Redshift JDBC doesn't accept java.time.Instant
+                val tableName = Fragment.const(s"$schema.$ManifestName")
+                val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
-                  (base, types, shredding_started, shredding_completed,
-                  min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
-                  compression, processor_artifact, processor_version, count_good)
-                  VALUES (${message.base}, $types,
-                  ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
-                  ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
-                  getdate(),
-                  ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
-
+                      (base, types, shredding_started, shredding_completed,
+                      min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
+                      compression, processor_artifact, processor_version, count_good)
+                      VALUES (${message.base}, $types,
+                      ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
+                      ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
+                      getdate(),
+                      ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
               case Statement.ManifestGet(base) =>
                 sql"""SELECT ingestion_tstamp,
-                   base, types, shredding_started, shredding_completed,
-                   min_collector_tstamp, max_collector_tstamp,
-                   compression, processor_artifact, processor_version, count_good
-            FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+                      base, types, shredding_started, shredding_completed,
+                      min_collector_tstamp, max_collector_tstamp,
+                      compression, processor_artifact, processor_version, count_good
+                      FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
 
               case Statement.CreateTable(ddl) =>
                 ddl
