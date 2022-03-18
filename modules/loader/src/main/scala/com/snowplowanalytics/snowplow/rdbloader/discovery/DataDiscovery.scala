@@ -130,7 +130,7 @@ object DataDiscovery {
                                                  assets: Option[S3.Folder],
                                                  message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
     val types = ShreddedType
-      .fromCommon[F](message.base, message.processor.version, region, assets, message.typesInfo)
+      .fromCommon[F](message.base, region, assets, message.typesInfo)
       .map { steps =>
         LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
       }

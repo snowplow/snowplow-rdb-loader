@@ -106,6 +106,7 @@ object LoaderMessage {
   }
 
   sealed trait SnowplowEntity extends Product with Serializable
+
   object SnowplowEntity {
     case object Context extends SnowplowEntity
     case object SelfDescribingEvent extends SnowplowEntity

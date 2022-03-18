@@ -24,7 +24,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Commo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 /**
  * Generally same as `LoaderMessage.ShreddedType`, but for JSON types
@@ -44,17 +43,13 @@ sealed trait ShreddedType {
 
   /** Check if this type is special atomic type */
   def isAtomic = this match {
-    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _, _)) =>
+    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
       vendor == Common.AtomicSchema.vendor && name == Common.AtomicSchema.name && model == Common.AtomicSchema.version.model
     case _ =>
       false
   }
 
-  /** Build valid table name for the shredded type */
-  def getTableName: String =
-    s"${toSnakeCase(info.vendor)}_${toSnakeCase(info.name)}_${info.model}"
-
-  def getSnowplowEntity: LoaderMessage.SnowplowEntity = info.snowplowEntity
+  def getSnowplowEntity: LoaderMessage.SnowplowEntity = info.entity
 }
 
 /**
@@ -103,11 +98,14 @@ object ShreddedType {
    * @param vendor self-describing type's vendor
    * @param name self-describing type's name
    * @param model self-describing type's SchemaVer model
-   * @param shredJob version of the shredder produced the data
-   * @param shredProperty what kind of Snowplow entity it is (context or event)
+   * @param entity what kind of Snowplow entity it is (context or event)
    */
-  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, shredJob: Semver, snowplowEntity: LoaderMessage.SnowplowEntity) {
+  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, entity: LoaderMessage.SnowplowEntity) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
+
+    /** Build valid table name for the shredded type */
+    def getTableName: String =
+      s"${toSnakeCase(vendor)}_${toSnakeCase(name)}_$model"
   }
 
   /**
@@ -115,7 +113,6 @@ object ShreddedType {
    * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
    */
   def fromCommon[F[_]: Monad: Cache: AWS](base: S3.Folder,
-                                          shredJob: Semver,
                                           region: String,
                                           jsonpathAssets: Option[S3.Folder],
                                           typesInfo: TypesInfo): F[List[DiscoveryStep[ShreddedType]]] =
@@ -123,16 +120,16 @@ object ShreddedType {
       case t: TypesInfo.Shredded =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
           case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.TSV, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
             (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
           case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
             Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
         }
       case t: TypesInfo.WideRow =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
           case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredJob, shredProperty)
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
             (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
         }
     }
