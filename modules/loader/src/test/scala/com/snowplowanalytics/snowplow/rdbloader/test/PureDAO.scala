@@ -20,14 +20,14 @@ import doobie.{Read, Fragment}
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, FlatSchema}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, Migration => SchemaMigration}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, Migration}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
 
@@ -104,16 +104,20 @@ object PureDAO {
       )
 
     def getManifest: Statement =
-      Statement.CreateTable("CREATE manifest")
+      Statement.CreateTable(Fragment.const0("CREATE manifest"))
 
-    def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Migration.Block] =
-      Left(LoaderError.RuntimeError("Not implemented in test suite"))
+    def updateTable(migration: SchemaMigration): Migration.Block =
+      throw LoaderError.RuntimeError("Not implemented in test suite")
+
+    def extendTable(info: ShreddedType.Info): Block =
+      throw LoaderError.RuntimeError("Not implemented in test suite")
 
     def createTable(schemas: SchemaList): Migration.Block = {
       val subschemas = FlatSchema.extractProperties(schemas)
       val tableName = StringUtils.getTableName(schemas.latest)
       val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some("public"), 4096, false)
-      Block(Nil, List(Item.CreateTable(createTable.toDdl)), "public", schemas.latest.schemaKey)
+      val entity = Migration.Entity.Table("public", schemas.latest.schemaKey)
+      Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), entity)
     }
   }
 }

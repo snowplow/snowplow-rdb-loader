@@ -29,13 +29,13 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, S
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGenerator, MigrationGenerator}
 
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block, NoPreStatements, NoStatements}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Entity, Item, Block, NoPreStatements, NoStatements}
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, ShreddedType, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
 object Redshift {
@@ -48,36 +48,27 @@ object Redshift {
     config.storage match {
       case StorageTarget.Redshift(_, _, _, _, roleArn, schema, _, _, maxError, _) =>
         val result = new Target {
-          def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Block] = {
-            state match {
-              case s: SchemaList.Full =>
-                val migrations = s.extractSegments.map(Migration.fromSegment)
-                migrations.find(_.from == current.version) match {
-                  case Some(relevantMigration) =>
-                    val ddlFile = MigrationGenerator.generateMigration(relevantMigration, 4096, Some(schema))
+          def updateTable(migration: Migration): Block = {
+            val ddlFile = MigrationGenerator.generateMigration(migration, 4096, Some(schema))
 
-                    val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
-                      case ((preTransaction, inTransaction), statement) =>
-                        statement match {
-                          case s @ AlterTable(_, _: AlterType) =>
-                            (Item.AlterColumn(Fragment.const0(s.toDdl)) :: preTransaction, inTransaction)
-                          case s @ AlterTable(_, _) =>
-                            (preTransaction, Item.AddColumn(Fragment.const0(s.toDdl), ddlFile.warnings) :: inTransaction)
-                          case _ =>   // We explicitly support only ALTER TABLE here; also drops BEGIN/END
-                            (preTransaction, inTransaction)
-                        }
-                    }
-
-                    Block(preTransaction.reverse, inTransaction.reverse, schema, current.copy(version = relevantMigration.to)).asRight
-                  case None =>
-                    val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $state. Migration cannot be created"
-                    DiscoveryFailure.IgluError(message).toLoaderError.asLeft
+            val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
+              case ((preTransaction, inTransaction), statement) =>
+                statement match {
+                  case s @ AlterTable(_, _: AlterType) =>
+                    (Item.AlterColumn(Fragment.const0(s.toDdl)) :: preTransaction, inTransaction)
+                  case s @ AlterTable(_, _) =>
+                    (preTransaction, Item.AddColumn(Fragment.const0(s.toDdl), ddlFile.warnings) :: inTransaction)
+                  case _ =>   // We explicitly support only ALTER TABLE here; also drops BEGIN/END
+                    (preTransaction, inTransaction)
                 }
-              case s: SchemaList.Single =>
-                val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
-                LoaderError.MigrationError(message).asLeft
             }
+
+            val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
+            Block(preTransaction.reverse, inTransaction.reverse, Entity.Table(schema, target))
           }
+
+          def extendTable(info: ShreddedType.Info): Block =
+            throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements = {
             val shreddedStatements = discovery
@@ -92,7 +83,7 @@ object Redshift {
             val subschemas = FlatSchema.extractProperties(schemas)
             val tableName = StringUtils.getTableName(schemas.latest)
             val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some(schema), 4096, false)
-            Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), schema, schemas.latest.schemaKey)
+            Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), Entity.Table(schema, schemas.latest.schemaKey))
           }
 
           def getManifest: Statement =
@@ -142,7 +133,7 @@ object Redshift {
                      | $frCompression""".stripMargin
 
               case Statement.ShreddedCopy(shreddedType, compression) =>
-                val frTableName = Fragment.const0(s"${schema}.${shreddedType.getTableName}")
+                val frTableName = Fragment.const0(s"${schema}.${shreddedType.info.getName}")
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frRegion = Fragment.const0(config.region.name)
@@ -204,25 +195,23 @@ object Redshift {
               case Statement.GetColumns(tableName) =>
                 sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName"""
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(s"${schema}.manifest")
-                val types = message.types.asJson.noSpaces
-                // Redshift JDBC doesn't accept java.time.Instant
+                val tableName = Fragment.const(s"$schema.$ManifestName")
+                val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
-                  (base, types, shredding_started, shredding_completed,
-                  min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
-                  compression, processor_artifact, processor_version, count_good)
-                  VALUES (${message.base}, $types,
-                  ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
-                  ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
-                  getdate(),
-                  ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
-
+                      (base, types, shredding_started, shredding_completed,
+                      min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
+                      compression, processor_artifact, processor_version, count_good)
+                      VALUES (${message.base}, $types,
+                      ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(message.timestamps.jobCompleted)},
+                      ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
+                      getdate(),
+                      ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
               case Statement.ManifestGet(base) =>
                 sql"""SELECT ingestion_tstamp,
-                   base, types, shredding_started, shredding_completed,
-                   min_collector_tstamp, max_collector_tstamp,
-                   compression, processor_artifact, processor_version, count_good
-            FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+                      base, types, shredding_started, shredding_completed,
+                      min_collector_tstamp, max_collector_tstamp,
+                      compression, processor_artifact, processor_version, count_good
+                      FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
 
               case Statement.CreateTable(ddl) =>
                 ddl

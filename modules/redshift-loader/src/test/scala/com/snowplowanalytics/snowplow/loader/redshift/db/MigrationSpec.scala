@@ -26,13 +26,13 @@ import com.snowplowanalytics.iglu.schemaddl.redshift._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Migration}
 
 import org.specs2.mutable.Specification
+
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureIglu, PureLogging, PureTransaction}
 
@@ -50,7 +50,6 @@ class MigrationSpec extends Specification {
             "com.acme",
             "some_context",
             2,
-            Semver(0, 17, 0),
             SnowplowEntity.Context
           )),
           ShreddedType.Json(ShreddedType.Info(
@@ -58,7 +57,6 @@ class MigrationSpec extends Specification {
             "com.acme",
             "some_event",
             1,
-            Semver(0, 17, 0),
             SnowplowEntity.Context
           ), S3.Key.coerce("s3://shredded/jsonpaths"))
         )
@@ -116,7 +114,6 @@ class MigrationSpec extends Specification {
             "com.snowplowanalytics.snowplow",
             "atomic",
             1,
-            Semver(0, 17, 0),
             SnowplowEntity.Context
           )),
           ShreddedType.Tabular(ShreddedType.Info(
@@ -124,7 +121,6 @@ class MigrationSpec extends Specification {
             "com.acme",
             "some_event",
             1,
-            Semver(0, 17, 0),
             SnowplowEntity.Context
           ))
         )

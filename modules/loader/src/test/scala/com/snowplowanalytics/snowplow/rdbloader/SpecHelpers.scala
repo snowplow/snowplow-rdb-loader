@@ -23,8 +23,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 
-import com.snowplowanalytics.snowplow.rdbloader.config.ConfigSpec
-
 object SpecHelpers {
 
   val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
@@ -38,7 +36,7 @@ object SpecHelpers {
     ConfigSpec.exampleMonitoring,
     ConfigSpec.exampleQueueName,
     ConfigSpec.exampleRetryQueue,
-    ConfigSpec.exampleStorage,
+    ConfigSpec.exampleRedshift,
     ConfigSpec.exampleSchedules,
     ConfigSpec.exampleTimeouts,
     ConfigSpec.exampleRetries

@@ -37,8 +37,8 @@ class DataDiscoverySpec extends Specification {
   "show" should {
     "should DataDiscovery with several shredded types" >> {
       val shreddedTypes = List(
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, Semver(1,5,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/event_1.json")),
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, Semver(1,5,0), LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/context_1.json"))
+        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/event_1.json")),
+        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/context_1.json"))
       )
 
       val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
@@ -57,7 +57,7 @@ class DataDiscoverySpec extends Specification {
       val expected = DataDiscovery(
         S3.Folder.coerce("s3://bucket/folder/"),
         List(
-          ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,Semver(1,1,2,None), LoaderMessage.SnowplowEntity.SelfDescribingEvent)),
+          ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent)),
         ),
         Compression.None
       ).asRight
@@ -115,8 +115,8 @@ class DataDiscoverySpec extends Specification {
       val expected = DataDiscovery(
         S3.Folder.coerce("s3://bucket/folder/"),
         List(
-          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,Semver(1,1,2,None), LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
-          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,Semver(1,1,2,None), LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
+          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
+          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
         ),
         Compression.Gzip
       )

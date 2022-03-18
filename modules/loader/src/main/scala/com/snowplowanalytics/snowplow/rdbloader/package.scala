@@ -51,6 +51,12 @@ package object rdbloader {
   object LoaderAction {
     def apply[F[_], A](actionE: F[Either[LoaderError, A]]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)
+
+    def pure[F[_]: Applicative, A](a: A): LoaderAction[F, A] =
+      EitherT.pure[F, LoaderError](a)
+
+    def liftF[F[_]: Applicative, A](fa: F[A]): LoaderAction[F, A] =
+      EitherT.liftF[F, LoaderError, A](fa)
   }
 
   /** IO-free result validation */
