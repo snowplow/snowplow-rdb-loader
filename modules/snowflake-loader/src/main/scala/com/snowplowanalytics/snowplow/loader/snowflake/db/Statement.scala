@@ -12,17 +12,11 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import java.sql.Timestamp
-
 import doobie.Fragment
-import doobie.implicits.javasql._
 import doobie.implicits._
-
-import io.circe.syntax._
 
 import cats.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.loader.snowflake.ast._
 
 trait Statement {
@@ -31,9 +25,6 @@ trait Statement {
 }
 
 object Statement {
-
-
-
   case class CreateTable(schema: String,
                          name: String,
                          columns: List[Column],
@@ -55,29 +46,6 @@ object Statement {
       val frTableName = Fragment.const(s"$schema.$table")
       sql"DROP TABLE IF EXISTS $frTableName"
     }
-  }
-
-  case class GetColumns(schema: String, tableName: String) extends Statement {
-    def toFragment: Fragment = {
-      val frTableName = Fragment.const0(s"$schema.$tableName")
-      // Since querying information_schema is significantly slower,
-      // 'show columns' is used. Visit following link for more information:
-      // https://community.snowflake.com/s/article/metadata-operations-throttling
-      sql"SHOW COLUMNS IN TABLE $frTableName"
-    }
-  }
-  object GetColumns {
-    case class ShowColumnRow(tableName: String,
-                             schemaName: String,
-                             columnName: String,
-                             dataType: String,
-                             isNull: String,
-                             default: Option[String],
-                             kind: String,
-                             expression: Option[String],
-                             comment: Option[String],
-                             databaseName: String,
-                             autoincrement: Option[String])
   }
 
   case class AddColumn(schema: String,

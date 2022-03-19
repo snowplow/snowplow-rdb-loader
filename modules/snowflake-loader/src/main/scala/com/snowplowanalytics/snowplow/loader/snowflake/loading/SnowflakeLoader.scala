@@ -20,17 +20,11 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.state.Control
-import com.snowplowanalytics.snowplow.rdbloader.algebras.db.TargetLoader
-import com.snowplowanalytics.snowplow.rdbloader.loading.Stage
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.loader.snowflake.db.DbUtils
-import com.snowplowanalytics.snowplow.loader.snowflake.db.SfDao
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.AtomicDef
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.CopyInto
-import com.snowplowanalytics.snowplow.loader.snowflake.config.SnowflakeTarget
 
-class SnowflakeLoader[C[_]: MonadThrow: Logging: SfDao: Control](target: SnowflakeTarget)
-  extends TargetLoader[C] {
+class SnowflakeLoader[C[_]: MonadThrow: Logging: Control]() {
 
   import SnowflakeLoader._
 
@@ -45,7 +39,6 @@ class SnowflakeLoader[C[_]: MonadThrow: Logging: SfDao: Control](target: Snowfla
       case Right(_) =>
         val copyStatement = getStatement(discovery, target)
         for {
-          _ <- DbUtils.resumeWarehouse[C](target.warehouse)
           _ <- Logging[C].info(s"Loading ${discovery.base}")
           _ <- loadFolder(copyStatement)
           _ <- Logging[C].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
@@ -53,28 +46,10 @@ class SnowflakeLoader[C[_]: MonadThrow: Logging: SfDao: Control](target: Snowfla
       case Left(err) =>
         MonadThrow[C].raiseError(LoaderError.StorageTargetError(err))
     }
-
-  def loadFolder(statement: CopyInto): C[Unit] =
-    Control[C].setStage(Stage.Loading("events")) *>
-      Logging[C].info(s"COPY events") *>
-      SfDao[C].executeUpdate(statement).void
 }
 
 object SnowflakeLoader {
-  val EventTable = "EVENTS"
 
-  def getStatement(discovery: DataDiscovery, target: SnowflakeTarget): CopyInto = {
-    val columns = getColumns(discovery)
-    val loadPath = s"${discovery.runId}/${Common.GoodPrefix}"
-    CopyInto(
-      target.schema,
-      EventTable,
-      target.transformedStage,
-      columns,
-      loadPath,
-      target.maxError
-    )
-  }
 
   def getColumns(discovery: DataDiscovery): List[String] = {
     val atomicColumns = AtomicDef.columns.map(_.name)

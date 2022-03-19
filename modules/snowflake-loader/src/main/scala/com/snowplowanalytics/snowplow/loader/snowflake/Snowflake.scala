@@ -12,15 +12,17 @@ import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block, NoPreStatements, NoStatements}
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, SchemaList}
-import com.snowplowanalytics.iglu.schemaddl.redshift.{CompressionEncoding, CreateTable, SortKeyTable, Nullability, RedshiftInteger, ZstdEncoding, Null, KeyConstaint, NotNull, RawEncoding, AlterTable, Key, Diststyle, Column, RedshiftTimestamp, PrimaryKey, RedshiftVarchar, CommentOn, DistKeyTable, RenameTo, AlterType}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+
+import com.snowplowanalytics.snowplow.loader.snowflake.ast.{Column, SnowflakeDatatype, PrimaryKeyConstraint}
+import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.{CreateTable, AddColumn}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 
 object Snowflake {
 
@@ -32,35 +34,15 @@ object Snowflake {
     config.storage match {
       case StorageTarget.Snowflake(region, username, role, password, account, warehouse, database, schema, stageName, appName, folderMonitoringStage, maxError, jdbcHost) =>
         val result = new Target {
+          // TODO: not going to work because we need to migrate the main table
           def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Block] = {
-            state match {
-              case s: SchemaList.Full =>
-                val migrations = s.extractSegments.map(Migration.fromSegment)
-                migrations.find(_.from == current.version) match {
-                  case Some(relevantMigration) =>
-                    val ddlFile = MigrationGenerator.generateMigration(relevantMigration, 4096, Some(schema))
-
-                    val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
-                      case ((preTransaction, inTransaction), statement) =>
-                        statement match {
-                          case s @ AlterTable(_, _: AlterType) =>
-                            (Item.AlterColumn(s.toDdl) :: preTransaction, inTransaction)
-                          case s @ AlterTable(_, _) =>
-                            (preTransaction, Item.AddColumn(s.toDdl, ddlFile.warnings) :: inTransaction)
-                          case _ =>   // We explicitly support only ALTER TABLE here; also drops BEGIN/END
-                            (preTransaction, inTransaction)
-                        }
-                    }
-
-                    Block(preTransaction.reverse, inTransaction.reverse, schema, current.copy(version = relevantMigration.to)).asRight
-                  case None =>
-                    val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $state. Migration cannot be created"
-                    DiscoveryFailure.IgluError(message).toLoaderError.asLeft
-                }
-              case s: SchemaList.Single =>
-                val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $state"
-                LoaderError.MigrationError(message).asLeft
-            }
+            val shreddedType: ShreddedType = ???    // TODO: we need to know the snowplow entity type for column name
+            val isContext = shreddedType.info.snowplowEntity == SnowplowEntity.Context
+            val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
+            val columnName = (if (isContext) "context_" else "unstruct_event_") ++ shreddedType.getTableName
+            val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
+            val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
+            Right(Block(List(addColumn), Nil, schema, state.latest.schemaKey))
           }
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =
@@ -71,7 +53,7 @@ object Snowflake {
             Block(Nil, Nil, schema, schemas.latest.schemaKey)
 
           def getManifest: Statement =
-            Statement.CreateTable(getManifestDef(schema).render)
+            Statement.CreateTable(getManifestDef(schema).toFragment)
 
           def toFragment(statement: Statement): Fragment =
             statement match {
@@ -168,29 +150,23 @@ object Snowflake {
 
   val ManifestName = "manifest"
 
+  val ManifestPK = PrimaryKeyConstraint("base_pk", "base")
+
   val ManifestColumns = List(
-    Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull),KeyConstaint(PrimaryKey))),
-    Column("types",RedshiftVarchar(65535),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("shredding_started",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("shredding_completed",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("min_collector_tstamp",RedshiftTimestamp,Set(CompressionEncoding(RawEncoding)),Set(Nullability(Null))),
-    Column("max_collector_tstamp",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(Null))),
-    Column("ingestion_tstamp",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("compression",RedshiftVarchar(16),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("processor_artifact",RedshiftVarchar(64),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("processor_version",RedshiftVarchar(32),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("count_good",RedshiftInteger,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(Null))),
+    Column("base", SnowflakeDatatype.Varchar(512), notNull = true, unique = true),
+    Column("types", SnowflakeDatatype.JsonArray, notNull = true),
+    Column("shredding_started", SnowflakeDatatype.Timestamp, notNull = true),
+    Column("shredding_completed", SnowflakeDatatype.Timestamp, notNull = true),
+    Column("min_collector_tstamp", SnowflakeDatatype.Timestamp),
+    Column("max_collector_tstamp", SnowflakeDatatype.Timestamp),
+    Column("ingestion_tstamp", SnowflakeDatatype.Timestamp, notNull = true),
+    Column("compression", SnowflakeDatatype.Varchar(16), notNull = true),
+    Column("processor_artifact", SnowflakeDatatype.Varchar(64), notNull = true),
+    Column("processor_version", SnowflakeDatatype.Varchar(32), notNull = true),
+    Column("count_good", SnowflakeDatatype.Integer)
   )
 
   /** Add `schema` to otherwise static definition of manifest table */
   def getManifestDef(schema: String): CreateTable =
-    CreateTable(
-      s"$schema.$ManifestName",
-      ManifestColumns,
-      Set.empty,
-      Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))
-    )
+    CreateTable(schema, ManifestName, ManifestColumns, Some(ManifestPK))
 }

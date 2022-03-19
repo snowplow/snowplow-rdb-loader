@@ -46,6 +46,34 @@ object TestState {
   sealed trait LogEntry
   object LogEntry {
     case class Message(content: String) extends LogEntry
-    case class Sql(content: Statement) extends LogEntry
+    case class Sql(content: Statement) extends LogEntry {
+      override def equals(obj: Any): Boolean = {
+        content match {
+          case Statement.CreateTable(t) =>
+            obj match {
+              case Sql(Statement.CreateTable(f)) =>
+                t.internals.sql == f.internals.sql
+              case _ => false
+            }
+          case Statement.AlterTable(t) =>
+            obj match {
+              case Sql(Statement.AlterTable(f)) =>
+                t.internals.sql == f.internals.sql
+              case _ => false
+            }
+          case Statement.DdlFile(t) =>
+            obj match {
+              case Sql(Statement.DdlFile(f)) =>
+                t.internals.sql == f.internals.sql
+              case _ => false
+            }
+          case statement =>
+            obj match {
+              case Sql(other) => statement == other
+              case _ => false
+            }
+        }
+      }
+    }
   }
 }

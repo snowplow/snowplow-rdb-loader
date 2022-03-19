@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.db
 
-import cats.MonadThrow
-
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.loader.snowflake.ast._
 
 

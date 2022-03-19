@@ -40,6 +40,7 @@ sealed trait StorageTarget extends Product with Serializable {
 
   def driver: String
   def connectionUrl: String
+  def properties: Properties
 }
 
 object StorageTarget {
@@ -74,6 +75,17 @@ object StorageTarget {
     def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
     def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
+
+    def properties: Properties = {
+      val props = new Properties()
+      jdbc.validation match {
+        case Right(updaters) =>
+          updaters.foreach(f => f(props))
+        case Left(error) =>
+          throw new IllegalStateException(s"Redshift JDBC properties are invalid. ${error.message}")
+      }
+      props
+    }
   }
 
   final case class Snowflake(snowflakeRegion: String,

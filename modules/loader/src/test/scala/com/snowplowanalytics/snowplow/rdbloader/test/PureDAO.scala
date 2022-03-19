@@ -104,7 +104,7 @@ object PureDAO {
       )
 
     def getManifest: Statement =
-      Statement.CreateTable("CREATE manifest")
+      Statement.CreateTable(Fragment.const0("CREATE manifest"))
 
     def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Migration.Block] =
       Left(LoaderError.RuntimeError("Not implemented in test suite"))
@@ -113,7 +113,7 @@ object PureDAO {
       val subschemas = FlatSchema.extractProperties(schemas)
       val tableName = StringUtils.getTableName(schemas.latest)
       val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some("public"), 4096, false)
-      Block(Nil, List(Item.CreateTable(createTable.toDdl)), "public", schemas.latest.schemaKey)
+      Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), "public", schemas.latest.schemaKey)
     }
   }
 }

@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import doobie.Fragment
+
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
@@ -39,8 +41,6 @@ object Statement {
     def path: String
     def title = s"COPY $table FROM $path"
   }
-
-  type DdlStatement = String
 
   // Common
   case object Begin extends Statement
@@ -80,7 +80,7 @@ object Statement {
   case class ManifestGet(base: S3.Folder) extends Statement
 
   // Arbitrary-string DDL statements
-  case class CreateTable(ddl: DdlStatement) extends Statement
-  case class AlterTable(ddl: DdlStatement) extends Statement
-  case class DdlFile(ddl: DdlStatement) extends Statement
+  case class CreateTable(ddl: Fragment) extends Statement
+  case class AlterTable(ddl: Fragment) extends Statement
+  case class DdlFile(ddl: Fragment) extends Statement
 }

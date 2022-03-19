@@ -18,13 +18,14 @@ import cats.implicits._
 
 import cats.effect.MonadThrow
 
+import doobie.Fragment
+
 import com.snowplowanalytics.iglu.core.{SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
 
 import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement.DdlStatement
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
 
@@ -70,7 +71,7 @@ object Migration {
    * @param preTransaction can be `ALTER TYPE` only
    * @param inTransaction can be `ADD COLUMN` or `CREATE TABLE`
    */
-  final case class Block(preTransaction: List[Item.AlterColumn], inTransaction: List[Item], dbSchema: String, target: SchemaKey) {
+  final case class Block(preTransaction: List[Item], inTransaction: List[Item], dbSchema: String, target: SchemaKey) {
     def isEmpty: Boolean = preTransaction.isEmpty && inTransaction.isEmpty
 
     def isCreation: Boolean =
@@ -92,7 +93,9 @@ object Migration {
    * A single migration (or creation) statement for a single table
    * One table can have multiple `Migration.Item` elements, even of different kinds,
    * typically [[Item.AddColumn]] and [[Item.AlterColumn]]. But all these items
-   * will belong to the same [[Block]]
+   * will belong to the same [[Block]].
+   * [[Item]]s come from an implementation of `Target`, hence have concrete DDL in there
+   * @note since all [[Item]]s contain `Fragment` there's no safe `equals` operations
    */
   sealed trait Item {
     def statement: Statement
@@ -100,17 +103,17 @@ object Migration {
 
   object Item {
     /** `ALTER TABLE ALTER TYPE`. Can be combined with [[AddColumn]] in [[Block]]. Must be pre-transaction */
-    final case class AlterColumn(alterTable: DdlStatement) extends Item {
+    final case class AlterColumn(alterTable: Fragment) extends Item {
       val statement: Statement = Statement.AlterTable(alterTable)
     }
 
     /** `ALTER TABLE ADD COLUMN`. Can be combined with [[AlterColumn]] in [[Block]]. Must be in-transaction */
-    final case class AddColumn(alterTable: DdlStatement, warning: List[String]) extends Item {
+    final case class AddColumn(alterTable: Fragment, warning: List[String]) extends Item {
       val statement: Statement = Statement.AlterTable(alterTable)
     }
 
     /** `CREATE TABLE`. Always just one per [[Block]]. Must be in-transaction */
-    final case class CreateTable(createTable: DdlStatement) extends Item {
+    final case class CreateTable(createTable: Fragment) extends Item {
       val statement: Statement = Statement.CreateTable(createTable)
     }
   }

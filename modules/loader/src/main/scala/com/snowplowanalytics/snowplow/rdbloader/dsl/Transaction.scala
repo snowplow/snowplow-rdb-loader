@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.util.Properties
-
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
@@ -92,24 +90,12 @@ object Transaction {
         case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
           Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
       }
-      properties <- target match {
-        case r: StorageTarget.Redshift =>
-          r.jdbc.validation match {
-            case Right(propertyUpdaters) =>
-              val props = new Properties()
-              propertyUpdaters.foreach(f => f(props))
-              Resource.pure[F, Properties](props)
-            case Left(error) =>
-              val thrown = Sync[F].raiseError[Properties](new IllegalArgumentException(error.message)) // Should never happen
-              Resource.eval(thrown)
-          }
-      }
       xa <- HikariTransactor.newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
       _  <- Resource.eval(xa.configure { ds =>
         Sync[F].delay {
           ds.setAutoCommit(false)
           ds.setMaximumPoolSize(PoolSize)
-          ds.setDataSourceProperties(properties) }
+          ds.setDataSourceProperties(target.properties) }
       })
     } yield xa
 
