@@ -25,7 +25,7 @@ object Dependencies {
     val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
     val cats             = "2.2.0"
-    val catsEffect       = "2.5.4"
+    val catsEffect       = "3.3.8"
     val manifest         = "0.3.0"
     val fs2              = "2.5.6"
     val fs2Aws           = "3.0.11"
