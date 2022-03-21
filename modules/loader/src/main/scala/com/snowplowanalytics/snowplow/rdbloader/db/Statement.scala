@@ -59,7 +59,7 @@ object Statement {
     def table: String = "events"
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
-    def table: String = shreddedType.getTableName
+    def table: String = shreddedType.info.getTableName
     def path: String = shreddedType.getLoadPath
   }
   case object CreateTransient extends Statement

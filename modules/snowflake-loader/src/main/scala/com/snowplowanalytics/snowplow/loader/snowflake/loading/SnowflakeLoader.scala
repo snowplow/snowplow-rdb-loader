@@ -12,41 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake.loading
 
-import cats.MonadThrow
 import cats.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
-import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
-import com.snowplowanalytics.snowplow.rdbloader.state.Control
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.AtomicDef
-import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.CopyInto
 
-class SnowflakeLoader[C[_]: MonadThrow: Logging: Control]() {
-
-  import SnowflakeLoader._
-
-  /**
-    * Run loading actions for atomic and shredded data
-    *
-    * @param discovery batch discovered from message queue
-    * @return block of statements to execute them out of a main transaction
-    */
-  def run(discovery: DataDiscovery): C[Unit] =
-    shreddedTypeCheck(discovery.shreddedTypes) match {
-      case Right(_) =>
-        val copyStatement = getStatement(discovery, target)
-        for {
-          _ <- Logging[C].info(s"Loading ${discovery.base}")
-          _ <- loadFolder(copyStatement)
-          _ <- Logging[C].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
-        } yield ()
-      case Left(err) =>
-        MonadThrow[C].raiseError(LoaderError.StorageTargetError(err))
-    }
-}
 
 object SnowflakeLoader {
 

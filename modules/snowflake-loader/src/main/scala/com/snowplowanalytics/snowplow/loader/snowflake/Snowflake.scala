@@ -2,27 +2,30 @@ package com.snowplowanalytics.snowplow.loader.snowflake
 
 import java.sql.Timestamp
 
-import cats.implicits._
 import cats.data.NonEmptyList
 
 import doobie.Fragment
 import doobie.implicits._
+import doobie.implicits.javasql._
 
 import io.circe.syntax._
 
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement}
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block, NoPreStatements, NoStatements}
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
+import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.{Column, SnowflakeDatatype, PrimaryKeyConstraint}
 import com.snowplowanalytics.snowplow.loader.snowflake.db.Statement.{CreateTable, AddColumn}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
+
 
 object Snowflake {
 
@@ -32,17 +35,21 @@ object Snowflake {
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Snowflake(region, username, role, password, account, warehouse, database, schema, stageName, appName, folderMonitoringStage, maxError, jdbcHost) =>
+      case StorageTarget.Snowflake(_, _, _, _, _, _, _, schema, _, _, _, _, _) =>
         val result = new Target {
-          // TODO: not going to work because we need to migrate the main table
-          def updateTable(current: SchemaKey, columns: List[String], state: SchemaList): Either[LoaderError, Block] = {
-            val shreddedType: ShreddedType = ???    // TODO: we need to know the snowplow entity type for column name
-            val isContext = shreddedType.info.snowplowEntity == SnowplowEntity.Context
+          def updateTable(migration: Migration): Block = {
+            val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
+            Block(Nil, Nil, schema, target)
+          }
+
+          def extendTable(info: ShreddedType.Info): Block = {
+            val isContext = info.entity == SnowplowEntity.Context
             val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
-            val columnName = (if (isContext) "context_" else "unstruct_event_") ++ shreddedType.getTableName
+            val columnName = (if (isContext) "context_" else "unstruct_event_") ++ info.getTableName
             val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
             val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
-            Right(Block(List(addColumn), Nil, schema, state.latest.schemaKey))
+            val target = SchemaKey(info.vendor, info.name, "jsonschema", SchemaVer.Full(info.model, 0, 0))
+            Block(List(addColumn), Nil, schema, target)
           }
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =
@@ -77,7 +84,7 @@ object Snowflake {
                 val frPath      = Fragment.const0(source)   // TODO: did we really need stage
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, compression) =>
+              case Statement.EventsCopy(path, _) =>
                 val frTableName = Fragment.const(EventsTable.MainName)
                 val frPath      = Fragment.const0(path)   // TODO: did we really need stage
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
@@ -98,7 +105,7 @@ object Snowflake {
                       |  WHERE  TABLE_SCHEMA = $schema
                       |  AND    TABLE_NAME = $tableName)
                       | AS exists""".stripMargin
-              case Statement.GetVersion(tableName) =>
+              case Statement.GetVersion(_) =>
                 throw new IllegalStateException("Snowflake Loader does not support table versioning")
 
               case Statement.RenameTable(from, to) =>
@@ -129,16 +136,16 @@ object Snowflake {
                    base, types, shredding_started, shredding_completed,
                    min_collector_tstamp, max_collector_tstamp,
                    compression, processor_artifact, processor_version, count_good
-                   FROM ${Fragment.const0(s"$schema.$ManifestName")} WHERE base = $base"""
+                   FROM ${Fragment.const0(s"$schema.${Manifest.Name}")} WHERE base = $base"""
 
               case Statement.CreateTable(ddl) =>
-                Fragment.const0(ddl)
-              case Statement.CommentOn(table, comment) =>
+                ddl
+              case Statement.CommentOn(_, _) =>
                 throw new IllegalStateException("Snowflake Loader does not support table versioning")
               case Statement.DdlFile(ddl) =>
-                Fragment.const0(ddl)
+                ddl
               case Statement.AlterTable(ddl) =>
-                Fragment.const0(ddl)
+                ddl
             }
         }
 
@@ -147,8 +154,6 @@ object Snowflake {
         Left(s"Invalid State: trying to build Snowflake interpreter with unrecognized config (${other.driver} driver)")
     }
   }
-
-  val ManifestName = "manifest"
 
   val ManifestPK = PrimaryKeyConstraint("base_pk", "base")
 
@@ -168,5 +173,5 @@ object Snowflake {
 
   /** Add `schema` to otherwise static definition of manifest table */
   def getManifestDef(schema: String): CreateTable =
-    CreateTable(schema, ManifestName, ManifestColumns, Some(ManifestPK))
+    CreateTable(schema, Manifest.Name, ManifestColumns, Some(ManifestPK))
 }

@@ -14,9 +14,9 @@ package com.snowplowanalytics.snowplow.loader.redshift
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
+import com.snowplowanalytics.iglu.schemaddl.migrations.{ SchemaList, Migration => SchemaMigration }
 import com.snowplowanalytics.iglu.schemaddl.redshift.{CompressionEncoding, RedshiftVarchar, AlterType, ZstdEncoding, AlterTable, AddColumn}
 
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Migration}
 
 import org.specs2.mutable.Specification
@@ -27,61 +27,33 @@ import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.validConfig
 class RedshiftSpec extends Specification {
   import RedshiftSpec.redshift
   "updateTable" should {
-    "fail if executed with single schema" in {
-      val result = redshift.updateTable(
-        SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,0)),
-        List("one", "two"),
-        MigrationSpec.schemaListSingle
-      )
-
-      result must beLeft.like {
-        case LoaderError.MigrationError(message) => message must startWith("Illegal State")
-        case _ => ko("Error doesn't mention illegal state")
-      }
-    }
 
     "create a Block with in-transaction migration" in {
-      val result = redshift.updateTable(
-        SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,0)),
-        List("one", "two"),
-        MigrationSpec.schemaListTwo
-      )
+      val migration = MigrationSpec.schemaListTwo.asInstanceOf[SchemaList.Full].extractSegments.map(SchemaMigration.fromSegment).head
+      val result = redshift.updateTable(migration)
 
       val alterTable = AlterTable(
         "atomic.com_acme_context_1",
         AddColumn("three", RedshiftVarchar(4096), None, Some(CompressionEncoding(ZstdEncoding)), None)
       )
 
-      result must beRight.like {
+      result must beLike {
         case Migration.Block(Nil, List(Migration.Item.AddColumn(fragment, Nil)), "atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,1))) =>
           fragment.toString() must beEqualTo(s"""Fragment("${alterTable.toDdl}")""")
         case _ => ko("Unexpected block found")
       }
     }
 
-    "fail if relevant migration is not found" in {
-      val result = redshift.updateTable(
-        SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,2)),
-        List("one", "two"),
-        MigrationSpec.schemaListTwo
-      )
-
-      result must beLeft
-    }
-
     "create a Block with pre-transaction migration" in {
-      val result = redshift.updateTable(
-        SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,0)),
-        List("one"),
-        MigrationSpec.schemaListThree
-      )
+      val migration = MigrationSpec.schemaListThree.asInstanceOf[SchemaList.Full].extractSegments.map(SchemaMigration.fromSegment).head
+      val result = redshift.updateTable(migration)
 
       val alterTable = AlterTable(
         "atomic.com_acme_context_2",
         AlterType("one", RedshiftVarchar(64))
       )
 
-      result must beRight.like {
+      result must beLike {
         case Migration.Block(List(Migration.Item.AlterColumn(fragment)), List(), "atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,1))) =>
           fragment.toString() must beEqualTo(s"""Fragment("${alterTable.toDdl}")""")
         case _ => ko("Unexpected block found")

@@ -23,10 +23,12 @@ import doobie.Fragment
 import com.snowplowanalytics.iglu.core.{SchemaMap, SchemaKey}
 
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DSchemaList}
+import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
+
+import com.snowplowanalytics.iglu.schemaddl.migrations.{ Migration => SchemaMigration }
 
 import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType, DiscoveryFailure}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
 
 
@@ -36,7 +38,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, 
  * Unlike `Block`, which is set of statements for a *single table*, the
  * [[Migration]] is applied to multiple tables, so in the end the pipeline is:
  *
- * `DataDiscovery -> List[Migration.Item] -> List[Migration.Block] -> Migration`
+ * `DataDiscovery -> List[Migration.Item] -> List[Migration.Description] -> List[Migration.Block] -> Migration`
  *
  * Some statements (CREATE TABLE, ADD COLUMN) could be executed inside a transaction,
  * making the table alteration atomic, other (ALTER TYPE) cannot due Redshift
@@ -89,6 +91,18 @@ object Migration {
       Statement.CommentOn(getTable, target.toSchemaUri)
   }
 
+  /** Represents the kind of migration the Loader needs to do */
+  sealed trait Description extends Product with Serializable
+
+  object Description {
+    /** Works with separate tables (both create and update) and does support migration (hence all schema info) */
+    final case class Table(schemaList: SchemaList) extends Description
+    /** Works with only `events` table, creating a column for every new schema */
+    final case class WideRow(shreddedType: ShreddedType.Info) extends Description
+    /** Works with separate tables, but does not support migration (hence no info) */
+    case object NoMigration extends Description
+  }
+
   /**
    * A single migration (or creation) statement for a single table
    * One table can have multiple `Migration.Item` elements, even of different kinds,
@@ -121,16 +135,19 @@ object Migration {
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
   def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu,
             C[_]: Monad: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
-    val schemas = discovery.shreddedTypes.filterNot(_.isAtomic).traverseFilter {
-      case s @ (_: ShreddedType.Tabular | _: ShreddedType.Widerow) =>
-        val ShreddedType.Info(_, vendor, name, model, _, _) = s.info
-        EitherT(Iglu[F].getSchemas(vendor, name, model)).map(_.some)
-      case ShreddedType.Json(_, _) =>
-        EitherT.rightT[F, LoaderError](none[DSchemaList])
-    }
+    val descriptions: LoaderAction[F, List[Description]] =
+      discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
+        case s: ShreddedType.Tabular =>
+          val ShreddedType.Info(_, vendor, name, model, _) = s.info
+          EitherT(Iglu[F].getSchemas(vendor, name, model)).map(Description.Table)
+        case ShreddedType.Widerow(info) =>
+          EitherT.rightT[F, LoaderError](Description.WideRow(info))
+        case ShreddedType.Json(_, _) =>
+          EitherT.rightT[F, LoaderError](Description.NoMigration)
+      }
 
     val transaction: C[Either[LoaderError, Migration[C]]] =
-      Transaction[F, C].arrowBack(schemas.value).flatMap {
+      Transaction[F, C].arrowBack(descriptions.value).flatMap {
         case Right(schemaList) =>
           schemaList
             .traverseFilter(buildBlock[C])
@@ -148,22 +165,47 @@ object Migration {
     Migration[F](Applicative[F].unit, Applicative[F].unit)
 
 
-  def buildBlock[F[_]: Monad: DAO](schemas: DSchemaList): LoaderAction[F, Option[Block]] = {
-    val tableName = StringUtils.getTableName(schemas.latest)
+  def buildBlock[F[_]: Monad: DAO](description: Description): LoaderAction[F, Option[Block]] = {
+    val target = DAO[F].target
+    description match {
+      case Description.Table(schemas) =>
+        val tableName = StringUtils.getTableName(schemas.latest)
 
-    val migrate: F[Either[LoaderError, Option[Block]]] = for {
-      schemaKey <- getVersion[F](tableName)
-      matches    = schemas.latest.schemaKey == schemaKey
-      block     <- if (matches) emptyBlock[F].map(_.asRight[LoaderError])
-      else Control.getColumns[F](tableName).map { columns =>
-        DAO[F].target.updateTable(schemaKey, columns, schemas).map(_.some)
-      }
-    } yield block
+        val migrate: F[Either[LoaderError, Option[Block]]] = for {
+          schemaKey <- getVersion[F](tableName)
+          matches    = schemas.latest.schemaKey == schemaKey
+          block     <- if (matches) emptyBlock[F].map(_.asRight[LoaderError])
+          else Control.getColumns[F](tableName).map { columns =>
+            migrateTable(target, schemaKey, columns, schemas).map(_.some)
+          }
+        } yield block
 
-    val result = Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(DAO[F].target.createTable(schemas).some.asRight[LoaderError]))
-    LoaderAction.apply[F, Option[Block]](result)
+        val result = Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(target.createTable(schemas).some.asRight[LoaderError]))
+        LoaderAction.apply[F, Option[Block]](result)
+      case Description.WideRow(info) =>
+        val extendBlock = target.extendTable(info)
+        LoaderAction.pure[F, Option[Block]](extendBlock.some)
+      case Description.NoMigration =>
+        LoaderAction.pure[F, Option[Block]](none[Block])
+    }
   }
 
+  def migrateTable(target: Target, current: SchemaKey, columns: List[String], schemaList: SchemaList) = {
+    schemaList match {
+      case s: SchemaList.Full =>
+        val migrations = s.extractSegments.map(SchemaMigration.fromSegment)
+        migrations.find(_.from == current.version) match {
+          case Some(schemaMigration) =>
+            target.updateTable(schemaMigration).asRight
+          case None =>
+            val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $schemaList. Migration cannot be created"
+            DiscoveryFailure.IgluError(message).toLoaderError.asLeft
+        }
+      case s: SchemaList.Single =>
+        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $schemaList"
+        LoaderError.MigrationError(message).asLeft
+    }
+  }
 
   def fromBlocks[F[_]: Monad: DAO: Logging](blocks: List[Block]): Migration[F] =
     blocks.foldLeft(Migration.empty[F]) {
