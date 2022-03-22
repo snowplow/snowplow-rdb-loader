@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.Failure.GenericFailure
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload, Processor}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Validations
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
 
 object ShredderValidations {
 

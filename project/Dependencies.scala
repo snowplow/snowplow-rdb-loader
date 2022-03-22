@@ -38,13 +38,11 @@ object Dependencies {
     val http4s           = "0.21.25"
     val scalaTracker     = "1.0.0"
 
-    // Scala (Shredder)
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.3"
     val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
 
-    // Java (Loader)
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
     val snowflakeJdbc    = "3.13.5"

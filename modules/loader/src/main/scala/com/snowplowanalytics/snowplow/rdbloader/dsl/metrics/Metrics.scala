@@ -92,9 +92,9 @@ object Metrics {
         case LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) => 
           s"""${count.value} good events were loaded.
             | It took minimum ${minTstamp.map(_.value).getOrElse("unknown")} seconds and maximum
-            | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and Redshift for these events.
-            | It took ${shredderStart.value} seconds between the start of shredder and Redshift
-            | and ${shredderEnd.value} seconds between the completion of shredder and Redshift""".stripMargin.replaceAll("\n", " ")
+            | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and warehouse for these events.
+            | It took ${shredderStart.value} seconds between the start of transformer and warehouse
+            | and ${shredderEnd.value} seconds between the completion of transformer and warehouse""".stripMargin.replaceAll("\n", " ")
         case HealthCheck(destinationHealthy) =>
           if (destinationHealthy.value === "1") "DB is healthy and responsive"
           else "DB is in unhealthy state"

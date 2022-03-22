@@ -5,7 +5,7 @@
   # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
   "region": "us-east-1",
 
-  # SQS topic name used by Shredder and Loader to communicate
+  # SQS topic name used by Transformer and Loader to communicate
   "messageQueue": "test-queue",
 
   # Optional. S3 path that holds JSONPaths
@@ -108,8 +108,8 @@
       "since": "14 days"
       # Specifies until when folder monitoring will check
       "until": "7 days"
-      # Path to shredded archive
-      "shredderOutput": "s3://acme-snowplow/loader/shredder-output/"
+      # Path to transformer archive (must be same as Transformer's `output.path`)
+      "transformerOutput": "s3://acme-snowplow/loader/transformed/"
       # How many times the check can fail before generating an alarm instead of warning
       "failBeforeAlarm": 3
     },

@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, 
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
 
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
