@@ -85,7 +85,7 @@ object BuildSettings {
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
-  lazy val shredderAssemblySettings = Seq(
+  lazy val transformerAssemblySettings = Seq(
     jarName,
     // Drop these jars
     assembly / assemblyExcludedJars := {

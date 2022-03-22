@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 import org.specs2.mutable.Specification
 
@@ -50,7 +50,7 @@ class CommonSpec extends Specification {
 
 object CommonSpec {
 
-  val formats = ShredderConfig.Formats.Shred(
+  val formats = TransformerConfig.Formats.Shred(
     TypesInfo.Shredded.ShreddedFormat.TSV,
     List(
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
