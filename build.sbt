@@ -12,7 +12,7 @@
  */
 
 lazy val root = project.in(file("."))
-  .aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, shredder, streamShredder)
+  .aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
 
 lazy val aws = project.in(file("modules/aws"))
   .settings(BuildSettings.buildSettings)
@@ -30,7 +30,6 @@ lazy val aws = project.in(file("modules/aws"))
 
 lazy val common: Project = project.in(file("modules/common"))
   .settings(Seq(
-    name := "snowplow-rdb-loader-common",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
   ))
   .settings(BuildSettings.scoverageSettings)
@@ -60,11 +59,6 @@ lazy val common: Project = project.in(file("modules/common"))
   .enablePlugins(BuildInfoPlugin)
 
 lazy val loader = project.in(file("modules/loader"))
-  .settings(
-    name := "snowplow-rdb-loader",
-    initialCommands := "import com.snowplowanalytics.snowplow.rdbloader._",
-    Compile / mainClass := Some("com.snowplowanalytics.snowplow.rdbloader.Main")
-  )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
@@ -149,17 +143,17 @@ lazy val snowflakeLoader = project
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
-lazy val shredder = project.in(file("modules/shredder"))
+lazy val transformerBatch = project.in(file("modules/transformer-batch"))
   .settings(
-    name        := "snowplow-rdb-shredder",
-    description := "Spark job to shred event and context JSONs from Snowplow enriched events",
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.batch.generated",
+    name        := "snowplow-transformer-batch",
+    description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
     buildInfoKeys := List(name, version, description),
     BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
   )
   .settings(BuildSettings.buildSettings)
   .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(BuildSettings.shredderAssemblySettings)
+  .settings(BuildSettings.transformerAssemblySettings)
   .settings(BuildSettings.dynVerSettings)
   .settings(
     libraryDependencies ++= Seq(
@@ -186,13 +180,13 @@ lazy val shredder = project.in(file("modules/shredder"))
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val streamShredder = project.in(file("modules/stream-shredder"))
+lazy val transformerKinesis = project.in(file("modules/transformer-kinesis"))
   .settings(
-    name        := "snowplow-rdb-stream-shredder",
+    name        := "snowplow-transformer-kinesis",
     description := "Stream Shredding job",
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.shredder.stream.generated",
+    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
     buildInfoKeys := List(name, version, description),
-    Docker / packageName := "snowplow/snowplow-rdb-stream-shredder",
+    Docker / packageName := "snowplow/transformer-kinesis",
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
   )
   .settings(BuildSettings.buildSettings)

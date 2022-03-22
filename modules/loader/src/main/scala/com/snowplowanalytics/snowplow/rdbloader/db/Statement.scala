@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 import doobie.Fragment
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 
 

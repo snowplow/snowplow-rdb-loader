@@ -27,7 +27,7 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, Config}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}

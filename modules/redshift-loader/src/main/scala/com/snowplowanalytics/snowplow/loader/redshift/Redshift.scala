@@ -31,7 +31,7 @@ import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGen
 
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Entity, Item, Block, NoPreStatements, NoStatements}
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }

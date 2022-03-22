@@ -29,7 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEnt
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 
 import org.specs2.mutable.Specification
 
