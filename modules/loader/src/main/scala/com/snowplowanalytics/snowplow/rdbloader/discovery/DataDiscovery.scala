@@ -23,15 +23,15 @@ import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 /**
-  * Result of data discovery in shredded.good folder
+  * Result of data discovery in transformer output folder
   * It still exists mostly to fulfill legacy batch-discovery behavior,
   * once Loader entirely switched to RT architecture we can replace it with
   * `ShreddingComplete` message
-  * @param base shred run folder full path
+  * @param base transformed run folder full path
   * @param shreddedTypes list of shredded types in this directory
   */
 case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
@@ -39,8 +39,8 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
   def runId: String = base.split("/").last
 
   def show: String = {
-    val shreddedTypesList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
-    val shredded = if (shreddedTypes.isEmpty) "without shredded types" else s"with following shredded types:\n$shreddedTypesList"
+    val typeList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
+    val shredded = if (shreddedTypes.isEmpty) "without shredded types" else s"with following shredded types:\n$typeList"
     s"$runId $shredded"
   }
 }
@@ -94,7 +94,7 @@ object DataDiscovery {
    * actionable `DataDiscovery`
    * @param region AWS region to discover JSONPaths
    * @param assets optional bucket with custom JSONPaths
-   * @param message payload coming from shredder
+   * @param message payload coming from transformer
    * @param ack action to acknowledge/delete the message
    * @param extend action to prolong the visibility of the message
    * @tparam F effect type to perform AWS interactions

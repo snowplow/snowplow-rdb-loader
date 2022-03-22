@@ -21,7 +21,7 @@ import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 

@@ -19,7 +19,7 @@ import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 
 /** Support for the version 1 of the shredding complete message, which is now legacy.
  *

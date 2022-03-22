@@ -202,7 +202,7 @@ object FolderMonitoring {
             if (acquired) { // The lock shouldn't be necessary with fixedDelay, but adding just in case
               val sinkAndCheck =
                 Logging[F].info("Monitoring shredded folders") *>
-                  sinkFolders[F](folders.since, folders.until, folders.shredderOutput, outputFolder).ifM(
+                  sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     check[C, F](outputFolder)
                       .flatMap { alerts =>
                         alerts.traverse_ { payload =>
@@ -213,7 +213,7 @@ object FolderMonitoring {
                           warn *> Monitoring[F].alert(payload)
                         }
                       },
-                      Logging[F].info(s"No folders were found in ${folders.shredderOutput}. Skipping manifest check")
+                      Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
                     ) *> failed.set(0)
 
               sinkAndCheck.handleErrorWith { error =>

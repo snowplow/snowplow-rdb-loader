@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.loader.snowflake.loading
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Common}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.config.components.PasswordConfig
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
