@@ -71,6 +71,21 @@ lazy val snowflakeLoaderDistroless = project
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
+lazy val databricksLoader = project
+  .in(file("modules/databricks-loader"))
+  .settings(BuildSettings.databricksBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val databricksLoaderDistroless = project
+  .in(file("modules/distroless/databricks-loader"))
+  .settings(sourceDirectory := (databricksLoader / sourceDirectory).value)
+  .settings(BuildSettings.databricksDistrolessBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
+
 lazy val transformerBatch = project
   .in(file("modules/transformer-batch"))
   .settings(BuildSettings.transformerBatchBuildSettings)
