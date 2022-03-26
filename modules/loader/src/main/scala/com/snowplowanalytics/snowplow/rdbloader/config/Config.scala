@@ -164,8 +164,6 @@ object Config {
     /** Post-decoding validation, making sure different parts are consistent */
     def validateConfig(config: Config[StorageTarget]): List[String] =
       config.storage match {
-        case StorageTarget.Redshift(_, _, _, _, _, _, _, _, _, _) =>
-          Nil
         case StorageTarget.Snowflake(_, _, _, _, _, _, _, _, _, _, folderMonitoringStage, _, _) =>
           (config.monitoring.folders, folderMonitoringStage) match {
             case (Some(_), Some(_)) => Nil
@@ -176,6 +174,7 @@ object Config {
               List(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing - both should either present or missing")
 
           }
+        case _ => Nil
       }
   }
 }
