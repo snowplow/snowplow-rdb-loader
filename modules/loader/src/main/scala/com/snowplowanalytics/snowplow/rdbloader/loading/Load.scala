@@ -104,8 +104,7 @@ object Load {
           val message = s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command"
           val payload = AlertPayload.info("Folder is already loaded", entry.meta.base).asLeft
           setStage(Stage.Cancelling("Already loaded")) *>
-            Logging[F].warning(message) *>
-            DAO[F].rollback.as(payload)   // Haven't done anything, but rollback just in case
+            Logging[F].warning(message).as(payload)
         case None =>
           val setLoading: String => F[Unit] =
             table => setStage(Stage.Loading(table))

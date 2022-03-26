@@ -48,5 +48,5 @@ trait Target {
   def createTable(schemas: SchemaList): Block
 
   /** Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates on `events` table */
-  def extendTable(info: ShreddedType.Info): Block
+  def extendTable(info: ShreddedType.Info): Option[Block]
 }

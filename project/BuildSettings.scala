@@ -230,6 +230,18 @@ object BuildSettings {
 
   lazy val snowflakeDistrolessBuildSettings = snowflakeBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
+  lazy val databricksBuildSettings = {
+    Seq(
+      name := "snowplow-databricks-loader",
+      Docker / packageName := "snowplow/rdb-loader-databricks",
+      initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
+      Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
+      Compile / unmanagedJars += file("SparkJDBC42.jar")
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+  }
+
+  lazy val databricksDistrolessBuildSettings = databricksBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
+
   lazy val transformerBatchBuildSettings = {
     Seq(
       name := "snowplow-transformer-batch",
