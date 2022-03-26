@@ -84,7 +84,10 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: Async: ContextShift: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] =
+  def buildPool[F[_]: Async: ContextShift: Timer: AWS](
+    target: StorageTarget,
+    blocker: Blocker
+  ): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
       password <- target.password match {
@@ -93,12 +96,14 @@ object Transaction {
         case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
           Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
       }
-      xa <- HikariTransactor.newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
-      _  <- Resource.eval(xa.configure { ds =>
+      xa <- HikariTransactor
+        .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
+      _ <- Resource.eval(xa.configure { ds =>
         Sync[F].delay {
-          ds.setAutoCommit(false)
+          ds.setAutoCommit(target.withAutoCommit)
           ds.setMaximumPoolSize(PoolSize)
-          ds.setDataSourceProperties(target.properties) }
+          ds.setDataSourceProperties(target.properties)
+        }
       })
     } yield xa
 
@@ -121,23 +126,27 @@ object Transaction {
   def jdbcRealInterpreter[F[_]: Effect](target: StorageTarget, conn: Transactor[F]): Transaction[F, ConnectionIO] = {
 
     val NoCommitTransactor: Transactor[F] =
-      conn.copy(strategy0 = NoCommitStrategy)
+      conn.copy(strategy0 = target.doobieNoCommitStrategy)
+
+    val DefaultTransactor: Transactor[F] =
+      conn.copy(strategy0 = target.doobieCommitStrategy)
 
     new Transaction[F, ConnectionIO] {
       def transact[A](io: ConnectionIO[A]): F[A] =
-        conn.trans.apply(io)
+        target.initializers.traverse_(fr => DefaultTransactor.trans.apply(fr.update.run).void) *>
+        DefaultTransactor.trans.apply(io)
 
       def resume: F[Unit] =
         target match {
-          case StorageTarget.Redshift(_, _, _, _, _, _, _, _, _, _) =>
-            Effect[F].unit
           case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, _, _, _, _, _, _) =>
             val resume = sql"USE WAREHOUSE ${Fragment.const0(warehouse)}".update.run *>
               sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED".update.run.void
             conn.trans.apply(resume)
+          case _ => Effect[F].unit
         }
 
       def run[A](io: ConnectionIO[A]): F[A] =
+        target.initializers.traverse_(fr => NoCommitTransactor.trans.apply(fr.update.run).void) *>
         NoCommitTransactor.trans.apply(io)
 
       def arrowBack: F ~> ConnectionIO =

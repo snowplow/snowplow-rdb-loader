@@ -69,7 +69,7 @@ object Loader {
     val init: F[Unit] = Transaction[F, C].resume *>
       NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Manifest.initialize[F, C](config.storage) *>
-      Transaction[F, C].transact(addLoadTstampColumn[C])
+      Transaction[F, C].transact(addLoadTstampColumn[C](config.storage))
 
     val process = Stream.eval(init).flatMap { _ =>
       loading
@@ -147,15 +147,21 @@ object Loader {
     loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
   }
 
-  def addLoadTstampColumn[F[_]: DAO: Monad: Logging]: F[Unit] =
-    for {
-      columns <- DbControl.getColumns[F](EventsTable.MainName)
-      _ <- if (columns.map(_.toLowerCase).contains(AtomicColumns.ColumnsWithDefault.LoadTstamp))
-        Logging[F].info("load_tstamp column already exists")
-      else
-        DAO[F].executeUpdate(Statement.AddLoadTstampColumn).void *>
-          Logging[F].info("load_tstamp column is added successfully")
-    } yield ()
+  def addLoadTstampColumn[F[_]: DAO: Monad: Logging](targetConfig: StorageTarget): F[Unit] =
+    targetConfig match {
+      // Adding load_tstamp column explicitly is not needed due to merge schema
+      // feature of Databricks. It will create missing column itself.
+      case _: StorageTarget.Databricks => Monad[F].unit
+      case _ =>
+        for {
+          columns <- DbControl.getColumns[F](EventsTable.MainName)
+          _ <- if (columns.map(_.toLowerCase).contains(AtomicColumns.ColumnsWithDefault.LoadTstamp))
+            Logging[F].info("load_tstamp column already exists")
+          else
+            DAO[F].executeUpdate(Statement.AddLoadTstampColumn).void *>
+              Logging[F].info("load_tstamp column is added successfully")
+        } yield ()
+    }
 
   /**
    * Handle a failure during loading.
