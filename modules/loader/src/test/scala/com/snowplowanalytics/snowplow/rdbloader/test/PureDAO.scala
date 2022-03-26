@@ -109,7 +109,7 @@ object PureDAO {
     def updateTable(migration: SchemaMigration): Migration.Block =
       throw LoaderError.RuntimeError("Not implemented in test suite")
 
-    def extendTable(info: ShreddedType.Info): Block =
+    def extendTable(info: ShreddedType.Info): Option[Block] =
       throw LoaderError.RuntimeError("Not implemented in test suite")
 
     def createTable(schemas: SchemaList): Migration.Block = {

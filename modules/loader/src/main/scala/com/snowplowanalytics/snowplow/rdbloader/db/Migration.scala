@@ -68,8 +68,9 @@ object Migration {
    * In case of `CreateTable` it's going to be a single in-transaction statement
    * Otherwise it can be (possible empty) sets of pre-transaction and in-transaction
    * statements
+   *
    * @param preTransaction can be `ALTER TYPE` only
-   * @param inTransaction can be `ADD COLUMN` or `CREATE TABLE`
+   * @param inTransaction  can be `ADD COLUMN` or `CREATE TABLE`
    */
   final case class Block(preTransaction: List[Item], inTransaction: List[Item], entity: Entity) {
     def isEmpty: Boolean = preTransaction.isEmpty && inTransaction.isEmpty
@@ -99,8 +100,10 @@ object Migration {
   object Description {
     /** Works with separate tables (both create and update) and does support migration (hence all schema info) */
     final case class Table(schemaList: SchemaList) extends Description
+
     /** Works with only `events` table, creating a column for every new schema */
     final case class WideRow(shreddedType: ShreddedType.Info) extends Description
+
     /** Works with separate tables, but does not support migration (hence no info) */
     case object NoMigration extends Description
   }
@@ -111,6 +114,7 @@ object Migration {
    * typically [[Item.AddColumn]] and [[Item.AlterColumn]]. But all these items
    * will belong to the same [[Block]].
    * [[Item]]s come from an implementation of `Target`, hence have concrete DDL in there
+   *
    * @note since all [[Item]]s contain `Fragment` there's no safe `equals` operations
    */
   sealed trait Item {
@@ -135,8 +139,8 @@ object Migration {
   }
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu,
-            C[_]: MonadThrow: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
+  def build[F[_] : Transaction[*[_], C] : MonadThrow : Iglu,
+    C[_] : MonadThrow : Logging : DAO](discovery: DataDiscovery): F[Migration[C]] = {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
@@ -162,10 +166,10 @@ object Migration {
   }
 
   /** Migration with no actions */
-  def empty[F[_]: Applicative]: Migration[F] =
+  def empty[F[_] : Applicative]: Migration[F] =
     Migration[F](Applicative[F].unit, Applicative[F].unit)
 
-  def buildBlock[F[_]: MonadThrow: DAO](description: Description): F[Option[Block]] = {
+  def buildBlock[F[_] : MonadThrow : DAO](description: Description): F[Option[Block]] = {
     val target = DAO[F].target
     description match {
       case Description.Table(schemas) =>
@@ -173,8 +177,8 @@ object Migration {
 
         val migrate: F[Option[Block]] = for {
           schemaKey <- getVersion[F](tableName)
-          matches    = schemas.latest.schemaKey == schemaKey
-          block     <- if (matches) emptyBlock[F]
+          matches = schemas.latest.schemaKey == schemaKey
+          block <- if (matches) emptyBlock[F]
           else Control.getColumns[F](tableName).flatMap { (columns: List[String]) =>
             migrateTable(target, schemaKey, columns, schemas) match {
               case Left(migrationError) => MonadThrow[F].raiseError[Option[Block]](migrationError)
@@ -185,7 +189,7 @@ object Migration {
 
         Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(target.createTable(schemas).some))
       case Description.WideRow(info) =>
-        Monad[F].pure(target.extendTable(info).some)
+        Monad[F].pure(target.extendTable(info))
       case Description.NoMigration =>
         Monad[F].pure(none[Block])
     }
@@ -208,15 +212,14 @@ object Migration {
     }
   }
 
-  def fromBlocks[F[_]: Monad: DAO: Logging](blocks: List[Block]): F[Migration[F]] = {
+  def fromBlocks[F[_] : Monad : DAO : Logging](blocks: List[Block]): F[Migration[F]] =
     getPredicate[F](blocks).map { shouldAdd =>
       blocks.foldLeft(Migration.empty[F]) {
         case (migration, block) if block.isEmpty =>
-          val action = DAO[F].executeUpdate(block.getCommentOn) *>
-            Logging[F].warning(s"Empty migration for ${block.getName}")
+          val action =  DAO[F].executeUpdate(block.getCommentOn) *> Logging[F].warning(s"Empty migration for ${block.getName}")
           migration.addPreTransaction(action)
 
-        case (migration, b @ Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>
+        case (migration, b@Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>
           val preAction = preMigration[F](shouldAdd, entity, pre)
           val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
             in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
@@ -224,21 +227,21 @@ object Migration {
             Logging[F].info(s"${b.getName} migration completed")
           migration.addPreTransaction(preAction).addInTransaction(inAction)
 
-        case (migration, b @ Block(Nil, in, target)) if b.isCreation =>
+        case (migration, b@Block(Nil, in, target)) if b.isCreation =>
           val inAction = Logging[F].info(s"Creating ${b.getName} table for ${target.getInfo.toSchemaUri}") *>
             in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
             DAO[F].executeUpdate(b.getCommentOn) *>
             Logging[F].info("Table created")
           migration.addInTransaction(inAction)
 
-        case (migration, b @ Block(Nil, in, _)) =>
+        case (migration, b@Block(Nil, in, _)) =>
           val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
             in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
             DAO[F].executeUpdate(b.getCommentOn) *>
             Logging[F].info(s"${b.getName} migration completed")
           migration.addInTransaction(inAction)
 
-        case (migration, b @ Block(pre, Nil, Entity.Table(_, _)))  =>
+        case (migration, b@Block(pre, Nil, Entity.Table(_, _))) =>
           val preAction = Logging[F].info(s"Migrating ${b.getName} (pre-transaction)") *>
             pre.traverse_(item => DAO[F].executeUpdate(item.statement).void) *>
             DAO[F].executeUpdate(b.getCommentOn).void *>
@@ -250,7 +253,7 @@ object Migration {
           migration.addPreTransaction(preAction)
       }
     }
-  }
+
 
   def preMigration[F[_]: DAO: Logging: Monad](shouldAdd: Entity => Boolean, entity: Entity, items: List[Item]) =
     if (shouldAdd(entity))
