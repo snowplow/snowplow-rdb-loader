@@ -13,23 +13,20 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.util.Properties
-
 import cats.data._
 import cats.implicits._
-
 import io.circe.{CursorOp, _}
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
-
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
+import doobie.free.connection.setAutoCommit
+import doobie.util.transactor.Strategy
 
 /**
- * Common configuration for JDBC target, such as Redshift
- * Any of those can be safely coerced
- */
+  * Common configuration for JDBC target, such as Redshift
+  * Any of those can be safely coerced
+  */
 sealed trait StorageTarget extends Product with Serializable {
-  def host: String
-  def database: String
   def schema: String
   def username: String
   def password: StorageTarget.PasswordConfig
@@ -38,7 +35,15 @@ sealed trait StorageTarget extends Product with Serializable {
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
+  def doobieCommitStrategy: Strategy = Strategy.default
+
+  /**
+    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
+    * @see https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
+    */
+  def doobieNoCommitStrategy: Strategy = Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
   def driver: String
+  def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
 }
@@ -55,23 +60,25 @@ object StorageTarget {
     StringEnum.decodeStringEnum[SslMode]
 
   object SslMode {
-    final case object Disable extends SslMode { def asString = "DISABLE" }
-    final case object Require extends SslMode { def asString = "REQUIRE" }
-    final case object VerifyCa extends SslMode { def asString = "VERIFY_CA" }
+    final case object Disable extends SslMode { def asString    = "DISABLE" }
+    final case object Require extends SslMode { def asString    = "REQUIRE" }
+    final case object VerifyCa extends SslMode { def asString   = "VERIFY_CA" }
     final case object VerifyFull extends SslMode { def asString = "VERIFY_FULL" }
   }
 
   /** Amazon Redshift connection settings */
-  final case class Redshift(host: String,
-                            database: String,
-                            port: Int,
-                            jdbc: RedshiftJdbc,
-                            roleArn: String,
-                            schema: String,
-                            username: String,
-                            password: PasswordConfig,
-                            maxError: Int,
-                            sshTunnel: Option[TunnelConfig]) extends StorageTarget {
+  final case class Redshift(
+    host: String,
+    database: String,
+    port: Int,
+    jdbc: RedshiftJdbc,
+    roleArn: String,
+    schema: String,
+    username: String,
+    password: PasswordConfig,
+    maxError: Int,
+    sshTunnel: Option[TunnelConfig]
+  ) extends StorageTarget {
     def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
     def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
@@ -88,19 +95,52 @@ object StorageTarget {
     }
   }
 
-  final case class Snowflake(snowflakeRegion: String,
-                             username: String,
-                             role: Option[String],
-                             password: PasswordConfig,
-                             account: String,
-                             warehouse: String,
-                             database: String,
-                             schema: String,
-                             transformedStage: String,
-                             appName: String,
-                             folderMonitoringStage: Option[String],
-                             maxError: Option[Int],
-                             jdbcHost: Option[String]) extends StorageTarget {
+  final case class Databricks(
+    host: String,
+    schema: String,
+    port: Int,
+    httpPath: String,
+    password: PasswordConfig,
+    sshTunnel: Option[TunnelConfig]
+  ) extends StorageTarget {
+
+    override def username: String = "token"
+
+    override def driver: String = "com.simba.spark.jdbc.Driver"
+
+    override def connectionUrl: String = s"jdbc:spark://$host:$port/$schema"
+
+    override def doobieCommitStrategy: Strategy   = Strategy.void
+    override def doobieNoCommitStrategy: Strategy = Strategy.void
+    override def withAutoCommit                   = true
+
+    override def properties: Properties = {
+      val props: Properties = new Properties()
+      props.put("httpPath", httpPath)
+      props.put("ssl", 1)
+      props.put("currentSchema", schema)
+//      props.put("LogLevel", 6)
+      props.put("AuthMech", 3)
+      props.put("transportMode", "http")
+      props
+    }
+  }
+
+  final case class Snowflake(
+    snowflakeRegion: String,
+    username: String,
+    role: Option[String],
+    password: PasswordConfig,
+    account: String,
+    warehouse: String,
+    database: String,
+    schema: String,
+    transformedStage: String,
+    appName: String,
+    folderMonitoringStage: Option[String],
+    maxError: Option[Int],
+    jdbcHost: Option[String]
+  ) extends StorageTarget {
     def connectionUrl: String = s"jdbc:snowflake://$host"
 
     def sshTunnel: Option[TunnelConfig] = None
@@ -151,39 +191,49 @@ object StorageTarget {
     * All possible JDBC according to Redshift documentation, except deprecated
     * and authentication-related
     */
-  final case class RedshiftJdbc(blockingRows: Option[Int],
-                          disableIsValidQuery: Option[Boolean],
-                          dsiLogLevel: Option[Int],
-                          filterLevel: Option[String],
-                          loginTimeout: Option[Int],
-                          loglevel: Option[Int],
-                          socketTimeout: Option[Int],
-                          ssl: Option[Boolean],
-                          sslMode: Option[String],
-                          sslRootCert: Option[String],
-                          tcpKeepAlive: Option[Boolean],
-                          tcpKeepAliveMinutes: Option[Int]) {
+  final case class RedshiftJdbc(
+    blockingRows: Option[Int],
+    disableIsValidQuery: Option[Boolean],
+    dsiLogLevel: Option[Int],
+    filterLevel: Option[String],
+    loginTimeout: Option[Int],
+    loglevel: Option[Int],
+    socketTimeout: Option[Int],
+    ssl: Option[Boolean],
+    sslMode: Option[String],
+    sslRootCert: Option[String],
+    tcpKeepAlive: Option[Boolean],
+    tcpKeepAliveMinutes: Option[Int]
+  ) {
+
     /** Either errors or list of mutators to update the `Properties` object */
-    val validation: Either[ParseError, List[Properties => Unit]] = RedshiftJdbc.jdbcEncoder.encodeObject(this).toList.map {
-      case (property, value) => value.fold(
-        ((_: Properties) => ()).asRight,
-        b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
-        n => n.toInt match {
-          case Some(num) =>
-            ((props: Properties) => {
-              props.setProperty(property, num.toString)
-              ()
-            }).asRight
-          case None => s"Impossible to apply JDBC property [$property] with value [${value.noSpaces}]".asLeft
-        },
-        s => ((props: Properties) => { props.setProperty(property, s); ()}).asRight,
-        _ => s"Impossible to apply JDBC property [$property] with JSON array".asLeft,
-        _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
-      )
-    } traverse(_.toValidatedNel) match {
+    val validation: Either[ParseError, List[Properties => Unit]] = RedshiftJdbc
+      .jdbcEncoder
+      .encodeObject(this)
+      .toList
+      .map {
+        case (property, value) =>
+          value.fold(
+            ((_: Properties) => ()).asRight,
+            b => ((props: Properties) => { props.setProperty(property, b.toString); () }).asRight,
+            n =>
+              n.toInt match {
+                case Some(num) =>
+                  ((props: Properties) => {
+                    props.setProperty(property, num.toString)
+                    ()
+                  }).asRight
+                case None => s"Impossible to apply JDBC property [$property] with value [${value.noSpaces}]".asLeft
+              },
+            s => ((props: Properties) => { props.setProperty(property, s); () }).asRight,
+            _ => s"Impossible to apply JDBC property [$property] with JSON array".asLeft,
+            _ => s"Impossible to apply JDBC property [$property] with JSON object".asLeft
+          )
+      }
+      .traverse(_.toValidatedNel) match {
       case Validated.Valid(updaters) => updaters.asRight[ParseError]
       case Validated.Invalid(errors) =>
-        val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
+        val messages          = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
         val error: ParseError = ParseError(messages)
         error.asLeft[List[Properties => Unit]]
     }
@@ -193,17 +243,51 @@ object StorageTarget {
     val empty = RedshiftJdbc(None, None, None, None, None, None, None, None, None, None, None, None)
 
     implicit def jdbcDecoder: Decoder[RedshiftJdbc] =
-      Decoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
-        "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
-        "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")(RedshiftJdbc.apply)
+      Decoder.forProduct12(
+        "BlockingRowsMode",
+        "DisableIsValidQuery",
+        "DSILogLevel",
+        "FilterLevel",
+        "loginTimeout",
+        "loglevel",
+        "socketTimeout",
+        "ssl",
+        "sslMode",
+        "sslRootCert",
+        "tcpKeepAlive",
+        "TCPKeepAliveMinutes"
+      )(RedshiftJdbc.apply)
 
     implicit def jdbcEncoder: Encoder.AsObject[RedshiftJdbc] =
-      Encoder.forProduct12("BlockingRowsMode", "DisableIsValidQuery", "DSILogLevel",
-        "FilterLevel", "loginTimeout", "loglevel", "socketTimeout", "ssl", "sslMode",
-        "sslRootCert", "tcpKeepAlive", "TCPKeepAliveMinutes")((j: RedshiftJdbc) =>
-        (j.blockingRows, j.disableIsValidQuery, j.dsiLogLevel,
-          j.filterLevel, j.loginTimeout, j.loglevel, j.socketTimeout, j.ssl, j.sslMode,
-          j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
+      Encoder.forProduct12(
+        "BlockingRowsMode",
+        "DisableIsValidQuery",
+        "DSILogLevel",
+        "FilterLevel",
+        "loginTimeout",
+        "loglevel",
+        "socketTimeout",
+        "ssl",
+        "sslMode",
+        "sslRootCert",
+        "tcpKeepAlive",
+        "TCPKeepAliveMinutes"
+      )((j: RedshiftJdbc) =>
+        (
+          j.blockingRows,
+          j.disableIsValidQuery,
+          j.dsiLogLevel,
+          j.filterLevel,
+          j.loginTimeout,
+          j.loglevel,
+          j.socketTimeout,
+          j.ssl,
+          j.sslMode,
+          j.sslRootCert,
+          j.tcpKeepAlive,
+          j.tcpKeepAliveMinutes
+        )
+      )
   }
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
@@ -213,7 +297,13 @@ object StorageTarget {
   final case class EncryptedConfig(ec2ParameterStore: ParameterStoreConfig)
 
   /** Bastion host access configuration for SSH tunnel */
-  final case class BastionConfig(host: String, port: Int, user: String, passphrase: Option[String], key: Option[EncryptedConfig])
+  final case class BastionConfig(
+    host: String,
+    port: Int,
+    user: String,
+    passphrase: Option[String],
+    key: Option[EncryptedConfig]
+  )
 
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
   final case class DestinationConfig(host: String, port: Int)
@@ -221,7 +311,7 @@ object StorageTarget {
   /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
   sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
-      case PasswordConfig.PlainText(plain) => plain
+      case PasswordConfig.PlainText(plain)                   => plain
       case PasswordConfig.EncryptedKey(EncryptedConfig(key)) => key.parameterName
     }
   }
@@ -230,15 +320,18 @@ object StorageTarget {
     final case class EncryptedKey(value: EncryptedConfig) extends PasswordConfig
 
     implicit object PasswordDecoder extends Decoder[PasswordConfig] {
-      def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
+      def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] =
         hCursor.value.asString match {
           case Some(s) => Right(PasswordConfig.PlainText(s))
-          case None => hCursor.value.asObject match {
-            case Some(_) => hCursor.value.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
-            case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
-          }
+          case None =>
+            hCursor.value.asObject match {
+              case Some(_) => hCursor.value.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
+              case None =>
+                Left(
+                  DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history)
+                )
+            }
         }
-      }
     }
   }
 
@@ -254,6 +347,9 @@ object StorageTarget {
 
   implicit def redsfhitConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]
+
+  implicit def databricksConfigDecoder: Decoder[Databricks] =
+    deriveDecoder[Databricks]
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     deriveDecoder[EncryptedConfig]
@@ -276,6 +372,8 @@ object StorageTarget {
       typeCur.as[String] match {
         case Right("redshift") =>
           cur.as[Redshift]
+        case Right("databricks") =>
+          cur.as[Databricks]
         case Right(other) =>
           Left(DecodingFailure(s"Storage target of type $other is not supported yet", typeCur.history))
         case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
