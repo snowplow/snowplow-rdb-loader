@@ -27,6 +27,11 @@ jobs:
       with:
         java-version: 11
 
+    - name: Get the lastest Databricks JDBC driver
+      run: |
+        curl -k https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
+        unzip SparkJDBC.jar.zip
+
     - name: Install release-manager for Python for transformer
       uses: BSFishy/pip-action@v1
       with:
@@ -53,7 +58,6 @@ jobs:
       env:
         AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
         AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
-
     - name: Build redshift-loader jar
       run: |
         export SKIP_TEST=true
@@ -63,6 +67,14 @@ jobs:
       run: |
         export SKIP_TEST=true
         sbt 'project snowflakeLoader' assembly
+
+    - name: Build and publish Databricks Loader to Docker Hub
+      run: sbt "project databricksLoader" docker:publish
+
+    - name: Build databricks-loader jar
+      run: |
+        export SKIP_TEST=true
+        sbt 'project databricksLoader' assembly
 
     - name: Build transformer-batch jar
       run: |
@@ -88,6 +100,7 @@ jobs:
         name: ${{ steps.ver.outputs.project_version }}
         tag_name: ${{ steps.ver.outputs.project_version }}
         files: |
+          modules/loader/target/scala-2.12/snowplow-rdb-databricks-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/loader/target/scala-2.12/snowplow-rdb-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/loader/target/scala-2.12/snowplow-rdb-redshift-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
