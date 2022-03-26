@@ -212,8 +212,15 @@ object Migration {
     getPredicate[F](blocks).map { shouldAdd =>
       blocks.foldLeft(Migration.empty[F]) {
         case (migration, block) if block.isEmpty =>
-          val action = DAO[F].executeUpdate(block.getCommentOn) *>
-            Logging[F].warning(s"Empty migration for ${block.getName}")
+          val action =
+            try {
+              // hack to avoid exposing StorageTarget to this class.
+              // read as `if ( StoageTarget == Databricks) then do nothing`
+              Monad[F].pure(Class.forName("com.simba.spark.jdbc.Driver", false, getClass.getClassLoader)).void
+            } catch {
+              case _: Throwable =>
+                DAO[F].executeUpdate(block.getCommentOn) *> Logging[F].warning(s"Empty migration for ${block.getName}")
+            }
           migration.addPreTransaction(action)
 
         case (migration, b @ Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>

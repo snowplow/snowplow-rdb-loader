@@ -11,10 +11,12 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
-lazy val root = project.in(file("."))
-  .aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
+lazy val root =
+  project.in(file(".")).aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, databricksLoader,
+    transformerBatch, transformerKinesis)
 
-lazy val aws = project.in(file("modules/aws"))
+lazy val aws = project
+  .in(file("modules/aws"))
   .settings(BuildSettings.buildSettings)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
@@ -23,15 +25,18 @@ lazy val aws = project.in(file("modules/aws"))
       Dependencies.aws2sqs,
       Dependencies.aws2sns,
       Dependencies.fs2,
-      Dependencies.catsRetry,
+      Dependencies.catsRetry
     )
   )
   .enablePlugins(BuildInfoPlugin)
 
-lazy val common: Project = project.in(file("modules/common"))
-  .settings(Seq(
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
-  ))
+lazy val common: Project = project
+  .in(file("modules/common"))
+  .settings(
+    Seq(
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
+    )
+  )
   .settings(BuildSettings.scoverageSettings)
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.addExampleConfToTestCp)
@@ -50,15 +55,15 @@ lazy val common: Project = project.in(file("modules/common"))
       Dependencies.schemaDdl,
       Dependencies.http4sCore,
       Dependencies.aws2regions,
-
       Dependencies.specs2,
       Dependencies.monocle,
-      Dependencies.monocleMacro,
+      Dependencies.monocleMacro
     ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
   )
   .enablePlugins(BuildInfoPlugin)
 
-lazy val loader = project.in(file("modules/loader"))
+lazy val loader = project
+  .in(file("modules/loader"))
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.addExampleConfToTestCp)
   .settings(BuildSettings.assemblySettings)
@@ -72,7 +77,6 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.dynamodb,
       Dependencies.jSch,
       Dependencies.sentry,
-
       Dependencies.scalaTracker,
       Dependencies.scalaTrackerEmit,
       Dependencies.fs2Blobstore,
@@ -84,15 +88,35 @@ lazy val loader = project.in(file("modules/loader"))
       Dependencies.doobieHikari,
       Dependencies.catsRetry,
       Dependencies.log4cats,
-
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck,
       Dependencies.catsEffectLaws,
-      Dependencies.catsTesting,
+      Dependencies.catsTesting
     ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
   )
   .dependsOn(common % "compile->compile;test->test", aws)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val databricksLoader = project
+  .in(file("modules/databricks-loader"))
+  .settings(
+    name := "snowplow-databricks-loader",
+    Docker / packageName := "snowplow/rdb-loader-databricks",
+    initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
+    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main")
+  )
+  .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.addExampleConfToTestCp)
+  .settings(BuildSettings.assemblySettings)
+  .settings(BuildSettings.dockerSettings)
+  .settings(BuildSettings.dynVerSettings)
+  .settings(resolvers ++= Dependencies.resolutionRepos)
+  .settings(
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    Compile / unmanagedJars += file("SparkJDBC42.jar")
+  )
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoader = project
@@ -143,9 +167,10 @@ lazy val snowflakeLoader = project
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
-lazy val transformerBatch = project.in(file("modules/transformer-batch"))
+lazy val transformerBatch = project
+  .in(file("modules/transformer-batch"))
   .settings(
-    name        := "snowplow-transformer-batch",
+    name := "snowplow-transformer-batch",
     description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
     buildInfoKeys := List(name, version, description),
@@ -180,14 +205,15 @@ lazy val transformerBatch = project.in(file("modules/transformer-batch"))
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val transformerKinesis = project.in(file("modules/transformer-kinesis"))
+lazy val transformerKinesis = project
+  .in(file("modules/transformer-kinesis"))
   .settings(
-    name        := "snowplow-transformer-kinesis",
+    name := "snowplow-transformer-kinesis",
     description := "Stream Shredding job",
     buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
     buildInfoKeys := List(name, version, description),
     Docker / packageName := "snowplow/transformer-kinesis",
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
+    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
   )
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.assemblySettings)
