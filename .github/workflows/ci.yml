@@ -65,6 +65,7 @@ jobs:
         app:
           - redshiftLoader
           - snowflakeLoader
+          - databricksLoader
           - transformerKinesis
     steps:
       - name: Checkout Github
@@ -74,6 +75,9 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Get the latest Databricks JDBC driver
+        run: |
+          curl -k https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
       - name: Docker login
         uses: docker/login-action@v1
         with:
@@ -160,6 +164,9 @@ jobs:
       uses: actions/setup-java@v1
       with:
         java-version: 11
+    - name: Get the latest Databricks JDBC driver
+      run: |
+        curl -k https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
     - name: Build redshift-loader jar
       env:
         SKIP_TEST: true
@@ -168,6 +175,10 @@ jobs:
       env:
         SKIP_TEST: true
       run: sbt 'project snowflakeLoader' assembly
+    - name: Build databricks-loader jar
+      env:
+        SKIP_TEST: true
+      run: sbt 'project databricksLoader' assembly
     - name: Build transformer-batch jar
       env:
         SKIP_TEST: true
@@ -189,6 +200,7 @@ jobs:
         files: |
           modules/loader/target/scala-2.12/snowplow-rdb-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/loader/target/scala-2.12/snowplow-rdb-redshift-loader-${{ steps.ver.outputs.project_version }}.jar
+          modules/loader/target/scala-2.12/snowplow-rdb-databricks-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-kinesis/target/scala-2.12/snowplow-transformer-kinesis-${{ steps.ver.outputs.project_version }}.jar
       env:

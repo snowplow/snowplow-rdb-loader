@@ -21,15 +21,17 @@ import io.circe.{CursorOp, _}
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
 
+import doobie.free.connection.setAutoCommit
+import doobie.util.transactor.Strategy
+
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 
+
 /**
- * Common configuration for JDBC target, such as Redshift
- * Any of those can be safely coerced
- */
+  * Common configuration for JDBC target, such as Redshift
+  * Any of those can be safely coerced
+  */
 sealed trait StorageTarget extends Product with Serializable {
-  def host: String
-  def database: String
   def schema: String
   def username: String
   def password: StorageTarget.PasswordConfig
@@ -38,7 +40,15 @@ sealed trait StorageTarget extends Product with Serializable {
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
 
+  def doobieCommitStrategy: Strategy = Strategy.default
+
+  /**
+    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
+    * @see https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
+    */
+  def doobieNoCommitStrategy: Strategy = Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
   def driver: String
+  def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
 }
@@ -84,6 +94,36 @@ object StorageTarget {
         case Left(error) =>
           throw new IllegalStateException(s"Redshift JDBC properties are invalid. ${error.message}")
       }
+      props
+    }
+  }
+
+  final case class Databricks(
+                               host: String,
+                               schema: String,
+                               port: Int,
+                               httpPath: String,
+                               password: PasswordConfig,
+                               sshTunnel: Option[TunnelConfig]
+                             ) extends StorageTarget {
+
+    override def username: String = "token"
+
+    override def driver: String = "com.simba.spark.jdbc.Driver"
+
+    override def connectionUrl: String = s"jdbc:spark://$host:$port/$schema"
+
+    override def doobieCommitStrategy: Strategy   = Strategy.void
+    override def doobieNoCommitStrategy: Strategy = Strategy.void
+    override def withAutoCommit                   = true
+
+    override def properties: Properties = {
+      val props: Properties = new Properties()
+      props.put("httpPath", httpPath)
+      props.put("ssl", 1)
+      //      props.put("LogLevel", 6)
+      props.put("AuthMech", 3)
+      props.put("transportMode", "http")
       props
     }
   }
@@ -255,6 +295,9 @@ object StorageTarget {
   implicit def redshiftConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]
 
+  implicit def databricksConfigDecoder: Decoder[Databricks] =
+    deriveDecoder[Databricks]
+
   implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
     deriveDecoder[Snowflake]
 
@@ -281,6 +324,8 @@ object StorageTarget {
           cur.as[Redshift]
         case Right("snowflake") =>
           cur.as[Snowflake]
+        case Right("databricks") =>
+          cur.as[Databricks]
         case Right(other) =>
           Left(DecodingFailure(s"Storage target of type $other is not supported yet", typeCur.history))
         case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
