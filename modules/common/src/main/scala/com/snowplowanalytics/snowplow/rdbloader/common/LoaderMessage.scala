@@ -13,17 +13,14 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.time.Instant
-
 import cats.implicits._
-
 import io.circe._
 import io.circe.generic.semiauto._
 import io.circe.parser.parse
 import io.circe.syntax._
-
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
@@ -95,6 +92,14 @@ object LoaderMessage {
     }
     object WideRow {
       case class Type(schemaKey: SchemaKey, snowplowEntity: SnowplowEntity)
+
+      object Type {
+        def from(shreddedType: Data.ShreddedType): Type = {
+          val entity = SnowplowEntity.from(shreddedType.shredProperty)
+          TypesInfo.WideRow.Type(shreddedType.schemaKey, entity)
+        }
+      }
+
       sealed trait WideRowFormat
       object WideRowFormat {
         def fromString(str: String): Either[String, WideRowFormat] =
@@ -139,6 +144,12 @@ object LoaderMessage {
   object SnowplowEntity {
     case object Context extends SnowplowEntity
     case object SelfDescribingEvent extends SnowplowEntity
+
+    def from(shredProperty: Data.ShredProperty): SnowplowEntity =
+      shredProperty match {
+        case _: Data.Contexts => LoaderMessage.SnowplowEntity.Context
+        case Data.UnstructEvent => LoaderMessage.SnowplowEntity.SelfDescribingEvent
+      }
   }
 
   final case class Processor(artifact: String, version: Semver)

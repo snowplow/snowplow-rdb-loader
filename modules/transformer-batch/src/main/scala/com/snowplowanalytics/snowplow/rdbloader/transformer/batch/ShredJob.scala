@@ -226,7 +226,7 @@ object ShredJob {
           val resolver = IgluSingleton.get(igluConfig).resolver
           val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
           
-          val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields: $error"), identity)
+          val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
           

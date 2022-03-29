@@ -16,12 +16,11 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
 import cats.effect.concurrent.Deferred
 import cats.effect.{Blocker, Clock, ContextShift, IO, Timer}
-import cats.implicits.toTraverseOps
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils.{createTempDirectory, directoryStream}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ConfigProvider, CreatedDirectories, OutputRows, ProcessingOutput, TestResources, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ProcessingOutput, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
 import fs2.Stream
 import org.specs2.mutable.Specification
@@ -42,13 +41,10 @@ trait BaseProcessingSpec extends Specification {
   }
   
   val blocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
-  val testResources = createTempDirectory(blocker).map(TestResources)
+  protected val temporaryDirectory = createTempDirectory(blocker)
 
   protected def process(input: Stream[IO, Windowed[IO, Parsed]],
-                        configProvider: ConfigProvider,
-                        expectedOutputPaths: List[String]): IO[ProcessingOutput] =
-    testResources.use { resources =>
-      val config = configProvider(resources)
+                        config: TransformerConfig): IO[ProcessingOutput] = {
       val args = prepareAppArgs(config)
 
       for {
@@ -56,34 +52,37 @@ trait BaseProcessingSpec extends Specification {
         runningApp                  <- TestApplication.run(args, waitingForCompletionMessage, input).start
         completionMessage           <- waitingForCompletionMessage.get
         _                           <- runningApp.cancel
-        createdDirectories          <- readDirectoriesFrom(resources.outputRootDirectory, expectedOutputPaths)
-      } yield ProcessingOutput(resources.outputRootDirectory, completionMessage, createdDirectories)
+      } yield ProcessingOutput(completionMessage) 
     }
 
-  protected def assertOutputLines(directoryWithActualData: String,
-                                  expectedResource: String,
-                                  createdDirectories: CreatedDirectories) = {
-    val expectedLines = FileUtils.readLines(blocker, expectedResource).unsafeRunSync
-
-    createdDirectories(directoryWithActualData).zip(expectedLines).foreach {
-      case (actual, expected) => actual must beEqualTo(expected)   
-    } 
+  protected def assertStringRows(actualRows: List[String],
+                                 expectedRows: List[String]) = {
+    actualRows.zip(expectedRows).map {
+      case (actual, expected) => actual must beEqualTo(expected)
+    }
+      .reduce(_ and _)
   }
 
-  protected def assertCompletionMessage(result: ProcessingOutput,
-                                        expectedResource: String) = {
-    val expectedMessage = FileUtils
-      .readLines(blocker, expectedResource)
+  protected def readMessageFromResource(resource: String,
+                                        outputRootDirectory: Path) = {
+   readLinesFromResource(resource) 
       .map(_.mkString)
       .map(
         _
-          .replace("output_path_placeholder", result.outputRootDirectory.toUri.toString)
+          .replace("output_path_placeholder", outputRootDirectory.toUri.toString.replaceAll("/+$", ""))
           .replace("version_placeholder", BuildInfo.version)
           .replace(" ", "")
       )
-      .unsafeRunSync
+  }
 
-    result.completionMessage must beEqualTo(expectedMessage)
+  protected def readStringRowsFrom(path: Path): IO[List[String]] = {
+    directoryStream(blocker, path)
+      .compile
+      .toList
+  }
+
+  protected def readLinesFromResource(resource: String) = {
+    FileUtils.readLines(blocker, resource)
   }
 
   private def prepareAppArgs(config: TransformerConfig) = {
@@ -94,33 +93,10 @@ trait BaseProcessingSpec extends Specification {
       "--config", new String(encoder.encode(config.app.getBytes))
     )
   }
-
-  private def readDirectoriesFrom(rootDirectory: Path, 
-                                  children: List[String]): IO[CreatedDirectories] = {
-    children.traverse { child =>
-      readRowsFrom(rootDirectory, child)
-        .map(rows => (child, rows))
-    }
-      .map(_.toMap)
-  }
-
-  private def readRowsFrom(outputDirectory: Path, childDirectory: String): IO[OutputRows] = {
-    val fullPath = Path.of(outputDirectory.toString, childDirectory)
-    directoryStream(blocker, fullPath).compile.toList
-  }
-
 }
 
 object BaseProcessingSpec {
 
-  type ConfigProvider = TestResources => TransformerConfig
-  type CreatedDirectories = Map[String, OutputRows]
-  type OutputRows = List[String]
-
-  final case class TestResources(outputRootDirectory: Path)
   final case class TransformerConfig(app: String, iglu: String)
-
-  final case class ProcessingOutput(outputRootDirectory: Path,
-                                    completionMessage: String,
-                                    createdDirectories: CreatedDirectories)
+  final case class ProcessingOutput(completionMessage: String)
 }

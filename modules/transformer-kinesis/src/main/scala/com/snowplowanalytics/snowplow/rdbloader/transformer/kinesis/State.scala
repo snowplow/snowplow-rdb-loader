@@ -4,7 +4,7 @@ import cats.effect.Sync
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import cats.kernel.Monoid
-import cats.{Applicative, Order, Show}
+import cats.{Applicative, Functor, Order, Show}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.{SuccessfulTransformation, TransformationResult}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
@@ -49,6 +49,15 @@ object State {
   def update[F[_]: Applicative](state: Windows[F])(record: Record[F, Window, TransformationResult]): F[Unit] =
     state.update(stack => combineEvent(stack, record))
 
+  def findTypesForWindow[F[_]: Functor](state: Windows[F], window: Window): F[Set[Data.ShreddedType]] = {
+    state.get
+      .map { windows =>
+        windows
+          .find(_._1 === window)
+          .map(_._3.types)
+          .getOrElse(Set.empty)
+      }
+  }
   /**
    * Lens-like modify function
    * @param find a predicate to find triple that should be updated

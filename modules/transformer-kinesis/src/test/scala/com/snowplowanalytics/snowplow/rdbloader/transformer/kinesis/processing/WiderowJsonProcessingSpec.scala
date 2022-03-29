@@ -14,7 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ConfigProvider, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 
@@ -27,25 +27,32 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
 
   "Streaming transformer" should {
     "process items correctly in widerow json format" in {
-      val configProvider: ConfigProvider = resources => TransformerConfig(appConfig(resources.outputRootDirectory), igluConfig)
+      temporaryDirectory.use { outputDirectory =>
 
-      val inputStream = InputEventsProvider.eventStream(
-        inputEventsPath = "/processing-spec/1/input/events",
-        currentWindow   = `window-10:30`,
-        nextWindow      = `window-10:31`
-      )
+        val inputStream = InputEventsProvider.eventStream(
+          inputEventsPath = "/processing-spec/1/input/events",
+          currentWindow = `window-10:30`,
+          nextWindow = `window-10:31`
+        )
 
-      //output directories
-      val good = "run=1970-01-01-10-30-00/output=good"
-      val bad  = "run=1970-01-01-10-30-00/output=bad"
-      
-      val outputDirectoriesToRead = List(good, bad)
-      val result = process(inputStream, configProvider, outputDirectoriesToRead).unsafeRunSync()
-      
-      assertOutputLines(directoryWithActualData = good, expectedResource = "/processing-spec/1/output/good/widerow/events", result.createdDirectories)
-      assertOutputLines(directoryWithActualData = bad,  expectedResource = "/processing-spec/1/output/bad",                 result.createdDirectories)
-      
-      assertCompletionMessage(result, "/processing-spec/1/output/good/widerow/completion.json")
+        val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+        val goodPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good")
+        val badPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=bad")
+
+        for {
+          output                    <- process(inputStream, config)
+          actualGoodRows            <- readStringRowsFrom(goodPath)
+          actualBadRows             <- readStringRowsFrom(badPath)
+          
+          expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", outputDirectory)
+          expectedGoodRows          <- readLinesFromResource("/processing-spec/1/output/good/widerow/events")
+          expectedBadRows           <- readLinesFromResource("/processing-spec/1/output/bad")
+        } yield {
+          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          assertStringRows(actualGoodRows, expectedGoodRows)
+          assertStringRows(actualBadRows, expectedBadRows)
+        }
+      }.unsafeRunSync()
     }
   }
 }
