@@ -43,6 +43,8 @@ object Dependencies {
     val schemaDdl        = "0.15.0"
     val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.13.2.2"
+    val parquet4s        = "1.9.4"
+    val hadoopClient     = "2.9.2"
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
@@ -115,7 +117,8 @@ object Dependencies {
   val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
   val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonDatabind
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
-
+  val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"          % V.parquet4s 
+  val hadoop            = "org.apache.hadoop"                % "hadoop-client"           % V.hadoopClient 
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
@@ -246,6 +249,8 @@ object Dependencies {
     http4sClient,
     catsEffectLaws,
     circeOptics,
+    parquet4s,
+    hadoop,
     scalaTracker,
     scalaTrackerEmit,
     specs2,

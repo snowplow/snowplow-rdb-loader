@@ -17,8 +17,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{Row, SparkSession, SaveMode, DataFrameWriter}
 import org.apache.spark.sql.types.StructType
-
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+
 
 object Sink {
 

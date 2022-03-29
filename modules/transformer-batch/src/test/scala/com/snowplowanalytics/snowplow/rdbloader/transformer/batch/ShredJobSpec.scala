@@ -449,7 +449,7 @@ trait ShredJobSpec extends SparkSpec {
             val resolver = IgluSingleton.get(cli.igluConfig).resolver
             val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
 
-            val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).right.get
+            val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).value.right.get
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
             

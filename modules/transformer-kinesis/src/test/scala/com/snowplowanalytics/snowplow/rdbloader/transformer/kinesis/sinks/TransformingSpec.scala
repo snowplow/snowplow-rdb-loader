@@ -14,33 +14,25 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
 
+import cats.effect.{Blocker, ContextShift, IO, Timer}
+
 import java.nio.file.Path
 import java.time.Instant
-
 import cats.implicits._
-
-import cats.effect.{Timer, IO, Blocker, ContextShift}
-
 import fs2.io.{file => fs2File}
 import fs2.{Stream, text}
-
 import io.circe.Json
 import io.circe.optics.JsonPath._
 import io.circe.parser.{parse => parseCirce}
-
 import com.snowplowanalytics.iglu.client.Client
-
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
-
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
-
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Transformer, Processing}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, file => FileSource}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
-
 import org.specs2.mutable.Specification
 
 class TransformingSpec extends Specification {
@@ -134,7 +126,7 @@ object TransformingSpec {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(defaultIgluClient, f, defaultAtomicLengths)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(f)
+        Transformer.WideRowTransformer(defaultIgluClient, f)
     }
 
   def transformTestEvents(resourcePath: String,

@@ -13,17 +13,15 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
-
 import io.circe._
-import cats.Id
+import cats.{Id, Show}
 import cats.effect.Clock
-
+import cats.implicits.toShow
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
-
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 
 package object common {
 
@@ -71,5 +69,27 @@ package object common {
       case LoaderMessage.SnowplowEntity.Context => Data.Contexts(Data.CustomContexts)
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
     }
+  }
+  
+  implicit val loaderIgluErrorShow: Show[LoaderIgluError] = Show.show {
+    case LoaderIgluError.IgluError(schemaKey, error) => 
+      s"Iglu error for schema with the key: '${schemaKey.toSchemaUri}', error: ${error.show}"
+    case LoaderIgluError.InvalidSchema(schemaKey, message) => 
+      s"Invalid schema with key: '${schemaKey.toSchemaUri}, reason: $message"
+    case LoaderIgluError.SchemaListNotFound(schemaCriterion, error) =>
+      s"Schema list not found for criterion: '${schemaCriterion.asString}', error: ${error.show}"
+
+    //for logging purposes we omit printing json values which may contain sensitive user-sent data
+    case LoaderIgluError.WrongType(schemaKey, _, expected) =>
+      s"Wrong type for field in schema with the key: '${schemaKey.toSchemaUri}', expected: $expected"
+    case LoaderIgluError.NotAnArray(schemaKey, _, expected) =>
+      s"Field is not an array in schema with the key: '${schemaKey.toSchemaUri}', expected: $expected"
+    case LoaderIgluError.MissingInValue(schemaKey, key, _) =>
+      s"Missing value for field: $key in schema with the key: '${schemaKey.toSchemaUri}'"
+  }
+  
+  implicit val clientErrorShow: Show[ClientError] = Show.show {
+    case error: ClientError.ResolutionError => error.getMessage
+    case _: ClientError.ValidationError => "Validation error" // Should not really happen as loader only lookups schemas
   }
 }

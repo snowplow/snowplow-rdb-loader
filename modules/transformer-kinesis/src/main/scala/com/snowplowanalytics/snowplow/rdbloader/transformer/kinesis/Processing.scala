@@ -35,15 +35,18 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Compression, Formats}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet.ParquetSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.SinkPath.PathType
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Closed, Sealed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
+
 
 object Processing {
 
@@ -73,7 +76,7 @@ object Processing {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(f)
+        Transformer.WideRowTransformer(resources.iglu, f)
     }
 
     val onComplete: Window => F[Unit] =
@@ -96,7 +99,7 @@ object Processing {
       .evalTap(State.update(resources.windows))
       .evalTap(incrementMetrics(resources.metrics, _))
       .through(handleTransformResult(transformer))
-      .through(getSink[F](resources.store, resources.instanceId, config.output, sinkId, onComplete))
+      .through(getSink[F](resources, config.output, sinkId, onComplete, config.formats))
       .flatMap(_.sink)  // Sinks must be issued sequentially
       .merge(resources.metrics.report)
       .merge(resources.telemetry.report)
@@ -150,24 +153,36 @@ object Processing {
     }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: ConcurrentEffect: ContextShift](
-    store: Store[F],
-    instanceId: String,
+  def getSink[F[_]: ConcurrentEffect: ContextShift: Timer](
+    resources: Resources[F],
     config: TransformerConfig.Output,
     sinkCount: Window => F[Int],
-    onComplete: Window => F[Unit]
+    onComplete: Window => F[Unit],
+    formats: Formats
   ): Grouping[F] = {
-    val dataSink = Option(config.path.getScheme) match {
+    
+    val parquetSink = ParquetSink.parquetSink[F](resources, config.compression, config.path) _
+    val nonParquetSink = Option(config.path.getScheme) match {
       case Some("file") =>
-        file.getSink[F](store, config.compression, sinkCount) _
+        file.getSink[F](resources.store, config.compression, sinkCount) _
       case Some("s3" | "s3a" | "s3n") =>
         val (bucket, prefix) = S3.splitS3Path(S3.Folder.coerce(config.path.toString))
-        s3.getSink[F](store, bucket, prefix, config.compression, sinkCount, instanceId) _
+        s3.getSink[F](resources.store, bucket, prefix, config.compression, sinkCount, resources.instanceId) _
       case _ =>
         val error = new IllegalArgumentException(s"Cannot create sink for ${config.path} Possible options are file://, s3://, s3a:// and s3n://")
         (_: Window) => (_: SinkPath) =>
           (_: Stream[F, Transformed.Data]) =>
             Stream.raiseError[F](error)
+    }
+
+    val parquetCombinedSink = (w: Window) => (s: SinkPath) => s.pathType match {
+      case PathType.Good => parquetSink(w)(s)
+      case PathType.Bad => nonParquetSink(w)(s)
+    }
+
+    val dataSink = formats match {
+      case Formats.WideRow.PARQUET => parquetCombinedSink
+      case _ => nonParquetSink
     }
 
     Partitioned.write[F, Window, SinkPath, Transformed.Data](dataSink, onComplete)
@@ -221,16 +236,17 @@ object Processing {
     }
 
   implicit class TransformedOps(t: Transformed) {
-    def getPath: SinkPath = {
-      val path = t match {
-        case p: Transformed.Shredded =>
-          val init = if (p.isGood) "output=good" else "output=bad"
-          s"$init/vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/"
-        case p: Transformed.WideRow =>
-          if (p.good) "output=good/" else "output=bad/"
-        case _: Transformed.Parquet => "output=good/"
-      }
-      SinkPath(path)
+    def getPath: SinkPath = t match {
+      case p: Transformed.Shredded =>
+        val suffix = Some(s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/")
+        val pathType = if (p.isGood) SinkPath.PathType.Good else SinkPath.PathType.Bad
+        SinkPath(suffix, pathType)
+      case p: Transformed.WideRow =>
+        val suffix = None
+        val pathType = if (p.good) SinkPath.PathType.Good else SinkPath.PathType.Bad
+        SinkPath(suffix, pathType)
+      case _: Transformed.Parquet =>
+        SinkPath(None, SinkPath.PathType.Good)
     }
     def split: (SinkPath, Transformed.Data) = (getPath, t.data)
   }

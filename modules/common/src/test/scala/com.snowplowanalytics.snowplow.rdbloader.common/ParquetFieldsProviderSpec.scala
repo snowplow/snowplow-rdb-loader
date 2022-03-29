@@ -64,7 +64,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val context200 = getType(SchemaVer.Full(2, 0, 0), Context)
         val inputTypes = List(context100, context200)
 
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).right.get
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
         
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(name = "contexts_com_snowplowanalytics_snowplow_test_schema_1", elementType = DdlTypes.schema100)
@@ -75,7 +75,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val unstruct100 = getType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
         val inputTypes = List(context100, unstruct100)
 
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).right.get
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
         
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(name = "contexts_com_snowplowanalytics_snowplow_test_schema_1", elementType = DdlTypes.schema100)
@@ -98,7 +98,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
     val inputTypes = inputTypesVersions.map {
       case (model, revision, addition) => getType(SchemaVer.Full(model, revision, addition), entity)
     }
-    val result = NonAtomicFieldsProvider.build(resolver, inputTypes).right.get
+    val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
     
     result.value.size mustEqual 1
     result.value.head.field mustEqual expectedField

@@ -14,7 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ConfigProvider, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.ShredTsvProcessingSpec.{appConfig, igluConfig}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 
@@ -27,49 +27,63 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
 
   "Streaming transformer" should {
     "process items correctly in shred tsv format" in {
-      val configProvider: ConfigProvider = resources => TransformerConfig(appConfig(resources.outputRootDirectory), igluConfig)
+      temporaryDirectory.use { outputDirectory =>
 
-      val inputStream = InputEventsProvider.eventStream(
-        inputEventsPath = "/processing-spec/1/input/events",
-        currentWindow   = `window-10:30`,
-        nextWindow      = `window-10:31`
-      )
+        val inputStream = InputEventsProvider.eventStream(
+          inputEventsPath = "/processing-spec/1/input/events",
+          currentWindow = `window-10:30`,
+          nextWindow = `window-10:31`
+        )
 
-      //output directories
-      val atomic          = "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
-      val optimizely      = "run=1970-01-01-10-30-00/output=good/vendor=com.optimizely/name=state/format=tsv/model=1"
-      val consentDocument = "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1"
-      val bad             = "run=1970-01-01-10-30-00/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/"
-      
-      val outputDirectoriesToRead = List(atomic, optimizely, consentDocument, bad)
-      val result = process(inputStream, configProvider, outputDirectoriesToRead).unsafeRunSync()
-      
-      assertOutputLines(directoryWithActualData = atomic,          expectedResource = "/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-atomic",           result.createdDirectories)
-      assertOutputLines(directoryWithActualData = optimizely,      expectedResource = "/processing-spec/1/output/good/tsv/com.optimizely-state",                            result.createdDirectories)
-      assertOutputLines(directoryWithActualData = consentDocument, expectedResource = "/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-consent_document", result.createdDirectories)
-      assertOutputLines(directoryWithActualData = bad,             expectedResource = "/processing-spec/1/output/bad",                                                      result.createdDirectories)
+        val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
-      assertCompletionMessage(result, "/processing-spec/1/output/good/tsv/completion.json")
+        for {
+          output                    <- process(inputStream, config)
+          actualAtomicRows          <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"))
+          actualOptimizelyRows      <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good/vendor=com.optimizely/name=state/format=tsv/model=1"))
+          actualConsentRows         <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1"))
+          actualBadRows             <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/"))
+          
+          expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/tsv/completion.json", outputDirectory)
+          expectedAtomicRows        <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-atomic")
+          expectedOptimizelyRows    <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.optimizely-state")
+          expectedConsentRows       <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-consent_document")
+          expectedBadRows           <- readLinesFromResource("/processing-spec/1/output/bad")
+        } yield {
+          output.completionMessage must beEqualTo(expectedCompletionMessage)
+
+          assertStringRows(actualAtomicRows, expectedAtomicRows)
+          assertStringRows(actualOptimizelyRows, expectedOptimizelyRows)
+          assertStringRows(actualConsentRows, expectedConsentRows)
+          assertStringRows(actualBadRows, expectedBadRows)
+        }
+      }.unsafeRunSync()
     }
+    
     "treat iglu error as bad row and not count it as good in completion message" in {
-      val configProvider: ConfigProvider = resources => TransformerConfig(appConfig(resources.outputRootDirectory), igluConfig)
+      temporaryDirectory.use { outputDirectory =>
 
-      val inputStream = InputEventsProvider.eventStream(
-        inputEventsPath = "/processing-spec/3/input/events",
-        currentWindow   = `window-10:30`,
-        nextWindow      = `window-10:31`
-      )
+        val inputStream = InputEventsProvider.eventStream(
+          inputEventsPath = "/processing-spec/3/input/events",
+          currentWindow = `window-10:30`,
+          nextWindow = `window-10:31`
+        )
 
-      val atomic     = "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
-      val igluErrors = "run=1970-01-01-10-30-00/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"
-      
-      val outputDirectoriesToRead = List(atomic, igluErrors)
-      val result = process(inputStream, configProvider, outputDirectoriesToRead).unsafeRunSync()
+        val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
-      result.createdDirectories(atomic).size must beEqualTo(1)
-      assertOutputLines(directoryWithActualData = igluErrors, expectedResource = "/processing-spec/3/output/bad", result.createdDirectories)
+        for {
+          output                    <- process(inputStream, config)
+          actualAtomicRows          <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"))
+          actualBadRows             <- readStringRowsFrom(Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"))
 
-      assertCompletionMessage(result, "/processing-spec/3/output/completion.json")
+          expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", outputDirectory)
+          expectedBadRows           <- readLinesFromResource("/processing-spec/3/output/bad")
+        } yield {
+          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          actualAtomicRows.size must beEqualTo(1)
+          assertStringRows(actualBadRows, expectedBadRows)
+        }
+      }.unsafeRunSync()
     }
   }
 }
