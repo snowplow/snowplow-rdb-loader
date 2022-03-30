@@ -58,6 +58,7 @@ object Databricks {
                                  |  base VARCHAR(512) NOT NULL,
                                  |  types VARCHAR(65535) NOT NULL,
                                  |  shredding_started TIMESTAMP NOT NULL,
+                                 |  shredding_completed TIMESTAMP NOT NULL,
                                  |  min_collector_tstamp TIMESTAMP,
                                  |  max_collector_tstamp TIMESTAMP,
                                  |  ingestion_tstamp TIMESTAMP NOT NULL,
@@ -89,11 +90,11 @@ object Databricks {
               case Statement.FoldersCopy(source) =>
                 val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
                 val frPath      = Fragment.const0(source)
-                sql"""copy into $frTableName from $frPath fileformat = parquet copy_options('mergeSchema' = 'true')""";
+                sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
               case Statement.EventsCopy(path, _) =>
                 val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
                 val frPath      = Fragment.const0(path)
-                sql"""copy into $frTableName from $frPath fileformat = parquet copy_options('mergeSchema' = 'true')""";
+                sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
               case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.CreateTransient =>

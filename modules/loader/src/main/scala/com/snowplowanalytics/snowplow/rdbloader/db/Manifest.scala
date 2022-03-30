@@ -9,7 +9,7 @@ import doobie.implicits.javasql._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.Redshift
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.{Databricks, Redshift}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, DAO, Logging, Transaction}
 
 object Manifest {
@@ -45,29 +45,32 @@ object Manifest {
           MonadError[F, Throwable].raiseError(new IllegalStateException(error.toString))
     }
 
-  def setup[F[_]: Monad: DAO](schema: String, target: StorageTarget): F[InitStatus] =
-    for {
-      exists <- Control.tableExists[F](Name)
-      status <- if (exists) for {
-        columns <- Control.getColumns[F](Name)
-        legacy = columns.toSet === LegacyColumns.toSet
-        status <- if (legacy)
-          Control.renameTable[F](Name, LegacyName) *>
-            create[F].as[InitStatus](InitStatus.Migrated)
-        else
-          Monad[F].pure[InitStatus](InitStatus.NoChanges)
+  def setup[F[_]: Monad: DAO](schema: String, target: StorageTarget): F[InitStatus] = target match {
+    case _: Databricks => create[F].as(InitStatus.Created)
+    case _ =>
+      for {
+        exists <- Control.tableExists[F](Name)
+        status <- if (exists) for {
+          columns <- Control.getColumns[F](Name)
+          legacy = columns.toSet === LegacyColumns.toSet
+          status <- if (legacy)
+            Control.renameTable[F](Name, LegacyName) *>
+              create[F].as[InitStatus](InitStatus.Migrated)
+          else
+            Monad[F].pure[InitStatus](InitStatus.NoChanges)
+        } yield status
+        else create[F].as(InitStatus.Created)
+        _ <- status match {
+          case InitStatus.Migrated | InitStatus.Created =>
+            target match {
+              case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"))
+              case _           => Monad[F].unit
+            }
+          case _ =>
+            Monad[F].unit
+        }
       } yield status
-      else create[F].as(InitStatus.Created)
-      _ <- status match {
-        case InitStatus.Migrated | InitStatus.Created =>
-          target match {
-            case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"))
-            case _           => Monad[F].unit
-          }
-        case _ =>
-          Monad[F].unit
-      }
-    } yield status
+  }
 
   def add[F[_]: DAO: Functor](item: LoaderMessage.ManifestItem): F[Unit] =
     DAO[F].executeUpdate(Statement.ManifestAdd(item)).void

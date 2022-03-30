@@ -12,41 +12,34 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import cats.{~>, Applicative, Monad}
+import cats.{Applicative, Monad, ~>}
 import cats.data.EitherT
 import cats.implicits._
-
 import cats.effect.MonadThrow
-
 import doobie.Fragment
-
-import com.snowplowanalytics.iglu.core.{SchemaMap, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
-
-import com.snowplowanalytics.iglu.schemaddl.migrations.{ Migration => SchemaMigration }
-
-import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType, DiscoveryFailure}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
-
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration}
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 
 /**
- * Sequences of DDL statement executions that have to be applied to a DB in order to
- * make it compatible with a certain `DataDiscovery` (batch of data)
- * Unlike `Block`, which is set of statements for a *single table*, the
- * [[Migration]] is applied to multiple tables, so in the end the pipeline is:
- *
- * `DataDiscovery -> List[Migration.Item] -> List[Migration.Description] -> List[Migration.Block] -> Migration`
- *
- * Some statements (CREATE TABLE, ADD COLUMN) could be executed inside a transaction,
- * making the table alteration atomic, other (ALTER TYPE) cannot due Redshift
- * restriction and thus applied before the main transaction
- *
- * @param preTransaction actions (including logging) that have to run before the main transaction block
- * @param inTransaction actions (including logging) that have to run inside the main transaction block
- */
+  * Sequences of DDL statement executions that have to be applied to a DB in order to
+  * make it compatible with a certain `DataDiscovery` (batch of data)
+  * Unlike `Block`, which is set of statements for a *single table*, the
+  * [[Migration]] is applied to multiple tables, so in the end the pipeline is:
+  *
+  * `DataDiscovery -> List[Migration.Item] -> List[Migration.Description] -> List[Migration.Block] -> Migration`
+  *
+  * Some statements (CREATE TABLE, ADD COLUMN) could be executed inside a transaction,
+  * making the table alteration atomic, other (ALTER TYPE) cannot due Redshift
+  * restriction and thus applied before the main transaction
+  *
+  * @param preTransaction actions (including logging) that have to run before the main transaction block
+  * @param inTransaction actions (including logging) that have to run inside the main transaction block
+  */
 final case class Migration[F[_]](preTransaction: F[Unit], inTransaction: F[Unit]) {
   def addPreTransaction(statement: F[Unit])(implicit F: Monad[F]): Migration[F] =
     Migration[F](preTransaction *> statement, inTransaction)
@@ -57,29 +50,28 @@ final case class Migration[F[_]](preTransaction: F[Unit], inTransaction: F[Unit]
     Migration(arrow(preTransaction), arrow(inTransaction))
 }
 
-
 object Migration {
 
-  private implicit val LoggerName =
+  implicit private val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
-   * A set of statements migrating (or creating) a single table.
-   * Every table migration must have a comment section, even if no material
-   * migrations can be executed.
-   * In case of `CreateTable` it's going to be a single in-transaction statement
-   * Otherwise it can be (possible empty) sets of pre-transaction and in-transaction
-   * statements
-   * @param preTransaction can be `ALTER TYPE` only
-   * @param inTransaction can be `ADD COLUMN` or `CREATE TABLE`
-   */
+    * A set of statements migrating (or creating) a single table.
+    * Every table migration must have a comment section, even if no material
+    * migrations can be executed.
+    * In case of `CreateTable` it's going to be a single in-transaction statement
+    * Otherwise it can be (possible empty) sets of pre-transaction and in-transaction
+    * statements
+    * @param preTransaction can be `ALTER TYPE` only
+    * @param inTransaction can be `ADD COLUMN` or `CREATE TABLE`
+    */
   final case class Block(preTransaction: List[Item], inTransaction: List[Item], dbSchema: String, target: SchemaKey) {
     def isEmpty: Boolean = preTransaction.isEmpty && inTransaction.isEmpty
 
     def isCreation: Boolean =
       inTransaction match {
         case List(Item.CreateTable(_)) => true
-        case _ => false
+        case _                         => false
       }
 
     def getTable: String = {
@@ -95,27 +87,31 @@ object Migration {
   sealed trait Description extends Product with Serializable
 
   object Description {
+
     /** Works with separate tables (both create and update) and does support migration (hence all schema info) */
     final case class Table(schemaList: SchemaList) extends Description
+
     /** Works with only `events` table, creating a column for every new schema */
     final case class WideRow(shreddedType: ShreddedType.Info) extends Description
+
     /** Works with separate tables, but does not support migration (hence no info) */
     case object NoMigration extends Description
   }
 
   /**
-   * A single migration (or creation) statement for a single table
-   * One table can have multiple `Migration.Item` elements, even of different kinds,
-   * typically [[Item.AddColumn]] and [[Item.AlterColumn]]. But all these items
-   * will belong to the same [[Block]].
-   * [[Item]]s come from an implementation of `Target`, hence have concrete DDL in there
-   * @note since all [[Item]]s contain `Fragment` there's no safe `equals` operations
-   */
+    * A single migration (or creation) statement for a single table
+    * One table can have multiple `Migration.Item` elements, even of different kinds,
+    * typically [[Item.AddColumn]] and [[Item.AlterColumn]]. But all these items
+    * will belong to the same [[Block]].
+    * [[Item]]s come from an implementation of `Target`, hence have concrete DDL in there
+    * @note since all [[Item]]s contain `Fragment` there's no safe `equals` operations
+    */
   sealed trait Item {
     def statement: Statement
   }
 
   object Item {
+
     /** `ALTER TABLE ALTER TYPE`. Can be combined with [[AddColumn]] in [[Block]]. Must be pre-transaction */
     final case class AlterColumn(alterTable: Fragment) extends Item {
       val statement: Statement = Statement.AlterTable(alterTable)
@@ -133,8 +129,9 @@ object Migration {
   }
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu,
-            C[_]: Monad: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
+  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu, C[_]: Monad: Logging: DAO](
+    discovery: DataDiscovery
+  ): F[Migration[C]] = {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
@@ -149,10 +146,7 @@ object Migration {
     val transaction: C[Either[LoaderError, Migration[C]]] =
       Transaction[F, C].arrowBack(descriptions.value).flatMap {
         case Right(schemaList) =>
-          schemaList
-            .traverseFilter(buildBlock[C])
-            .map(blocks => Migration.fromBlocks[C](blocks))
-            .value
+          schemaList.traverseFilter(buildBlock[C]).map(blocks => Migration.fromBlocks[C](blocks)).value
         case Left(error) =>
           Monad[C].pure(Left(error))
       }
@@ -164,7 +158,6 @@ object Migration {
   def empty[F[_]: Applicative]: Migration[F] =
     Migration[F](Applicative[F].unit, Applicative[F].unit)
 
-
   def buildBlock[F[_]: Monad: DAO](description: Description): LoaderAction[F, Option[Block]] = {
     val target = DAO[F].target
     description match {
@@ -173,14 +166,17 @@ object Migration {
 
         val migrate: F[Either[LoaderError, Option[Block]]] = for {
           schemaKey <- getVersion[F](tableName)
-          matches    = schemas.latest.schemaKey == schemaKey
-          block     <- if (matches) emptyBlock[F].map(_.asRight[LoaderError])
-          else Control.getColumns[F](tableName).map { columns =>
-            migrateTable(target, schemaKey, columns, schemas).map(_.some)
-          }
+          matches = schemas.latest.schemaKey == schemaKey
+          block <- if (matches) emptyBlock[F].map(_.asRight[LoaderError])
+          else
+            Control.getColumns[F](tableName).map { columns =>
+              migrateTable(target, schemaKey, columns, schemas).map(_.some)
+            }
         } yield block
 
-        val result = Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(target.createTable(schemas).some.asRight[LoaderError]))
+        val result = Control
+          .tableExists[F](tableName)
+          .ifM(migrate, Monad[F].pure(target.createTable(schemas).some.asRight[LoaderError]))
         LoaderAction.apply[F, Option[Block]](result)
       case Description.WideRow(info) =>
         val extendBlock = target.extendTable(info)
@@ -190,7 +186,7 @@ object Migration {
     }
   }
 
-  def migrateTable(target: Target, current: SchemaKey, columns: List[String], schemaList: SchemaList) = {
+  def migrateTable(target: Target, current: SchemaKey, columns: List[String], schemaList: SchemaList) =
     schemaList match {
       case s: SchemaList.Full =>
         val migrations = s.extractSegments.map(SchemaMigration.fromSegment)
@@ -198,20 +194,27 @@ object Migration {
           case Some(schemaMigration) =>
             target.updateTable(schemaMigration).asRight
           case None =>
-            val message = s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $schemaList. Migration cannot be created"
+            val message =
+              s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $schemaList. Migration cannot be created"
             DiscoveryFailure.IgluError(message).toLoaderError.asLeft
         }
       case s: SchemaList.Single =>
-        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $schemaList"
+        val message =
+          s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns
+            .mkString(", ")}\nstate: $schemaList"
         LoaderError.MigrationError(message).asLeft
     }
-  }
 
   def fromBlocks[F[_]: Monad: DAO: Logging](blocks: List[Block]): Migration[F] =
     blocks.foldLeft(Migration.empty[F]) {
       case (migration, block) if block.isEmpty =>
-        val action = DAO[F].executeUpdate(block.getComment) *>
-          Logging[F].warning(s"Empty migration for ${block.getTable}")
+        val action =
+          try {
+            Monad[F].pure(Class.forName("com.simba.spark.jdbc.Driver", false, getClass.getClassLoader)).void
+          } catch {
+            case _: Throwable =>
+              DAO[F].executeUpdate(block.getComment) *> Logging[F].warning(s"Empty migration for ${block.getTable}")
+          }
         migration.addPreTransaction(action)
 
       case (migration, b @ Block(pre, in, _, _)) if pre.nonEmpty && in.nonEmpty =>
@@ -252,6 +255,6 @@ object Migration {
   def getVersion[F[_]: DAO](tableName: String): F[SchemaKey] =
     DAO[F].executeQuery[SchemaKey](Statement.GetVersion(tableName))(readSchemaKey)
 
-  val NoStatements: List[Item] = Nil
+  val NoStatements: List[Item]                = Nil
   val NoPreStatements: List[Item.AlterColumn] = Nil
 }
