@@ -113,7 +113,7 @@ lazy val databricksLoader = project
   .settings(resolvers ++= Dependencies.resolutionRepos)
   .settings(
     addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-    Compile / unmanagedJars += file("SparkJDBC.jar")
+    Compile / unmanagedJars += file("SparkJDBC42.jar")
   )
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)

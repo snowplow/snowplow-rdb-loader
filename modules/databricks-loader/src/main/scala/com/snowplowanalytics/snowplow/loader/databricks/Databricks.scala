@@ -101,7 +101,8 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.DropTransient =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
-              case Statement.TableExists(_) => sql"SELECT false;"
+              case Statement.TableExists(_) =>
+                throw new IllegalStateException("Databricks Loader does not have introspection")
               case _: Statement.GetVersion =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case _: Statement.RenameTable =>

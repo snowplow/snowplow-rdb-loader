@@ -27,6 +27,11 @@ jobs:
       with:
         java-version: 11
 
+    - name: Get the lastest Databricks JDBC driver
+      run: |
+        curl -k https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
+        unzip SparkJDBC.jar.zip .
+
     - name: Install release-manager for Python for transformer
       uses: BSFishy/pip-action@v1
       with:
@@ -63,6 +68,11 @@ jobs:
       run: |
         export SKIP_TEST=true
         sbt 'project snowflakeLoader' assembly
+
+    - name: Build databricks-loader jar
+      run:
+        export SKIP_TEST=true
+        sbt 'project databricksLoader' assembly
 
     - name: Build transformer-batch jar
       run: |
