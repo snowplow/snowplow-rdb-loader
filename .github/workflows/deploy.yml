@@ -47,9 +47,6 @@ jobs:
     - name: Build and publish Redshift Loader to Docker Hub
       run: sbt "project redshiftLoader" docker:publish
 
-    - name: Build and publish snowflake-loader to Docker Hub
-      run: sbt "project snowflakeLoader" docker:publish
-
     - name: Build and publish transformer-kinesis to Docker Hub
       run: sbt "project transformerKinesis" docker:publish
 
@@ -63,11 +60,6 @@ jobs:
       run: |
         export SKIP_TEST=true
         sbt 'project redshiftLoader' assembly
-
-    - name: Build snowflake-loader jar
-      run: |
-        export SKIP_TEST=true
-        sbt 'project snowflakeLoader' assembly
 
     - name: Build databricks-loader jar
       run:
