@@ -44,37 +44,14 @@ jobs:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
 
-    - name: Build and publish Redshift Loader to Docker Hub
-      run: sbt "project redshiftLoader" docker:publish
 
-    - name: Build and publish transformer-kinesis to Docker Hub
-      run: sbt "project transformerKinesis" docker:publish
-
-    - name: Build and publish transformer-batch to S3
-      run: .github/deploy.sh transformer_batch $GITHUB_REF
-      env:
-        AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
-        AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
-
-    - name: Build redshift-loader jar
-      run: |
-        export SKIP_TEST=true
-        sbt 'project redshiftLoader' assembly
+    - name: Build and publish Databricks Loader to Docker Hub
+      run: sbt "project databricksLoader" docker:publish
 
     - name: Build databricks-loader jar
       run:
         export SKIP_TEST=true
         sbt 'project databricksLoader' assembly
-
-    - name: Build transformer-batch jar
-      run: |
-        export SKIP_TEST=true
-        sbt 'project transformerBatch' assembly
-
-    - name: Build transformer-kinesis jar
-      run: |
-        export SKIP_TEST=true
-        sbt 'project transformerKinesis' assembly
 
     - name: Get current version
       id: ver
@@ -90,9 +67,6 @@ jobs:
         name: ${{ steps.ver.outputs.project_version }}
         tag_name: ${{ steps.ver.outputs.project_version }}
         files: |
-          modules/loader/target/scala-2.12/snowplow-rdb-loader-${{ steps.ver.outputs.project_version }}.jar
-          modules/loader/target/scala-2.12/snowplow-rdb-redshift-loader-${{ steps.ver.outputs.project_version }}.jar
-          modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
-          modules/transformer-kinesis/target/scala-2.12/snowplow-transformer-kinesis-${{ steps.ver.outputs.project_version }}.jar
+          modules/loader/target/scala-2.12/snowplow-rdb-databricks-loader-${{ steps.ver.outputs.project_version }}.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
