@@ -38,15 +38,15 @@ object Dependencies {
     val http4s           = "0.21.25"
     val scalaTracker     = "1.0.0"
 
-    // Scala (Shredder)
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.3"
     val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
 
-    // Java (Loader)
     val slf4j            = "1.7.32"
-    val redshift         = "1.2.55.1083"
+    val redshiftJdbc     = "1.2.55.1083"
+    val snowflakeJdbc    = "3.13.5"
+    val enumeratum       = "1.7.0"
     val aws              = "1.12.161"
     val aws2             = "2.17.59"
     val jSch             = "0.1.55"
@@ -116,9 +116,11 @@ object Dependencies {
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshift
+  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshiftJdbc
   val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
+  val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
+  val enumeratum        = "com.beachape"          %% "enumeratum"               % V.enumeratum
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws

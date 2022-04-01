@@ -23,6 +23,8 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+
 package object common {
 
   implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
@@ -63,4 +65,11 @@ package object common {
     Decoder.decodeString.emap {
       s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
+
+  implicit class ShredPropertyTransformer(val snowplowEntity: LoaderMessage.SnowplowEntity) extends AnyVal {
+    def toSdkProperty: Data.ShredProperty = snowplowEntity match {
+      case LoaderMessage.SnowplowEntity.Context => Data.Contexts(Data.CustomContexts)
+      case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
+    }
+  }
 }

@@ -1,0 +1,15 @@
+{
+  "input": {
+    "streamName": "enriched-events"
+  }
+  "output": {
+    "path": "s3://bucket/transformed/"
+  }
+  "queue": {
+    "type": "sns"
+    "topicArn": "arn:aws:sns:eu-central-1:123456789:test-sns-topic"
+  }
+  "formats": {
+    "transformationType": "widerow"
+  }
+}

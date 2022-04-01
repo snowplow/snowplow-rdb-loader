@@ -19,19 +19,19 @@ import cats.implicits._
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.{ DiscoveryStep, DiscoveryStream, LoaderError, LoaderAction }
+import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 /**
-  * Result of data discovery in shredded.good folder
+  * Result of data discovery in transformer output folder
   * It still exists mostly to fulfill legacy batch-discovery behavior,
   * once Loader entirely switched to RT architecture we can replace it with
   * `ShreddingComplete` message
-  * @param base shred run folder full path
+  * @param base transformed run folder full path
   * @param shreddedTypes list of shredded types in this directory
   */
 case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
@@ -39,8 +39,8 @@ case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], com
   def runId: String = base.split("/").last
 
   def show: String = {
-    val shreddedTypesList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
-    val shredded = if (shreddedTypes.isEmpty) "without shredded types" else s"with following shredded types:\n$shreddedTypesList"
+    val typeList = shreddedTypes.map(x => s"  * ${x.show}").mkString("\n")
+    val shredded = if (shreddedTypes.isEmpty) "without shredded types" else s"with following shredded types:\n$typeList"
     s"$runId $shredded"
   }
 }
@@ -71,7 +71,6 @@ object DataDiscovery {
    * The stream is responsible for state changing as well
    *
    * @param config generic storage target configuration
-   * @param state mutable state to keep logging information
    */
   def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
     AWS[F]
@@ -95,7 +94,7 @@ object DataDiscovery {
    * actionable `DataDiscovery`
    * @param region AWS region to discover JSONPaths
    * @param assets optional bucket with custom JSONPaths
-   * @param message payload coming from shredder
+   * @param message payload coming from transformer
    * @param ack action to acknowledge/delete the message
    * @param extend action to prolong the visibility of the message
    * @tparam F effect type to perform AWS interactions
@@ -130,21 +129,20 @@ object DataDiscovery {
   def fromLoaderMessage[F[_]: Monad: Cache: AWS](region: String,
                                                  assets: Option[S3.Folder],
                                                  message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
-    val types = message
-      .types
-      .traverse[F, DiscoveryStep[ShreddedType]] { shreddedType =>
-        ShreddedType.fromCommon[F](message.base, message.processor.version, region, assets, shreddedType)
+    val types = ShreddedType
+      .fromCommon[F](message.base, region, assets, message.typesInfo)
+      .map { steps =>
+        LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
       }
-      .map { steps => LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel)) }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
       DataDiscovery(message.base, types.distinct, message.compression)
     }
   }
 
   def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
-    Logging[F].error(error)("A problem occured in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
+    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
-    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.types.isEmpty && message.count.contains(0)
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message.count.contains(LoaderMessage.Count(0))
 }

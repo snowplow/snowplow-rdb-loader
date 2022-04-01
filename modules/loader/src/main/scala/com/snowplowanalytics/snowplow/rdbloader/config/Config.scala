@@ -69,7 +69,7 @@ object Config {
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], shredderOutput: S3.Folder, until: Option[FiniteDuration], failBeforeAlarm: Option[Int])
+  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], transformerOutput: S3.Folder, until: Option[FiniteDuration], failBeforeAlarm: Option[Int])
   final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
   final case class Timeouts(loading: FiniteDuration, nonLoading: FiniteDuration, sqsVisibility: FiniteDuration)
   final case class Retries(strategy: Strategy, attempts: Option[Int], backoff: FiniteDuration, cumulativeBound: Option[FiniteDuration])
@@ -159,6 +159,23 @@ object Config {
       deriveDecoder[RetryQueue]
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
-      deriveDecoder[Config[StorageTarget]]
+      deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
+
+    /** Post-decoding validation, making sure different parts are consistent */
+    def validateConfig(config: Config[StorageTarget]): List[String] =
+      config.storage match {
+        case StorageTarget.Redshift(_, _, _, _, _, _, _, _, _, _) =>
+          Nil
+        case StorageTarget.Snowflake(_, _, _, _, _, _, _, _, _, _, folderMonitoringStage, _, _) =>
+          (config.monitoring.folders, folderMonitoringStage) match {
+            case (Some(_), Some(_)) => Nil
+            case (None, None) => Nil
+            case (Some(_), None) =>
+              List("Snowflake Loader is configured with Folders Monitoring, but appropriate storage.folderMonitoringStage is missing")
+            case (None, Some(name)) =>
+              List(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing - both should either present or missing")
+
+          }
+      }
   }
 }

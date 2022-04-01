@@ -20,7 +20,6 @@ import cats.effect.{ IO, Timer }
 
 import io.circe.syntax._
 
-import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
@@ -42,8 +41,8 @@ class FolderMonitoringSpec extends Specification {
 
       val expectedState = TestState(List(
         PureTransaction.CommitMessage,
-        TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
+        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
         PureTransaction.StartMessage),Map()
@@ -52,7 +51,7 @@ class FolderMonitoringSpec extends Specification {
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, SpecHelpers.validConfig.storage).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -70,8 +69,8 @@ class FolderMonitoringSpec extends Specification {
 
       val expectedState = TestState(List(
         PureTransaction.CommitMessage,
-        TestState.LogEntry.Sql(Statement.FoldersMinusManifest("atomic")),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), "arn:aws:iam::123456789876:role/RedshiftLoadRole")),
+        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
         PureTransaction.StartMessage),Map()
@@ -80,7 +79,7 @@ class FolderMonitoringSpec extends Specification {
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, SpecHelpers.validConfig.storage).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -158,7 +157,7 @@ object FolderMonitoringSpec {
   def jdbcResults(state: TestState)(statement: Statement): Any = {
     val _ = state
     statement match {
-      case Statement.FoldersMinusManifest(_) =>
+      case Statement.FoldersMinusManifest =>
         List(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/"))
       case _ => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
     }
