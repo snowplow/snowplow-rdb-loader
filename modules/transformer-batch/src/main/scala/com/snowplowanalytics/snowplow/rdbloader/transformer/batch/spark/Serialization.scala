@@ -19,6 +19,9 @@ import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaKey}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
+
+import org.apache.spark.sql.types._
 
 object Serialization {
   val classesToRegister: Array[Class[_]] = Array(
@@ -30,11 +33,17 @@ object Serialization {
     classOf[Hierarchy],
     classOf[Instant],
     classOf[Transformed],
-    classOf[Transformed.Path.WideRow],
-    classOf[Transformed.Path.Shredded.Json],
-    classOf[Transformed.Path.Shredded.Tabular],
+    classOf[Transformed.Data.DString],
+    classOf[Transformed.WideRow],
+    classOf[Transformed.Shredded.Json],
+    classOf[Transformed.Shredded.Tabular],
     classOf[Array[Transformed]],
     classOf[UUID],
+    classOf[TypesInfo.WideRow.Type],
+    classOf[Array[TypesInfo.WideRow.Type]],
+    classOf[SnowplowEntity],
+    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$SnowplowEntity$SelfDescribingEvent$"),
+    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage$SnowplowEntity$Context$"),
     Class.forName("com.snowplowanalytics.iglu.core.SchemaVer$Full"),
     Class.forName("io.circe.JsonObject$LinkedHashMapJsonObject"),
     Class.forName("io.circe.Json$JObject"),
@@ -64,6 +73,23 @@ object Serialization {
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
     classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
     classOf[Array[scala.util.Either[_, _]]],
+    classOf[StructType],
+    classOf[Array[StructType]],
+    classOf[StructField],
+    classOf[Array[StructField]],
+    classOf[Metadata],
+    classOf[IntegerType],
+    classOf[DecimalType],
+    classOf[ArrayType],
+    Class.forName("org.apache.spark.sql.types.StringType$"),
+    Class.forName("org.apache.spark.sql.types.TimestampType$"),
+    Class.forName("org.apache.spark.sql.types.BooleanType$"),
+    Class.forName("org.apache.spark.sql.types.IntegerType$"),
+    Class.forName("org.apache.spark.sql.types.DoubleType$"),
+    Class.forName("org.apache.spark.sql.types.DateType$"),
+    Class.forName("org.apache.spark.sql.types.BooleanType$"),
+    Class.forName("org.apache.spark.sql.types.Decimal$DecimalAsIfIntegral$"),
+    Class.forName("org.apache.spark.sql.types.Decimal$DecimalIsFractional$"),
     classOf[Array[scala.runtime.BoxedUnit]]
   )
 }
