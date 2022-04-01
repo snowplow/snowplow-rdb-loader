@@ -72,7 +72,7 @@ jobs:
       run: sbt "project databricksLoader" docker:publish
 
     - name: Build databricks-loader jar
-      run:
+      run: |
         export SKIP_TEST=true
         sbt 'project databricksLoader' assembly
 
