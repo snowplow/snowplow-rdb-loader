@@ -4,6 +4,7 @@ import java.net.URI
 import java.nio.file.Paths
 
 import cats.data.Chain
+import cats.implicits._
 
 import cats.effect._
 
@@ -21,9 +22,9 @@ object file {
 
   def getSink[F[_]: Concurrent: ContextShift](blocker: Blocker, root: URI, compression: Compression, counter: Window => F[Int])
                                              (window: Window)
-                                             (path: Transformed.Path): Pipe[F, Transformed.Data, Unit] = {
+                                             (path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
     val p = BasePath.empty
-      .withPathFromRoot(Chain.fromSeq(s"${window.getDir}/${path.getDir}".split("/")).filter(_.nonEmpty))
+      .withPathFromRoot(Chain.fromSeq(s"${window.getDir}/${path.value}".split("/")).filter(_.nonEmpty))
       .withIsDir(Some(false))
 
     val (finalPipe, extension) = compression match {
@@ -36,7 +37,7 @@ object file {
 
     in =>
       Stream.eval(counter(window)).flatMap { id =>
-        in.map(_.value).intersperse("\n").through(utf8Encode[F]).through(finalPipe).through(sink(id))
+        in.mapFilter(_.str).intersperse("\n").through(utf8Encode[F]).through(finalPipe).through(sink(id))
       }
   }
 }
