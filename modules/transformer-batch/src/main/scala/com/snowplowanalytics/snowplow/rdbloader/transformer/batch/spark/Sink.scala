@@ -15,7 +15,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{SparkSession, SaveMode, DataFrameWriter}
+import org.apache.spark.sql.{Row, SparkSession, SaveMode, DataFrameWriter}
+import org.apache.spark.sql.types.StructType
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 
@@ -41,6 +42,15 @@ object Sink {
       .partitionBy("output")
       .mode(SaveMode.Append)
       .text(outFolder)
+  }
+
+  def writeParquet(spark: SparkSession, sparkSchema: StructType, data: RDD[List[Any]], outFolder: String): Unit = {
+    val rows = data.map(Row.fromSeq)
+    spark.createDataFrame(rows, sparkSchema)
+      .write
+      .mode(SaveMode.Append)
+      .parquet(outFolder)
+    rows.unpersist()
   }
 
   private implicit class DataframeOps[A](w: DataFrameWriter[A]) {
