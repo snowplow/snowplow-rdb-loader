@@ -14,13 +14,20 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import java.io.{FileWriter, IOException, File, BufferedWriter}
+import cats.Id
+import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
+
+import java.io.{BufferedWriter, File, FileWriter, IOException}
 import java.util.Base64
 import java.net.URI
-
 import scala.collection.JavaConverters._
 import scala.io.Source
 import scala.util.Random
+import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.types._
 
 // Commons
 import org.apache.commons.io.filefilter.IOFileFilter
@@ -45,10 +52,10 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, ShredderCliConfig, Region}
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 
 // Specs2
 import org.specs2.matcher.Matcher
@@ -57,7 +64,7 @@ import org.specs2.matcher.Matchers._
 
 object ShredJobSpec {
 
-  val Name = BuildInfo.name
+  val Name = "snowplow-transformer-batch"
   val Version = BuildInfo.version
 
   val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
@@ -104,7 +111,7 @@ object ShredJobSpec {
    * @param relativePath The relative path to the file from the root
    * @return the file contents as well as the file name
    */
-    def readPartFile(root: File, relativePath: String = "/"): Option[(List[String], String)] = {
+  def readPartFile(root: File, relativePath: String = "/"): Option[(List[String], String)] = {
     val files = listFilesWithExclusions(new File(root, relativePath), List.empty)
       .filter(s => s.contains("part-"))
     files.foldLeft[Option[(List[String], String)]](None) { (acc, f) =>
@@ -113,6 +120,17 @@ object ShredJobSpec {
       Some((contents, f))
     }
   }
+
+  def readParquetFile(spark: SparkSession, root: File): List[Json] =
+    spark.read.parquet(root.toString)
+      .toJSON
+      .collectAsList()
+      .asScala.toList
+      .flatMap(parseCirce(_).toOption)
+
+  def readParquetFields(spark: SparkSession, root: File): List[StructField] =
+    spark.read.parquet(root.toString).schema.fields.toList
+
 
   def readResourceFile(resourceFile: ResourceFile): List[String] =
     read(resourceFile.toUri.getPath)
@@ -225,19 +243,26 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: TransformerConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Boolean) = {
+  private def storageConfig(shredder: TransformerConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Option[WideRow]) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
-    val formatsSection =
-      if (wideRow)
+    val formatsSection = wideRow match {
+      case Some(WideRow.PARQUET) =>
+        s"""
+           |"formats": {
+           |  "transformationType": "widerow"
+           |  "fileFormat": "parquet"
+           |}
+           |""".stripMargin
+      case Some(WideRow.JSON) =>
         s"""
            |"formats": {
            |  "transformationType": "widerow"
            |  "fileFormat": "json"
            |}
            |""".stripMargin
-      else
+      case None =>
         s"""
            | "formats": {
            |   "transformationType": "shred"
@@ -247,6 +272,7 @@ object ShredJobSpec {
            |   "skip": [ ]
            | }
            |""".stripMargin
+    }
     val configPlain = s"""|{
     |"input": "${shredder.input}",
     |"output" = {
@@ -259,15 +285,11 @@ object ShredJobSpec {
     |  "queueName": "test-sqs"
     |  "region": "us-east-1"
     |}
-    |"formats": {
-    |  "type": "${if (wideRow) "widerow" else "shred"}"
-    |}
+    |$formatsSection
     |"validations": {
     |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
     |}
-    |"monitoring": {"snowplow": null, "sentry": null},
-    |$formatsSection
-    |"validations": {"minimumTimestamp": "0000-01-02T00:00:00.00Z"}
+    |"monitoring": {"snowplow": null, "sentry": null}
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
   }
@@ -307,6 +329,16 @@ object ShredJobSpec {
          |"connection": {
          |"http": {
          |"uri": "https://com-iglucentral-eu1-prod.iglu.snplow.net/api"
+         |}
+         |}
+         |},
+         |{
+         |"name": "Iglu Embedded",
+         |"priority": 0,
+         |"vendorPrefixes": [ "com.snowplowanalytics" ],
+         |"connection": {
+         |"embedded": {
+         |"path": "/widerow/parquet"
          |}
          |}
          |}
@@ -387,8 +419,13 @@ trait ShredJobSpec extends SparkSpec {
    * Run the shred job with the specified lines as input.
    * @param lines input lines
    */
-  def runShredJob(events: Events, crossBatchDedupe: Boolean = false, tsv: Boolean = false, jsonSchemas: List[SchemaCriterion] = Nil, wideRow: Boolean = false): LoaderMessage.ShreddingComplete  = {
-    val shredder = getShredder(events, dirs)
+  def runShredJob(events: Events,
+                  crossBatchDedupe: Boolean = false,
+                  tsv: Boolean = false,
+                  jsonSchemas: List[SchemaCriterion] = Nil,
+                  wideRow: Option[WideRow] = None,
+                  outputDirs: Option[OutputDirs] = None): LoaderMessage.ShreddingComplete  = {
+    val shredder = getShredder(events, outputDirs.getOrElse(dirs))
     val config = Array(
       "--iglu-config", igluConfigWithLocal,
       "--config", storageConfig(shredder, tsv, jsonSchemas, wideRow)
@@ -407,7 +444,16 @@ trait ShredJobSpec extends SparkSpec {
       case Right(cli) =>
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
-          case f: TransformerConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+          case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
+          case TransformerConfig.Formats.WideRow.PARQUET =>
+            val resolver = IgluSingleton.get(cli.igluConfig).resolver
+            val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
+
+            val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).right.get
+            val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+            val schema = SparkSchema.build(allFields)
+            
+            Transformer.WideRowParquetTransformer(cli.igluConfig, Map.empty, allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)

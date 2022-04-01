@@ -37,16 +37,16 @@ object file {
     FileStore[F](Paths.get(outputPath), blocker)
 
   def getSink[F[_]: Concurrent: ContextShift](
-    store: Store[F],
-    compression: Compression,
-    counter: Window => F[Int]
-  )(
-    window: Window
-  )(
-    path: Transformed.Path
-  ): Pipe[F, Transformed.Data, Unit] = {
+                                               store: Store[F],
+                                               compression: Compression,
+                                               counter: Window => F[Int]
+                                             )(
+                                               window: Window
+                                             )(
+                                               path: SinkPath
+                                             ): Pipe[F, Transformed.Data, Unit] = {
     val p = BasePath.empty
-      .withPathFromRoot(Chain.fromSeq(s"${window.getDir}/${path.getDir}".split("/")).filter(_.nonEmpty))
+      .withPathFromRoot(Chain.fromSeq(s"${window.getDir}/${path.value}".split("/")).filter(_.nonEmpty))
       .withIsDir(Some(false))
 
     val (finalPipe, extension) = compression match {
@@ -59,16 +59,16 @@ object file {
 
     in =>
       Stream.eval(counter(window)).flatMap { id =>
-        in.map(_.value).intersperse("\n").through(utf8Encode[F]).through(finalPipe).through(sink(id))
+        in.mapFilter(_.str).intersperse("\n").through(utf8Encode[F]).through(finalPipe).through(sink(id))
       }
   }
 
   def writeFile[F[_]: Concurrent: ContextShift](
-    store: Store[F],
-    outputPath: URI,
-    filePath: String,
-    content: String
-  ): F[Unit] =
+                                                 store: Store[F],
+                                                 outputPath: URI,
+                                                 filePath: String,
+                                                 content: String
+                                               ): F[Unit] =
     for {
       relativePath <- Sync[F].delay(Path(NioPath.of(outputPath).relativize(NioPath.of(URI.create(filePath))).toString))
       pipe = store.put(relativePath)
