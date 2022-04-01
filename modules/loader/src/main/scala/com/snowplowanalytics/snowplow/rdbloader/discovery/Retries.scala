@@ -14,22 +14,23 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
-import scala.concurrent.duration._
+import scala.concurrent.duration.FiniteDuration
 
 import cats.{MonadThrow, Monad}
 import cats.implicits._
 
 import cats.effect.{Timer, Concurrent, Clock}
 
-import fs2.Stream
+import fs2.{ Stream, Pipe }
 import fs2.concurrent.InspectableQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache, FolderMonitoring}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
+
 /**
  * Module responsible for periodic attempts to re-load recently failed folders.
  * It works together with internal manifest of failed runs from `State` and
@@ -41,6 +42,8 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
  */
 object Retries {
 
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
    * Internal manifest of recent failures
@@ -51,37 +54,40 @@ object Retries {
    * into the manifest respected a maximum amount of attempt - it helps
    * to avoid infinite loading, where a problematic folders gets back
    * into queue again and again
-   *
    */
   type Failures = Map[S3.Folder, LoadFailure]
 
-  type RetryQueue[F[_]] = InspectableQueue[F, Message[F, DataDiscovery.WithOrigin]]
-
-  /** How often try to pull failures */
-  val RetryPeriod: FiniteDuration = 30.minutes
-
-  /**
-   * An artificial pause between discoveries, exists to make sure
-   * the SQS discovery stream has priority over retry queue
-   */
-  val RetryRate: FiniteDuration = 5.seconds
-
-  /** Maximum amount of stored retries. All failures are dropped once the limit is reached */
-  val MaxSize = 64
-
-  /** How many attempts to make before giving up a folder */
-  val MaxAttempts = 3
+  type RetryQueue[F[_]] = InspectableQueue[F, S3.Folder]
 
   implicit val folderOrdering: Ordering[S3.Folder] =
     Ordering[String].on(_.toString)
 
-  /** Information about past failure */
+  /**
+    * Information about past failure 
+    *
+    * @param lastError an exception that has been raised last time (a previous one 
+    *                  could be different). It's generally a rule that these exception 
+    *                  also pass Retry.isWorth predicate
+    * @param attempts amount of *total* attempts that were taked to load the folder,
+    *                 i.e. if loading failed 3 times within `Load`, added to retry queue,
+    *                 picked up by Load again and failed 3 times - it will be 6
+    * @param first timestamp of the first failure occured
+    * @param last timestamp of the lastError occured (cannot be earlier than `first`)
+    */
   final case class LoadFailure(lastError: Throwable,
                                attempts: Int,
                                first: Instant,
                                last: Instant) {
-    def update(error: Throwable, now: Instant): LoadFailure =
-      LoadFailure(error, attempts + 1, first, now)
+    /**
+      * Update an existing in-RetryQueue failure with new details
+      *
+      * @param error new last error, previous one will be thrown away
+      * @param now timestamp
+      * @param currentAttempts
+      * @return
+      */
+    def update(error: Throwable, now: Instant, currentAttempts: Int): LoadFailure =
+      LoadFailure(error, currentAttempts + attempts, first, now)
   }
 
   /**
@@ -95,24 +101,32 @@ object Retries {
   def run[F[_]: AWS: Cache: Logging: Timer: Concurrent](region: String, assets: Option[S3.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
     config match {
       case Some(config) =>
-        val mkStream = InspectableQueue
-          .bounded[F, Message[F, DataDiscovery.WithOrigin]](config.size)
-          .map(get[F](region, assets, config, failures))
-        Stream.eval(mkStream).flatten
+        Stream
+          .eval(InspectableQueue.bounded[F, S3.Folder](config.size))
+          .flatMap(get[F](region, assets, config, failures))
       case None =>
         Stream.empty
     }
 
-  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String, assets: Option[S3.Folder], config: Config.RetryQueue, failures: F[Failures])
+  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String,
+                                                        assets: Option[S3.Folder],
+                                                        config: Config.RetryQueue,
+                                                        failures: F[Failures])
                                                        (queue: RetryQueue[F]): DiscoveryStream[F] = {
     Stream
       .awakeDelay[F](config.period)
-      .flatMap { _ => pullFailures[F](queue, failures) }
+      .evalTap { _ => pullFailures[F](config.size, queue, failures) }
+      .flatMap { _ => periodicDequeue[F, S3.Folder](queue, config.interval) }
+      .through(readMessages[F](region, assets))
+  }
+
+  /** Confert S3 paths to respective discoveries */
+  def readMessages[F[_]: AWS: Cache: Logging: MonadThrow](region: String,
+                                                          assets: Option[S3.Folder]): Pipe[F, S3.Folder, Message[F, DataDiscovery.WithOrigin]] =
+    folders => folders
       .evalMap(readShreddingComplete[F])
       .evalMapFilter(fromLoaderMessage[F](region, assets))
       .map(mkMessage[F, DataDiscovery.WithOrigin])
-      .metered(config.interval)
-  }
 
   def fromLoaderMessage[F[_]: Monad: AWS: Cache: Logging](region: String, assets: Option[S3.Folder])
                                                          (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
@@ -125,18 +139,31 @@ object Retries {
         Logging[F].warning(show"Failed to re-discover data after a failure. $error").as(none)
     }
 
-  def pullFailures[F[_]: Monad: Logging](queue: RetryQueue[F], failures: F[Failures]): Stream[F, S3.Folder] = {
-    val pull: F[List[S3.Folder]] =
-      queue.getSize.flatMap { size =>
-        if (size == 0) {
-          failures.map(_.keys.toList.sorted).flatMap { failures =>
-            if (failures.isEmpty) Logging[F].debug("No failed folders for retry, skipping the pull").as(Nil)
-            else Monad[F].pure(failures)
-          }
-        } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull").as(Nil)
+  /**
+   * Pull failures from a global manifest of failures and enqueues them into local queue
+   * It never tries to enqueue if not all items were processed, which helps to make sure
+   * that no item is enqueued twice
+   * @param max a size of the queue, to make sure the action is not blocking because of underprovision
+   */
+  def pullFailures[F[_]: Monad: Logging](max: Int, queue: RetryQueue[F], failures: F[Failures]): F[Unit] =
+    queue.getSize.flatMap { size =>
+      if (size == 0) {
+        failures.map(_.keys.toList.sorted).flatMap {
+          case Nil => Logging[F].debug("No failed folders for retry, skipping the pull")
+          case list => list.take(max).traverse_(queue.enqueue1)
+        }
+      } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull")
+    }
+
+  def periodicDequeue[F[_]: Monad: Timer, A](queue: InspectableQueue[F, A], interval: FiniteDuration): Stream[F, A] = {
+    def go: Stream[F, A] =
+      Stream.eval(queue.getSize).flatMap { size =>
+        if (size == 0) Stream.empty
+        else Stream.eval(queue.dequeue1 <* Timer[F].sleep(interval)) ++ go
+
       }
 
-    Stream.evals(pull)
+    go
   }
 
   def mkMessage[F[_]: Logging, A](a: A): Message[F, A] = {
@@ -146,7 +173,9 @@ object Retries {
   }
 
   /**
-   * Add a failure into failure queue
+   * Add a failure into (or remove from if attempts exceeded) failure queue
+   * Amount of taken attempts come from the state (i.e. control.incrementAttempt sets it)
+   *
    * @return true if the folder has been added or false if folder has been dropped
    *         (too many attempts to load or too many stored failures)
    */
@@ -155,14 +184,14 @@ object Retries {
       state.modify { original =>
         if (original.failures.size >= config.size) (original, false)
         else original.failures.get(base) match {
-          case Some(existing) if existing.attempts >= config.maxAttempts =>
-            val failures = original.failures + (base -> existing.update(error, now))
+          case Some(existing) if existing.attempts < config.maxAttempts =>
+            val failures = original.failures + (base -> existing.update(error, now, original.attempts))
             (original.copy(failures = failures), true)
           case Some(_) =>
             val failures = original.failures - base
             (original.copy(failures = failures), false)
           case None if Retry.isWorth(error) =>
-            val failures = original.failures + (base -> Retries.LoadFailure(error, 0, now, now))
+            val failures = original.failures + (base -> Retries.LoadFailure(error, original.attempts, now, now))
             (original.copy(failures = failures), true)
           case None =>
             (original, false)
@@ -171,19 +200,19 @@ object Retries {
     }
 
   def readShreddingComplete[F[_]: AWS: MonadThrow](folder: S3.Folder): F[LoaderMessage.ShreddingComplete] = {
-    val fullPath = folder.withKey("shredding_complete.json")
+    val fullPath = folder.withKey(FolderMonitoring.ShreddingComplete)
     AWS[F]
       .readKey(fullPath)
       .flatMap {
-        case Some(content) =>
+        case Right(content) =>
           LoaderMessage.fromString(content) match {
             case Right(message: LoaderMessage.ShreddingComplete) =>
               MonadThrow[F].pure(message)
             case Left(error) =>
               MonadThrow[F].raiseError[LoaderMessage.ShreddingComplete](new RuntimeException(error))
           }
-        case None =>
-          MonadThrow[F].raiseError(new RuntimeException(s"S3 Key $fullPath could not be found or read"))
+        case Left(error) =>
+          MonadThrow[F].raiseError(error)
       }
   }
 }

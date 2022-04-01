@@ -31,13 +31,16 @@ sealed trait StorageTarget extends Product with Serializable {
   def host: String
   def database: String
   def schema: String
-  def port: Int
   def username: String
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def shreddedTable(tableName: String): String =
     s"$schema.$tableName"
+
+  def driver: String
+  def connectionUrl: String
+  def properties: Properties
 }
 
 object StorageTarget {
@@ -68,8 +71,81 @@ object StorageTarget {
                             username: String,
                             password: PasswordConfig,
                             maxError: Int,
-                            sshTunnel: Option[TunnelConfig])
-    extends StorageTarget
+                            sshTunnel: Option[TunnelConfig]) extends StorageTarget {
+    def driver: String = "com.amazon.redshift.jdbc42.Driver"
+
+    def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
+
+    def properties: Properties = {
+      val props = new Properties()
+      jdbc.validation match {
+        case Right(updaters) =>
+          updaters.foreach(f => f(props))
+        case Left(error) =>
+          throw new IllegalStateException(s"Redshift JDBC properties are invalid. ${error.message}")
+      }
+      props
+    }
+  }
+
+  final case class Snowflake(snowflakeRegion: String,
+                             username: String,
+                             role: Option[String],
+                             password: PasswordConfig,
+                             account: String,
+                             warehouse: String,
+                             database: String,
+                             schema: String,
+                             transformedStage: String,
+                             appName: String,
+                             folderMonitoringStage: Option[String],
+                             maxError: Option[Int],
+                             jdbcHost: Option[String]) extends StorageTarget {
+    def connectionUrl: String = s"jdbc:snowflake://$host"
+
+    def sshTunnel: Option[TunnelConfig] = None
+
+    def properties: Properties = {
+      val props: Properties = new Properties()
+      props.put("account", account)
+      props.put("warehouse", warehouse)
+      props.put("db", database)
+      props.put("schema", schema)
+      props.put("application", appName)
+      role.foreach(r => props.put("role", r))
+      props
+    }
+
+    def driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
+
+    def host: String = {
+      // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
+      val AwsUsWest2Region = "us-west-2"
+      // A list of AWS region names for which the Snowflake account name doesn't have the `aws` segment
+      val AwsRegionsWithoutSegment = List("us-east-1", "eu-west-1", "eu-central-1", "ap-southeast-1", "ap-southeast-2")
+      // A list of AWS region names for which the Snowflake account name requires the `aws` segment
+      val AwsRegionsWithSegment =
+        List("us-east-2", "us-east-1-gov", "ca-central-1", "eu-west-2", "ap-northeast-1", "ap-south-1")
+      val GcpRegions = List("us-central1", "europe-west2", "europe-west4")
+      //val AzureRegions = List("west-us-2", "central-us", "east-us-2", "us-gov-virginia", "canada-central", "west-europe", "switzerland-north", "southeast-asia", "australia-east")
+
+      // Host corresponds to Snowflake full account name which might include cloud platform and region
+      // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
+      jdbcHost match {
+        case Some(overrideHost) => overrideHost
+        case None =>
+          if (snowflakeRegion == AwsUsWest2Region)
+            s"${account}.snowflakecomputing.com"
+          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion))
+            s"${account}.${snowflakeRegion}.snowflakecomputing.com"
+          else if (AwsRegionsWithSegment.contains(snowflakeRegion))
+            s"${account}.${snowflakeRegion}.aws.snowflakecomputing.com"
+          else if (GcpRegions.contains(snowflakeRegion))
+            s"${account}.${snowflakeRegion}.gcp.snowflakecomputing.com"
+          else s"${account}.${snowflakeRegion}.azure.snowflakecomputing.com"
+      }
+    }
+  }
 
   /**
     * All possible JDBC according to Redshift documentation, except deprecated
@@ -176,13 +252,16 @@ object StorageTarget {
     */
   final case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
 
-  implicit def redsfhitConfigDecoder: Decoder[Redshift] =
+  implicit def redshiftConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]
+
+  implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
+    deriveDecoder[Snowflake]
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     deriveDecoder[EncryptedConfig]
 
-  implicit def tunnerConfigDecoder: Decoder[TunnelConfig] =
+  implicit def tunnelConfigDecoder: Decoder[TunnelConfig] =
     deriveDecoder[TunnelConfig]
 
   implicit def bastionConfigDecoder: Decoder[BastionConfig] =
@@ -200,6 +279,8 @@ object StorageTarget {
       typeCur.as[String] match {
         case Right("redshift") =>
           cur.as[Redshift]
+        case Right("snowflake") =>
+          cur.as[Snowflake]
         case Right(other) =>
           Left(DecodingFailure(s"Storage target of type $other is not supported yet", typeCur.history))
         case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
