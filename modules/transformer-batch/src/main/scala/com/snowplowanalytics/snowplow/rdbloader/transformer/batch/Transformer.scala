@@ -15,11 +15,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
+import cats.implicits._
 
 import io.circe.Json
 
 // Spark
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.LongAccumulator
 
@@ -30,13 +32,15 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
+
 import com.snowplowanalytics.snowplow.rdbloader.common._
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.{TimestampsAccumulator, TypesAccumulator, Sink}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton._
 
 /**
@@ -49,7 +53,8 @@ sealed trait Transformer[T] extends Product with Serializable {
   def typesAccumulator: TypesAccumulator[T]
   def timestampsAccumulator: TimestampsAccumulator
   def typesInfo: TypesInfo
-  def sink(sc: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: String): Unit
+  def sink(sc: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit
+  def register(sc: SparkContext): Unit
 }
 
 object Transformer {
@@ -81,17 +86,22 @@ object Transformer {
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.Shredded.Json(false, vendor, name, model), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.Shredded.Json(false, vendor, name, model, data)
     }
 
     def typesInfo: TypesInfo = TypesInfo.Shredded(typesAccumulator.value.toList)
 
-    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: String): Unit =
+    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit =
       Sink.writeShredded(spark, compression, transformed.flatMap(_.shredded), outFolder)
+
+    def register(sc: SparkContext): Unit = {
+      sc.register(typesAccumulator)
+      sc.register(timestampsAccumulator)
+    }
   }
 
-  case class WideRowTransformer(wideRowFormat: TransformerConfig.Formats.WideRow) extends Transformer[TypesInfo.WideRow.Type] {
+  case class WideRowJsonTransformer() extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
@@ -103,18 +113,88 @@ object Transformer {
     }
 
     def badTransform(badRow: BadRow): Transformed = {
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.WideRow(false), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.WideRow(false, data)
     }
 
     def typesInfo: TypesInfo = {
-      val fileFormat = wideRowFormat match {
-        case TransformerConfig.Formats.WideRow.JSON => TypesInfo.WideRow.WideRowFormat.JSON
-      }
-      TypesInfo.WideRow(fileFormat, typesAccumulator.value.toList)
+      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, typesAccumulator.value.toList)
     }
 
-    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: String): Unit =
+    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit =
       Sink.writeWideRowed(spark, compression, transformed.flatMap(_.wideRow), outFolder)
+
+    def register(sc: SparkContext): Unit = {
+      sc.register(typesAccumulator)
+      sc.register(timestampsAccumulator)
+    }
+  }
+
+  case class WideRowParquetTransformer(igluConfig: Json,
+                                       atomicLengths: Map[String, Int],
+                                       wideRowTypes: List[TypesInfo.WideRow.Type]) extends Transformer[TypesInfo.WideRow.Type] {
+    val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
+    val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
+
+    def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
+      SparkData.parquetEvent[Id](IgluSingleton.get(igluConfig).resolver, atomicLengths, wideRowTypes, ShredJob.BadRowsProcessor)(event) match {
+        case Right(transformed) =>
+          TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.wideRowTypeConverter)(event.inventory)
+          timestampsAccumulator.add(event)
+          eventsCounter.add(1L)
+          List(transformed)
+        case Left(badRow) =>
+          List(badTransform(badRow))
+      }
+
+    def badTransform(badRow: BadRow): Transformed = {
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.WideRow(false, data)
+    }
+
+    def typesInfo: TypesInfo = {
+      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, typesAccumulator.value.toList)
+    }
+
+    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit = {
+      val schema = SparkSchema.build[Id](IgluSingleton.get(igluConfig).resolver, wideRowTypes) match {
+        case Right(s) => s
+        case Left(err) => throw new RuntimeException(s"Error while building spark schema: $err")
+      }
+      // If it is not cached, events will be processed two times since
+      // data is output in both wide row json and parquet format.
+      val transformedCache = transformed.cache()
+      Sink.writeWideRowed(spark, compression, transformedCache.flatMap(_.wideRow), outFolder)
+      Sink.writeParquet(spark, schema, transformedCache.flatMap(_.parquet), outFolder.append("output=good"))
+    }
+
+    def register(sc: SparkContext): Unit = {
+      sc.register(typesAccumulator)
+      sc.register(timestampsAccumulator)
+    }
+  }
+
+  type WideRowTuple = (String, String)
+  type ShreddedTuple = (String, String, String, String, Int, String)
+
+  private implicit class TransformedOps(t: Transformed) {
+    def wideRow: Option[WideRowTuple] = t match {
+      case p: Transformed.WideRow =>
+        val outputType = if (p.good) "good" else "bad"
+        (outputType, p.data.value).some
+      case _ => None
+    }
+
+    def shredded: Option[ShreddedTuple] = t match {
+      case p: Transformed.Shredded =>
+        val outputType = if (p.isGood) "good" else "bad"
+        (outputType, p.vendor, p.name, p.format.path, p.model, p.data.value).some
+      case _ => None
+    }
+
+    def parquet: Option[List[Any]] = t match {
+      case p: Transformed.Parquet => p.data.value.some
+      case _ => None
+    }
   }
 }
