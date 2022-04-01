@@ -1,3 +1,17 @@
+Version 3.0.0 (2022-04-01)
+--------------------------
+RDB Loader: add Snowflake support (#792)
+RDB Loader: support loading wide row (#791)
+RDB Loader: extract redshift loader into a separate module (#790)
+RDB Loader: modularize configuration to support multiple destinations (#789)
+Batch Shredder: add invalid timestamp check (#652)
+Batch Shredder: transform events to wide row (#649)
+Stream Shredder: add invalid timestamp check (#659)
+Stream Shredder: transform events to wide row (#650)
+Common: rename shredders to transformers (#793)
+Transformer Batch: make it possible to disable spark caching via config (#808)
+Transformer Batch: remove event validation (#805)
+
 Version 2.2.0 (2022-02-24)
 --------------------------
 RDB Loader: stop consuming SQS messages when Loader is busy (#746)
