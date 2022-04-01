@@ -43,7 +43,7 @@ object Dependencies {
     val schemaDdl        = "0.14.3"
     val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
 
-    val slf4j            = "1.7.32"
+    val slf4j            = "1.7.36"
     val redshiftJdbc     = "1.2.55.1083"
     val snowflakeJdbc    = "3.13.5"
     val enumeratum       = "1.7.0"
