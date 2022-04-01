@@ -43,7 +43,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Discovery.MessageProcessor
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.{TypesAccumulator, TimestampsAccumulator}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.TypesAccumulator
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, DuplicateStorageSingleton}
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
@@ -58,14 +58,6 @@ class ShredJob[T](@transient val spark: SparkSession,
                   config: TransformerConfig.Batch) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
-  // Accumulator to track iglu entities
-  val typesAccumulator: TypesAccumulator[T] = transformer.typesAccumulator
-  sc.register(typesAccumulator)
-
-  // Accumulator to track min and max timestamps
-  val timestampsAccumulator: TimestampsAccumulator = transformer.timestampsAccumulator
-  sc.register(timestampsAccumulator)
-
   /**
    * Runs the shred job by:
    *  - shredding the Snowplow enriched events
@@ -78,7 +70,7 @@ class ShredJob[T](@transient val spark: SparkSession,
     val jobStarted: Instant = Instant.now()
     val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
     val outFolder: S3.Folder = S3.Folder.coerce(config.output.path.toString).append(folderName)
-
+    transformer.register(sc)
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
       .map { line =>
@@ -151,10 +143,32 @@ class ShredJob[T](@transient val spark: SparkSession,
     // Final output
     transformer.sink(spark, config.output.compression, transformed, outFolder)
 
-    val batchTimestamps = timestampsAccumulator.value
+    val batchTimestamps = transformer.timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
     LoaderMessage.ShreddingComplete(outFolder, transformer.typesInfo, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
+  }
+}
+
+class TypeAccumJob(@transient val spark: SparkSession,
+                   config: TransformerConfig.Batch) extends Serializable {
+  @transient private val sc: SparkContext = spark.sparkContext
+
+  def run(folderName: String): List[TypesInfo.WideRow.Type] = {
+    val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
+    sc.textFile(inputFolder)
+      .map { line =>
+        for {
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
+        } yield event
+      }
+      .flatMap {
+        case Right(event) =>
+          event.inventory.map(TypesAccumulator.wideRowTypeConverter)
+        case Left(_) =>
+          List.empty
+      }.distinct().collect().toList
   }
 }
 
@@ -200,7 +214,10 @@ object ShredJob {
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
         case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
-        case f: TransformerConfig.Formats.WideRow => Transformer.WideRowTransformer(f)
+        case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
+        case TransformerConfig.Formats.WideRow.PARQUET =>
+          val wideRowTypes = (new TypeAccumJob(spark, config)).run(folder.folderName)
+          Transformer.WideRowParquetTransformer(igluConfig, atomicLengths, wideRowTypes)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)

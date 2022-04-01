@@ -151,6 +151,7 @@ object TransformerConfig {
 
     object WideRow {
       final case object JSON extends WideRow
+      final case object PARQUET extends WideRow
     }
 
     final case class Shred(default: LoaderMessage.TypesInfo.Shredded.ShreddedFormat,
@@ -320,6 +321,8 @@ object TransformerConfig {
         fileFormatCur.as[String].map(_.toLowerCase) match {
           case Right("json") =>
             Right(Formats.WideRow.JSON)
+          case Right("parquet") =>
+            Right(Formats.WideRow.PARQUET)
           case Right(other) =>
             Left(DecodingFailure(s"Widerow file format type $other is not supported yet. Supported types: 'json'", fileFormatCur.history))
           case Left(DecodingFailure(_, List(CursorOp.DownField("fileFormat")))) =>

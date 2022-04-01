@@ -126,12 +126,12 @@ object Processing {
             s3.getSink[F](bucket, prefix, config.compression, sinkCount, instanceId) _
           case _ =>
             val error = new IllegalArgumentException(s"Cannot create sink for $path. Possible options are file:// and s3://")
-            (_: Window) => (_: Transformed.Path) =>
+            (_: Window) => (_: SinkPath) =>
               (_: Stream[F, Transformed.Data]) =>
                 Stream.raiseError[F](error)
         }
 
-        Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
+        Partitioned.write[F, Window, SinkPath, Transformed.Data](dataSink, onComplete)
     }
 
   def attemptTransform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
@@ -147,7 +147,7 @@ object Processing {
     }
   }
 
-  def handleTransformResult[F[_]](transformer: Transformer[F]): Pipe[F, Windowed[F, TransformationResult], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
+  def handleTransformResult[F[_]](transformer: Transformer[F]): Pipe[F, Windowed[F, TransformationResult], Windowed[F, (SinkPath, Transformed.Data)]] = {
     _.flatMap { record =>
       record.map(_.leftMap(transformer.badTransform)) match {
         case Record.Data(window, checkpoint, Right(shredded)) =>
@@ -155,8 +155,23 @@ object Processing {
         case Record.Data(window, checkpoint, Left(badRow)) =>
           Stream.emit(Record.Data(window, checkpoint, badRow.split))
         case Record.EndWindow(window, next, checkpoint) =>
-          Stream.emit(Record.EndWindow[F, Window, (Transformed.Path, Transformed.Data)](window, next, checkpoint))
+          Stream.emit(Record.EndWindow[F, Window, (SinkPath, Transformed.Data)](window, next, checkpoint))
       }
     }
+  }
+
+  implicit class TransformedOps(t: Transformed) {
+    def getPath: SinkPath = {
+      val path = t match {
+        case p: Transformed.Shredded =>
+          val init = if (p.isGood) "output=good" else "output=bad"
+          s"$init/vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/"
+        case p: Transformed.WideRow =>
+          if (p.good) "output=good/" else "output=bad/"
+        case _: Transformed.Parquet => "output=good/"
+      }
+      SinkPath(path)
+    }
+    def split: (SinkPath, Transformed.Data) = (getPath, t.data)
   }
 }
