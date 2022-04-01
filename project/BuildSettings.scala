@@ -77,6 +77,7 @@ object BuildSettings {
       case PathList("buildinfo", _) => MergeStrategy.first
       case x if x.contains("javax") => MergeStrategy.first
       case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case x if x.endsWith("public-suffix-list.txt") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
@@ -84,7 +85,7 @@ object BuildSettings {
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
-  lazy val shredderAssemblySettings = Seq(
+  lazy val transformerAssemblySettings = Seq(
     jarName,
     // Drop these jars
     assembly / assemblyExcludedJars := {

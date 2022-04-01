@@ -30,6 +30,7 @@ object LoaderError {
     case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
     case l: StorageTargetError => s"Database error: ${l.message}"
     case l: RuntimeError => s"Internal Exception ${l.message}"
+    case t: TimeoutError => t.message
   }
 
   /**
@@ -56,4 +57,7 @@ object LoaderError {
 
   /** Error happened during DDL-statements execution. Critical */
   final case class MigrationError(message: String) extends LoaderError
+
+  /** A timeout has reached, Loader should abort the current operation and recover */
+  final case class TimeoutError(message: String) extends LoaderError
 }

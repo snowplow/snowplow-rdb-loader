@@ -27,14 +27,14 @@ object ShredderCliConfig {
 
   case class Batch(igluConfig: Json,
                    duplicateStorageConfig: Option[Json],
-                   config: ShredderConfig.Batch)
+                   config: TransformerConfig.Batch)
   object Batch {
     val duplicateStorageConfig = Opts.option[String]("duplicate-storage-config",
       "Base64-encoded Events Manifest JSON config",
       metavar = "<base64>").mapValidated(ConfigUtils.Base64Json.decode).orNone
     val batchConfig = Opts.option[String]("config",
       "base64-encoded config HOCON", "c", "config.hocon")
-      .mapValidated(x => ConfigUtils.base64decode(x).flatMap(ShredderConfig.Batch.fromString).toValidatedNel)
+      .mapValidated(x => ConfigUtils.base64decode(x).flatMap(TransformerConfig.Batch.fromString).toValidatedNel)
     val batchShredderConfig = (igluConfig, duplicateStorageConfig, batchConfig).mapN {
       (iglu, dupeStorage, target) => Batch(iglu, dupeStorage, target)
     }
@@ -44,7 +44,7 @@ object ShredderCliConfig {
       command(name, description).parse(args).leftMap(_.toString())
   }
 
-  case class Stream(igluConfig: Json, config: ShredderConfig.Stream)
+  case class Stream(igluConfig: Json, config: TransformerConfig.Stream)
   object Stream {
     case class RawStreamConfig(igluConfig: Json, config: String)
     val streamConfig = Opts.option[String]("config",
@@ -58,7 +58,7 @@ object ShredderCliConfig {
     def loadConfigFrom[F[_]: Sync](name: String, description: String)(args: Seq[String]): EitherT[F, String, Stream] =
       for {
         raw  <- EitherT.fromEither[F](command(name, description).parse(args).leftMap(_.toString()))
-        conf <- ShredderConfig.Stream.fromString[F](raw.config)
+        conf <- TransformerConfig.Stream.fromString[F](raw.config)
       } yield Stream(raw.igluConfig, conf)
   }
 

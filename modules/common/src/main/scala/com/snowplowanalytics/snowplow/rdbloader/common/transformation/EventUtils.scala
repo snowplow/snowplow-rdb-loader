@@ -43,19 +43,13 @@ object EventUtils {
 
   /**
    * Pipeline the loading of raw lines into shredded JSONs.
-   * @param client The Iglu resolver used for schema lookups
+   * @param processor an application doing the transformation
    * @param line The incoming raw line (hopefully holding a Snowplow enriched event)
    * @return a Validation boxing either a Nel of ProcessingMessages on Failure,
    *         or a (possibly empty) List of JSON instances + schema on Success
    */
-  def loadAndShred[F[_]: Clock: RegistryLookup: Monad](client: Client[F, Json], processor: Processor, line: String): F[Either[BadRow, Event]] = {
-    val result = for {
-      event <- EitherT.fromEither[F](Event.parse(line).toEither.leftMap(parsingBadRow(line, processor)))
-      _     <- EitherT(EventUtils.validateEntities(processor, client, event))
-    } yield event
-
-    result.value
-  }
+  def parseEvent[F[_]: Clock: RegistryLookup: Monad](processor: Processor, line: String): F[Either[BadRow, Event]] =
+    Monad[F].pure(Event.parse(line).toEither.leftMap(parsingBadRow(line, processor)))
 
   /** Build a map of columnName -> maxLength, according to `schema`. Non-string values are not present in the map */
   def getAtomicLengths[F[_]: Clock: RegistryLookup: Monad](resolver: Resolver[F]): F[Either[RuntimeException, Map[String, Int]]] = {
