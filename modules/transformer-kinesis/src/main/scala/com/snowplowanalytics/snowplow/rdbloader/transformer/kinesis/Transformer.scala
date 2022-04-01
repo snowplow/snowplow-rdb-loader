@@ -56,8 +56,8 @@ object Transformer {
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.Shredded.Json(false, vendor, name, model), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.Shredded.Json(false, vendor, name, model, data)
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
@@ -74,8 +74,8 @@ object Transformer {
       EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(event)))
 
     def badTransform(badRow: BadRow): Transformed = {
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.WideRow(false), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.WideRow(false, data)
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
@@ -85,6 +85,7 @@ object Transformer {
       }
       val fileFormat = format match {
         case Formats.WideRow.JSON => TypesInfo.WideRow.WideRowFormat.JSON
+        case Formats.WideRow.PARQUET => TypesInfo.WideRow.WideRowFormat.PARQUET
       }
       TypesInfo.WideRow(fileFormat, wrapped.toList)
     }

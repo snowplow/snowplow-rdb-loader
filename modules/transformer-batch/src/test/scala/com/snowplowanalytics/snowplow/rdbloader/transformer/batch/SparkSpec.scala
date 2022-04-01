@@ -15,10 +15,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 // Spark
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.Serialization
-
-import org.apache.spark.SparkConf
-import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 
 /**
@@ -28,13 +24,14 @@ import org.apache.spark.sql.SparkSession
 trait SparkSpec extends BeforeAfterAll {
   def appName: String
 
-  // local[1] means the tests will run locally on one thread
-  val conf = new SparkConf()
-    .setMaster("local[1]")
-    .setAppName(appName)
-    .set("spark.serializer", classOf[KryoSerializer].getName())
+  val conf = Main.sparkConfig
     .set("spark.kryo.registrationRequired", "true")
-    .registerKryoClasses(Serialization.classesToRegister)
+    // TimeZone settings is added since we are reading parquet
+    // data in tests and we want timestamps to be in UTC format.
+    // We don't need to set it in production version since parquet file
+    // isn't read in there.
+    .set("spark.sql.session.timeZone", "UTC")
+
   var spark: SparkSession =
     SparkSession.builder()
       .config(conf)

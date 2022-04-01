@@ -39,23 +39,23 @@ object s3 {
       store <- S3Store[F](client)
     } yield store
 
-  def getPath(bucket: String, prefix: String, window: Window, path: Transformed.Path, instanceId: String, extension: String, sinkId: Int): S3Path = {
+  def getPath(bucket: String, prefix: String, window: Window, path: SinkPath, instanceId: String, extension: String, sinkId: Int): S3Path = {
     val prefixClean = if (prefix.endsWith("/")) prefix else prefix ++ "/"
-    S3Path(bucket, prefixClean ++ window.getDir ++ "/" ++ path.getDir ++ s"sink-$instanceId-${prep(sinkId)}.$extension", None)
+    S3Path(bucket, prefixClean ++ window.getDir ++ "/" ++ path.value ++ s"sink-$instanceId-${prep(sinkId)}.$extension", None)
   }
 
   def getSink[F[_]: ConcurrentEffect](
-    store: Store[F],
-    bucket: String,
-    prefix: String,
-    compression: Compression,
-    getSinkId: Window => F[Int],
-    instanceId: String
-  )(
-    window: Window
-  )(
-    path: Transformed.Path
-  ): Pipe[F, Transformed.Data, Unit] = {
+                                       store: Store[F],
+                                       bucket: String,
+                                       prefix: String,
+                                       compression: Compression,
+                                       getSinkId: Window => F[Int],
+                                       instanceId: String
+                                     )(
+                                       window: Window
+                                     )(
+                                       path: SinkPath
+                                     ): Pipe[F, Transformed.Data, Unit] = {
     val (finalPipe, extension) = compression match {
       case Compression.None => (identity[Stream[F, Byte]] _, "txt")
       case Compression.Gzip => (gzip(), "txt.gz")
@@ -63,7 +63,7 @@ object s3 {
 
     in =>
       Stream.eval(getSinkId(window)).flatMap { sinkId =>
-        in.map(_.value)
+        in.mapFilter(_.str)
           .intersperse("\n")
           .through(utf8Encode[F])
           .through(finalPipe)
@@ -75,11 +75,11 @@ object s3 {
     "0".repeat(4 - s.toString.length) ++ s.toString
 
   def writeFile[F[_]: ConcurrentEffect](
-    store: Store[F],
-    bucket: String,
-    key: String,
-    content: String
-  ): F[Unit] = {
+                                         store: Store[F],
+                                         bucket: String,
+                                         key: String,
+                                         content: String
+                                       ): F[Unit] = {
     val s3Path = S3Path(bucket, key, None)
     val pipe = store.put(s3Path)
     val bytes = Stream.emits[F, Byte](content.getBytes)

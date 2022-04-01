@@ -31,6 +31,7 @@ object Main {
     .setAppName(getClass.getSimpleName)
     .setIfMissing("spark.master", "local[*]")
     .set("spark.serializer", classOf[KryoSerializer].getName)
+    .set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
     .registerKryoClasses(Serialization.classesToRegister)
 
   def main(args: Array[String]): Unit = {
