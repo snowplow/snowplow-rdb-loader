@@ -9,13 +9,13 @@ import cats.kernel.Monoid
 import cats.implicits._
 
 import cats.effect.Sync
-import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Status, Record}
+import cats.effect.Ref
 
 case class State(total: Long,
                  bad: Long,

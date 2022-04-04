@@ -16,7 +16,7 @@ import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
+import cats.effect.{Async, Resource, ConcurrentEffect, Sync, Effect}
 
 import doobie._
 import doobie.implicits._
@@ -25,6 +25,7 @@ import doobie.util.transactor.Strategy
 import doobie.hikari._
 
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import cats.effect.Temporal
 
 
 /**
@@ -84,7 +85,7 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: Async: ContextShift: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transactor[F]] =
+  def buildPool[F[_]: Async: ContextShift: Temporal: AWS](target: StorageTarget): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
       password <- target.password match {
@@ -107,7 +108,7 @@ object Transaction {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
+  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Temporal: AWS](target: StorageTarget): Resource[F, Transaction[F, ConnectionIO]] =
     buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
 
   /**

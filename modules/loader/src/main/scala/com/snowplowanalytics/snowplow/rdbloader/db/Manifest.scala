@@ -5,7 +5,6 @@ import java.time.Instant
 import cats.{Functor, Monad, MonadError}
 import cats.implicits._
 
-import cats.effect.{MonadThrow, Timer}
 
 import doobie.Read
 import doobie.implicits.javasql._
@@ -14,6 +13,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, AWS, Transaction, Logging}
+import cats.MonadThrow
+import cats.effect.Temporal
 
 object Manifest {
 
@@ -31,7 +32,7 @@ object Manifest {
     "shredded_cardinality"
   )
 
-  def initialize[F[_]: MonadThrow: Logging: Timer: AWS, C[_]: DAO: Monad](target: StorageTarget)
+  def initialize[F[_]: MonadThrow: Logging: Temporal: AWS, C[_]: DAO: Monad](target: StorageTarget)
                                                                          (implicit F: Transaction[F, C]): F[Unit] = {
     F.transact(setup[C](target.schema)).attempt.flatMap {
       case Right(InitStatus.Created) =>

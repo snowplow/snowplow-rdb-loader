@@ -14,10 +14,11 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import scala.concurrent.duration.FiniteDuration
 
-import cats.effect.{Timer, Clock}
+import cats.effect.Clock
+import cats.effect.Temporal
 
 object PureTimer {
-  def interpreter: Timer[Pure] = new Timer[Pure] {
+  def interpreter: Temporal[Pure] = new Temporal[Pure] {
     def clock: Clock[Pure] =
       PureClock.interpreter
     def sleep(duration: FiniteDuration): Pure[Unit] =

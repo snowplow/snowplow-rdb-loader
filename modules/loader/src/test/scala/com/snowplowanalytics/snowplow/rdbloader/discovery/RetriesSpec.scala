@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.concurrent.duration._
 
-import cats.effect.{ IO, Clock, ContextShift }
+import cats.effect.{ IO, Clock }
 
 import fs2.concurrent.InspectableQueue
 

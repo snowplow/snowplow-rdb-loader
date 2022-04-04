@@ -25,11 +25,12 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import cats.effect.Temporal
 
 /** Generic starting point for all loaders */
 object Runner {
 
-  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](argv: List[String], buildStatements: BuildTarget): F[ExitCode] = {
+  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Temporal: Parallel](argv: List[String], buildStatements: BuildTarget): F[ExitCode] = {
     val result = for {
       parsed <- CliConfig.parse[F](argv)
       statements <- EitherT.fromEither[F](buildStatements(parsed.config))

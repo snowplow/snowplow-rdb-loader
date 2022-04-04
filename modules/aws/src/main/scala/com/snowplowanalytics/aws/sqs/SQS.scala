@@ -15,13 +15,14 @@ package com.snowplowanalytics.aws.sqs
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
 
-import cats.effect.{Timer, Resource, Sync, Concurrent}
+import cats.effect.{Resource, Sync, Concurrent}
 import cats.implicits._
 
 import fs2.Stream
 
 import software.amazon.awssdk.services.sqs.{SqsClient, SqsClientBuilder}
 import software.amazon.awssdk.services.sqs.model.{GetQueueUrlRequest, DeleteMessageRequest, SendMessageRequest, Message, ReceiveMessageRequest, ChangeMessageVisibilityRequest}
+import cats.effect.Temporal
 
 object SQS {
 
@@ -31,7 +32,7 @@ object SQS {
   def mkClientBuilder[F[_]: Concurrent](build: SqsClientBuilder => SqsClientBuilder): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient](build(SqsClient.builder()).build()))
 
-  def readQueue[F[_]: Timer: Concurrent](queueName: String, visibilityTimeout: Int, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  def readQueue[F[_]: Temporal: Concurrent](queueName: String, visibilityTimeout: Int, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest

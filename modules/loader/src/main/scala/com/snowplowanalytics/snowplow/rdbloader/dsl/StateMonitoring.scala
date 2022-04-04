@@ -19,13 +19,14 @@ import scala.concurrent.duration._
 import cats.Monad
 import cats.implicits._
 
-import cats.effect.{ Timer, Concurrent, Resource }
+import cats.effect.{ Concurrent, Resource }
 import cats.effect.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import cats.effect.Temporal
 
 object StateMonitoring {
 
@@ -46,7 +47,7 @@ object StateMonitoring {
    *  if loading has stuck in unexpected state. It results into timeout exception
    *  that could be caught and recovered from downstream
    */
-  def inBackground[F[_]: Concurrent: Timer: Logging](timeouts: Config.Timeouts,
+  def inBackground[F[_]: Concurrent: Temporal: Logging](timeouts: Config.Timeouts,
                                                      getState: F[State],
                                                      busy: Resource[F, Unit],
                                                      extend: FiniteDuration => F[Unit])
@@ -71,13 +72,13 @@ object StateMonitoring {
    * @return None if monitoring completed has stopped because of Idle state
    *         or some error message if it got stale
    */
-  def run[F[_]: Monad: Timer: Logging](timeouts: Config.Timeouts, globalState: F[State], extend: FiniteDuration => F[Unit]): F[Option[String]] = {
-    val getNow: F[Instant] = Timer[F].clock.instantNow
+  def run[F[_]: Monad: Temporal: Logging](timeouts: Config.Timeouts, globalState: F[State], extend: FiniteDuration => F[Unit]): F[Option[String]] = {
+    val getNow: F[Instant] = Temporal[F].clock.instantNow
     val extendPeriod: FiniteDuration = timeouts.sqsVisibility - ExtendAllowance
     val sleepPeriod: FiniteDuration = extendPeriod - SleepAllowance
 
     def go(n: Int, previous: Load.Status): F[Option[String]] =
-      (Timer[F].sleep(sleepPeriod) >> getNow).flatMap { now =>
+      (Temporal[F].sleep(sleepPeriod) >> getNow).flatMap { now =>
         globalState.flatMap { current =>
           val again = extend(extendPeriod) >> go(n + 1, current.loading)
           current.loading match {

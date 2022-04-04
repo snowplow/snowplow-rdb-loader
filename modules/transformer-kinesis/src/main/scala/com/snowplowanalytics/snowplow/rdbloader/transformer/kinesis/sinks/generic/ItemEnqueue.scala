@@ -4,13 +4,14 @@ import cats.Monad
 import cats.implicits._
 
 import cats.effect.{Concurrent, Sync}
-import cats.effect.concurrent.{Ref, MVar2, MVar}
+import cats.effect.concurrent.{MVar2, MVar}
 
 import fs2.{Stream, Pipe}
 import fs2.concurrent.{Queue, NoneTerminatedQueue}
 
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import cats.effect.Ref
 
 /**
  * Queue of elements `V`, associated with a pipe and lock

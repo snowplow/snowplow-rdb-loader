@@ -18,7 +18,7 @@ import cats.~>
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Clock, Resource, ConcurrentEffect, Sync}
 
 import io.circe._
 import io.circe.generic.semiauto._
@@ -40,6 +40,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
+import cats.effect.Temporal
 
 trait Monitoring[F[_]] { self =>
 
@@ -231,7 +232,7 @@ object Monitoring {
    * @param monitoring config.yml `monitoring` section
    * @return some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Temporal: Clock: Logging](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)

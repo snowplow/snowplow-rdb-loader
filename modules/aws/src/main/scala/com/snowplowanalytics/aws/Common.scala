@@ -2,7 +2,7 @@ package com.snowplowanalytics.aws
 
 import java.util.concurrent.{ CancellationException, CompletableFuture, CompletionException }
 
-import cats.effect.{Concurrent, ContextShift, ExitCase}
+import cats.effect.{Concurrent, ExitCase}
 import cats.effect.syntax.bracket._
 import cats.syntax.functor._
 
@@ -21,7 +21,7 @@ object Common {
    */
   def fromCompletableFuture[F[_]: Concurrent: ContextShift, A](fcs: F[CompletableFuture[A]]): F[A] =
     Concurrent[F].bracketCase(fcs) { cs =>
-      Concurrent[F].async[A] { cb =>
+      Concurrent[F].async_[A] { cb =>
         cs.handle[Unit] { (result, err) =>
           err match {
             case null => cb(Right(result))

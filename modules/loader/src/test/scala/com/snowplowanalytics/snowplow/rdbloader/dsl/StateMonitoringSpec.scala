@@ -17,8 +17,7 @@ import scala.concurrent.duration._
 
 import cats.implicits._
 
-import cats.effect.{ContextShift, Timer, IO, Resource }
-import cats.effect.concurrent.Ref
+import cats.effect.{IO, Resource }
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
@@ -31,6 +30,7 @@ import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.test.SyncLogging
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import cats.effect.{ Ref, Temporal }
 
 
 class StateMonitoringSpec extends Specification {
@@ -110,7 +110,7 @@ object StateMonitoringSpec {
       TestContext()
     implicit val CS: ContextShift[IO] =
       ec.ioContextShift
-    implicit val T: Timer[IO] =
+    implicit val T: Temporal[IO] =
       ec.ioTimer
 
     val result = for {
@@ -128,12 +128,12 @@ object StateMonitoringSpec {
     Await.result(future, 1.second)
   }
 
-  def checkInBackground(action: (State.Ref[IO], Timer[IO]) => IO[Unit]) = {
+  def checkInBackground(action: (State.Ref[IO], Temporal[IO]) => IO[Unit]) = {
     implicit val ec: TestContext =
       TestContext()
     implicit val CS: ContextShift[IO] =
       ec.ioContextShift
-    implicit val T: Timer[IO] =
+    implicit val T: Temporal[IO] =
       ec.ioTimer
 
     val result = for {

@@ -16,7 +16,7 @@ import java.time.Instant
 
 import scala.concurrent.duration._
 
-import cats.effect.{ IO, Timer }
+import cats.effect.IO
 
 import io.circe.syntax._
 
@@ -27,6 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Seve
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureTransaction, PureDAO, TestState, PureAWS, PureTimer, PureOps}
 
 import org.specs2.mutable.Specification
+import cats.effect.Temporal
 
 class FolderMonitoringSpec extends Specification {
   import FolderMonitoringSpec._
@@ -35,7 +36,7 @@ class FolderMonitoringSpec extends Specification {
     "return a single element returned by MINUS statement (shredding_complete doesn't exist)" in {
       implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
@@ -63,7 +64,7 @@ class FolderMonitoringSpec extends Specification {
     "return a single element returned by MINUS statement (shredding_complete does exist)" in {
       implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 

@@ -5,7 +5,7 @@ import java.nio.file.Paths
 import cats.Applicative
 import cats.syntax.either._
 
-import cats.effect.{Concurrent, Blocker, Sync, ContextShift}
+import cats.effect.{Concurrent, Sync}
 
 import fs2.Stream
 import fs2.io.file.{readAll, directoryStream}
@@ -22,7 +22,7 @@ object file {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def read[F[_]: Concurrent: ContextShift](blocker: Blocker, dirPath: String): Stream[F, ParsedF[F]] =
+  def read[F[_]: Concurrent: ContextShift](dirPath: String): Stream[F, ParsedF[F]] =
     directoryStream(blocker, Paths.get(dirPath))
       .flatMap { filePath =>
         Stream.eval_(logger.debug(s"Reading $filePath")) ++

@@ -18,7 +18,6 @@ import scala.concurrent.duration.FiniteDuration
 
 import cats.syntax.option._
 
-import cats.effect.Timer
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
 
@@ -36,6 +35,7 @@ import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
+import cats.effect.Temporal
 
 class LoadSpec extends Specification {
   import LoadSpec.{isBeforeFirstCommit, failCommit}
@@ -46,7 +46,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -72,7 +72,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
 
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build
@@ -94,7 +94,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
@@ -133,7 +133,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val timer: Temporal[Pure] = PureTimer.interpreter
 
       val expected = List(
         PureTransaction.NoTransactionMessage,   // Migration.build

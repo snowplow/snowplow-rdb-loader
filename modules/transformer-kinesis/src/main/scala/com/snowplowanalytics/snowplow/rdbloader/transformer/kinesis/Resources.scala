@@ -7,8 +7,7 @@ import scala.concurrent.duration._
 import cats.data.EitherT
 import cats.implicits._
 
-import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, Clock, Resource, Timer, Concurrent, Sync}
+import cats.effect.{Clock, Resource, Concurrent, Sync}
 
 import fs2.concurrent.SignallingRef
 
@@ -23,6 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.aws.AWSQueue
+import cats.effect.{ Ref, Temporal }
 
 case class Resources[F[_]](iglu: Client[F, Json],
                            atomicLengths: Map[String, Int],
@@ -37,7 +37,7 @@ object Resources {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json, queueConfig: QueueConfig): Resource[F, Resources[F]] = {
+  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Temporal](igluConfig: Json, queueConfig: QueueConfig): Resource[F, Resources[F]] = {
     val init = for {
       igluClient <- Client.parseDefault[F](igluConfig)
         .leftMap(e => new RuntimeException(s"Error while parsing Iglu config: ${e.getMessage()}"))
@@ -50,7 +50,7 @@ object Resources {
 
     for {
       (client, lengths) <- Resource.eval(client)
-      blocker <- Blocker[F]
+      blocker <- Resource.unit[F]
       state <- Resource.make(State.init[F]) { global =>
         global.get.flatMap { stack =>
           if (stack.isEmpty)
@@ -70,7 +70,7 @@ object Resources {
       halt <- Resource.make(SignallingRef(false)) { s =>
         logger[F].warn("Halting the source, sleeping for 5 seconds...") *>
           s.set(true) *>
-          Timer[F].sleep(5.seconds) *>
+          Temporal[F].sleep(5.seconds) *>
           logger[F].warn(s"Shutting down $instanceId instance")
       }
     } yield Resources(client, lengths, awsQueue, instanceId.toString, blocker, halt, state, sinks)

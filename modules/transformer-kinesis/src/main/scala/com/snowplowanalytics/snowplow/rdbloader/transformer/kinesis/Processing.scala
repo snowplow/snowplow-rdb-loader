@@ -5,7 +5,7 @@ import java.net.URI
 import cats.data.EitherT
 import cats.implicits._
 
-import cats.effect.{ContextShift, Blocker, Clock, Timer, ConcurrentEffect, Concurrent, Sync}
+import cats.effect.{Clock, ConcurrentEffect, Concurrent, Sync}
 
 import fs2.{Stream, Pipe}
 
@@ -29,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.Bu
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{Window, s3, file}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Record, Partitioned}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Sealed, Closed}
+import cats.effect.Temporal
 
 object Processing {
 
@@ -38,7 +39,7 @@ object Processing {
 
   type Windowed[F[_], A] = Record[F, Window, A]
 
-  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
+  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Temporal](resources: Resources[F],
                                                               config: TransformerConfig.Stream): F[Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
@@ -108,8 +109,7 @@ object Processing {
     }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker,
-                                                    instanceId: String,
+  def getSink[F[_]: ConcurrentEffect: ContextShift](instanceId: String,
                                                     config: TransformerConfig.Output,
                                                     sinkCount: Window => F[Int],
                                                     onComplete: Window => F[Unit]): Grouping[F] =
@@ -131,7 +131,7 @@ object Processing {
         Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
     }
 
-  def transform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
+  def transform[F[_]: Concurrent: Clock: Temporal](transformer: Transformer[F],
                                                 validations: TransformerConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
     _.flatMap { record =>
       val shreddedRecord = record.traverse { parsed =>
