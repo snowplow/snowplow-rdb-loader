@@ -87,7 +87,7 @@ object Databricks {
                 sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
               case Statement.EventsCopy(path, _) =>
                 val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
-                val frPath      = Fragment.const0(path)
+                val frPath      = Fragment.const0(s"$path/output=good")
                 sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
               case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
@@ -117,7 +117,7 @@ object Databricks {
                   message.timestamps.jobCompleted
                 )},
                       ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
-                      getdate(),
+                      current_timestamp(),
                       ${message.compression.asString}, ${message.processor.artifact}, ${message
                   .processor
                   .version}, ${message.count})"""
