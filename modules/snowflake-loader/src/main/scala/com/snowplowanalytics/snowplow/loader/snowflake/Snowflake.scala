@@ -55,13 +55,13 @@ object Snowflake {
             Block(Nil, Nil, entity)
           }
 
-          def extendTable(info: ShreddedType.Info): Block = {
+          def extendTable(info: ShreddedType.Info): Option[Block] = {
             val isContext = info.entity == SnowplowEntity.Context
             val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
             val columnName = info.getNameFull
             val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
             val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
-            Block(List(addColumn), Nil, Entity.Column(info))
+            Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =

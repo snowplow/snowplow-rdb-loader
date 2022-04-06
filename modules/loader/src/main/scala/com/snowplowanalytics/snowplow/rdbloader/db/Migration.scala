@@ -189,7 +189,7 @@ object Migration {
 
         Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(target.createTable(schemas).some))
       case Description.WideRow(info) =>
-        Monad[F].pure(target.extendTable(info).some)
+        Monad[F].pure(target.extendTable(info))
       case Description.NoMigration =>
         Monad[F].pure(none[Block])
     }
@@ -213,52 +213,45 @@ object Migration {
   }
 
   def fromBlocks[F[_] : Monad : DAO : Logging](blocks: List[Block]): F[Migration[F]] =
-    try {
-      // hack to avoid exposing StorageTarget to this class.
-      // read as `if ( StoageTarget == Databricks) then do nothing`
-      Monad[F].pure(Class.forName("com.simba.spark.jdbc.Driver", false, getClass.getClassLoader)).void.as(Migration.empty[F])
-    } catch {
-      case _: Throwable =>
-        getPredicate[F](blocks).map { shouldAdd =>
-          blocks.foldLeft(Migration.empty[F]) {
-            case (migration, block) if block.isEmpty =>
-              val action =  DAO[F].executeUpdate(block.getCommentOn) *> Logging[F].warning(s"Empty migration for ${block.getName}")
-              migration.addPreTransaction(action)
+    getPredicate[F](blocks).map { shouldAdd =>
+      blocks.foldLeft(Migration.empty[F]) {
+        case (migration, block) if block.isEmpty =>
+          val action =  DAO[F].executeUpdate(block.getCommentOn) *> Logging[F].warning(s"Empty migration for ${block.getName}")
+          migration.addPreTransaction(action)
 
-            case (migration, b@Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>
-              val preAction = preMigration[F](shouldAdd, entity, pre)
-              val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
-                in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
-                DAO[F].executeUpdate(b.getCommentOn) *>
-                Logging[F].info(s"${b.getName} migration completed")
-              migration.addPreTransaction(preAction).addInTransaction(inAction)
+        case (migration, b@Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>
+          val preAction = preMigration[F](shouldAdd, entity, pre)
+          val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
+            in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
+            DAO[F].executeUpdate(b.getCommentOn) *>
+            Logging[F].info(s"${b.getName} migration completed")
+          migration.addPreTransaction(preAction).addInTransaction(inAction)
 
-            case (migration, b@Block(Nil, in, target)) if b.isCreation =>
-              val inAction = Logging[F].info(s"Creating ${b.getName} table for ${target.getInfo.toSchemaUri}") *>
-                in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
-                DAO[F].executeUpdate(b.getCommentOn) *>
-                Logging[F].info("Table created")
-              migration.addInTransaction(inAction)
+        case (migration, b@Block(Nil, in, target)) if b.isCreation =>
+          val inAction = Logging[F].info(s"Creating ${b.getName} table for ${target.getInfo.toSchemaUri}") *>
+            in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
+            DAO[F].executeUpdate(b.getCommentOn) *>
+            Logging[F].info("Table created")
+          migration.addInTransaction(inAction)
 
-            case (migration, b@Block(Nil, in, _)) =>
-              val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
-                in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
-                DAO[F].executeUpdate(b.getCommentOn) *>
-                Logging[F].info(s"${b.getName} migration completed")
-              migration.addInTransaction(inAction)
+        case (migration, b@Block(Nil, in, _)) =>
+          val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
+            in.traverse_(item => DAO[F].executeUpdate(item.statement)) *>
+            DAO[F].executeUpdate(b.getCommentOn) *>
+            Logging[F].info(s"${b.getName} migration completed")
+          migration.addInTransaction(inAction)
 
-            case (migration, b@Block(pre, Nil, Entity.Table(_, _))) =>
-              val preAction = Logging[F].info(s"Migrating ${b.getName} (pre-transaction)") *>
-                pre.traverse_(item => DAO[F].executeUpdate(item.statement).void) *>
-                DAO[F].executeUpdate(b.getCommentOn).void *>
-                Logging[F].info(s"${b.getName} migration completed")
-              migration.addPreTransaction(preAction)
+        case (migration, b@Block(pre, Nil, Entity.Table(_, _))) =>
+          val preAction = Logging[F].info(s"Migrating ${b.getName} (pre-transaction)") *>
+            pre.traverse_(item => DAO[F].executeUpdate(item.statement).void) *>
+            DAO[F].executeUpdate(b.getCommentOn).void *>
+            Logging[F].info(s"${b.getName} migration completed")
+          migration.addPreTransaction(preAction)
 
-            case (migration, Block(pre, Nil, column)) =>
-              val preAction = preMigration[F](shouldAdd, column, pre)
-              migration.addPreTransaction(preAction)
-          }
-        }
+        case (migration, Block(pre, Nil, column)) =>
+          val preAction = preMigration[F](shouldAdd, column, pre)
+          migration.addPreTransaction(preAction)
+      }
     }
 
 

@@ -38,8 +38,7 @@ object Databricks {
           def updateTable(migration: Migration): Block =
             Block(Nil, Nil, Entity.Table(tgt.schema, SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)))
 
-          def extendTable(info: ShreddedType.Info): Block =
-            Block(Nil, Nil, Entity.Column(info))
+          def extendTable(info: ShreddedType.Info): Option[Block] = None
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =
             NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression))
