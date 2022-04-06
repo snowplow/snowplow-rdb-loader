@@ -21,8 +21,7 @@ import scala.concurrent.duration._
 import cats.{Functor, Applicative, Monad}
 import cats.implicits._
 
-import cats.effect.{Timer, Sync, Concurrent}
-import cats.effect.concurrent.{ Ref, Semaphore }
+import cats.effect.{Sync, Concurrent}
 
 import doobie.util.Get
 
@@ -33,6 +32,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+import cats.effect.{ Ref, Temporal }
+import cats.effect.std.Semaphore
 
 /**
  * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
@@ -104,9 +105,9 @@ object FolderMonitoring {
    * @param output temp staging path to store the list
    * @return whether the list was non-empty (true) or empty (false)
    */
-  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], until: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
+  def sinkFolders[F[_]: Sync: Temporal: Logging: AWS](since: Option[FiniteDuration], until: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
-      Stream.eval(Timer[F].clock.instantNow).flatMap { now =>
+      Stream.eval(Temporal[F].clock.instantNow).flatMap { now =>
         AWS[F].listS3(input, recursive = false)
           .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) S3.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
           .filter(isRecent(since, until, now))
@@ -139,7 +140,7 @@ object FolderMonitoring {
    * @param loadFrom list shredded folders
    * @return potentially empty list of alerts
    */
-  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Timer](loadFrom: S3.Folder): F[List[AlertPayload]] = {
+  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Temporal](loadFrom: S3.Folder): F[List[AlertPayload]] = {
     val getBatches = for {
       _                 <- DAO[C].executeUpdate(DropAlertingTempTable)
       _                 <- DAO[C].executeUpdate(CreateAlertingTempTable)
@@ -158,8 +159,8 @@ object FolderMonitoring {
   }
 
   /** Get stream of S3 folders emitted with configured interval */
-  def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, S3.Folder] = {
-    val getKey = Timer[F]
+  def getOutputKeys[F[_]: Temporal: Functor](folders: Config.Folders): Stream[F, S3.Folder] = {
+    val getKey = Temporal[F]
       .clock
       .realTime(TimeUnit.MILLISECONDS)
       .map(Instant.ofEpochMilli)
@@ -176,7 +177,7 @@ object FolderMonitoring {
    * Resulting stream has to be running in background.
    */
   def run[C[_]: DAO: Monad,
-          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders],
+          F[_]: Concurrent: Temporal: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders],
                                                                                    isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
@@ -193,7 +194,7 @@ object FolderMonitoring {
    * @param isBusy discrete stream signalling when folders monitoring should not work
    */
   def stream[C[_]: DAO: Monad,
-             F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring](folders: Config.Folders,
+             F[_]: Transaction[*[_], C]: Concurrent: Temporal: AWS: Logging: Monitoring](folders: Config.Folders,
                                                                                       isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)

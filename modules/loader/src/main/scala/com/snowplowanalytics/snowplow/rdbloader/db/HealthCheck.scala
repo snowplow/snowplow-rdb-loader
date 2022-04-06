@@ -18,19 +18,19 @@ import cats.implicits._
 import fs2.Stream
 
 import cats.effect.implicits._
-import cats.effect.{Timer, Concurrent}
-import cats.effect.concurrent.Ref
+import cats.effect.Concurrent
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
+import cats.effect.{ Ref, Temporal }
 
 object HealthCheck {
 
   private implicit val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def start[F[_]: Transaction[*[_], C]: Timer: Concurrent: Logging: Monitoring,
+  def start[F[_]: Transaction[*[_], C]: Temporal: Concurrent: Logging: Monitoring,
             C[_]: DAO](config: Option[Config.HealthCheck]): Stream[F, Unit] =
     config match {
       case Some(config) =>

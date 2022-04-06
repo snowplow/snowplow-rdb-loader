@@ -17,12 +17,12 @@ import scala.concurrent.ExecutionContext
 
 import cats.implicits._
 
-import cats.effect.concurrent.Ref
-import cats.effect.{Timer, IO, Sync, ContextShift}
+import cats.effect.{IO, Sync}
 
 import fs2.{Stream, Pipe}
 
 import org.specs2.mutable.Specification
+import cats.effect.{ Ref, Temporal }
 
 class PartitionedSpec extends Specification {
   import PartitionedSpec._
@@ -30,7 +30,7 @@ class PartitionedSpec extends Specification {
   "write" should {
     "produce consistent windows" in {
       implicit val CS: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-      implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
+      implicit val T: Temporal[IO] = IO.timer(concurrent.ExecutionContext.global)
 
       def onComplete(w: Window): IO[Unit] = {
         val _ = w
@@ -59,7 +59,7 @@ class PartitionedSpec extends Specification {
 
     "execute onComplete callback after every window" in {
       implicit val CS: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-      implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
+      implicit val T: Temporal[IO] = IO.timer(concurrent.ExecutionContext.global)
 
       val action = for {
         sinkRef <- Ref.of[IO, WindowedKV](Map.empty)
@@ -80,7 +80,7 @@ class PartitionedSpec extends Specification {
 
     "not execute onComplete without EndWindow" in {
       implicit val CS: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-      implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
+      implicit val T: Temporal[IO] = IO.timer(concurrent.ExecutionContext.global)
 
       val action = for {
         sinkRef <- Ref.of[IO, WindowedKV](Map.empty)

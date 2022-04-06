@@ -21,8 +21,7 @@ import scala.util.{ Try, Success, Failure }
 
 import cats.implicits._
 
-import cats.effect.{ContextShift, Resource, Timer, IO }
-import cats.effect.concurrent.Ref
+import cats.effect.{Resource, IO }
 
 import fs2.Stream
 import fs2.concurrent.SignallingRef
@@ -39,6 +38,7 @@ import org.specs2.mutable.Specification
 import org.specs2.matcher.{ Matcher, MatchResult, Expectable }
 
 import cats.effect.laws.util.TestContext
+import cats.effect.{ Ref, Temporal }
 
 class NoOperationSpec extends Specification {
   import NoOperationSpec._
@@ -187,7 +187,7 @@ object NoOperationSpec {
 
   implicit val CS: ContextShift[IO] =
     ec.ioContextShift
-  implicit val T: Timer[IO] =
+  implicit val T: Temporal[IO] =
     ec.ioTimer
 
   implicit val L: Logging[IO] =

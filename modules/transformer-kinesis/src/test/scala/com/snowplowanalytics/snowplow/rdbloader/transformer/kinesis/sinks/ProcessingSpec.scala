@@ -19,7 +19,7 @@ import java.time.Instant
 
 import cats.implicits._
 
-import cats.effect.{Timer, IO, Blocker, ContextShift}
+import cats.effect.IO
 
 import fs2.io.{file => fs2File}
 import fs2.{Stream, text}
@@ -42,6 +42,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Par
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
 
 import org.specs2.mutable.Specification
+import cats.effect.Temporal
 
 class ProcessingSpec extends Specification {
   import ProcessingSpec._
@@ -101,7 +102,7 @@ object ProcessingSpec {
   type TransformedMap = Map[Transformed.Path.Shredded, List[String]]
 
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
+  implicit val T: Temporal[IO] = IO.timer(concurrent.ExecutionContext.global)
 
   implicit class TransformedPathClassify(value: (Transformed.Path, Transformed.Data)) {
     def getBad: Option[(Transformed.Path, Transformed.Data)] =

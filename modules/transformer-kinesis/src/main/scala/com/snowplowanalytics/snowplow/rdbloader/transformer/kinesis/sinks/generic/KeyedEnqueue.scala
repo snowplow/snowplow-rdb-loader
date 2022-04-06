@@ -3,12 +3,14 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.gener
 import cats.{Show, MonadError, Applicative}
 import cats.implicits._
 
-import cats.effect.{MonadThrow, ExitCase, Concurrent, Sync}
-import cats.effect.concurrent.{Ref, MVar}
+import cats.effect.{ExitCase, Concurrent, Sync}
+import cats.effect.concurrent.MVar
 
 import fs2.{Stream, Pipe, Pull}
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import cats.MonadThrow
+import cats.effect.Ref
 
 /**
  * An enqueue potentially associated with multiple keys

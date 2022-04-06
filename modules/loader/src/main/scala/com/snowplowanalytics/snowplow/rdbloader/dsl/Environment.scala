@@ -17,8 +17,7 @@ import java.net.URI
 import cats.Parallel
 import cats.implicits._
 
-import cats.effect.concurrent.Ref
-import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Clock, Resource, ConcurrentEffect, Sync}
 
 import doobie.ConnectionIO
 
@@ -32,6 +31,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+import cats.effect.{ Ref, Temporal }
 
 
 /** Container for most of interepreters to be used in Main
@@ -64,7 +64,7 @@ object Environment {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] = {
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Temporal: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] = {
     val init = for {
       cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
       amazonS3 <- AWS.getClient[F](cli.config.region.name)
@@ -75,7 +75,7 @@ object Environment {
     } yield (cache, aws, state)
 
     for {
-      blocker <- Blocker[F]
+      blocker <- Resource.unit[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))

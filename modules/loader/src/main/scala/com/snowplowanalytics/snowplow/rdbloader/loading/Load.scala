@@ -17,7 +17,7 @@ import java.time.Instant
 import cats.{MonadThrow, Show, Monad}
 import cats.implicits._
 
-import cats.effect.{Timer, Clock}
+import cats.effect.Clock
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -28,6 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, Transaction, Logging, Monitoring, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+import cats.effect.Temporal
 
 
 /** Entry-point for loading-related logic */
@@ -70,7 +71,7 @@ object Load {
    * @return either alert payload in case of duplicate event or ingestion timestamp
    *         in case of success
    */
-  def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C],
+  def load[F[_]: MonadThrow: Logging: Temporal: Iglu: Transaction[*[_], C],
            C[_]: MonadThrow: Logging: DAO]
   (config: Config[StorageTarget],
    setStage: Stage => C[Unit],

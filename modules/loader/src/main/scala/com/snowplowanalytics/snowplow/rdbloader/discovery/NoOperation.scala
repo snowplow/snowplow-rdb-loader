@@ -19,7 +19,7 @@ import java.time.temporal.ChronoUnit
 
 import cats.implicits._
 
-import cats.effect.{Timer, Concurrent, Sync, Clock, BracketThrow}
+import cats.effect.{Concurrent, Sync, Clock}
 
 import fs2.Stream
 import fs2.concurrent.Signal
@@ -33,6 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config.Schedule
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.state.MakePaused
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status
+import cats.effect.{ MonadCancelThrow, Temporal }
 
 object NoOperation {
 
@@ -59,7 +60,7 @@ object NoOperation {
    * the Loader is ready for loading). When it's already `Paused` (i.e. two interleaving
    * schedules) it also does not have an effect until first duration is not expired.
    */
-  def run[F[_]: Concurrent: Timer: Logging](schedules: List[Schedule], makePaused: MakePaused[F], signal: Signal[F, Status]): Stream[F, Unit] = {
+  def run[F[_]: Concurrent: Temporal: Logging](schedules: List[Schedule], makePaused: MakePaused[F], signal: Signal[F, Status]): Stream[F, Unit] = {
     val paused = schedules.map {
       case Schedule(name, cron, duration) =>
         new ScheduledStreams(Cron4sScheduler.systemDefault[F])
@@ -68,7 +69,7 @@ object NoOperation {
             // The pause stars only when status signal reaches Idle state
             val pause = waitForIdle(signal) *>
               Logging[F].info(s"Transitioning from Idle status for sleeping $duration for $name schedule") *>
-              makePaused(name).use { _ => Timer[F].sleep(duration) } *>
+              makePaused(name).use { _ => Temporal[F].sleep(duration) } *>
               Logging[F].info(s"Transitioning back to Idle status after sleeping for $duration")
 
             // Typically happens if the Loader has been paused by another schedule
@@ -98,7 +99,7 @@ object NoOperation {
    * Check all available schedules before the start of the stream and check if current timestamp
    * is within any known window. If it is within a window - pause the app until the schedule is over
    */
-  def prepare[F[_]: Logging: Timer: Sync](schedules: List[Schedule], makePaused: MakePaused[F]): F[Unit] =
+  def prepare[F[_]: Logging: Temporal: Sync](schedules: List[Schedule], makePaused: MakePaused[F]): F[Unit] =
     schedules.traverse_ { schedule =>
       getTime[F].flatMap { now =>
         if (isInWindow(schedule, now)) pauseOnce[F](schedule, now, makePaused)
@@ -107,14 +108,14 @@ object NoOperation {
     }
 
   /** Special on-start pause action */
-  def pauseOnce[F[_]: Timer: BracketThrow: Logging](schedule: Schedule, from: ZonedDateTime, makePaused: MakePaused[F]) = {
+  def pauseOnce[F[_]: Temporal: MonadCancelThrow: Logging](schedule: Schedule, from: ZonedDateTime, makePaused: MakePaused[F]) = {
     val duration = getPauseDuration(schedule, from)
     val start = show"Loader has started within no-op window of ${schedule.name}, "
     val warn = if (duration.length === 0L)
       Logging[F].warning(show"$start, but couldn't find out how long to sleep. Ignoring the initial pause")
     else 
       Logging[F].warning(show"$start, pausing for ${duration}")
-    warn *> makePaused(schedule.name).use { _ => Timer[F].sleep(duration) } *> Logging[F].info(s"Unpausing ${schedule.name}")
+    warn *> makePaused(schedule.name).use { _ => Temporal[F].sleep(duration) } *> Logging[F].info(s"Unpausing ${schedule.name}")
   }
     
   /**

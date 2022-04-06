@@ -17,7 +17,7 @@ import scala.concurrent.duration._
 import cats.{Monad, Apply}
 import cats.implicits._
 
-import cats.effect.{Clock, Timer, MonadThrow, Concurrent}
+import cats.effect.{Clock, Concurrent}
 
 import fs2.Stream
 
@@ -28,6 +28,8 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries,
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
+import cats.MonadThrow
+import cats.effect.Temporal
 
 object Loader {
 
@@ -49,7 +51,7 @@ object Loader {
    *           Unlike `F` it cannot pull `A` out of DB (perform a transaction), but just
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
-  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
+  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Temporal: Monitoring,
           C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[C, F](config.monitoring.folders, control.isBusy)
@@ -86,7 +88,7 @@ object Loader {
    * A primary loading processing, pulling information from discovery streams
    * (SQS and retry queue) and performing the load operation itself
    */
-  def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
+  def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Temporal: Monitoring,
                  C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
@@ -104,7 +106,7 @@ object Loader {
    * over to `Load`. A primary function handling the global state - everything
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
-  def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
+  def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Temporal: Monitoring,
                        C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
                                                  (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
     val folder = discovery.data.origin.base

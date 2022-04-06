@@ -16,7 +16,7 @@ import scala.concurrent.duration.FiniteDuration
 
 import cats.implicits._
 
-import cats.effect.{Timer, Sync, ConcurrentEffect}
+import cats.effect.{Sync, ConcurrentEffect}
 
 import fs2.{Stream, Pipe}
 
@@ -33,6 +33,7 @@ import com.snowplowanalytics.aws.sqs.SQS
 
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import cats.effect.Temporal
 
 
 trait AWS[F[_]] { self =>
@@ -69,7 +70,7 @@ object AWS {
     S3Store(S3AsyncClient.builder().region(Region.of(region)).build())
   }
 
-  def awsInterpreter[F[_]: ConcurrentEffect: Timer](client: S3Store[F], sqsVisibility: FiniteDuration): AWS[F] = new AWS[F] {
+  def awsInterpreter[F[_]: ConcurrentEffect: Temporal](client: S3Store[F], sqsVisibility: FiniteDuration): AWS[F] = new AWS[F] {
     /** * Transform S3 object summary into valid S3 key string */
     def getKey(path: S3Path): S3.BlobObject = {
       val key = S3.Key.coerce(s"s3://${path.bucket}/${path.key}")

@@ -28,6 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import cats.effect.Temporal
 
 /**
  * Includes common operations needed during event transformation
@@ -39,7 +40,7 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 }
 
 object Transformer {
-  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
+  case class ShredTransformer[F[_]: Concurrent: Clock: Temporal](iglu: Client[F, Json],
                                                               formats: Formats.Shred,
                                                               atomicLengths: Map[String, Int]) extends Transformer[F] {
     /** Check if `shredType` should be transformed into TSV */

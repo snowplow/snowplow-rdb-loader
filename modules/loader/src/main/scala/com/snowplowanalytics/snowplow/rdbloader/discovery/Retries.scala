@@ -19,7 +19,7 @@ import scala.concurrent.duration.FiniteDuration
 import cats.{MonadThrow, Monad}
 import cats.implicits._
 
-import cats.effect.{Timer, Concurrent, Clock}
+import cats.effect.{Concurrent, Clock}
 
 import fs2.{ Stream, Pipe }
 import fs2.concurrent.InspectableQueue
@@ -30,6 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessa
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache, FolderMonitoring}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
+import cats.effect.Temporal
 
 /**
  * Module responsible for periodic attempts to re-load recently failed folders.
@@ -98,7 +99,7 @@ object Retries {
    * they can be re-sent into SQS as well as re-pulled by retry stream.
    * It's expected that DB manifest handles such duplicates
    */
-  def run[F[_]: AWS: Cache: Logging: Timer: Concurrent](region: String, assets: Option[S3.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
+  def run[F[_]: AWS: Cache: Logging: Temporal: Concurrent](region: String, assets: Option[S3.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
     config match {
       case Some(config) =>
         Stream
@@ -108,7 +109,7 @@ object Retries {
         Stream.empty
     }
 
-  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String,
+  def get[F[_]: AWS: Cache: Logging: Temporal: MonadThrow](region: String,
                                                         assets: Option[S3.Folder],
                                                         config: Config.RetryQueue,
                                                         failures: F[Failures])
@@ -155,11 +156,11 @@ object Retries {
       } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull")
     }
 
-  def periodicDequeue[F[_]: Monad: Timer, A](queue: InspectableQueue[F, A], interval: FiniteDuration): Stream[F, A] = {
+  def periodicDequeue[F[_]: Monad: Temporal, A](queue: InspectableQueue[F, A], interval: FiniteDuration): Stream[F, A] = {
     def go: Stream[F, A] =
       Stream.eval(queue.getSize).flatMap { size =>
         if (size == 0) Stream.empty
-        else Stream.eval(queue.dequeue1 <* Timer[F].sleep(interval)) ++ go
+        else Stream.eval(queue.dequeue1 <* Temporal[F].sleep(interval)) ++ go
 
       }
 

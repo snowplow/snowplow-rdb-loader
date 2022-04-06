@@ -19,7 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transforme
 
 object file {
 
-  def getSink[F[_]: Concurrent: ContextShift](blocker: Blocker, root: URI, compression: Compression, counter: Window => F[Int])
+  def getSink[F[_]: Concurrent: ContextShift](root: URI, compression: Compression, counter: Window => F[Int])
                                              (window: Window)
                                              (path: Transformed.Path): Pipe[F, Transformed.Data, Unit] = {
     val p = BasePath.empty

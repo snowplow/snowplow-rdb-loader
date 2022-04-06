@@ -17,13 +17,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 import cats.implicits._
 
-import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
+import cats.effect.{Resource, Sync}
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import cats.effect.Temporal
 
 object StatsDReporter {
 
-  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] =
+  def build[F[_]: ContextShift: Sync: Temporal](statsDConfig: Option[Config.StatsD]): Reporter[F] =
     statsDConfig match {
       case Some(config) =>
         new Reporter[F] {
@@ -41,12 +42,10 @@ object StatsDReporter {
         Reporter.noop[F]
     }
 
-  private def mkSocket[F[_]: ContextShift: Sync](blocker: Blocker): Resource[F, DatagramSocket] =
+  private def mkSocket[F[_]: ContextShift: Sync]: Resource[F, DatagramSocket] =
     Resource.fromAutoCloseableBlocking(blocker)(Sync[F].delay(new DatagramSocket))
 
-  private def sendMetric[F[_]: ContextShift: Sync](
-    blocker: Blocker,
-    socket: DatagramSocket,
+  private def sendMetric[F[_]: ContextShift: Sync](socket: DatagramSocket,
     addr: InetAddress,
     port: Int
   )(

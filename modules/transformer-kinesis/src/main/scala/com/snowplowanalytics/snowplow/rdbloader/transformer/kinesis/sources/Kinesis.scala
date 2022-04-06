@@ -4,7 +4,7 @@ import java.util.Date
 
 import cats.syntax.either._
 
-import cats.effect.{Sync, ContextShift, ConcurrentEffect}
+import cats.effect.{Sync, ConcurrentEffect}
 
 import fs2.Stream
 

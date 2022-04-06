@@ -17,10 +17,10 @@ import scala.concurrent.duration._
 import fs2.Pipe
 import cats.implicits._
 
-import cats.effect.concurrent.Ref
-import cats.effect.{IO, ContextShift, Timer}
+import cats.effect.IO
 
 import org.specs2.mutable.Specification
+import cats.effect.{ Ref, Temporal }
 
 class KeyedEnqueueSpec extends Specification {
   import KeyedEnqueueSpec._
@@ -89,7 +89,7 @@ class KeyedEnqueueSpec extends Specification {
 
 object KeyedEnqueueSpec {
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
+  implicit val T: Temporal[IO] = IO.timer(concurrent.ExecutionContext.global)
 
   def sinkAndStore: IO[(Ref[IO, Map[String, List[String]]], String => Pipe[IO, String, Unit])] = {
     Ref.of[IO, Map[String, List[String]]](Map.empty).map { ref =>

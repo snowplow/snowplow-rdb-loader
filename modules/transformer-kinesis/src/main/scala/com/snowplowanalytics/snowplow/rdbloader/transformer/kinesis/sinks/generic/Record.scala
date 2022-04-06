@@ -18,9 +18,10 @@ import scala.concurrent.duration._
 import cats.Applicative
 import cats.implicits._
 
-import cats.effect.{Timer, Concurrent}
+import cats.effect.Concurrent
 
 import fs2.{Pipe, RaiseThrowable, Stream, Pure, Pull}
+import cats.effect.Temporal
 
 /**
  * A generic stream type, either holding data with associated window
@@ -54,7 +55,7 @@ object Record {
   /** It belongs to `window`, but knows about `next` window */
   final case class EndWindow[F[_], W, A](window: W, next: W, checkpoint: F[Unit]) extends Record[F, W, A]
 
-  def windowed[F[_]: Concurrent: Timer, W, A](getWindow: F[W]): Pipe[F, (A, F[Unit]), Record[F, W, A]] = {
+  def windowed[F[_]: Concurrent: Temporal, W, A](getWindow: F[W]): Pipe[F, (A, F[Unit]), Record[F, W, A]] = {
     in =>
       val merged = Stream
         .fixedRate(1.second)
