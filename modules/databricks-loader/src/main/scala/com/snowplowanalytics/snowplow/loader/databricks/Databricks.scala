@@ -72,7 +72,8 @@ object Databricks {
 
               case Statement.CreateAlertingTempTable =>
                 val frTableName = Fragment.const(AlertingTempTableName)
-                sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
+                // It is not possible to create temp table in Databricks
+                sql"CREATE TABLE IF NOT EXISTS $frTableName ( run_id VARCHAR(512) )"
               case Statement.DropAlertingTempTable =>
                 val frTableName = Fragment.const(AlertingTempTableName)
                 sql"DROP TABLE IF EXISTS $frTableName"
@@ -81,13 +82,15 @@ object Databricks {
                 val frManifest  = Fragment.const("manifest")
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source) =>
-                val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
+                val frTableName = Fragment.const(AlertingTempTableName)
                 val frPath      = Fragment.const0(source)
-                sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
+                sql"""COPY INTO $frTableName
+                      FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
+                      FILEFORMAT = CSV""";
               case Statement.EventsCopy(path, _) =>
                 val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
                 val frPath      = Fragment.const0(s"$path/output=good")
-                sql"""copy into $frTableName from '$frPath' fileformat = PARQUET copy_options('mergeSchema' = 'true')""";
+                sql"""COPY INTO $frTableName FROM '$frPath' FILEFORMAT = PARQUET COPY_OPTIONS('MERGESCHEMA' = 'TRUE')""";
               case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.CreateTransient =>
