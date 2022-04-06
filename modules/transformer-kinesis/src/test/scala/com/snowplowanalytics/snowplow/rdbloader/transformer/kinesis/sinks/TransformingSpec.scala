@@ -43,8 +43,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generi
 
 import org.specs2.mutable.Specification
 
-class ProcessingSpec extends Specification {
-  import ProcessingSpec._
+class TransformingSpec extends Specification {
+  import TransformingSpec._
   "transform" should {
     "shred events correctly" in {
       val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/1/input/events", format = shredFormat)
@@ -96,7 +96,7 @@ class ProcessingSpec extends Specification {
   }
 }
 
-object ProcessingSpec {
+object TransformingSpec {
   type TransformedList = List[(Transformed.Path, Transformed.Data)]
   type TransformedMap = Map[Transformed.Path.Shredded, List[String]]
 
