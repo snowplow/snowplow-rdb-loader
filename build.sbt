@@ -84,7 +84,7 @@ lazy val transformerKinesis = project
   .settings(BuildSettings.transformerKinesisBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
+  .settings(excludeDependencies ++= Dependencies.transformerKinesisExclusions)
   .dependsOn(common, aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
@@ -94,6 +94,6 @@ lazy val transformerKinesisDistroless = project
   .settings(BuildSettings.transformerKinesisDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
+  .settings(excludeDependencies ++= Dependencies.transformerKinesisExclusions)
   .dependsOn(common, aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)

@@ -253,6 +253,10 @@ object Dependencies {
 
   // exclusions
   val exclusions = Seq(
-    "org.slf4j" % "slf4j-log4j12"
+    ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")
   )
+
+  val transformerKinesisExclusions = {
+    exclusions ++ Seq(ExclusionRule(organization = "ch.qos.logback"))
+  }
 }

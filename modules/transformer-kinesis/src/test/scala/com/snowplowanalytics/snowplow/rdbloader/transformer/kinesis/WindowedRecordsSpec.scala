@@ -10,13 +10,14 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
+package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
 import cats.effect.concurrent.Ref
 import cats.effect.laws.util.TestContext
 import cats.effect.{ContextShift, IO, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.WindowedRecordsSpec.OutputRecord.{Data, End}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.WindowedRecordsSpec._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.WindowedRecordsSpec.OutputRecord._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.WindowedRecordsSpec._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
 import fs2.Stream
 import org.specs2.mutable.Specification
