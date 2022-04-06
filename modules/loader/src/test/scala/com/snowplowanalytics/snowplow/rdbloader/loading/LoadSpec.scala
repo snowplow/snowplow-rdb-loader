@@ -80,7 +80,6 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,
       )
 
@@ -141,7 +140,6 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
                                                 //       to throw an ad-hoc exception within a transaction
       )
