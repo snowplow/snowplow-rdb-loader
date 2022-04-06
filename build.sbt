@@ -217,7 +217,10 @@ lazy val transformerKinesis = project.in(file("modules/transformer-kinesis"))
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
       Dependencies.scalaCheck
-    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
+    ).map(_
+      .excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12"))
+      .excludeAll(ExclusionRule(organization = "ch.qos.logback"))
+    )
   )
   .dependsOn(common, aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
