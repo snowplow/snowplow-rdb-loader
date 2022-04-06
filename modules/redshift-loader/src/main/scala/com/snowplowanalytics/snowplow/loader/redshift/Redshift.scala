@@ -67,7 +67,7 @@ object Redshift {
             Block(preTransaction.reverse, inTransaction.reverse, Entity.Table(schema, target))
           }
 
-          def extendTable(info: ShreddedType.Info): Block =
+          def extendTable(info: ShreddedType.Info): Option[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements = {
