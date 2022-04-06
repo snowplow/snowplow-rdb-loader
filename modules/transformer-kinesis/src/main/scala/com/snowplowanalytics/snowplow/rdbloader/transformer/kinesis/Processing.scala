@@ -1,34 +1,25 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
-import java.net.URI
-
 import cats.data.EitherT
+import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
 import cats.implicits._
-
-import cats.effect.{ContextShift, Blocker, Clock, Timer, ConcurrentEffect, Concurrent, Sync}
-
-import fs2.{Stream, Pipe}
-
-import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
-
-import com.snowplowanalytics.snowplow.badrows.Processor
-
 import com.snowplowanalytics.aws.AWSQueue
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Transformed, ShredderValidations}
-
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{Window, s3, file}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Record, Partitioned}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Sealed, Closed}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Closed, Sealed}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
+import fs2.{Pipe, Stream}
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import java.net.URI
 
 object Processing {
 
@@ -40,6 +31,17 @@ object Processing {
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
                                                               config: TransformerConfig.Stream): F[Unit] = {
+    val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
+      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
+
+    val streamOfWindowedRecords = getSource[F](resources, config.input).through(windowing)
+
+    runWindowed(streamOfWindowedRecords, resources, config)
+  }
+
+  def runWindowed[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](windowedRecords: Stream[F, Windowed[F, Parsed]],
+                                                                      resources: Resources[F],
+                                                                      config: TransformerConfig.Stream): F[Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths)
@@ -47,16 +49,13 @@ object Processing {
         Transformer.WideRowTransformer(f)
     }
 
-    val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
-      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
     val onComplete: Window => F[Unit] =
       getOnComplete(config.output.compression, transformer.typesInfo, config.output.path, resources.awsQueue, resources.windows, config.featureFlags.legacyMessageFormat)
     val sinkId: Window => F[Int] =
       getSinkId(resources.windows)
 
-    getSource[F](resources, config.input)
+    windowedRecords
       .interruptWhen(resources.halt)
-      .through(windowing)
       .evalTap(State.update(resources.windows))
       .through(transform[F](transformer, config.validations))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
