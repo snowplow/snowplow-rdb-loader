@@ -4,8 +4,8 @@ import cats.data.EitherT
 import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
 import cats.implicits._
 import com.snowplowanalytics.aws.AWSQueue
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
-import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event}
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
@@ -27,7 +27,10 @@ object Processing {
 
   val Application: Processor = Processor(BuildInfo.name, BuildInfo.version)
 
+  final case class SuccessfulTransformation(original: Event, output: List[Transformed])
+  
   type Windowed[F[_], A] = Record[F, Window, A]
+  type TransformationResult = Either[BadRow, SuccessfulTransformation]
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
                                                               config: TransformerConfig.Stream): F[Unit] = {
@@ -56,8 +59,9 @@ object Processing {
 
     windowedRecords
       .interruptWhen(resources.halt)
+      .through(attemptTransform(transformer, config.validations))
       .evalTap(State.update(resources.windows))
-      .through(transform[F](transformer, config.validations))
+      .through(handleTransformResult(transformer))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
       .compile
@@ -130,20 +134,24 @@ object Processing {
         Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
     }
 
-  def transform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
-                                                validations: TransformerConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
-    _.flatMap { record =>
-      val shreddedRecord = record.traverse { parsed =>
-        val res = for {
+  def attemptTransform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
+                                                       validations: TransformerConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, TransformationResult]] = {
+    _.evalMap { record =>
+      record.traverse { parsed =>
+        (for {
           event       <- EitherT.fromEither[F](parsed)
           _           <- EitherT.fromEither[F](ShredderValidations(Application, event, validations).toLeft(()))
           transformed <- transformer.goodTransform(event)
-        } yield transformed
-        res.leftMap(transformer.badTransform).value
+        } yield SuccessfulTransformation(original = event, output = transformed)).value
       }
-      Stream.eval(shreddedRecord).flatMap {
+    }
+  }
+
+  def handleTransformResult[F[_]](transformer: Transformer[F]): Pipe[F, Windowed[F, TransformationResult], Windowed[F, (Transformed.Path, Transformed.Data)]] = {
+    _.flatMap { record =>
+      record.map(_.leftMap(transformer.badTransform)) match {
         case Record.Data(window, checkpoint, Right(shredded)) =>
-          Record.mapWithLast(shredded)(s => Record.Data(window, None, s.split), s => Record.Data(window, checkpoint, s.split))
+          Record.mapWithLast(shredded.output)(s => Record.Data(window, None, s.split), s => Record.Data(window, checkpoint, s.split))
         case Record.Data(window, checkpoint, Left(badRow)) =>
           Stream.emit(Record.Data(window, checkpoint, badRow.split))
         case Record.EndWindow(window, next, checkpoint) =>
