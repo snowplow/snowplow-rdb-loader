@@ -45,7 +45,6 @@ object FileUtils {
     fs2.io.file.readAll[IO](filePath, blocker, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
-      .filter(_.nonEmpty)
   }
 
 }

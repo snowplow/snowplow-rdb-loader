@@ -51,6 +51,26 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
 
       assertCompletionMessage(result, "/processing-spec/1/output/good/tsv/completion.json")
     }
+    "treat iglu error as bad row and not count it as good in completion message" in {
+      val configProvider: ConfigProvider = resources => TransformerConfig(appConfig(resources.outputRootDirectory), igluConfig)
+
+      val inputStream = InputEventsProvider.eventStream(
+        inputEventsPath = "/processing-spec/3/input/events",
+        currentWindow   = `window-10:30`,
+        nextWindow      = `window-10:31`
+      )
+
+      val atomic     = "run=1970-01-01-10-30-00/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+      val igluErrors = "run=1970-01-01-10-30-00/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"
+      
+      val outputDirectoriesToRead = List(atomic, igluErrors)
+      val result = process(inputStream, configProvider, outputDirectoriesToRead).unsafeRunSync()
+
+      result.createdDirectories(atomic).size must beEqualTo(1)
+      assertOutputLines(directoryWithActualData = igluErrors, expectedResource = "/processing-spec/3/output/bad", result.createdDirectories)
+
+      assertCompletionMessage(result, "/processing-spec/3/output/completion.json")
+    }
   }
 }
 

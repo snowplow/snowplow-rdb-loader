@@ -1,21 +1,17 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
-import java.time.Instant
-
-import scala.annotation.tailrec
-
-import cats.{Order, Show, Applicative}
-import cats.kernel.Monoid
-import cats.implicits._
-
 import cats.effect.Sync
 import cats.effect.concurrent.Ref
-
+import cats.implicits._
+import cats.kernel.Monoid
+import cats.{Applicative, Order, Show}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.{SuccessfulTransformation, TransformationResult}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Status, Record}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Record, Status}
+
+import java.time.Instant
+import scala.annotation.tailrec
 
 case class State(total: Long,
                  bad: Long,
@@ -46,11 +42,11 @@ object State {
     Ref.of[F, List[WState]](List.empty)
 
   /** Shredder-specific version of [[combineF]] */
-  def combineEvent[F[_]]: (List[WState], Record[F, Window, Parsed]) => List[WState] =
-    combineF[F, Window, State, Parsed](fromEvent)
+  def combineEvent[F[_]]: (List[WState], Record[F, Window, TransformationResult]) => List[WState] =
+    combineF[F, Window, State, TransformationResult](fromEvent)
 
   /** Update mutable global state with metadata from a `record` */
-  def update[F[_]: Applicative](state: Windows[F])(record: Record[F, Window, Parsed]): F[Unit] =
+  def update[F[_]: Applicative](state: Windows[F])(record: Record[F, Window, TransformationResult]): F[Unit] =
     state.update(stack => combineEvent(stack, record))
 
   /**
@@ -134,11 +130,11 @@ object State {
     }
   }
 
-  def fromEvent(row: Parsed): State =
+  def fromEvent(row: TransformationResult): State =
     row match {
       case Left(_) =>
         Monoid[State].empty.copy(total = 1, bad = 1)
-      case Right(event) =>
+      case Right(SuccessfulTransformation(event, _)) =>
         State(1, 0, Some(event.collector_tstamp), Some(event.collector_tstamp), event.inventory, 0)
     }
 
