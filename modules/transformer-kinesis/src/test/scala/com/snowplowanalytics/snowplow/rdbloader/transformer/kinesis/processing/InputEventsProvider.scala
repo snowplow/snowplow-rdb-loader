@@ -31,6 +31,8 @@ object InputEventsProvider {
                   nextWindow: Window)
                  (implicit cs: ContextShift[IO]): Stream[IO, Windowed[IO, Parsed]] = {
     val dataRecords = FileUtils.resourceFileStream(testBlocker, inputEventsPath)
+      .filter(_.nonEmpty) // ignore empty lines
+      .filter(!_.startsWith("//")) // ignore comment-like lines
       .map(FileSource.parse)
       .map(Record.Data[IO, Window, Parsed](currentWindow, Option.empty, _))
 

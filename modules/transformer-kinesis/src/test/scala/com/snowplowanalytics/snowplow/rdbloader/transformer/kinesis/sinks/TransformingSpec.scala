@@ -139,9 +139,12 @@ object TransformingSpec {
                           timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList) = {
     val transformer = createTransformer(format)
     val validations = TransformerConfig.Validations(timestampLowerLimit)
-    val eventStream: Stream[IO, Windowed[IO, Parsed]] = parsedEventStream(resourcePath)
-    val pipe = Processing.transform[IO](transformer, validations)
-    val transformed = pipe(eventStream).compile.toList.unsafeRunSync().flatMap {
+
+    val eventStream = parsedEventStream(resourcePath)
+      .through(Processing.attemptTransform(transformer, validations))
+      .through(Processing.handleTransformResult(transformer))
+
+    val transformed = eventStream.compile.toList.unsafeRunSync().flatMap {
       case Record.Data(_, _, i) => Some(i)
       case Record.EndWindow(_, _, _) => None
     }
