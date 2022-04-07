@@ -64,7 +64,10 @@ trait BaseProcessingSpec extends Specification {
                                   expectedResource: String,
                                   createdDirectories: CreatedDirectories) = {
     val expectedLines = FileUtils.readLines(blocker, expectedResource).unsafeRunSync
-    createdDirectories(directoryWithActualData) must beEqualTo(expectedLines)
+
+    createdDirectories(directoryWithActualData).zip(expectedLines).foreach {
+      case (actual, expected) => actual must beEqualTo(expected)   
+    } 
   }
 
   protected def assertCompletionMessage(result: ProcessingOutput,
