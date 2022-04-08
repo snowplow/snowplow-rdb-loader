@@ -244,6 +244,7 @@ object Dependencies {
     fs2AwsSqs,
     aws2kinesis,
     http4sClient,
+    catsEffectLaws,
     circeOptics,
     specs2,
     specs2ScalaCheck,
