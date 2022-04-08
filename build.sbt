@@ -212,6 +212,7 @@ lazy val transformerKinesis = project.in(file("modules/transformer-kinesis"))
       Dependencies.http4sClient,
       Dependencies.circeOptics,
       // Scala (test only)
+      Dependencies.catsEffectLaws,
       Dependencies.circeOptics,
       Dependencies.specs2,
       Dependencies.specs2ScalaCheck,
