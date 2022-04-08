@@ -88,7 +88,7 @@ object Record {
           lastWindow match {
             case Some(window) if window == w =>
               // Same window, drop Left(w)
-              go(Some(w), Applicative[F].unit, tail)
+              go(Some(w), lastCheckpoint, tail)
             case Some(window) =>
               // New window, emit Left(w)
               Pull.output1(Record.EndWindow[F, W, A](window, w, lastCheckpoint)) >> go(Some(w), Applicative[F].unit, tail)
