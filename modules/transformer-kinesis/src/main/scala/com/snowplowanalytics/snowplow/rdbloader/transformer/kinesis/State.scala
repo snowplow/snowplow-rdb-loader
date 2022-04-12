@@ -151,8 +151,8 @@ object State {
 
       def combine(x: State, y: State): State =
         State(
-          x.total + x.total,
-          x.bad + x.bad,
+          x.total + y.total,
+          x.bad + y.bad,
           combineOption(Ordering[Instant].min, x.minCollector, y.minCollector),
           combineOption(Ordering[Instant].max, x.maxCollector, y.maxCollector),
           x.types ++ y.types,
