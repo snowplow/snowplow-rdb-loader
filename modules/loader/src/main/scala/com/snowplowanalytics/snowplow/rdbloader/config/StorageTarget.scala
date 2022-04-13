@@ -121,7 +121,6 @@ object StorageTarget {
       val props: Properties = new Properties()
       props.put("httpPath", httpPath)
       props.put("ssl", 1)
-      props.put("currentSchema", schema)
       //      props.put("LogLevel", 6)
       props.put("AuthMech", 3)
       props.put("transportMode", "http")
