@@ -28,9 +28,13 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Main
-
+import org.apache.hadoop.conf.Configuration
+import org.apache.hadoop.fs.Path
+import org.apache.parquet.format.converter.ParquetMetadataConverter
+import org.apache.parquet.hadoop.ParquetFileReader
 import org.specs2.mutable.Specification
 
+import java.io.{File, FileFilter}
 import java.time.temporal.ChronoUnit
 
 class WideRowParquetSpec extends Specification with ShredJobSpec {
@@ -56,6 +60,8 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         .filter(e => !badEventIds.contains(e.event_id))
         .map(transformEventForParquetTest("none"))
         .toSet
+      
+      assertGeneratedParquetSchema(testOutputDirs)
       lines.size must beEqualTo(46)
       lines must beEqualTo(expected)
     }
@@ -196,6 +202,20 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         j => jsonTransformer(j.asJson)
       ))
       .top.getOrElse(json)
+  }
+
+  private def assertGeneratedParquetSchema(testOutputDirs: OutputDirs) = {
+    val conf = new Configuration();
+    val expectedParquetSchema = readResourceFile(ResourceFile("/widerow/parquet/parquet-output-schema")).mkString
+    val parquetFileFilter = new FileFilter {
+      override def accept(pathname: File): Boolean = pathname.toString.endsWith(".parquet")
+    }
+
+    testOutputDirs.goodRows.listFiles(parquetFileFilter).foreach { parquetFile =>
+      val parquetMetadata = ParquetFileReader.readFooter(conf, new Path(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
+      val actualNormilizedSchema = parquetMetadata.getFileMetaData.getSchema.toString.replace("\n", "")
+      actualNormilizedSchema mustEqual expectedParquetSchema
+    }
   }
 
   implicit class ParquetFields(val fields: List[StructField]) {
