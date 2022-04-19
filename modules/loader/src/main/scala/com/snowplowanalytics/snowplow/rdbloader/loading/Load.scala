@@ -77,6 +77,7 @@ object Load {
    incrementAttempt: F[Unit],
    discovery: DataDiscovery.WithOrigin): F[Either[AlertPayload, Option[Instant]]] =
     for {
+      _           <- TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)
       migrations  <- Migration.build[F, C](discovery.discovery)
       _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
       transaction  = getTransaction[C](setStage, discovery)(migrations.inTransaction)

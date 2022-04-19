@@ -56,6 +56,7 @@ object PureDAO {
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) => None
       case Statement.FoldersMinusManifest => List()
+      case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 

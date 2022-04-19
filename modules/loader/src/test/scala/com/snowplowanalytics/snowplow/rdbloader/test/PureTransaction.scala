@@ -44,10 +44,7 @@ object PureTransaction {
             case Left(e) => State.modify[TestState](_.log(Rollback)).as(Left(e))
           })
         }
-
-      def resume: Pure[Unit] =
-        Pure.unit
-
+      
       def run[A](io: Pure[A]): Pure[A] =
         Pure.modify(_.log(NoTransaction)) *>
           io

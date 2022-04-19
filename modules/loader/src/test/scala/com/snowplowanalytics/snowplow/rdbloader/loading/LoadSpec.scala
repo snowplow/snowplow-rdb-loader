@@ -50,6 +50,9 @@ class LoadSpec extends Specification {
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
@@ -75,6 +78,9 @@ class LoadSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
@@ -97,6 +103,9 @@ class LoadSpec extends Specification {
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
@@ -125,6 +134,7 @@ class LoadSpec extends Specification {
         statement match {
           case Statement.ManifestGet(Base) =>
             Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem).some
+          case Statement.ReadyCheck => 1
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
@@ -135,6 +145,9 @@ class LoadSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
@@ -179,6 +192,7 @@ object LoadSpec {
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
       case Statement.FoldersMinusManifest => List()
+      case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
@@ -209,7 +223,7 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_) => ts.getLog.length == 6
+      case Statement.ManifestAdd(_) => ts.getLog.length == 8
       case _ => false
     }
 

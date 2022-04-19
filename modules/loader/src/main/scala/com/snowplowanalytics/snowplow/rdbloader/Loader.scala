@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage, TargetCheck }
 import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
 
 object Loader {
@@ -52,7 +52,7 @@ object Loader {
   def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
           C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[C, F](config.monitoring.folders, control.isBusy)
+      FolderMonitoring.run[C, F](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
     val healthCheck =
@@ -64,7 +64,7 @@ object Loader {
         .evalMap { _ => control.get.map(_.showExtended) }
         .evalMap { state => Logging[F].info(state) }
 
-    val init: F[Unit] = Transaction[F, C].resume *>
+    val init: F[Unit] = TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage) *>
       NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Manifest.initialize[F, C](config.storage)
 

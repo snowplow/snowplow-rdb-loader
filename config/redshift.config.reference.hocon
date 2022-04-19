@@ -138,6 +138,15 @@
     "cumulativeBound": "1 hour"
   },
 
+  # Check the target destination to make sure it is ready.
+  # Retry the checking until target got ready and block the application in the meantime
+  "readyCheck": {
+    # Starting backoff period
+    "backoff": "15 seconds"
+    # A strategy to use when deciding on next backoff
+    "strategy": "CONSTANT"
+  },
+
   # Additional backlog of recently failed folders that could be automatically retried
   # Retry Queue saves a failed folder and then re-reads the info from shredding_complete S3 file
   "retryQueue": {
