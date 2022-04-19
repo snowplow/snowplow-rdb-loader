@@ -45,7 +45,8 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              storage: D,
                                              schedules: Schedules,
                                              timeouts: Timeouts,
-                                             retries: Retries)
+                                             retries: Retries,
+                                             readyCheck: Retries)
 
 object Config {
 
