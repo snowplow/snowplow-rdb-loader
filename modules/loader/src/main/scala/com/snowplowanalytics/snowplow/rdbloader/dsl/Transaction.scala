@@ -46,9 +46,6 @@ import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
  */
 trait Transaction[F[_], C[_]] {
 
-  /** Prepare the DB for being used (i.e. Snowflake RESUME WAREHOUSE) */
-  def resume: F[Unit]
-
   /**
    * Run a `C` effect within a transaction
    * Multiple binded `C`s can represent a sequence of queries/statements
@@ -137,15 +134,6 @@ object Transaction {
     new Transaction[F, ConnectionIO] {
       def transact[A](io: ConnectionIO[A]): F[A] =
         DefaultTransactor.trans.apply(io)
-
-      def resume: F[Unit] =
-        target match {
-          case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, _, _, _, _, _, _) =>
-            val resume = sql"USE WAREHOUSE ${Fragment.const0(warehouse)}".update.run *>
-              sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED".update.run.void
-            conn.trans.apply(resume)
-          case _ => Effect[F].unit
-        }
 
       def run[A](io: ConnectionIO[A]): F[A] =
         NoCommitTransactor.trans.apply(io)
