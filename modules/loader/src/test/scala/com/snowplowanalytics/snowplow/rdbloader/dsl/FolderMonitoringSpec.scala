@@ -21,10 +21,10 @@ import cats.effect.{ IO, Timer }
 import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureTransaction, PureDAO, TestState, PureAWS, PureTimer, PureOps}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureTransaction, PureDAO, TestState, PureAWS, PureTimer, PureOps, PureLogging}
 
 import org.specs2.mutable.Specification
 
@@ -37,6 +37,7 @@ class FolderMonitoringSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(List(
@@ -45,13 +46,15 @@ class FolderMonitoringSpec extends Specification {
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        PureTransaction.StartMessage),Map()
+        PureTransaction.StartMessage,
+        TestState.LogEntry.Sql(Statement.ReadyCheck),
+        PureTransaction.NoTransactionMessage),Map()
       )
       val ExpectedResult = List(
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -65,6 +68,7 @@ class FolderMonitoringSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
+      implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = S3.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(List(
@@ -73,13 +77,15 @@ class FolderMonitoringSpec extends Specification {
         TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        PureTransaction.StartMessage),Map()
+        PureTransaction.StartMessage,
+        TestState.LogEntry.Sql(Statement.ReadyCheck),
+        PureTransaction.NoTransactionMessage),Map()
       )
       val ExpectedResult = List(
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -159,7 +165,20 @@ object FolderMonitoringSpec {
     statement match {
       case Statement.FoldersMinusManifest =>
         List(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/"))
+      case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
     }
   }
+
+  val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleDatabricks: StorageTarget.Databricks = StorageTarget.Databricks(
+    "databricks.com",
+    "hive_metastore",
+    "snowplow",
+    443,
+    "http/path",
+    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+    None,
+    "snowplow-rdbloader-oss"
+  )
 }

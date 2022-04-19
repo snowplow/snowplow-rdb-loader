@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift
 
+import scala.concurrent.duration._
+
 import cats.effect.IO
 
 import org.specs2.mutable.Specification
@@ -35,6 +37,7 @@ class ConfigSpec extends Specification {
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
+        exampleReadyCheck
       )
       result must beRight(expected)
     }
@@ -51,6 +54,7 @@ class ConfigSpec extends Specification {
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       )
       result must beRight(expected)
     }
