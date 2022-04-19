@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake
 
+import scala.concurrent.duration._
+
 import cats.effect.IO
 
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
@@ -41,6 +43,7 @@ class ConfigSpec extends Specification {
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
+        exampleReadyCheck
       )
       result must beRight(expected)
     }
@@ -57,6 +60,7 @@ class ConfigSpec extends Specification {
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       )
       result must beRight(expected)
     }
