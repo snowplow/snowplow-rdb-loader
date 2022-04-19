@@ -48,7 +48,7 @@ object Snowflake {
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Snowflake(_, _, _, _, _, _, _, schema, stage, _, monitoringStage, _, _) =>
+      case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, schema, stage, _, monitoringStage, _, _) =>
         val result = new Target {
           def updateTable(migration: Migration): Block = {
             val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
@@ -97,6 +97,7 @@ object Snowflake {
               case Statement.Commit => sql"COMMIT"
               case Statement.Abort => sql"ABORT"
               case Statement.Select1 => sql"SELECT 1"     // OK
+              case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED"
 
               case Statement.CreateAlertingTempTable =>   // OK
                 val frTableName = Fragment.const(AlertingTempTableName)
