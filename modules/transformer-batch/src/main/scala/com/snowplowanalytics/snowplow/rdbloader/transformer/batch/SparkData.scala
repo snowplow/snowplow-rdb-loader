@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField.FieldValue
+import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, Transformed, WideField}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows._
@@ -50,10 +50,12 @@ object SparkData {
     case FieldValue.StringValue(v) => v
     case FieldValue.BooleanValue(v) => v
     case FieldValue.IntValue(v) => v
+    case FieldValue.LongValue(v) => v
     case FieldValue.DoubleValue(v) => v
+    case FieldValue.DecimalValue(v) => v
     case FieldValue.TimestampValue(v) => v
     case FieldValue.DateValue(v) => v
     case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue).toArray // TODO: Do I need to cast to array or is list OK?
-    case FieldValue.StructValue(vs) => Row.fromSeq(vs.map(extractFieldValue))
+    case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v._2) })
   }
 }
