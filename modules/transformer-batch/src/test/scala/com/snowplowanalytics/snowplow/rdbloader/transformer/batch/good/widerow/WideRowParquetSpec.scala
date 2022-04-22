@@ -114,7 +114,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
       customPart.find("h_field").nullable must beTrue
       customPart.find("i_field").find("b_field").dataType must beEqualTo(StringType)
       customPart.find("i_field").find("b_field").nullable must beTrue
-      customPart.find("i_field").find("c_field").dataType must beEqualTo(IntegerType)
+      customPart.find("i_field").find("c_field").dataType must beEqualTo(LongType)
       customPart.find("i_field").find("c_field").nullable must beTrue
       customPart.find("j_field").find("union").dataType must beEqualTo(StringType)
       customPart.find("j_field").find("union").nullable must beTrue
@@ -156,7 +156,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
       customPart.find("h_field").nullable must beTrue
       customPart.find("i_field").find("b_field").dataType must beEqualTo(StringType)
       customPart.find("i_field").find("b_field").nullable must beTrue
-      customPart.find("i_field").find("c_field").dataType must beEqualTo(IntegerType)
+      customPart.find("i_field").find("c_field").dataType must beEqualTo(LongType)
       customPart.find("i_field").find("c_field").nullable must beTrue
       customPart.find("j_field").find("union").dataType must beEqualTo(StringType)
       customPart.find("j_field").find("union").nullable must beTrue

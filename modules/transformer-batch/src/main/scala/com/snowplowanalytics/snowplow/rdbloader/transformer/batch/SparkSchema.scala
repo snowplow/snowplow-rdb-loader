@@ -19,14 +19,14 @@ import cats.data.EitherT
 import cats.implicits._
 import cats.effect.Clock
 
-import com.snowplowanalytics.iglu.schemaddl.bigquery.{Field, Mode, Type}
+import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField
 
-import org.apache.spark.sql.types.{ArrayType, BooleanType, DataType, DateType, DecimalType, DoubleType, IntegerType, StringType, StructField, StructType, TimestampType}
+import org.apache.spark.sql.types._
 
 object SparkSchema {
 
@@ -56,27 +56,19 @@ object SparkSchema {
     }.leftMap(_.toString)
 
   def structField(ddlField: Field): StructField =
-    ddlField match {
-      case Field(name, ddlType, Mode.Nullable) =>
-        StructField(name, fieldType(ddlType), true)
-      case Field(name, ddlType, Mode.Required) =>
-        StructField(name, fieldType(ddlType), false)
-      case Field(name, ddlType, Mode.Repeated) =>
-        val itemIsNullable = true // TODO: We don't have this information!  Because BQ does not support nullable array items
-        val arrayIsNullable = true // TODO: We don't have this information!  Because BQ does not support nullable arrays.
-        StructField(name, new ArrayType(fieldType(ddlType), itemIsNullable), arrayIsNullable)
-    }
+    StructField(ddlField.name, fieldType(ddlField.fieldType), ddlField.nullable)
 
   def fieldType(ddlType: Type): DataType = ddlType match {
     case Type.String => StringType
     case Type.Boolean => BooleanType
     case Type.Integer => IntegerType
-    case Type.Float => DoubleType // TODO: Bigquery ddl does not make distinction between float and double.
-    case Type.Numeric => DoubleType // TODO: Bigquery ddl never emits this type.  Would be better if it did, and we could use Spark's DecimalType
+    case Type.Long => LongType
+    case Type.Double => DoubleType
+    case Type.Decimal(precision, scale) => DecimalType(precision, scale)
     case Type.Date => DateType
-    case Type.DateTime => TimestampType
     case Type.Timestamp => TimestampType
-    case Type.Record(fields) => StructType(fields.map(structField))
+    case Type.Struct(fields) => StructType(fields.map(structField))
+    case Type.Array(element, containsNull) => ArrayType(fieldType(element), containsNull)
   }
 
   val Atomic = List(
