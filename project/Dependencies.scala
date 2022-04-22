@@ -27,7 +27,7 @@ object Dependencies {
     val cats             = "2.2.0"
     val catsEffect       = "2.5.4"
     val manifest         = "0.3.0"
-    val fs2              = "2.5.6"
+    val fs2              = "2.5.11"
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
     val fs2Cron          = "0.5.0"
