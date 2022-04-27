@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import fs2.Stream
+
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
@@ -28,5 +30,11 @@ object PureMonitoring {
 
     def alert(payload: Monitoring.AlertPayload): Pure[Unit] =
       Pure.unit
+
+    def periodicMetrics: Metrics.PeriodicMetrics[Pure] =
+      new Metrics.PeriodicMetrics[Pure] {
+        def report: Stream[Pure, Unit] = Stream.empty
+        def setMinAgeOfLoadedData(n: Long): Pure[Unit] = Pure.unit
+      }
   }
 }
