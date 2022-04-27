@@ -107,6 +107,13 @@
         # Optional, override the default metric prefix
         # "prefix": "snowplow.rdbloader."
       }
+
+      # Optional, period for metrics emitted periodically
+      # Default value 5 minutes
+      # There is only one periodic metric at the moment.
+      # This metric is minimum_age_of_loaded_data.
+      # It specifies how old is the latest event in the warehouse.
+      "period": "5 minutes"
     },
 
     # Optional, configuration for periodic unloaded/corrupted folders checks

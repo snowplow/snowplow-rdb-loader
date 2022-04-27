@@ -150,8 +150,9 @@ object Load {
       success  = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
       _       <- Monitoring[F].success(success)
       metrics <- Metrics.getCompletedMetrics[F](loaded)
+      _       <- Monitoring[F].periodicMetrics.setMinAgeOfLoadedData(metrics.collectorLatencyMin.map(_.v).getOrElse(0))
       _       <- Monitoring[F].reportMetrics(metrics)
-      _       <- Logging[F].info(metrics.show)
+      _       <- Logging[F].info((metrics: Metrics.KVMetrics).show)
     } yield ()
   }
 }

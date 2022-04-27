@@ -63,6 +63,8 @@ object Loader {
       Stream.awakeDelay[F](StateLoggingFrequency)
         .evalMap { _ => control.get.map(_.showExtended) }
         .evalMap { state => Logging[F].info(state) }
+    val periodicMetrics: Stream[F, Unit] =
+      Monitoring[F].periodicMetrics.report
 
     val init: F[Unit] = Transaction[F, C].resume *>
       NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
@@ -74,6 +76,7 @@ object Loader {
         .merge(noOpScheduling)
         .merge(healthCheck)
         .merge(stateLogging)
+        .merge(periodicMetrics)
     }
 
     process

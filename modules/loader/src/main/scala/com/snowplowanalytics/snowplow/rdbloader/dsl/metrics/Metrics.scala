@@ -12,12 +12,17 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl.metrics
 
-import java.time.Duration
+import java.time.{Duration, Instant}
+
+import scala.concurrent.duration._
+
+import fs2.Stream
 
 import cats.{ Functor, Show }
 import cats.implicits._
 
-import cats.effect.Clock
+import cats.effect.{Clock, Sync, Timer}
+import cats.effect.concurrent.Ref
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 
@@ -39,24 +44,35 @@ object Metrics {
   }
 
   object KVMetric {
-    final case class CountGood(value: String) extends KVMetric {
+    final case class CountGood(v: Long) extends KVMetric {
       val key = "count_good"
+      val value = v.toString
       val metricType = MetricType.Count
     }
-    final case class CollectorLatencyMin(value: String) extends KVMetric {
+    final case class CollectorLatencyMin(v: Long) extends KVMetric {
       val key = "latency_collector_to_load_min"
+      val value = v.toString
       val metricType = MetricType.Gauge
     }
-    final case class CollectorLatencyMax(value: String) extends KVMetric {
+    final case class CollectorLatencyMax(v: Long) extends KVMetric {
       val key = "latency_collector_to_load_max"
+      val value = v.toString
       val metricType = MetricType.Gauge
     }
-    final case class ShredderLatencyStart(value: String) extends KVMetric {
+    final case class ShredderLatencyStart(v: Long) extends KVMetric {
       val key = "latency_shredder_start_to_load"
+      val value = v.toString
       val metricType = MetricType.Gauge
     }
-    final case class ShredderLatencyEnd(value: String) extends KVMetric {
+    final case class ShredderLatencyEnd(v: Long) extends KVMetric {
       val key = "latency_shredder_end_to_load"
+      val value = v.toString
+      val metricType = MetricType.Gauge
+    }
+
+    final case class MinAgeOfLoadedData(v: Long) extends KVMetric {
+      val key = "minimum_age_of_loaded_data"
+      val value = v.toString
       val metricType = MetricType.Gauge
     }
 
@@ -66,10 +82,62 @@ object Metrics {
     }
   }
 
+  trait PeriodicMetrics[F[_]] {
+
+    /** Stream for sending metrics to reporter periodically */
+    def report: Stream[F, Unit]
+
+    /** Set minimum age of loaded data to given value */
+    def setMinAgeOfLoadedData(n: Long): F[Unit]
+  }
+
+  object PeriodicMetrics {
+    def init[F[_]: Sync: Timer: Clock](reporters: List[Reporter[F]], period: FiniteDuration): F[Metrics.PeriodicMetrics[F]] =
+      Metrics.PeriodicMetricsRefs.init[F].map { refs =>
+        new Metrics.PeriodicMetrics[F] {
+          def report: Stream[F, Unit] =
+            for {
+              _        <- Stream.fixedDelay[F](period)
+              now      <- Stream.eval(Clock[F].instantNow)
+              m        <- Stream.eval(refs.minAgeOfLoadedData.get)
+              diff     = now.getEpochSecond - m.lastSet.getEpochSecond
+              incr     = Math.min(diff, period.toSeconds)
+              _        <- Stream.eval(refs.minAgeOfLoadedData.update(m => m.copy(value = m.value + incr)))
+              snapshot <- Stream.eval(Metrics.PeriodicMetricsRefs.snapshot(refs))
+              _        <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList)))
+            } yield ()
+
+          def setMinAgeOfLoadedData(n: Long): F[Unit] =
+            Clock[F].instantNow.flatMap { now =>
+              refs.minAgeOfLoadedData.set(MinAgeOfLoadedDataRef(n, now))
+            }
+        }
+      }
+  }
+
+  final case class MinAgeOfLoadedDataRef(value: Long, lastSet: Instant)
+
+  final case class PeriodicMetricsRefs[F[_]](minAgeOfLoadedData: Ref[F, MinAgeOfLoadedDataRef])
+
+  object PeriodicMetricsRefs {
+    def init[F[_]: Sync: Clock]: F[PeriodicMetricsRefs[F]] =
+      for {
+        now <- Clock[F].instantNow
+        minAgeOfLoadedData <- Ref.of[F, MinAgeOfLoadedDataRef](MinAgeOfLoadedDataRef(0, now))
+      } yield PeriodicMetricsRefs(minAgeOfLoadedData)
+
+    def snapshot[F[_]: Sync](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
+      refs.minAgeOfLoadedData.get.map {
+        m => KVMetrics.PeriodicMetricsSnapshot(KVMetric.MinAgeOfLoadedData(m.value))
+      }
+  }
+
   sealed trait KVMetrics {
     def toList: List[KVMetric] = this match {
       case KVMetrics.LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) => 
         List(Some(count), minTstamp, maxTstamp, Some(shredderStart), Some(shredderEnd)).unite
+      case KVMetrics.PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
+        List(minAgeOfLoadedData)
       case KVMetrics.HealthCheck(healthy) =>
         List(healthy)
     }
@@ -85,6 +153,10 @@ object Metrics {
       shredderEndLatency: KVMetric.ShredderLatencyEnd
     ) extends KVMetrics
 
+    final case class PeriodicMetricsSnapshot(
+      minAgeOfLoadedData: KVMetric.MinAgeOfLoadedData
+    ) extends KVMetrics
+
     final case class HealthCheck(destinationHealthy: KVMetric) extends KVMetrics
 
     implicit val kvMetricsShow: Show[KVMetrics] =
@@ -95,20 +167,22 @@ object Metrics {
             | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and warehouse for these events.
             | It took ${shredderStart.value} seconds between the start of transformer and warehouse
             | and ${shredderEnd.value} seconds between the completion of transformer and warehouse""".stripMargin.replaceAll("\n", " ")
+        case PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
+          s"Minimum age of loaded data in seconds: ${minAgeOfLoadedData.value}"
         case HealthCheck(destinationHealthy) =>
           if (destinationHealthy.value === "1") "DB is healthy and responsive"
           else "DB is in unhealthy state"
       }
   }
 
-  def getCompletedMetrics[F[_]: Clock: Functor](loaded: LoaderMessage.ShreddingComplete): F[KVMetrics] =
+  def getCompletedMetrics[F[_]: Clock: Functor](loaded: LoaderMessage.ShreddingComplete): F[KVMetrics.LoadingCompleted] =
     Clock[F].instantNow.map { now =>
       KVMetrics.LoadingCompleted(
-        KVMetric.CountGood(loaded.count.map(_.good).getOrElse(0).toString),
-        loaded.timestamps.max.map(max => Duration.between(max, now).toSeconds()).map(l => KVMetric.CollectorLatencyMin(l.toString)),
-        loaded.timestamps.min.map(min => Duration.between(min, now).toSeconds()).map(l => KVMetric.CollectorLatencyMax(l.toString)),
-        KVMetric.ShredderLatencyStart(Duration.between(loaded.timestamps.jobStarted, now).toSeconds().toString),
-        KVMetric.ShredderLatencyEnd(Duration.between(loaded.timestamps.jobCompleted, now).toSeconds().toString)
+        KVMetric.CountGood(loaded.count.map(_.good).getOrElse(0)),
+        loaded.timestamps.max.map(max => Duration.between(max, now).toSeconds()).map(l => KVMetric.CollectorLatencyMin(l)),
+        loaded.timestamps.min.map(min => Duration.between(min, now).toSeconds()).map(l => KVMetric.CollectorLatencyMax(l)),
+        KVMetric.ShredderLatencyStart(Duration.between(loaded.timestamps.jobStarted, now).toSeconds()),
+        KVMetric.ShredderLatencyEnd(Duration.between(loaded.timestamps.jobCompleted, now).toSeconds())
       )
     }
 

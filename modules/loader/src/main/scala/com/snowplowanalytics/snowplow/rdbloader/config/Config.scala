@@ -61,11 +61,11 @@ object Config {
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
   final case class Schedules(noOperation: List[Schedule])
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Option[Metrics], webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
+  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Metrics, webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class HealthCheck(frequency: FiniteDuration, timeout: FiniteDuration)
-  final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout])
+  final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout], period: FiniteDuration)
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
