@@ -36,12 +36,12 @@ object ConfigSpec {
   val exampleMonitoring = Config.Monitoring(
     Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
-    Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
+    Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)), 5.minutes),
     Some(Config.Webhook(uri"https://webhook.acme.com", Map("pipeline" -> "production"))),
     Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3))),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
-  val emptyMonitoring = Config.Monitoring(None, None, None, None, None, None)
+  val emptyMonitoring = Config.Monitoring(None, None, Config.Metrics(None, None, 5.minutes), None, None, None)
   val exampleQueueName = "test-queue"
   val exampleRedshift = StorageTarget.Redshift(
     "redshift.amazonaws.com",

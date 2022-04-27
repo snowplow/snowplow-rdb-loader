@@ -13,30 +13,31 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl.metrics
 
 import java.time.Instant
-
-import scala.concurrent.duration.TimeUnit
-
+import scala.concurrent.duration._
+import fs2.concurrent.Queue
 import cats.Id
-
-import cats.effect.Clock
-
+import cats.effect.{Clock, ContextShift, IO, Timer}
+import cats.effect.laws.util.TestContext
+import cats.implicits._
 import org.specs2.mutable.Specification
-
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.{PeriodicMetrics, KVMetric}
 
 class MetricsSpec extends Specification {
 
-  val nanos = System.nanoTime()
-  val now = Instant.ofEpochSecond(0L, nanos)
-
-  implicit val clockIdImpl: Clock[Id] = new Clock[Id] {
-    def realTime(unit: TimeUnit): Id[Long] = nanos
-    def monotonic(unit: TimeUnit): Id[Long] = 0L
-  }
+  val globalTimer: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
   "getCompletedMetrics" should {
+    val nanos = System.nanoTime()
+    val now = Instant.ofEpochSecond(0L, nanos)
+
+    implicit val clockIdImpl: Clock[Id] = new Clock[Id] {
+      def realTime(unit: TimeUnit): Id[Long] = nanos
+      def monotonic(unit: TimeUnit): Id[Long] = 0L
+    }
+
     "compute the metrics" in {
       val countGood = 42L
       val collectorLatencyMin = 120L
@@ -59,11 +60,11 @@ class MetricsSpec extends Specification {
       )
 
       val expected = Metrics.KVMetrics.LoadingCompleted(
-        Metrics.KVMetric.CountGood(countGood.toString),
-        Some(Metrics.KVMetric.CollectorLatencyMin(collectorLatencyMin.toString)),
-        Some(Metrics.KVMetric.CollectorLatencyMax(collectorLatencyMax .toString)),
-        Metrics.KVMetric.ShredderLatencyStart(shredderStartLatency.toString),
-        Metrics.KVMetric.ShredderLatencyEnd(shredderEndLatency .toString)
+        Metrics.KVMetric.CountGood(countGood),
+        Some(Metrics.KVMetric.CollectorLatencyMin(collectorLatencyMin)),
+        Some(Metrics.KVMetric.CollectorLatencyMax(collectorLatencyMax)),
+        Metrics.KVMetric.ShredderLatencyStart(shredderStartLatency),
+        Metrics.KVMetric.ShredderLatencyEnd(shredderEndLatency)
       )
 
       val actual = Metrics.getCompletedMetrics[Id](loaded)
@@ -71,4 +72,68 @@ class MetricsSpec extends Specification {
       actual === expected
     }
   }
+
+  "periodic metrics" should {
+    "be emitted with correct times" in {
+      val testContext = TestContext()
+      implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
+      implicit val ioTimer: Timer[IO] = testContext.ioTimer
+
+      val testCase = (periodicMetrics: PeriodicMetrics[IO]) => for {
+        _ <- IO(testContext.tick(3.minutes))
+        _ <- periodicMetrics.setMinAgeOfLoadedData(500)
+        _ <- IO(testContext.tick(2.minutes+20.seconds))
+        _ <- periodicMetrics.setMinAgeOfLoadedData(1000)
+        _ <- IO(testContext.tick(3.minutes+10.seconds))
+        _ <- periodicMetrics.setMinAgeOfLoadedData(1500)
+        _ <- IO(testContext.tick(5.minutes))
+      } yield ()
+
+      val res = runPeriodicMetrics(testCase, 1.minutes, 10.minutes+1.seconds)
+
+      val expected = List(
+        KVMetric.MinAgeOfLoadedData(60),
+        KVMetric.MinAgeOfLoadedData(120),
+        KVMetric.MinAgeOfLoadedData(180),
+        KVMetric.MinAgeOfLoadedData(560),
+        KVMetric.MinAgeOfLoadedData(620),
+        // It takes remaining time in the current period
+        // into account when min age of loaded data is set.
+        KVMetric.MinAgeOfLoadedData(1040),
+        KVMetric.MinAgeOfLoadedData(1100),
+        KVMetric.MinAgeOfLoadedData(1160),
+        // The remaining time in the current period
+        // is taken into account in here too.
+        KVMetric.MinAgeOfLoadedData(1530),
+        KVMetric.MinAgeOfLoadedData(1590),
+      )
+
+      res must beEqualTo(expected)
+    }
+  }
+
+  def runPeriodicMetrics(testCase: PeriodicMetrics[IO] => IO[Unit],
+                         metricPeriod: FiniteDuration,
+                         metricStreamDuration: FiniteDuration)(implicit cs: ContextShift[IO], timer: Timer[IO]): List[Metrics.KVMetric] =
+    (for {
+      queue <- Queue.noneTerminated[IO, Metrics.KVMetric]
+      testReporter = new Reporter[IO] {
+        def report(metrics: List[Metrics.KVMetric]): IO[Unit] =
+          metrics.traverse_{ i =>
+            queue.enqueue1(Some(i))
+          }
+      }
+      periodicMetrics <- PeriodicMetrics.init[IO](List(testReporter), metricPeriod)
+      handle = periodicMetrics.report.interruptAfter(metricStreamDuration).compile.toList
+      _ <- for {
+        running <- handle.start
+        _ <- IO.sleep(1.seconds)(globalTimer)
+        _ <- testCase(periodicMetrics)
+        _ <- running.join
+      } yield ()
+      res <- for {
+        _ <- queue.enqueue1(None)
+        i <- queue.dequeue.compile.toList
+      } yield i
+    } yield res).unsafeRunSync()
 }
