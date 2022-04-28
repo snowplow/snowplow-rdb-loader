@@ -1,3 +1,9 @@
+Version 3.0.1 (2022-04-28)
+--------------------------
+Snowflake Loader: fix folder monitoring copy statement (#851)
+Snowflake Loader: make default 'storage.type' Snowflake (#828)
+Snowflake Loader: resume warehouse for each loading (#843)
+
 Version 3.0.0 (2022-04-01)
 --------------------------
 RDB Loader: add Snowflake support (#792)
