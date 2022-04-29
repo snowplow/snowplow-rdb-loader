@@ -55,7 +55,7 @@ object Statement {
   case class FoldersCopy(source: S3.Folder) extends Statement
 
   // Loading
-  case class EventsCopy(path: S3.Folder, compression: Compression) extends Statement with Loading {
+  case class EventsCopy(path: S3.Folder, compression: Compression, columns: List[String] = List.empty) extends Statement with Loading {
     def table: String = "events"
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
