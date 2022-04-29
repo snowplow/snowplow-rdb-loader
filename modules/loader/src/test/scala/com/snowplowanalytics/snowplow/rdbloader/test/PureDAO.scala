@@ -97,7 +97,7 @@ object PureDAO {
 
     def getLoadStatements(discovery: DataDiscovery): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip),
+        Statement.EventsCopy(discovery.base, Compression.Gzip, List.empty),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }

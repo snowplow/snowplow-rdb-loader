@@ -30,13 +30,14 @@ import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, AtomicColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Entity, Block}
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 
 
 object Snowflake {
@@ -65,7 +66,7 @@ object Snowflake {
           }
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList(Statement.EventsCopy(discovery.base, discovery.compression), Nil)
+            NonEmptyList(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery)), Nil)
 
           // Technically, Snowflake Loader cannot create new tables
           def createTable(schemas: SchemaList): Block = {
@@ -75,6 +76,20 @@ object Snowflake {
 
           def getManifest: Statement =
             Statement.CreateTable(SnowflakeManifest.getManifestDef(schema).toFragment)
+
+          def getColumns(discovery: DataDiscovery): List[String] = {
+            val atomicColumns = AtomicColumns.Columns
+            val shredTypeColumns = discovery.shreddedTypes
+              .filterNot(_.isAtomic)
+              .map(getShredTypeColumn)
+            atomicColumns ::: shredTypeColumns
+          }
+
+          def getShredTypeColumn(shreddedType: ShreddedType): String = {
+            val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
+            val info = shreddedType.info
+            SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model)
+          }
 
           def toFragment(statement: Statement): Fragment =
             statement match {
@@ -100,10 +115,18 @@ object Snowflake {
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, _) =>
-                val frTableName = Fragment.const(EventsTable.MainName)
-                val frPath      = Fragment.const0(s"@$schema.$stage/${path.folderName}/output=good/")
-                sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = JSON) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE"
+              case Statement.EventsCopy(path, _, columns) => {
+                def columnsForCopy: String = columns.mkString(",") + ",load_tstamp"
+                def columnsForSelect: String = columns.map(c => s"$$1:$c").mkString(",") + ",current_timestamp()"
+
+                val frPath = Fragment.const0(s"@$schema.$stage/${path.folderName}/output=good/")
+                val frCopy = Fragment.const0(s"$schema.${EventsTable.MainName}($columnsForCopy)")
+                val frSelectColumns = Fragment.const0(columnsForSelect)
+                sql"""|COPY INTO $frCopy
+                      |FROM (
+                      |  SELECT $frSelectColumns FROM $frPath
+                      |)""".stripMargin
+              }
               case Statement.ShreddedCopy(_, _) =>
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
 
@@ -151,6 +174,9 @@ object Snowflake {
                    min_collector_tstamp, max_collector_tstamp,
                    compression, processor_artifact, processor_version, count_good
                    FROM ${Fragment.const0(s"$schema.${Manifest.Name}")} WHERE base = $base"""
+              case Statement.AddLoadTstampColumn =>
+                sql"""ALTER TABLE ${Fragment.const0(EventsTable.withSchema(schema))}
+                      ADD COLUMN load_tstamp TIMESTAMP NULL"""
 
               case Statement.CreateTable(ddl) =>
                 ddl
