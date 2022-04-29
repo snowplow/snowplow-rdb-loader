@@ -23,10 +23,10 @@ import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest}
+import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest, Control => DbControl, AtomicColumns, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage, EventsTable }
 import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
 
 object Loader {
@@ -68,7 +68,8 @@ object Loader {
 
     val init: F[Unit] = Transaction[F, C].resume *>
       NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
-      Manifest.initialize[F, C](config.storage)
+      Manifest.initialize[F, C](config.storage) *>
+      Transaction[F, C].transact(addLoadTstampColumn[C])
 
     val process = Stream.eval(init).flatMap { _ =>
       loading
@@ -145,6 +146,16 @@ object Loader {
 
     loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
   }
+
+  def addLoadTstampColumn[F[_]: DAO: Monad: Logging]: F[Unit] =
+    for {
+      columns <- DbControl.getColumns[F](EventsTable.MainName)
+      _ <- if (columns.map(_.toLowerCase).contains(AtomicColumns.ColumnsWithDefault.LoadTstamp))
+        Logging[F].info("load_tstamp column already exists")
+      else
+        DAO[F].executeUpdate(Statement.AddLoadTstampColumn).void *>
+          Logging[F].info("load_tstamp column is added successfully")
+    } yield ()
 
   /**
    * Handle a failure during loading.

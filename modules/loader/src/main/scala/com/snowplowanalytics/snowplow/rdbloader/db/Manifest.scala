@@ -76,6 +76,7 @@ object Manifest {
   def create[F[_]: DAO: Functor]: F[Unit] =
     DAO[F].executeUpdate(DAO[F].target.getManifest).void
 
+
   case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)
 
   object Entry {

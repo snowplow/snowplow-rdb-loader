@@ -34,7 +34,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Entity, Item, Block, NoPreStatements, NoStatements}
-import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target, AtomicColumns }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
@@ -119,8 +119,9 @@ object Redshift {
                 val frRegion = Fragment.const0(config.region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
+                val frColumns = Fragment.const0(AtomicColumns.Columns.mkString(","))
 
-                sql"""COPY $frTableName FROM '$frPath'
+                sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                      | CREDENTIALS '$frRoleArn'
                      | REGION '$frRegion'
                      | MAXERROR $frMaxError
@@ -212,6 +213,9 @@ object Redshift {
                       min_collector_tstamp, max_collector_tstamp,
                       compression, processor_artifact, processor_version, count_good
                       FROM ${Fragment.const0(schema)}.manifest WHERE base = $base"""
+              case Statement.AddLoadTstampColumn =>
+                sql"""ALTER TABLE ${Fragment.const0(EventsTable.withSchema(schema))}
+                      ADD COLUMN load_tstamp TIMESTAMP DEFAULT GETDATE() NULL"""
 
               case Statement.CreateTable(ddl) =>
                 ddl
