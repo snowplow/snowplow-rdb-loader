@@ -16,22 +16,15 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 
 import cats.Monad
 import cats.implicits._
-
 import cats.data.{EitherT, NonEmptyList}
-
 import cats.effect.Clock
-
 import io.circe.{Json => CJson}
-
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-
 import com.snowplowanalytics.iglu.core.SchemaKey
-
+import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-
 import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
-
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat
 
@@ -42,10 +35,15 @@ sealed trait Transformed {
 }
 
 object Transformed {
+
   sealed trait Data
   object Data {
     case class DString(value: String) extends Data
-    case class ListAny(value: List[Any]) extends Data
+    case class ParquetData(value: List[ParquetData.FieldWithValue]) extends Data
+
+    object ParquetData {
+      final case class FieldWithValue(field: Field, value: FieldValue)
+    }
   }
 
   /**
@@ -83,7 +81,7 @@ object Transformed {
    */
   case class WideRow(good: Boolean, data: Data.DString) extends Transformed
 
-  case class Parquet(data: Data.ListAny) extends Transformed
+  case class Parquet(data: Data.ParquetData) extends Transformed
 
   /**
    * Parse snowplow enriched event into a list of shredded (either JSON or TSV, according to settings) entities

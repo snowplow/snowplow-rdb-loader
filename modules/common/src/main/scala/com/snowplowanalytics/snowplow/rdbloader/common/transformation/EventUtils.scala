@@ -17,7 +17,6 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation
 import java.util.UUID
 import java.time.Instant
 import java.time.format.DateTimeParseException
-import java.sql.Timestamp
 
 import io.circe.Json
 import cats.Monad
@@ -92,27 +91,6 @@ object EventUtils {
     }
 
     tabular.mkString("\t")
-  }
-
-  def alterEnrichedEventAny[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): List[Any] = {
-    def transformDate(s: String): Timestamp =
-      Timestamp.from(Instant.parse(s))
-    def truncate(key: String, value: String): String =
-      lengths.get(key) match {
-        case Some(len) => value.take(len)
-        case None => value
-      }
-
-    originalLine.ordered.flatMap {
-      case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
-      case (key, Some(value)) if key.endsWith("_tstamp") =>
-        val any: Any = value.fold(null, b => b, n => n.toInt.getOrElse(n.toDouble), transformDate, _ => value.noSpaces, _ => value.noSpaces)
-        Some(any)
-      case (key, Some(value)) =>
-        val any: Any = value.fold(null, b => b, n => n.toInt.getOrElse(n.toDouble), s => truncate(key, s), _ => value.noSpaces, _ => value.noSpaces)
-        Some(any)
-      case (_, None) => Some(null)
-    }
   }
 
   def validateEntities[F[_]: Clock: RegistryLookup: Monad](processor: Processor, client: Client[F, Json], event: Event): F[Either[BadRow, Unit]] =

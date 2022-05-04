@@ -16,30 +16,29 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
-
+import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.StructType
 
 // Spark
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.util.LongAccumulator
 
 // Snowplow
-import com.snowplowanalytics.snowplow.badrows.BadRow
-
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-
-
-import com.snowplowanalytics.snowplow.rdbloader.common._
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.badrows.BadRow
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
-
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton._
 
@@ -132,12 +131,13 @@ object Transformer {
 
   case class WideRowParquetTransformer(igluConfig: Json,
                                        atomicLengths: Map[String, Int],
-                                       wideRowTypes: List[TypesInfo.WideRow.Type]) extends Transformer[TypesInfo.WideRow.Type] {
+                                       allFields: AllFields,
+                                       schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
     def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
-      SparkData.parquetEvent[Id](IgluSingleton.get(igluConfig).resolver, atomicLengths, wideRowTypes, ShredJob.BadRowsProcessor)(event) match {
+      ParquetTransformer.transform(event, allFields, ShredJob.BadRowsProcessor) match {
         case Right(transformed) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.wideRowTypeConverter)(event.inventory)
           timestampsAccumulator.add(event)
@@ -157,10 +157,6 @@ object Transformer {
     }
 
     def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit = {
-      val schema = SparkSchema.build[Id](IgluSingleton.get(igluConfig).resolver, wideRowTypes) match {
-        case Right(s) => s
-        case Left(err) => throw new RuntimeException(s"Error while building spark schema: $err")
-      }
       // If it is not cached, events will be processed two times since
       // data is output in both wide row json and parquet format.
       val transformedCache = transformed.cache()
@@ -193,8 +189,24 @@ object Transformer {
     }
 
     def parquet: Option[List[Any]] = t match {
-      case p: Transformed.Parquet => p.data.value.some
+      case p: Transformed.Parquet => p.data.value.map(_.value).map(extractFieldValue).some
       case _ => None
     }
+
+    def extractFieldValue(fv: FieldValue): Any = fv match {
+      case FieldValue.NullValue => null
+      case FieldValue.StringValue(v) => v
+      case FieldValue.BooleanValue(v) => v
+      case FieldValue.IntValue(v) => v
+      case FieldValue.LongValue(v) => v
+      case FieldValue.DoubleValue(v) => v
+      case FieldValue.DecimalValue(v) => v
+      case FieldValue.TimestampValue(v) => v
+      case FieldValue.DateValue(v) => v
+      case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue)
+      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v._2) })
+      case FieldValue.JsonValue(v) => v.noSpaces
+    }
+    
   }
 }

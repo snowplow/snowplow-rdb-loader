@@ -14,49 +14,27 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import cats.Monad
-import cats.data.EitherT
-import cats.implicits._
-import cats.effect.Clock
-
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
-import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.WideField
-
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import org.apache.spark.sql.types._
 
 object SparkSchema {
 
-  val CustomDecimal = DecimalType(18, 2)
-
-  def build[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], types: List[LoaderMessage.TypesInfo.WideRow.Type]): F[Either[String, StructType]] = {
-    val latestByModel = LoaderMessage.TypesInfo.WideRow.latestByModel(types)
-    latestByModel.sorted
-      .traverse(forEntity(resolver, _))
-      .map(forEntities => StructType(Atomic ::: forEntities))
-      .value
+  def build(allFields: AllFields): StructType = {
+    StructType {
+      allFields
+        .fieldsOnly
+        .map(asSparkField)
+    }
   }
 
-  def forEntity[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], entity: LoaderMessage.TypesInfo.WideRow.Type): EitherT[F, String, StructField] =
-    WideField.getSchema(resolver, entity.schemaKey).map { schema =>
-      val name = SnowplowEvent.transformSchema(entity.snowplowEntity.toSdkProperty, entity.schemaKey)
-      entity.snowplowEntity match {
-        case LoaderMessage.SnowplowEntity.SelfDescribingEvent =>
-          val ddlField = Field.build(name, schema, false)
-          structField(Field.normalize(ddlField))
-        case LoaderMessage.SnowplowEntity.Context =>
-          val ddlField = Field.buildRepeated(name, schema, true, Type.Nullability.Nullable)
-          structField(Field.normalize(ddlField))
-      }
-    }.leftMap(_.toString)
+  private def asSparkField(ddlField: Field): StructField = {
+    val normalizedName = Field.normalize(ddlField).name
+    val dataType = fieldType(ddlField.fieldType)
+    StructField(normalizedName, dataType, ddlField.nullability.nullable)
+  }
 
-  def structField(ddlField: Field): StructField =
-    StructField(ddlField.name, fieldType(ddlField.fieldType), ddlField.nullability.nullable)
-
-  def fieldType(ddlType: Type): DataType = ddlType match {
+  private def fieldType(ddlType: Type): DataType = ddlType match {
     case Type.String => StringType
     case Type.Boolean => BooleanType
     case Type.Integer => IntegerType
@@ -65,139 +43,9 @@ object SparkSchema {
     case Type.Decimal(precision, scale) => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
     case Type.Date => DateType
     case Type.Timestamp => TimestampType
-    case Type.Struct(fields) => StructType(fields.map(structField))
+    case Type.Struct(fields) => StructType(fields.map(asSparkField))
     case Type.Array(element, elNullability) => ArrayType(fieldType(element), elNullability.nullable)
     case Type.Json => StringType // Spark does not support the `Json` parquet logical type.
   }
 
-  val Atomic = List(
-    StructField("app_id",                   StringType,     true),
-    StructField("platform",                 StringType,     true),
-    StructField("etl_tstamp",               TimestampType,  true),
-    StructField("collector_tstamp",         TimestampType,  false),
-    StructField("dvce_created_tstamp",      TimestampType,  true),
-    StructField("event",                    StringType,     true),
-    StructField("event_id",                 StringType,     false),
-    StructField("txn_id",                   IntegerType,    true),
-    StructField("name_tracker",             StringType,     true),
-    StructField("v_tracker",                StringType,     true),
-    StructField("v_collector",              StringType,     false),
-    StructField("v_etl",                    StringType,     false),
-    StructField("user_id",                  StringType,     true),
-    StructField("user_ipaddress",           StringType,     true),
-    StructField("user_fingerprint",         StringType,     true),
-    StructField("domain_userid",            StringType,     true),
-    StructField("domain_sessionidx",        IntegerType,    true),
-    StructField("network_userid",           StringType,     true),
-    StructField("geo_country",              StringType,     true),
-    StructField("geo_region",               StringType,     true),
-    StructField("geo_city",                 StringType,     true),
-    StructField("geo_zipcode",              StringType,     true),
-    StructField("geo_latitude",             DoubleType,     true),
-    StructField("geo_longitude",            DoubleType,     true),
-    StructField("geo_region_name",          StringType,     true),
-    StructField("ip_isp",                   StringType,     true),
-    StructField("ip_organization",          StringType,     true),
-    StructField("ip_domain",                StringType,     true),
-    StructField("ip_netspeed",              StringType,     true),
-    StructField("page_url",                 StringType,     true),
-    StructField("page_title",               StringType,     true),
-    StructField("page_referrer",            StringType,     true),
-    StructField("page_urlscheme",           StringType,     true),
-    StructField("page_urlhost",             StringType,     true),
-    StructField("page_urlport",             IntegerType,    true),
-    StructField("page_urlpath",             StringType,     true),
-    StructField("page_urlquery",            StringType,     true),
-    StructField("page_urlfragment",         StringType,     true),
-    StructField("refr_urlscheme",           StringType,     true),
-    StructField("refr_urlhost",             StringType,     true),
-    StructField("refr_urlport",             IntegerType,    true),
-    StructField("refr_urlpath",             StringType,     true),
-    StructField("refr_urlquery",            StringType,     true),
-    StructField("refr_urlfragment",         StringType,     true),
-    StructField("refr_medium",              StringType,     true),
-    StructField("refr_source",              StringType,     true),
-    StructField("refr_term",                StringType,     true),
-    StructField("mkt_medium",               StringType,     true),
-    StructField("mkt_source",               StringType,     true),
-    StructField("mkt_term",                 StringType,     true),
-    StructField("mkt_content",              StringType,     true),
-    StructField("mkt_campaign",             StringType,     true),
-    StructField("se_category",              StringType,     true),
-    StructField("se_action",                StringType,     true),
-    StructField("se_label",                 StringType,     true),
-    StructField("se_property",              StringType,     true),
-    StructField("se_value",                 DoubleType,     true),
-    StructField("tr_orderid",               StringType,     true),
-    StructField("tr_affiliation",           StringType,     true),
-    StructField("tr_total",                 CustomDecimal,  true),
-    StructField("tr_tax",                   CustomDecimal,  true),
-    StructField("tr_shipping",              CustomDecimal,  true),
-    StructField("tr_city",                  StringType,     true),
-    StructField("tr_state",                 StringType,     true),
-    StructField("tr_country",               StringType,     true),
-    StructField("ti_orderid",               StringType,     true),
-    StructField("ti_sku",                   StringType,     true),
-    StructField("ti_name",                  StringType,     true),
-    StructField("ti_category",              StringType,     true),
-    StructField("ti_price",                 CustomDecimal,  true),
-    StructField("ti_quantity",              IntegerType,    true),
-    StructField("pp_xoffset_min",           IntegerType,    true),
-    StructField("pp_xoffset_max",           IntegerType,    true),
-    StructField("pp_yoffset_min",           IntegerType,    true),
-    StructField("pp_yoffset_max",           IntegerType,    true),
-    StructField("useragent",                StringType,     true),
-    StructField("br_name",                  StringType,     true),
-    StructField("br_family",                StringType,     true),
-    StructField("br_version",               StringType,     true),
-    StructField("br_type",                  StringType,     true),
-    StructField("br_renderengine",          StringType,     true),
-    StructField("br_lang",                  StringType,     true),
-    StructField("br_features_pdf",          BooleanType,    true),
-    StructField("br_features_flash",        BooleanType,    true),
-    StructField("br_features_java",         BooleanType,    true),
-    StructField("br_features_director",     BooleanType,    true),
-    StructField("br_features_quicktime",    BooleanType,    true),
-    StructField("br_features_realplayer",   BooleanType,    true),
-    StructField("br_features_windowsmedia", BooleanType,    true),
-    StructField("br_features_gears",        BooleanType,    true),
-    StructField("br_features_silverlight",  BooleanType,    true),
-    StructField("br_cookies",               BooleanType,    true),
-    StructField("br_colordepth",            StringType,     true),
-    StructField("br_viewwidth",             IntegerType,    true),
-    StructField("br_viewheight",            IntegerType,    true),
-    StructField("os_name",                  StringType,     true),
-    StructField("os_family",                StringType,     true),
-    StructField("os_manufacturer",          StringType,     true),
-    StructField("os_timezone",              StringType,     true),
-    StructField("dvce_type",                StringType,     true),
-    StructField("dvce_ismobile",            BooleanType,    true),
-    StructField("dvce_screenwidth",         IntegerType,    true),
-    StructField("dvce_screenheight",        IntegerType,    true),
-    StructField("doc_charset",              StringType,     true),
-    StructField("doc_width",                IntegerType,    true),
-    StructField("doc_height",               IntegerType,    true),
-    StructField("tr_currency",              StringType,     true),
-    StructField("tr_total_base",            CustomDecimal,  true),
-    StructField("tr_tax_base",              CustomDecimal,  true),
-    StructField("tr_shipping_base",         CustomDecimal,  true),
-    StructField("ti_currency",              StringType,     true),
-    StructField("ti_price_base",            CustomDecimal,  true),
-    StructField("base_currency",            StringType,     true),
-    StructField("geo_timezone",             StringType,     true),
-    StructField("mkt_clickid",              StringType,     true),
-    StructField("mkt_network",              StringType,     true),
-    StructField("etl_tags",                 StringType,     true),
-    StructField("dvce_sent_tstamp",         TimestampType,  true),
-    StructField("refr_domain_userid",       StringType,     true),
-    StructField("refr_dvce_tstamp",         TimestampType,  true),
-    StructField("domain_sessionid",         StringType,     true),
-    StructField("derived_tstamp",           TimestampType,  true),
-    StructField("event_vendor",             StringType,     true),
-    StructField("event_name",               StringType,     true),
-    StructField("event_format",             StringType,     true),
-    StructField("event_version",            StringType,     true),
-    StructField("event_fingerprint",        StringType,     true),
-    StructField("true_tstamp",              TimestampType,  true)
-  )
 }
