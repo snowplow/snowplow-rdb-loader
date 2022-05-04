@@ -55,7 +55,8 @@ object SparkData {
     case FieldValue.DecimalValue(v) => v
     case FieldValue.TimestampValue(v) => v
     case FieldValue.DateValue(v) => v
-    case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue).toArray // TODO: Do I need to cast to array or is list OK?
+    case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue)
     case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v._2) })
+    case FieldValue.JsonValue(v) => v.noSpaces
   }
 }

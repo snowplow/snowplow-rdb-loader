@@ -45,18 +45,16 @@ object SparkSchema {
       val name = SnowplowEvent.transformSchema(entity.snowplowEntity.toSdkProperty, entity.schemaKey)
       entity.snowplowEntity match {
         case LoaderMessage.SnowplowEntity.SelfDescribingEvent =>
-          // TODO: Should 'Field.normalized' be called here ?
           val ddlField = Field.build(name, schema, false)
-          structField(ddlField)
+          structField(Field.normalize(ddlField))
         case LoaderMessage.SnowplowEntity.Context =>
-          // TODO: Should 'Field.normalized' be called here ?
-          val ddlField = Field.build("NOT_NEEDED", schema, true)
-          StructField(name, new ArrayType(fieldType(ddlField.fieldType), false), true)
+          val ddlField = Field.buildRepeated(name, schema, true, Type.Nullability.Nullable)
+          structField(Field.normalize(ddlField))
       }
     }.leftMap(_.toString)
 
   def structField(ddlField: Field): StructField =
-    StructField(ddlField.name, fieldType(ddlField.fieldType), ddlField.nullable)
+    StructField(ddlField.name, fieldType(ddlField.fieldType), ddlField.nullability.nullable)
 
   def fieldType(ddlType: Type): DataType = ddlType match {
     case Type.String => StringType
@@ -64,11 +62,12 @@ object SparkSchema {
     case Type.Integer => IntegerType
     case Type.Long => LongType
     case Type.Double => DoubleType
-    case Type.Decimal(precision, scale) => DecimalType(precision, scale)
+    case Type.Decimal(precision, scale) => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
     case Type.Date => DateType
     case Type.Timestamp => TimestampType
     case Type.Struct(fields) => StructType(fields.map(structField))
-    case Type.Array(element, containsNull) => ArrayType(fieldType(element), containsNull)
+    case Type.Array(element, elNullability) => ArrayType(fieldType(element), elNullability.nullable)
+    case Type.Json => StringType // Spark does not support the `Json` parquet logical type.
   }
 
   val Atomic = List(
