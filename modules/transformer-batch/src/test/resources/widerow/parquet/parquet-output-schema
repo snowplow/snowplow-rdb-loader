@@ -155,7 +155,7 @@ message spark_schema {
       required group element {
         optional binary attributes (UTF8);
         required binary name (UTF8);
-        optional binary registrationToken (UTF8);
+        optional binary registration_token (UTF8);
       }
     }
   }
@@ -169,11 +169,11 @@ message spark_schema {
   optional group contexts_com_optimizely_state_1 (LIST) {
     repeated group list {
       required group element {
-        optional binary experimentId (UTF8);
-        optional boolean isActive;
-        optional binary variationId (UTF8);
-        optional int64 variationIndex;
-        optional binary variationName (UTF8);
+        optional binary experiment_id (UTF8);
+        optional boolean is_active;
+        optional binary variation_id (UTF8);
+        optional int64 variation_index;
+        optional binary variation_name (UTF8);
       }
     }
   }
@@ -190,18 +190,18 @@ message spark_schema {
     repeated group list {
       required group element {
         optional binary browser (UTF8);
-        optional binary browserVersion (UTF8);
+        optional binary browser_version (UTF8);
         optional binary device (UTF8);
-        optional binary deviceType (UTF8);
+        optional binary device_type (UTF8);
         optional binary ip (UTF8);
-        optional binary locationCity (UTF8);
-        optional binary locationCountry (UTF8);
-        optional binary locationRegion (UTF8);
+        optional binary location_city (UTF8);
+        optional binary location_country (UTF8);
+        optional binary location_region (UTF8);
         optional boolean mobile;
-        optional binary mobileId (UTF8);
+        optional binary mobile_id (UTF8);
         optional binary os (UTF8);
-        optional binary platformId (UTF8);
-        optional binary platformVersion (UTF8);
+        optional binary platform_id (UTF8);
+        optional binary platform_version (UTF8);
         optional binary referrer (UTF8);
       }
     }
@@ -209,10 +209,10 @@ message spark_schema {
   optional group contexts_com_optimizely_optimizelyx_summary_1 (LIST) {
     repeated group list {
       required group element {
-        optional fixed_len_byte_array(9) experimentId (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) variation (DECIMAL(19,0));
-        optional binary variationName (UTF8);
-        optional binary visitorId (UTF8);
+        optional int64 experiment_id;
+        optional int64 variation;
+        optional binary variation_name (UTF8);
+        optional binary visitor_id (UTF8);
       }
     }
   }
@@ -226,14 +226,14 @@ message spark_schema {
   optional group contexts_com_snowplowanalytics_snowplow_change_form_1 (LIST) {
     repeated group list {
       required group element {
-        optional group elementClasses (LIST) {
+        optional group element_classes (LIST) {
           repeated group list {
             required binary element (UTF8);
           }
         }
-        required binary elementId (UTF8);
-        required binary formId (UTF8);
-        required binary nodeName (UTF8);
+        required binary element_id (UTF8);
+        required binary form_id (UTF8);
+        required binary node_name (UTF8);
         optional binary type (UTF8);
         optional binary value (UTF8);
       }
@@ -242,12 +242,12 @@ message spark_schema {
   optional group contexts_com_snowplowanalytics_snowplow_client_session_1 (LIST) {
     repeated group list {
       required group element {
-        optional binary firstEventId (UTF8);
-        optional binary previousSessionId (UTF8);
-        required binary sessionId (UTF8);
-        required int32 sessionIndex;
-        required binary storageMechanism (UTF8);
-        required binary userId (UTF8);
+        optional binary first_event_id (UTF8);
+        optional binary previous_session_id (UTF8);
+        required binary session_id (UTF8);
+        required int32 session_index;
+        required binary storage_mechanism (UTF8);
+        required binary user_id (UTF8);
       }
     }
   }
@@ -271,13 +271,13 @@ message spark_schema {
   optional group contexts_com_snowplowanalytics_snowplow_desktop_context_1 (LIST) {
     repeated group list {
       required group element {
-        optional binary deviceManufacturer (UTF8);
-        optional binary deviceModel (UTF8);
-        optional double deviceProcessorCount;
-        optional boolean osIs64Bit;
-        optional binary osServicePack (UTF8);
-        required binary osType (UTF8);
-        required binary osVersion (UTF8);
+        optional binary device_manufacturer (UTF8);
+        optional binary device_model (UTF8);
+        optional double device_processor_count;
+        optional boolean os_is64_bit;
+        optional binary os_service_pack (UTF8);
+        required binary os_type (UTF8);
+        required binary os_version (UTF8);
       }
     }
   }
@@ -285,10 +285,10 @@ message spark_schema {
     repeated group list {
       required group element {
         optional double altitude;
-        optional double altitudeAccuracy;
+        optional double altitude_accuracy;
         optional double bearing;
         required double latitude;
-        optional double latitudeLongitudeAccuracy;
+        optional double latitude_longitude_accuracy;
         required double longitude;
         optional double speed;
       }
@@ -297,18 +297,18 @@ message spark_schema {
   optional group contexts_com_snowplowanalytics_snowplow_ua_parser_context_1 (LIST) {
     repeated group list {
       required group element {
-        required binary deviceFamily (UTF8);
-        required binary osFamily (UTF8);
-        optional binary osMajor (UTF8);
-        optional binary osMinor (UTF8);
-        optional binary osPatch (UTF8);
-        optional binary osPatchMinor (UTF8);
-        optional binary osVersion (UTF8);
-        required binary useragentFamily (UTF8);
-        optional binary useragentMajor (UTF8);
-        optional binary useragentMinor (UTF8);
-        optional binary useragentPatch (UTF8);
-        optional binary useragentVersion (UTF8);
+        required binary device_family (UTF8);
+        required binary os_family (UTF8);
+        optional binary os_major (UTF8);
+        optional binary os_minor (UTF8);
+        optional binary os_patch (UTF8);
+        optional binary os_patch_minor (UTF8);
+        optional binary os_version (UTF8);
+        required binary useragent_family (UTF8);
+        optional binary useragent_major (UTF8);
+        optional binary useragent_minor (UTF8);
+        optional binary useragent_patch (UTF8);
+        optional binary useragent_version (UTF8);
       }
     }
   }
@@ -338,44 +338,44 @@ message spark_schema {
   optional group contexts_org_w3_performance_timing_1 (LIST) {
     repeated group list {
       required group element {
-        optional fixed_len_byte_array(9) chromeFirstPaint (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) connectEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) connectStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domComplete (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domContentLoadedEventEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domContentLoadedEventStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domInteractive (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domLoading (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domainLookupEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) domainLookupStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) fetchStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) loadEventEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) loadEventStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) msFirstPaint (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) navigationStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) proxyEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) proxyStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) redirectEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) redirectStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) requestEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) requestStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) responseEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) responseStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) secureConnectionStart (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) unloadEventEnd (DECIMAL(19,0));
-        optional fixed_len_byte_array(9) unloadEventStart (DECIMAL(19,0));
+        optional int64 chrome_first_paint;
+        optional int64 connect_end;
+        optional int64 connect_start;
+        optional int64 dom_complete;
+        optional int64 dom_content_loaded_event_end;
+        optional int64 dom_content_loaded_event_start;
+        optional int64 dom_interactive;
+        optional int64 dom_loading;
+        optional int64 domain_lookup_end;
+        optional int64 domain_lookup_start;
+        optional int64 fetch_start;
+        optional int64 load_event_end;
+        optional int64 load_event_start;
+        optional int64 ms_first_paint;
+        optional int64 navigation_start;
+        optional int64 proxy_end;
+        optional int64 proxy_start;
+        optional int64 redirect_end;
+        optional int64 redirect_start;
+        optional int64 request_end;
+        optional int64 request_start;
+        optional int64 response_end;
+        optional int64 response_start;
+        optional int64 secure_connection_start;
+        optional int64 unload_event_end;
+        optional int64 unload_event_start;
       }
     }
   }
   optional group unstruct_event_com_snowplowanalytics_snowplow_link_click_1 {
-    optional group elementClasses (LIST) {
+    optional group element_classes (LIST) {
       repeated group list {
         required binary element (UTF8);
       }
     }
-    optional binary elementContent (UTF8);
-    optional binary elementId (UTF8);
-    optional binary elementTarget (UTF8);
-    required binary targetUrl (UTF8);
+    optional binary element_content (UTF8);
+    optional binary element_id (UTF8);
+    optional binary element_target (UTF8);
+    required binary target_url (UTF8);
   }
 }

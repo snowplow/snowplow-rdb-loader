@@ -18,7 +18,7 @@ import java.util.UUID
 
 import org.apache.spark.sql.types._
 
-import io.circe.Json
+import io.circe.{Json, JsonObject}
 import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
@@ -32,10 +32,13 @@ import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.Path
 import org.apache.parquet.format.converter.ParquetMetadataConverter
 import org.apache.parquet.hadoop.ParquetFileReader
+import org.apache.parquet.schema.MessageTypeParser
 import org.specs2.mutable.Specification
 
 import java.io.{File, FileFilter}
 import java.time.temporal.ChronoUnit
+
+import scala.jdk.CollectionConverters._
 
 class WideRowParquetSpec extends Specification with ShredJobSpec {
   override def appName = "wide-row"
@@ -54,16 +57,21 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         UUID.fromString("3ebc0e5e-340e-414b-b67d-23f7948c2df2"),
         UUID.fromString("7f2c98b2-4a3f-49c0-806d-e8ea2f580ef7")
       )
-      val lines = readParquetFile(spark, testOutputDirs.goodRows).toSet
-      val expected = inputEvents
+      val lines = readParquetFile(spark, testOutputDirs.goodRows)
+        .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
+
+      val expectedLines = inputEvents
         .flatMap(Event.parse(_).toOption)
         .filter(e => !badEventIds.contains(e.event_id))
+        .sortBy(_.event_id.toString)
         .map(transformEventForParquetTest("none"))
-        .toSet
-      
+
       assertGeneratedParquetSchema(testOutputDirs)
       lines.size must beEqualTo(46)
-      lines must beEqualTo(expected)
+
+      forall(lines.zip(expectedLines)) { case (line, expectedLine) =>
+        line must beEqualTo(expectedLine)
+      }
     }
 
     "write bad rows" in {
@@ -92,13 +100,16 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
 
     "transform the enriched event with test contexts to wide row parquet" in {
       val lines = readParquetFile(spark, testOutputDirs.goodRows)
-        .toSet
-      val expected = inputEvents
+        .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
+      val expectedLines = inputEvents
         .flatMap(Event.parse(_).toOption)
+        .sortBy(_.event_id.toString)
         .map(transformEventForParquetTest("contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"))
-        .toSet
+
       lines.size must beEqualTo(100)
-      lines must beEqualTo(expected)
+      forall(lines.zip(expectedLines)) { case (line, expectedLine) =>
+        line must beEqualTo(expectedLine)
+      }
     }
 
     "set parquet column types correctly" in {
@@ -181,20 +192,32 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
       refr_dvce_tstamp = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
       true_tstamp = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
     ).toJson(true).deepDropNullValues
-    val jsonTransformer: Json => Json = { j =>
-      // 'f_field' can be int or string in event json but it is always
-      // casted to string in parquet format. Therefore, we are casting
-      // it to string in json too.
-      j.hcursor.downField("f_field")
-        .withFocus(_.fold[String]("", _ => "", n => n.toString, identity, _ => "", _ => "").asJson).up
-        // These fields are not part of schemas therefore
+
+    def normalizeKeys(j: Json): Json =
+      j.arrayOrObject(
+        j,
+        vec => Json.fromValues(vec.map(normalizeKeys)),
+        obj => 
+          JsonObject.fromIterable(obj.toList.map {
+            case (k, v) => k.replaceAll("(.)(\\p{Upper})", "$1_$2").toLowerCase -> normalizeKeys(v)
+          }).asJson
+      )
+
+    val jsonTransformer: Json => Json = { j: Json =>
+      j.hcursor
+        // The following fields are not part of schemas therefore
         // they shouldn't be in parquet formatted data.
-        .downField("k_field").delete
-        .downField("l_field").delete
-        .downField("m_field").delete
+        .withFocus(j => j.asObject.map(_.remove("k_field").remove("l_field").remove("m_field").asJson).getOrElse(j))
+        // The following fields are union types in the original event, e.g. {integer or boolean}.
+        // In parquet format they are serialized as a JSON string, i.e. `"42"` instead of `42` and `"false"` instead of `false`.
+        // Therefore we serialize them to a JSON string in this json too.
+        .withFocus(j => j.hcursor.downField("e_field").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
+        .withFocus(j => j.hcursor.downField("f_field").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
+        .withFocus(j => j.hcursor.downField("j_field").downField("union").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
         .top.getOrElse(j)
     }
-    json.hcursor
+
+    val transformed = json.hcursor
       .downField(entityColumnName)
       .withFocus(_.arrayOrObject[Json](
         "".asJson,
@@ -202,19 +225,26 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         j => jsonTransformer(j.asJson)
       ))
       .top.getOrElse(json)
+
+    normalizeKeys(transformed)
   }
 
-  private def assertGeneratedParquetSchema(testOutputDirs: OutputDirs) = {
+  def assertGeneratedParquetSchema(testOutputDirs: OutputDirs) = {
     val conf = new Configuration();
     val expectedParquetSchema = readResourceFile(ResourceFile("/widerow/parquet/parquet-output-schema")).mkString
+    val expectedColumns = MessageTypeParser.parseMessageType(expectedParquetSchema).getColumns.asScala
+
     val parquetFileFilter = new FileFilter {
       override def accept(pathname: File): Boolean = pathname.toString.endsWith(".parquet")
     }
 
-    testOutputDirs.goodRows.listFiles(parquetFileFilter).foreach { parquetFile =>
+    testOutputDirs.goodRows.listFiles(parquetFileFilter).forall { parquetFile =>
       val parquetMetadata = ParquetFileReader.readFooter(conf, new Path(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
-      val actualNormilizedSchema = parquetMetadata.getFileMetaData.getSchema.toString.replace("\n", "")
-      actualNormilizedSchema mustEqual expectedParquetSchema
+      val columns = parquetMetadata.getFileMetaData.getSchema.getColumns.asScala
+
+      foreach(columns.zip(expectedColumns)) { case (col, expectedCol) =>
+        col.toString mustEqual expectedCol.toString
+      }
     }
   }
 
