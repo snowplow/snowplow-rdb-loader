@@ -14,6 +14,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
+import cats.Id
+import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
+
 import java.io.{BufferedWriter, File, FileWriter, IOException}
 import java.util.Base64
 import java.net.URI
@@ -440,8 +446,14 @@ trait ShredJobSpec extends SparkSpec {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
-            val wideRowTypes = (new TypeAccumJob(spark, cli.config)).run("")
-            Transformer.WideRowParquetTransformer(cli.igluConfig, Map.empty, wideRowTypes)
+            val resolver = IgluSingleton.get(cli.igluConfig).resolver
+            val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
+
+            val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).right.get
+            val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+            val schema = SparkSchema.build(allFields)
+            
+            Transformer.WideRowParquetTransformer(cli.igluConfig, Map.empty, allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)

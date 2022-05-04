@@ -12,7 +12,7 @@ package object sinks {
   implicit class TransformedDataOps(t: Transformed.Data) {
     def str: Option[String] = t match {
       case Transformed.Data.DString(s) => Some(s)
-      case Transformed.Data.ListAny(_) => None
+      case Transformed.Data.ParquetData(_) => None
     }
   }
 }

@@ -16,11 +16,12 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
+
 import java.util.UUID
 import java.time.Instant
-
 import scala.concurrent.{Await, TimeoutException}
 import scala.concurrent.duration._
 
@@ -216,8 +217,14 @@ object ShredJob {
         case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
-          val wideRowTypes = (new TypeAccumJob(spark, config)).run(folder.folderName)
-          Transformer.WideRowParquetTransformer(igluConfig, atomicLengths, wideRowTypes)
+          val resolver = IgluSingleton.get(igluConfig).resolver
+          val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
+          
+          val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields: $error"), identity)
+          val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+          val schema = SparkSchema.build(allFields)
+          
+          Transformer.WideRowParquetTransformer(igluConfig, atomicLengths, allFields, schema)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)

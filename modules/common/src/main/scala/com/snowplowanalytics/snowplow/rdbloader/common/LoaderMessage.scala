@@ -117,10 +117,15 @@ object LoaderMessage {
             grouped.sorted.lastOption
           }
 
-      implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] = math.Ordering.by(_.toString)
 
       implicit val wideRowTypeOrdering: math.Ordering[WideRow.Type] = {
         implicit val schemaKeyOrdering = SchemaKey.ordering
+        implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] = 
+          math.Ordering.by {
+            case SnowplowEntity.Context => 0 
+            case SnowplowEntity.SelfDescribingEvent => 1 
+          }
+        
         math.Ordering.by {
           case WideRow.Type(schemaKey, snowplowEntity) =>
             (snowplowEntity, schemaKey)
