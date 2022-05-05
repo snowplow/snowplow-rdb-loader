@@ -102,6 +102,7 @@ object Transaction {
           ds.setDataSourceProperties(target.properties)
         }
       })
+      _ <- Resource.eval(target.initializers.traverse_(fr => fr.query[Unit].option.transact(xa).void))
     } yield xa
 
   /**
