@@ -173,6 +173,7 @@ object FolderMonitoringSpec {
   val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleDatabricks: StorageTarget.Databricks = StorageTarget.Databricks(
     "databricks.com",
+    "hive_metastore",
     "snowplow",
     443,
     "http/path",

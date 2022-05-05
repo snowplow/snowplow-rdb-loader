@@ -23,6 +23,8 @@ import io.circe.generic.semiauto._
 
 import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
+import doobie.util.fragment.Fragment
+import doobie.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 
@@ -51,6 +53,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
+  def initializers: List[Fragment] = Nil
 }
 
 object StorageTarget {
@@ -100,6 +103,7 @@ object StorageTarget {
 
   final case class Databricks(
                                host: String,
+                               catalog: String,
                                schema: String,
                                port: Int,
                                httpPath: String,
@@ -111,7 +115,7 @@ object StorageTarget {
 
     override def driver: String = "com.simba.spark.jdbc.Driver"
 
-    override def connectionUrl: String = s"jdbc:spark://$host:$port/$schema"
+    override def connectionUrl: String = s"jdbc:spark://$host:$port"
 
     override def doobieCommitStrategy: Strategy   = Strategy.void
     override def doobieNoCommitStrategy: Strategy = Strategy.void
@@ -126,6 +130,12 @@ object StorageTarget {
       props.put("transportMode", "http")
       props
     }
+
+    override def initializers: List[Fragment] =
+      List(
+        fr"USE CATALOG $catalog",
+        fr"USE $schema"
+      )
   }
 
   final case class Snowflake(snowflakeRegion: String,
