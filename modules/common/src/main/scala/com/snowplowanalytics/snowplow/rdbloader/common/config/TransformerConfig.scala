@@ -35,12 +35,22 @@ sealed trait TransformerConfig {
 }
 
 object TransformerConfig {
+  implicit val finiteDurationDecoder: Decoder[FiniteDuration] =
+    Decoder[String].emap { str =>
+      Either
+        .catchOnly[NumberFormatException](Duration.create(str))
+        .leftMap(_.toString)
+        .flatMap { duration =>
+          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+          else Left(s"Cannot convert Duration $duration to FiniteDuration")
+        }
+    }
 
   final case class Batch(input: URI,
                          output: Output,
                          queue: QueueConfig,
                          formats: Formats,
-                         monitoring: Monitoring,
+                         monitoring: MonitoringBatch,
                          deduplication: Deduplication,
                          runInterval: RunInterval,
                          featureFlags: FeatureFlags,
@@ -60,6 +70,7 @@ object TransformerConfig {
                           output: Output,
                           queue: QueueConfig,
                           formats: Formats,
+                          monitoring: MonitoringStream,
                           featureFlags: FeatureFlags,
                           validations: Validations) extends TransformerConfig
   object Stream {
@@ -195,8 +206,43 @@ object TransformerConfig {
 
   final case class Validations(minimumTimestamp: Option[Instant])
 
-  final case class Monitoring(sentry: Option[Sentry])
+  final case class MonitoringBatch(sentry: Option[Sentry])
+  final case class MonitoringStream(sentry: Option[Sentry], metrics: MetricsReporters)
   final case class Sentry(dsn: URI)
+  final case class MetricsReporters(
+    statsd: Option[MetricsReporters.StatsD],
+    stdout: Option[MetricsReporters.Stdout]
+  )
+
+  object MetricsReporters {
+    final case class Stdout(period: FiniteDuration, prefix: Option[String])
+    final case class StatsD(
+      hostname: String,
+      port: Int,
+      tags: Map[String, String],
+      period: FiniteDuration,
+      prefix: Option[String]
+    )
+
+    implicit val stdoutDecoder: Decoder[Stdout] =
+      deriveDecoder[Stdout].emap { stdout =>
+        if (stdout.period < Duration.Zero)
+          "metrics report period in config file cannot be less than 0".asLeft
+        else
+          stdout.asRight
+      }
+
+    implicit val statsDecoder: Decoder[StatsD] =
+      deriveDecoder[StatsD].emap { statsd =>
+        if (statsd.period < Duration.Zero)
+          "metrics report period in config file cannot be less than 0".asLeft
+        else
+          statsd.asRight
+      }
+
+    implicit val metricsReportersDecoder: Decoder[MetricsReporters] =
+      deriveDecoder[MetricsReporters]
+  }
 
   final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
 
@@ -329,8 +375,11 @@ object TransformerConfig {
         }
       }
 
-    implicit val monitoringConfigDecoder: Decoder[Monitoring] =
-      deriveDecoder[Monitoring]
+    implicit val monitoringBatchConfigDecoder: Decoder[MonitoringBatch] =
+      deriveDecoder[MonitoringBatch]
+
+    implicit val monitoringStreamConfigDecoder: Decoder[MonitoringStream] =
+      deriveDecoder[MonitoringStream]
 
     implicit val runIntervalConfigDecoder: Decoder[RunInterval] =
       deriveDecoder[RunInterval]
@@ -346,17 +395,6 @@ object TransformerConfig {
 
     implicit val uriDecoder: Decoder[URI] =
       Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
-
-    implicit val finiteDurationDecoder: Decoder[FiniteDuration] =
-      Decoder[String].emap { str =>
-        Either
-          .catchOnly[NumberFormatException](Duration.create(str))
-          .leftMap(_.toString)
-          .flatMap { duration =>
-            if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
-            else Left(s"Cannot convert Duration $duration to FiniteDuration")
-          }
-      }
 
     implicit val validationsDecoder: Decoder[Validations] =
       deriveDecoder[Validations]

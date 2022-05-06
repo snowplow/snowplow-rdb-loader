@@ -50,7 +50,7 @@ class ConfigSpec extends Specification {
       val expected = Config(
         RegionSpec.DefaultTestRegion,
         None,
-        emptyMonitoring,
+        defaultMonitoring,
         exampleQueueName,
         None,
         exampleSnowflake,

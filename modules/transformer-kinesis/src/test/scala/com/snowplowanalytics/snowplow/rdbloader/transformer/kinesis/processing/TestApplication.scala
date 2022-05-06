@@ -36,10 +36,12 @@ object TestApplication {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
       res <- parsed match {
         case Right(cliConfig) =>
-         Resources.mk[IO](cliConfig.igluConfig, queueFromDeferred(forCompletionMessage))
+         Resources.mk[IO](cliConfig.igluConfig, queueFromDeferred(forCompletionMessage), cliConfig.config.monitoring.metrics)
           .use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
               Processing.runWindowed[IO](windowedRecords, resources, cliConfig.config)
+                .compile
+                .drain
           }
         case Left(e) =>
           logger[IO].error(s"Configuration error: $e")
