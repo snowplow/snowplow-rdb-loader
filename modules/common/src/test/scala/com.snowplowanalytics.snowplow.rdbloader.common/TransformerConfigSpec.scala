@@ -35,7 +35,7 @@ class TransformerConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         exampleFormats,
-        exampleMonitoring,
+        exampleMonitoringBatch,
         exampleDeduplication,
         exampleRunInterval,
         exampleDefaultFeatureFlags,
@@ -51,7 +51,7 @@ class TransformerConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         exampleDefaultFormats,
-        exampleDefaultMonitoring,
+        exampleDefaultMonitoringBatch,
         exampleDeduplication,
         emptyRunInterval,
         exampleDefaultFeatureFlags,
@@ -107,6 +107,7 @@ class TransformerConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         TransformerConfig.Formats.WideRow.JSON,
+        exampleMonitoringStream,
         exampleDefaultFeatureFlags,
         exampleValidations
       )
@@ -121,6 +122,7 @@ class TransformerConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         TransformerConfig.Formats.WideRow.JSON,
+        exampleDefaultMonitoringStream,
         exampleDefaultFeatureFlags,
         emptyValidations
       )
@@ -224,10 +226,21 @@ object TransformerConfigSpec {
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
   )
   val exampleDefaultFormats = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
-  val exampleMonitoring = TransformerConfig.Monitoring(
-    Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com"))),
+  val exampleMonitoringBatch = TransformerConfig.MonitoringBatch(
+    Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com")))
   )
-  val exampleDefaultMonitoring = TransformerConfig.Monitoring(None)
+  val exampleMonitoringStream = TransformerConfig.MonitoringStream(
+    Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com"))),
+    TransformerConfig.MetricsReporters(
+      Some(TransformerConfig.MetricsReporters.StatsD("localhost", 8125, Map("app" -> "transformer"), 1.minute, None)),
+      Some(TransformerConfig.MetricsReporters.Stdout(1.minutes, None)),
+    )
+  )
+  val exampleDefaultMonitoringBatch = TransformerConfig.MonitoringBatch(None)
+  val exampleDefaultMonitoringStream = TransformerConfig.MonitoringStream(
+    None,
+    TransformerConfig.MetricsReporters(None, Some(TransformerConfig.MetricsReporters.Stdout(1.minutes, None)))
+  )
   val exampleDeduplication = TransformerConfig.Deduplication(TransformerConfig.Deduplication.Synthetic.Broadcast(1))
   val emptyRunInterval = TransformerConfig.RunInterval(None, None, None)
   val exampleRunInterval = TransformerConfig.RunInterval(

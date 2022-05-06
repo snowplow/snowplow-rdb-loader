@@ -32,9 +32,13 @@ object Main extends IOApp {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
       res <- parsed match {
         case Right(cliConfig) =>
-          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue).use { resources =>
+          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue, cliConfig.config.monitoring.metrics).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-              Processing.run[IO](resources, cliConfig.config).as(ExitCode.Success)
+              Processing.run[IO](resources, cliConfig.config)
+                .merge(resources.metrics.report)
+                .compile
+                .drain
+                .as(ExitCode.Success)
           }
         case Left(e) =>
           logger[IO].error(s"Configuration error: $e").as(InvalidConfig)
