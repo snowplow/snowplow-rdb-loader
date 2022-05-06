@@ -1,5 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
+import cats.Applicative
 import cats.data.EitherT
 import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
 import cats.implicits._
@@ -16,6 +17,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Closed, Sealed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
 import fs2.{Pipe, Stream}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -33,7 +35,7 @@ object Processing {
   type TransformationResult = Either[BadRow, SuccessfulTransformation]
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
-                                                              config: TransformerConfig.Stream): F[Unit] = {
+                                                              config: TransformerConfig.Stream): Stream[F, Unit] = {
     val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
 
@@ -44,7 +46,7 @@ object Processing {
 
   def runWindowed[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](windowedRecords: Stream[F, Windowed[F, Parsed]],
                                                                       resources: Resources[F],
-                                                                      config: TransformerConfig.Stream): F[Unit] = {
+                                                                      config: TransformerConfig.Stream): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths)
@@ -61,11 +63,10 @@ object Processing {
       .interruptWhen(resources.halt)
       .through(attemptTransform(transformer, config.validations))
       .evalTap(State.update(resources.windows))
+      .evalTap(incrementMetrics(resources.metrics, _))
       .through(handleTransformResult(transformer))
       .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
-      .compile
-      .drain
   }
 
   /**
@@ -159,4 +160,12 @@ object Processing {
       }
     }
   }
+
+  def incrementMetrics[F[_]: Applicative](metrics: Metrics[F], transformed: Windowed[F, TransformationResult]): F[Unit] =
+    transformed.traverse {
+      case Left(_) => metrics.badCount
+      case Right(_) => metrics.goodCount
+    }
+      .void
+
 }

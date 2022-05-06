@@ -88,6 +88,27 @@
     "sentry": {
       "dsn": "http://sentry.acme.com"
     }
+    # Optional. How metrics are reported
+    "metrics": {
+      # Optional. Send metrics to a StatsD server (e.g. on localhost)
+      "statsd": {
+        "hostname": "localhost"
+        "port": 8125
+        "period": "1 minute"
+        # Optional. Any key-value pairs to be tagged on every StatsD metric
+        "tags": {
+          "app": transformer
+        }
+        # Optional. Override the default metric prefix
+        # "prefix": "snowplow.transformer."
+      }
+      # Optional. Log to stdout using Slf4j (logger name: transformer.metrics)
+      "stdout": {
+        "period": "1 minute"
+        # Optional. Override the default metric prefix
+        # "prefix": "snowplow.transformer."
+      }
+    }
   }
 
   # Optional. Enable features that are still in beta, or which are here to enable smoother upgrades

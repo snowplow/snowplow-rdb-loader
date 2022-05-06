@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
 import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, Clock, Concurrent, Resource, Sync, Timer}
+import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 import cats.implicits._
 import com.snowplowanalytics.aws.AWSQueue
 import com.snowplowanalytics.iglu.client.Client
@@ -10,7 +10,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
 import fs2.concurrent.SignallingRef
 import io.circe.Json
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{MetricsReporters, QueueConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
 
 import java.util.UUID
 import scala.concurrent.duration.DurationInt
@@ -22,19 +23,22 @@ case class Resources[F[_]](iglu: Client[F, Json],
                            blocker: Blocker,
                            halt: SignallingRef[F, Boolean],
                            windows: State.Windows[F],
-                           global: Ref[F, Long])
+                           global: Ref[F, Long],
+                           metrics: Metrics[F])
 
 object Resources {
 
   implicit private def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
-                                                                         queueConfig: QueueConfig): Resource[F, Resources[F]] = {
-    mkQueueFromConfig(queueConfig).flatMap(mk(igluConfig, _))
+  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
+                                                                         queueConfig: QueueConfig,
+                                                                         metricsConfig: MetricsReporters): Resource[F, Resources[F]] = {
+    mkQueueFromConfig(queueConfig).flatMap(mk(igluConfig, _, metricsConfig))
   }
 
-  def mk[F[_]: Concurrent: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
-                                                                         awsQueue: AWSQueue[F]): Resource[F, Resources[F]] = {
+  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
+                                                                         awsQueue: AWSQueue[F],
+                                                                         metricsConfig: MetricsReporters): Resource[F, Resources[F]] = {
     for {
       client        <- mkClient(igluConfig)
       atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
@@ -43,7 +47,8 @@ object Resources {
       sinks         <- Resource.eval(Ref.of(0L))
       instanceId    <- mkTransformerInstanceId
       halt          <- mkHaltingSignal(instanceId)
-    } yield Resources(client, atomicLengths, awsQueue, instanceId.toString, blocker, halt, initialState, sinks)
+      metrics       <- Resource.eval(Metrics.build[F](blocker, metricsConfig))
+    } yield Resources(client, atomicLengths, awsQueue, instanceId.toString, blocker, halt, initialState, sinks, metrics)
   }
 
   private def mkClient[F[_]: Sync: InitSchemaCache: InitListCache](igluConfig: Json): Resource[F, Client[F, Json]] = Resource.eval {
