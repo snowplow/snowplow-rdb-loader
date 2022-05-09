@@ -178,6 +178,7 @@ object FolderMonitoringSpec {
     443,
     "http/path",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    None
+    None,
+    "snowplow-rdbloader-oss"
   )
 }

@@ -108,7 +108,8 @@ object StorageTarget {
                                port: Int,
                                httpPath: String,
                                password: PasswordConfig,
-                               sshTunnel: Option[TunnelConfig]
+                               sshTunnel: Option[TunnelConfig],
+                               userAgent: String
                              ) extends StorageTarget {
 
     override def username: String = "token"
@@ -128,6 +129,8 @@ object StorageTarget {
       //      props.put("LogLevel", 6)
       props.put("AuthMech", 3)
       props.put("transportMode", "http")
+      props.put("transportMode", "http")
+      props.put("UserAgentEntry", userAgent)
       props
     }
 
