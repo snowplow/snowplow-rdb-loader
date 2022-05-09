@@ -33,8 +33,8 @@ object InvalidEnrichedEventsSpec {
       "failure":{
         "type":"RowDecodingError",
         "errors":[
-          {"type":"InvalidValue","key":"collector_tstamp","value":"29th May 2013 18:04:12","message":"Cannot parse key 'collector_tstamp with value 29th May 2013 18:04:12 into datetime"},
-          {"type":"InvalidValue","key":"event_id","value":"not-a-uuid","message":"Cannot parse key 'event_id with value not-a-uuid into UUID"}
+          {"type":"InvalidValue","key":"collector_tstamp","value":"29th May 2013 18:04:12","message":"Cannot parse key collector_tstamp into datetime"},
+          {"type":"InvalidValue","key":"event_id","value":"not-a-uuid","message":"Cannot parse key event_id into UUID"}
         ]
       },
       "payload":"snowplowweb\tweb\t2014-06-01 18:04:11.639\t29th May 2013 18:04:12\t2014-05-29 18:04:11.639\tpage_view\tnot-a-uuid\t836413\tclojure\tjs-2.0.0-M2\tclj-0.6.0-tom-0.0.4\thadoop-0.5.0-common-0.4.0\t\t216.207.42.134\t3499345421\t3b1d1a375044eede\t3\t2bad2a4e-aae4-4bea-8acd-399e7fe0366a\tUS\tCA\tSouth San Francisco\t\t37.654694\t-122.4077\t\t\t\t\t\thttp://snowplowanalytics.com/blog/2013/02/08/writing-hive-udfs-and-serdes/\tWriting Hive UDFs - a tutorial\t\thttp\tsnowplowanalytics.com\t80\t/blog/2013/02/08/writing-hive-udfs-and-serdes/\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t{\"schema\":\"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-0\",\"data\":[{\"schema\":\"iglu:com.snowplowanalytics.website/fake_context/jsonschema/1-0-0\",\"data\":{\"author\":\"Alex Dean\",\"topics\":[\"hive\",\"udf\",\"serde\",\"java\",\"hadoop\"],\"subCategory\":\"inside the plow\",\"category\":\"blog\",\"whenPublished\":\"2013-02-08\"}}]}\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\tMozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.75.14 (KHTML, like Gecko) Version/7.0.3 Safari/537.75.14\tSafari\tSafari\t\tBrowser\tWEBKIT\ten-us\t0\t0\t0\t0\t0\t0\t0\t0\t0\t1\t24\t1440\t1845\tMac OS\tMac OS\tApple Inc.\tAmerica/Los_Angeles\tComputer\t0\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"

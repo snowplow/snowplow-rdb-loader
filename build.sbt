@@ -39,6 +39,7 @@ lazy val common: Project = project.in(file("modules/common"))
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.decline,
+      Dependencies.analyticsSdk,
       Dependencies.badrows,
       Dependencies.igluClient,
       Dependencies.circeGeneric,
