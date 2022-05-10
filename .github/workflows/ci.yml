@@ -45,10 +45,6 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 1.8
-      - name: Set up JDK 11 for loader and streaming transformer
-        uses: actions/setup-java@v1
-        with:
-          java-version: 11
       - name: Install release-manager for Python for transformer
         uses: BSFishy/pip-action@v1
         with:
@@ -74,23 +70,10 @@ jobs:
       - name: Checkout Github
         uses: actions/checkout@v2
       - uses: coursier/cache-action@v6
-      - name: Set up Python to 2.x
-        uses: actions/setup-python@v1
-        with:
-          python-version: '2.x'
-      - name: Set up JDK 1.8 for batch transformer
-        uses: actions/setup-java@v1
-        with:
-          java-version: 1.8
       - name: Set up JDK 11 for loader and streaming transformer
         uses: actions/setup-java@v1
         with:
           java-version: 11
-      - name: Install release-manager for Python for transformer
-        uses: BSFishy/pip-action@v1
-        with:
-          packages: |
-            release-manager
       - name: Docker login
         uses: docker/login-action@v1
         with:
@@ -142,10 +125,6 @@ jobs:
     - name: Checkout Github
       uses: actions/checkout@v2
     - uses: coursier/cache-action@v6
-    - name: Set up Python to 2.x
-      uses: actions/setup-python@v1
-      with:
-        python-version: '2.x'
     - name: Set up JDK 1.8 for batch transformer
       uses: actions/setup-java@v1
       with:
@@ -154,11 +133,6 @@ jobs:
       uses: actions/setup-java@v1
       with:
         java-version: 11
-    - name: Install release-manager for Python for transformer
-      uses: BSFishy/pip-action@v1
-      with:
-        packages: |
-          release-manager
     - name: Build redshift-loader jar
       run: |
         export SKIP_TEST=true
