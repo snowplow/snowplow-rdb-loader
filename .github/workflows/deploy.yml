@@ -6,80 +6,157 @@ on:
       - '*'
 
 jobs:
-  build_and_deploy:
+  publish_batch_transformer:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Github
+        uses: actions/checkout@v2
+      - uses: coursier/cache-action@v6
+      - name: Set up Python to 2.x
+        uses: actions/setup-python@v1
+        with:
+          python-version: '2.x'
+      - name: Set up JDK 1.8 for batch transformer
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Set up JDK 11 for loader and streaming transformer
+        uses: actions/setup-java@v1
+        with:
+          java-version: 11
+      - name: Install release-manager for Python for transformer
+        uses: BSFishy/pip-action@v1
+        with:
+          packages: |
+            release-manager
+      - name: Build and publish transformer-batch to S3
+        run: .github/deploy.sh transformer_batch $GITHUB_REF
+        env:
+          AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+  publish_docker:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app:
+          - redshiftLoader
+          - snowflakeLoader
+          - transformerKinesis
+    steps:
+      - name: Checkout Github
+        uses: actions/checkout@v2
+      - uses: coursier/cache-action@v6
+      - name: Set up Python to 2.x
+        uses: actions/setup-python@v1
+        with:
+          python-version: '2.x'
+      - name: Set up JDK 1.8 for batch transformer
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+      - name: Set up JDK 11 for loader and streaming transformer
+        uses: actions/setup-java@v1
+        with:
+          java-version: 11
+      - name: Install release-manager for Python for transformer
+        uses: BSFishy/pip-action@v1
+        with:
+          packages: |
+            release-manager
+      - name: Docker login
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - name: Get current version
+        id: ver
+        run: echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
+      - name: Get app package name
+        id: packageName
+        run: |
+          export PACKAGE_NAME=$(sbt "project ${{ matrix.app }}" dockerAlias -Dsbt.log.noformat=true | sed -n '/\[info\]/ s/\[info\] //p' | tail -1 | tr -d '\n' | cut -d":" -f1)
+          echo "::set-output name=package_name::$PACKAGE_NAME"
+      - name: Get app base directory
+        id: baseDirectory
+        run: |
+          export BASE_DIRECTORY=$(sbt "project ${{ matrix.app }}" baseDirectory -Dsbt.log.noformat=true | sed -n '/\[info\]/ s/\[info\] //p' | tail -1 | tr -d '\n')
+          echo "::set-output name=directory::$BASE_DIRECTORY"
+      - name: Stage the Docker build
+        run: sbt "project ${{ matrix.app}}" docker:stage
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ steps.packageName.outputs.package_name }}
+          tags: |
+            type=raw,value=latest,enable=${{ !contains(steps.ver.outputs.tag, 'rc') }}
+            type=raw,value=${{ steps.ver.outputs.tag }}
+          flavor: |
+            latest=false
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      - name: Push image
+        uses: docker/build-push-action@v2
+        with:
+          context: ${{ steps.baseDirectory.outputs.directory }}/target/docker/stage
+          file: ${{ steps.baseDirectory.outputs.directory }}/target/docker/stage/Dockerfile
+          platforms: linux/amd64,linux/arm64/v8
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
+
+  create_release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
     - name: Checkout Github
       uses: actions/checkout@v2
-
+    - uses: coursier/cache-action@v6
     - name: Set up Python to 2.x
       uses: actions/setup-python@v1
       with:
         python-version: '2.x'
-
     - name: Set up JDK 1.8 for batch transformer
       uses: actions/setup-java@v1
       with:
         java-version: 1.8
-
     - name: Set up JDK 11 for loader and streaming transformer
       uses: actions/setup-java@v1
       with:
         java-version: 11
-
     - name: Install release-manager for Python for transformer
       uses: BSFishy/pip-action@v1
       with:
         packages: |
           release-manager
-
-    - name: Docker login
-      run: docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD
-      env:
-        DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-        DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
-
-    - name: Build and publish Redshift Loader to Docker Hub
-      run: sbt "project redshiftLoader" docker:publish
-
-    - name: Build and publish snowflake-loader to Docker Hub
-      run: sbt "project snowflakeLoader" docker:publish
-
-    - name: Build and publish transformer-kinesis to Docker Hub
-      run: sbt "project transformerKinesis" docker:publish
-
-    - name: Build and publish transformer-batch to S3
-      run: .github/deploy.sh transformer_batch $GITHUB_REF
-      env:
-        AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
-        AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
-
     - name: Build redshift-loader jar
       run: |
         export SKIP_TEST=true
         sbt 'project redshiftLoader' assembly
-
     - name: Build snowflake-loader jar
       run: |
         export SKIP_TEST=true
         sbt 'project snowflakeLoader' assembly
-
     - name: Build transformer-batch jar
       run: |
         export SKIP_TEST=true
         sbt 'project transformerBatch' assembly
-
     - name: Build transformer-kinesis jar
       run: |
         export SKIP_TEST=true
         sbt 'project transformerKinesis' assembly
-
     - name: Get current version
       id: ver
       run: |
         export PROJECT_VERSION=$(sbt "project common" version -Dsbt.log.noformat=true | perl -ne 'print "$1\n" if /info.*(\d+\.\d+\.\d+[^\r\n]*)/' | tail -n 1 | tr -d '\n')
         echo "::set-output name=project_version::$PROJECT_VERSION"
-    
     - name: Create GitHub release and attach jars
       uses: softprops/action-gh-release@v1
       with:
