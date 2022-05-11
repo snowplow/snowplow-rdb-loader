@@ -204,7 +204,7 @@ object Transformer {
       case FieldValue.TimestampValue(v) => v
       case FieldValue.DateValue(v) => v
       case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue)
-      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v._2) })
+      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v.value) })
       case FieldValue.JsonValue(v) => v.noSpaces
     }
     
