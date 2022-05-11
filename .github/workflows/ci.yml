@@ -92,8 +92,15 @@ jobs:
         run: |
           export BASE_DIRECTORY=$(sbt "project ${{ matrix.app }}" baseDirectory -Dsbt.log.noformat=true | sed -n '/\[info\]/ s/\[info\] //p' | tail -1 | tr -d '\n')
           echo "::set-output name=directory::$BASE_DIRECTORY"
+      - name: Get app base directory (distroless)
+        id: baseDirectoryDistroless
+        run: |
+          export BASE_DIRECTORY_DISTROLESS=$(sbt "project ${{ matrix.app }}Distroless" baseDirectory -Dsbt.log.noformat=true | sed -n '/\[info\]/ s/\[info\] //p' | tail -1 | tr -d '\n')
+          echo "::set-output name=directory::$BASE_DIRECTORY_DISTROLESS"
       - name: Stage the Docker build
         run: sbt "project ${{ matrix.app}}" docker:stage
+      - name: Stage the Docker distroless build
+        run: sbt "project ${{ matrix.app }}Distroless" docker:stage
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v3
@@ -101,7 +108,19 @@ jobs:
           images: ${{ steps.packageName.outputs.package_name }}
           tags: |
             type=raw,value=latest,enable=${{ !contains(steps.ver.outputs.tag, 'rc') }}
+            type=raw,value=latest-focal,enable=${{ !contains(steps.ver.outputs.tag, 'rc') }}
             type=raw,value=${{ steps.ver.outputs.tag }}
+            type=raw,value=${{ steps.ver.outputs.tag }}-focal
+          flavor: |
+            latest=false
+      - name: Docker metadata distroless
+        id: distroless-meta
+        uses: docker/metadata-action@v3
+        with:
+          images: ${{ steps.packageName.outputs.package_name }}
+          tags: |
+            type=raw,value=latest-distroless,enable=${{ !contains(steps.ver.outputs.tag, 'rc') }}
+            type=raw,value=${{ steps.ver.outputs.tag }}-distroless
           flavor: |
             latest=false
       - name: Set up QEMU
@@ -115,6 +134,14 @@ jobs:
           file: ${{ steps.baseDirectory.outputs.directory }}/target/docker/stage/Dockerfile
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
+          push: true
+      - name: Push distroless image
+        uses: docker/build-push-action@v2
+        with:
+          context: ${{ steps.baseDirectoryDistroless.outputs.directory }}/target/docker/stage
+          file: ${{ steps.baseDirectoryDistroless.outputs.directory }}/target/docker/stage/Dockerfile
+          platforms: linux/amd64,linux/arm64/v8
+          tags: ${{ steps.distroless-meta.outputs.tags }}
           push: true
 
   create_release:
