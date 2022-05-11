@@ -59,6 +59,8 @@ object Dependencies {
     val specs2           = "4.10.5"
     val catsTesting      = "0.5.3"
     val scalaCheck       = "1.14.3"
+
+    val betterMonadicFor = "0.3.1"
   }
 
   val resolutionRepos = Seq(
@@ -144,4 +146,110 @@ object Dependencies {
   val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
   val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
   val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
+
+  // compiler plugins
+  val betterMonadicFor = "com.olegpy" %% "better-monadic-for" % V.betterMonadicFor
+
+  val awsDependencies = Seq(
+    aws2s3,
+    aws2sqs,
+    aws2sns,
+    fs2,
+    catsRetry,
+  )
+
+  val commonDependencies = Seq(
+    decline,
+    analyticsSdk,
+    badrows,
+    igluClient,
+    circeGeneric,
+    circeGenericExtra,
+    circeLiteral,
+    pureconfig,
+    pureconfigCirce,
+    cron4sCirce,
+    schemaDdl,
+    http4sCore,
+    aws2regions,
+    specs2,
+    monocle,
+    monocleMacro,
+  )
+
+  val loaderDependencies = Seq(
+    slf4j,
+    ssm,
+    dynamodb,
+    jSch,
+    sentry,
+    scalaTracker,
+    scalaTrackerEmit,
+    fs2Blobstore,
+    fs2Cron,
+    http4sCirce,
+    http4sClient,
+    igluClientHttp4s,
+    doobie,
+    doobieHikari,
+    catsRetry,
+    log4cats,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck,
+    catsEffectLaws,
+    catsTesting,
+  )
+
+  val redshiftDependencies = Seq(
+    redshift,
+    redshiftSdk
+  )
+
+  val snowflakeDependencies = Seq(
+    enumeratum,
+    snowflakeJdbc
+  )
+
+  val batchTransformerDependencies = Seq(
+    sqs,
+    sns,
+    dynamodb,
+    slf4j,
+    sentry,
+    eventsManifest,
+    sparkCore,
+    sparkSQL,
+    jacksonModule,
+    jacksonDatabind,
+    jacksonCbor,
+    circeOptics,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck
+  )
+
+  val transformerKinesisDependencies = Seq(
+    dynamodb,
+    slf4j,
+    protobuf,
+    commons,
+    kafkaClients,
+    log4cats,
+    fs2Blobstore,
+    fs2Io,
+    fs2Aws,
+    fs2AwsSqs,
+    aws2kinesis,
+    http4sClient,
+    circeOptics,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck
+  )
+
+  // exclusions
+  val exclusions = Seq(
+    "org.slf4j" % "slf4j-log4j12"
+  )
 }
