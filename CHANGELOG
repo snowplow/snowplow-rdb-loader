@@ -1,3 +1,10 @@
+Version 3.0.2 (2022-05-12)
+--------------------------
+Common: bump snowplow-scala-analytics-sdk to 3.0.1 (#872)
+Common: publish arm64 and amd64 docker images (#875)
+Common: publish distroless docker image (#877)
+Common: bump jackson-databind to 2.13.2.2 (#879)
+
 Version 3.0.1 (2022-04-28)
 --------------------------
 Snowflake Loader: fix folder monitoring copy statement (#851)
