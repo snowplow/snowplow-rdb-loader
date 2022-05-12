@@ -19,7 +19,7 @@ object Dependencies {
     val decline          = "2.1.0"
     val igluClient       = "1.1.1"
     val igluCore         = "1.0.0"
-    val badrows          = "2.1.0"
+    val badrows          = "2.1.1"
     val analyticsSdk     = "3.0.1"
     val pureconfig       = "0.16.0"
     val cron4sCirce      = "0.6.1"
