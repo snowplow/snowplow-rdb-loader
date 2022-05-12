@@ -14,12 +14,16 @@
 // SBT
 import sbt._
 import Keys._
+import sbtbuildinfo.BuildInfoPlugin.autoImport._
 
 // sbt-assembly
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
 
 // sbt-native-packager
+import com.typesafe.sbt.SbtNativePackager.autoImport._
+import com.typesafe.sbt.packager.archetypes.jar.LauncherJarPlugin.autoImport.packageJavaLauncherJar
+import com.typesafe.sbt.packager.docker.DockerPermissionStrategy
 import com.typesafe.sbt.packager.Keys.{daemonUser, maintainer}
 import com.typesafe.sbt.packager.linux.LinuxPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
@@ -27,8 +31,7 @@ import com.typesafe.sbt.packager.docker.DockerVersion
 
 import scoverage.ScoverageKeys._
 
-// DynamoDB Local
-import com.localytics.sbt.dynamodb.DynamoDBLocalKeys._
+import sbtdynver.DynVerPlugin.autoImport._
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -41,14 +44,16 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.12",
+    scalaVersion := "2.12.14",
 
     Compile / console / scalacOptions := Seq(
       "-deprecation",
       "-encoding", "UTF-8"
     ),
 
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full),
+
+    resolvers ++= Dependencies.resolutionRepos
   )
 
   // sbt-assembly settings
@@ -77,7 +82,8 @@ object BuildSettings {
       case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
       case PathList("buildinfo", _) => MergeStrategy.first
       case x if x.contains("javax") => MergeStrategy.first
-      case PathList("scala", "annotation", "nowarn.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case x if x.endsWith("public-suffix-list.txt") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
@@ -85,7 +91,7 @@ object BuildSettings {
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
-  lazy val shredderAssemblySettings = Seq(
+  lazy val transformerAssemblySettings = Seq(
     jarName,
     // Drop these jars
     assembly / assemblyExcludedJars := {
@@ -118,18 +124,21 @@ object BuildSettings {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
+      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("com", "snowplowanalytics", "snowplow", "rdbloader", "generated", "ProjectMetadata.class" | "ProjectMetadata$.class") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     },
 
     assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename("cats.**" -> "shade.@1").inAll
+      ShadeRule.rename("cats.**" -> "shadecats.@1").inAll,
+      ShadeRule.rename("shapeless.**" -> "shadeshapeless.@1").inAll
     )
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
 
   lazy val scoverageSettings = Seq(
-    coverageMinimum := 50,
+    coverageMinimumStmtTotal := 50,
     coverageFailOnMinimum := false,
     (Test / test) := {
       (coverageReport dependsOn (Test / test)).value
@@ -156,20 +165,90 @@ object BuildSettings {
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 
-  lazy val dynamoDbSettings = Seq(
-    startDynamoDBLocal := startDynamoDBLocal.dependsOn(Test / compile).value,
-    Test / test := (Test / test).dependsOn(startDynamoDBLocal).value,
-    Test / testOnly := (Test / testOnly).dependsOn(startDynamoDBLocal).evaluated,
-    Test / testOptions += dynamoDBLocalTestCleanup.value
-  )
-
-  lazy val dockerSettings = Seq(
-    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "snowplow/base-debian:0.2.2",
-    Docker / daemonUser := "snowplow",
+  lazy val dockerSettingsFocal = Seq(
+    dockerBaseImage := "adoptopenjdk:11-jre-hotspot-focal",
     dockerUpdateLatest := true,
     dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    Docker / daemonUser := "daemon",
     Docker / daemonUserUid := None,
-    Docker / defaultLinuxInstallLocation := "/home/snowplow" // must be home directory of daemonUser
+    Docker / defaultLinuxInstallLocation := "/opt/snowplow"
   )
+
+  lazy val dockerSettingsDistroless = Seq(
+    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
+    dockerBaseImage := "gcr.io/distroless/java11-debian11:nonroot",
+    Docker / daemonUser := "nonroot",
+    Docker / daemonGroup := "nonroot",
+    dockerRepository := Some("snowplow"),
+    Docker / daemonUserUid := None,
+    Docker / defaultLinuxInstallLocation := "/home/snowplow",
+    dockerEntrypoint := Seq("java", "-jar",s"/home/snowplow/lib/${(packageJavaLauncherJar / artifactPath).value.getName}"),
+    dockerPermissionStrategy := DockerPermissionStrategy.CopyChown,
+    dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-distroless")),
+    dockerUpdateLatest := false
+  )
+
+  lazy val dynVerSettings = Seq(
+    ThisBuild / dynverVTagPrefix := false, // Otherwise git tags required to have v-prefix
+    ThisBuild / dynverSeparator := "-" // to be compatible with docker
+  )
+
+  lazy val awsBuildSettings = {
+    buildSettings
+  }
+
+  lazy val commonBuildSettings = {
+    Seq(
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
+    ) ++ scoverageSettings ++ buildSettings ++ addExampleConfToTestCp
+  }
+
+  lazy val loaderBuildSettings = {
+    buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+  }
+
+  lazy val redshiftBuildSettings = {
+    Seq(
+      name := "snowplow-redshift-loader",
+      Docker / packageName := "snowplow/rdb-loader-redshift",
+      initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
+      Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+  }
+
+  lazy val redshiftDistrolessBuildSettings = redshiftBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
+
+  lazy val snowflakeBuildSettings = {
+    Seq(
+      name := "snowplow-snowflake-loader",
+      Docker / packageName := "snowplow/rdb-loader-snowflake",
+      initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
+      Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+  }
+
+  lazy val snowflakeDistrolessBuildSettings = snowflakeBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
+
+  lazy val transformerBatchBuildSettings = {
+    Seq(
+      name := "snowplow-transformer-batch",
+      description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
+      buildInfoKeys := List(name, version, description),
+      BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
+    ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings
+  }
+
+  lazy val transformerKinesisBuildSettings = {
+    Seq(
+      name := "snowplow-transformer-kinesis",
+      Docker / packageName := "snowplow/transformer-kinesis",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
+      buildInfoKeys := List(name, version, description),
+    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+  }
+
+  lazy val transformerKinesisDistrolessBuildSettings = transformerKinesisBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
+
 }

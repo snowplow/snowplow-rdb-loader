@@ -12,12 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import java.net.URI
-import java.util.UUID
-
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{ Config, StorageTarget }
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 import org.specs2.mutable.Specification
 
@@ -25,26 +23,26 @@ class CommonSpec extends Specification {
   "isTabular" should {
     "respect default TSV even if SchemaKey is not listed" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
+      val result = Common.isTabular(CommonSpec.formats)(input)
       result should beTrue
     }
 
     "respect default JSON" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
-      val jsonFormat = CommonSpec.formats.copy(default = LoaderMessage.Format.JSON)
+      val jsonFormat = CommonSpec.formats.copy(default = TypesInfo.Shredded.ShreddedFormat.JSON)
       val result = Common.isTabular(jsonFormat)(input)
       result should beFalse
     }
 
     "respect keys listed in json" in {
       val input = SchemaKey("com.acme","json-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
+      val result = Common.isTabular(CommonSpec.formats)(input)
       result should beFalse
     }
 
     "respect keys listed in skip" in {
       val input = SchemaKey("com.acme","skip-event","jsonschema", SchemaVer.Full(1,0,0))
-      val result = Common.isTabular(CommonSpec.validConfig.formats)(input)
+      val result = Common.isTabular(CommonSpec.formats)(input)
       result should beFalse
     }
   }
@@ -52,51 +50,13 @@ class CommonSpec extends Specification {
 
 object CommonSpec {
 
-  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
-  val validTarget = StorageTarget.Redshift(
-    "redshift.amazonaws.com",
-    "snowplow",
-    5439,
-    disableSsl,
-    "arn:aws:iam::123456789876:role/RedshiftLoadRole",
-    "atomic",
-    "admin",
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    1,
-    None)
-
-  val formats = Config.Formats(
-    LoaderMessage.Format.TSV,
+  val formats = TransformerConfig.Formats.Shred(
+    TypesInfo.Shredded.ShreddedFormat.TSV,
     List(
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)
     ),
     List(SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0))),
     List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
-  )
-
-  val shredder = Config.Shredder.Batch(
-    URI.create("s3://bucket/input/"),
-    Config.Shredder.Output(
-      URI.create("s3://bucket/good/"),
-      Config.Shredder.Compression.Gzip
-    )
-  )
-
-  val validConfig: Config[StorageTarget.Redshift] = Config(
-    "Acme Redshift",
-    UUID.fromString("123e4567-e89b-12d3-a456-426655440000"),
-    "us-east-1",
-    None,
-    Config.Monitoring(
-      None,
-      None,
-      None
-    ),
-    "messages",
-    shredder,
-    validTarget,
-    formats,
-    Set.empty
   )
 }

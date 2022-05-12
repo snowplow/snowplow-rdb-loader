@@ -13,6 +13,7 @@ package object test {
     def pure[A](a: A): Pure[A] = EitherT.pure(a)
     def modify(f: TestState => TestState): Pure[Unit] = EitherT.right(CState.modify(f))
     def fail[A](a: Throwable): Pure[A] = EitherT.leftT(a)
+    def unit: Pure[Unit] = pure(())
   }
 
   type EitherThrow[A] = Either[Throwable, A]
@@ -34,6 +35,8 @@ package object test {
   implicit class PureActionOps[A](st: LoaderAction[Pure, A]) {
     def run =
       st.value.value.run(TestState.init).value
+    def runS =
+      st.value.value.runS(TestState.init).value
   }
 
   implicit class PureOps[A](st: Pure[A]) {
@@ -43,18 +46,5 @@ package object test {
       st.value.runA(TestState.init).value
     def runS =
       st.value.runS(TestState.init).value
-
-    def toAction: LoaderAction[Pure, A] = {
-      val f = (stt: TestState) => {
-        val (s, value) = st.value.run(stt).value match {
-          case (s, Left(e: LoaderError)) => (s, LoaderAction(Pure.pure(e.asLeft[A])))
-          case (s, Left(e)) => (s, LoaderAction.liftF(Pure.fail[A](e)))
-          case (s, Right(a)) => (s, LoaderAction.liftF(Pure.pure[A](a)))
-        }
-        (s, value)
-      }
-
-      LoaderAction.liftF(Pure(f)).flatMap(identity)
-    }
   }
 }

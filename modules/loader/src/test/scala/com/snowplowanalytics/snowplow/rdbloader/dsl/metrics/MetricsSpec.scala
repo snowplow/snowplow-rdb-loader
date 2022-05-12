@@ -22,7 +22,7 @@ import cats.effect.Clock
 
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Config, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 
@@ -36,7 +36,7 @@ class MetricsSpec extends Specification {
     def monotonic(unit: TimeUnit): Id[Long] = 0L
   }
 
-  "getMetrics" should {
+  "getCompletedMetrics" should {
     "compute the metrics" in {
       val countGood = 42L
       val collectorLatencyMin = 120L
@@ -46,27 +46,27 @@ class MetricsSpec extends Specification {
 
       val loaded = ShreddingComplete(
         S3.Folder.coerce("s3://shredded/run_id/"),
-        Nil,
+        TypesInfo.Shredded(Nil),
         Timestamps(
           jobStarted = now.minusSeconds(shredderStartLatency),
           jobCompleted = now.minusSeconds(shredderEndLatency),
           min = Some(now.minusSeconds(collectorLatencyMax)),
           max = Some(now.minusSeconds(collectorLatencyMin))
         ),
-        Config.Shredder.Compression.Gzip,
+        TransformerConfig.Compression.Gzip,
         Processor("loader_unit_tests", Semver(0, 0, 0, None)),
         Some(Count(countGood))
       )
 
-      val expected = Metrics.KVMetrics(
-        Metrics.KVMetric(Metrics.CountGoodName, countGood.toString),
-        Some(Metrics.KVMetric(Metrics.CollectorLatencyMinName, collectorLatencyMin.toString)),
-        Some(Metrics.KVMetric(Metrics.CollectorLatencyMaxName, collectorLatencyMax .toString)),
-        Metrics.KVMetric(Metrics.ShredderStartLatencyName, shredderStartLatency.toString),
-        Metrics.KVMetric(Metrics.ShredderEndLatencyName, shredderEndLatency .toString)
+      val expected = Metrics.KVMetrics.LoadingCompleted(
+        Metrics.KVMetric.CountGood(countGood.toString),
+        Some(Metrics.KVMetric.CollectorLatencyMin(collectorLatencyMin.toString)),
+        Some(Metrics.KVMetric.CollectorLatencyMax(collectorLatencyMax .toString)),
+        Metrics.KVMetric.ShredderLatencyStart(shredderStartLatency.toString),
+        Metrics.KVMetric.ShredderLatencyEnd(shredderEndLatency .toString)
       )
 
-      val actual = Metrics.getMetrics[Id](loaded)
+      val actual = Metrics.getCompletedMetrics[Id](loaded)
 
       actual === expected
     }
