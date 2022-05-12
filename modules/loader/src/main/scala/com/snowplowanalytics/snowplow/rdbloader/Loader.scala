@@ -119,6 +119,7 @@ object Loader {
 
     val loading: F[Unit] = backgroundCheck {
       for {
+        _        <- Transaction[F, C].resume
         start    <- Clock[F].instantNow
         result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
         attempts <- control.getAndResetAttempts

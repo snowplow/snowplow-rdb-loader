@@ -20,7 +20,7 @@ object Dependencies {
     val igluClient       = "1.1.1"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
-    val analyticsSdk     = "2.1.0"
+    val analyticsSdk     = "3.0.1"
     val pureconfig       = "0.16.0"
     val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
@@ -41,7 +41,8 @@ object Dependencies {
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.3"
-    val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
+    val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
+    val jacksonDatabind  = "2.13.2.2"
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
@@ -59,6 +60,8 @@ object Dependencies {
     val specs2           = "4.10.5"
     val catsTesting      = "0.5.3"
     val scalaCheck       = "1.14.3"
+
+    val betterMonadicFor = "0.3.1"
   }
 
   val resolutionRepos = Seq(
@@ -110,7 +113,7 @@ object Dependencies {
   val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
 
   val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
-  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonDatabind
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
 
 
@@ -144,4 +147,111 @@ object Dependencies {
   val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
   val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
   val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
+
+  // compiler plugins
+  val betterMonadicFor = "com.olegpy" %% "better-monadic-for" % V.betterMonadicFor
+
+  val awsDependencies = Seq(
+    aws2s3,
+    aws2sqs,
+    aws2sns,
+    fs2,
+    catsRetry,
+  )
+
+  val commonDependencies = Seq(
+    decline,
+    analyticsSdk,
+    badrows,
+    igluClient,
+    circeGeneric,
+    circeGenericExtra,
+    circeLiteral,
+    pureconfig,
+    pureconfigCirce,
+    cron4sCirce,
+    schemaDdl,
+    http4sCore,
+    aws2regions,
+    jacksonDatabind,
+    specs2,
+    monocle,
+    monocleMacro,
+  )
+
+  val loaderDependencies = Seq(
+    slf4j,
+    ssm,
+    dynamodb,
+    jSch,
+    sentry,
+    scalaTracker,
+    scalaTrackerEmit,
+    fs2Blobstore,
+    fs2Cron,
+    http4sCirce,
+    http4sClient,
+    igluClientHttp4s,
+    doobie,
+    doobieHikari,
+    catsRetry,
+    log4cats,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck,
+    catsEffectLaws,
+    catsTesting,
+  )
+
+  val redshiftDependencies = Seq(
+    redshift,
+    redshiftSdk
+  )
+
+  val snowflakeDependencies = Seq(
+    enumeratum,
+    snowflakeJdbc
+  )
+
+  val batchTransformerDependencies = Seq(
+    sqs,
+    sns,
+    dynamodb,
+    slf4j,
+    sentry,
+    eventsManifest,
+    sparkCore,
+    sparkSQL,
+    jacksonModule,
+    jacksonDatabind,
+    jacksonCbor,
+    circeOptics,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck
+  )
+
+  val transformerKinesisDependencies = Seq(
+    dynamodb,
+    slf4j,
+    protobuf,
+    commons,
+    kafkaClients,
+    log4cats,
+    fs2Blobstore,
+    fs2Io,
+    fs2Aws,
+    fs2AwsSqs,
+    aws2kinesis,
+    http4sClient,
+    circeOptics,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck
+  )
+
+  // exclusions
+  val exclusions = Seq(
+    "org.slf4j" % "slf4j-log4j12"
+  )
 }
