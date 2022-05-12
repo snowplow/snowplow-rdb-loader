@@ -36,7 +36,12 @@ object TestApplication {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
       res <- parsed match {
         case Right(cliConfig) =>
-         Resources.mk[IO](cliConfig.igluConfig, queueFromDeferred(forCompletionMessage), cliConfig.config.monitoring.metrics)
+          Resources.mk[IO](
+            cliConfig.igluConfig,
+            queueFromDeferred(forCompletionMessage),
+            cliConfig.config.monitoring.metrics,
+            cliConfig.config.output.path
+          )
           .use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
               Processing.runWindowed[IO](windowedRecords, resources, cliConfig.config)

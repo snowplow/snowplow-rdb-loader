@@ -1,27 +1,49 @@
+/*
+ * Copyright (c) 2021-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
+
+import java.net.URI
+
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import cats.Applicative
 import cats.data.EitherT
-import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
 import cats.implicits._
-import com.snowplowanalytics.aws.AWSQueue
+
+import cats.effect.{Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
+
+import fs2.{Pipe, Stream}
+
+import blobstore.Store
+
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event}
+
+import com.snowplowanalytics.aws.AWSQueue
+
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor}
+
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
+
+import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Closed, Sealed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
-import fs2.{Pipe, Stream}
-import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import java.net.URI
 
 object Processing {
 
@@ -55,7 +77,16 @@ object Processing {
     }
 
     val onComplete: Window => F[Unit] =
-      getOnComplete(config.output.compression, transformer.typesInfo, config.output.path, resources.awsQueue, resources.windows, config.featureFlags.legacyMessageFormat)
+      getOnComplete(
+        resources.store,
+        config.output.compression,
+        transformer.typesInfo,
+        config.output.path,
+        resources.awsQueue,
+        resources.windows,
+        config.featureFlags.legacyMessageFormat,
+        _
+      )
     val sinkId: Window => F[Int] =
       getSinkId(resources.windows)
 
@@ -65,7 +96,7 @@ object Processing {
       .evalTap(State.update(resources.windows))
       .evalTap(incrementMetrics(resources.metrics, _))
       .through(handleTransformResult(transformer))
-      .through(getSink[F](resources.blocker, resources.instanceId, config.output, sinkId, onComplete))
+      .through(getSink[F](resources.store, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
   }
 
@@ -73,13 +104,16 @@ object Processing {
    * Get a callback that will be executed when window has been full written to destination
    * The callback sends an SQS message and modifies the global state to reflect closed window
    */
-  def getOnComplete[F[_]: Sync: Clock](compression: Compression,
-                                       getTypes: Set[Data.ShreddedType] => TypesInfo,
-                                       root: URI,
-                                       awsQueue: AWSQueue[F],
-                                       state: State.Windows[F],
-                                       legacyMessageFormat: Boolean)
-                                      (window: Window): F[Unit] = {
+  def getOnComplete[F[_]: Clock: ConcurrentEffect: ContextShift: Sync](
+    store: Store[F],
+    compression: Compression,
+    getTypes: Set[Data.ShreddedType] => TypesInfo,
+    outputPath: URI,
+    awsQueue: AWSQueue[F],
+    state: State.Windows[F],
+    legacyMessageFormat: Boolean,
+    window: Window
+  ): F[Unit] = {
     val find: State.WState => Boolean = {
       case (w, status, _) => w == window && status == Sealed
     }
@@ -87,8 +121,10 @@ object Processing {
       case (w, _, state) => (w, Closed, state)
     }
 
+    val writeShreddingComplete = getWriteShreddingComplete[F](store, outputPath)
+
     state.modify(State.updateState(find, update, _._3)).flatMap { state =>
-      Completion.seal[F](compression, getTypes, root, awsQueue, legacyMessageFormat)(window, state)
+      Completion.seal[F](compression, getTypes, outputPath, awsQueue, legacyMessageFormat, writeShreddingComplete)(window, state)
     } *> logger[F].debug(s"ShreddingComplete message for ${window.getDir} has been sent")
   }
 
@@ -112,28 +148,28 @@ object Processing {
     }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker,
-                                                    instanceId: String,
-                                                    config: TransformerConfig.Output,
-                                                    sinkCount: Window => F[Int],
-                                                    onComplete: Window => F[Unit]): Grouping[F] =
-    config match {
-      case TransformerConfig.Output(path, _, _) =>
-        val dataSink = Option(path.getScheme) match {
-          case Some("file") =>
-            file.getSink[F](blocker, path, config.compression, sinkCount) _
-          case Some("s3" | "s3a" | "s3n") =>
-            val (bucket, prefix) = S3.splitS3Path(S3.Folder.coerce(path.toString))
-            s3.getSink[F](bucket, prefix, config.compression, sinkCount, instanceId) _
-          case _ =>
-            val error = new IllegalArgumentException(s"Cannot create sink for $path. Possible options are file:// and s3://")
-            (_: Window) => (_: Transformed.Path) =>
-              (_: Stream[F, Transformed.Data]) =>
-                Stream.raiseError[F](error)
-        }
-
-        Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
+  def getSink[F[_]: ConcurrentEffect: ContextShift](
+    store: Store[F],
+    instanceId: String,
+    config: TransformerConfig.Output,
+    sinkCount: Window => F[Int],
+    onComplete: Window => F[Unit]
+  ): Grouping[F] = {
+    val dataSink = Option(config.path.getScheme) match {
+      case Some("file") =>
+        file.getSink[F](store, config.compression, sinkCount) _
+      case Some("s3" | "s3a" | "s3n") =>
+        val (bucket, prefix) = S3.splitS3Path(S3.Folder.coerce(config.path.toString))
+        s3.getSink[F](store, bucket, prefix, config.compression, sinkCount, instanceId) _
+      case _ =>
+        val error = new IllegalArgumentException(s"Cannot create sink for ${config.path} Possible options are file://, s3://, s3a:// and s3n://")
+        (_: Window) => (_: Transformed.Path) =>
+          (_: Stream[F, Transformed.Data]) =>
+            Stream.raiseError[F](error)
     }
+
+    Partitioned.write[F, Window, Transformed.Path, Transformed.Data](dataSink, onComplete)
+  }
 
   def attemptTransform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
                                                        validations: TransformerConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, TransformationResult]] = {
@@ -168,4 +204,17 @@ object Processing {
     }
       .void
 
+  def getWriteShreddingComplete[F[_]: ConcurrentEffect: ContextShift](
+    store: Store[F],
+    outputPath: URI
+  ): (String, String) => F[Unit] = (filePath, content) =>
+    Option(outputPath.getScheme) match {
+      case Some("file") =>
+        file.writeFile(store, outputPath, filePath, content)
+      case Some("s3" | "s3a" | "s3n") =>
+        val (bucket, key) = S3.splitS3Key(S3.Key.coerce(filePath.toString))
+        s3.writeFile(store, bucket, key, content)
+      case _ =>
+        Sync[F].raiseError(new IllegalArgumentException(s"Can't determine writing function for filesystem for $outputPath"))
+    }
 }
