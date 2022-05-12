@@ -14,7 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaVer, SchemaKey}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 import org.specs2.mutable.Specification
 
@@ -28,7 +29,7 @@ class CommonSpec extends Specification {
 
     "respect default JSON" in {
       val input = SchemaKey("com.acme","tsv-not-listed","jsonschema", SchemaVer.Full(1,0,0))
-      val jsonFormat = CommonSpec.formats.copy(default = LoaderMessage.Format.JSON)
+      val jsonFormat = CommonSpec.formats.copy(default = TypesInfo.Shredded.ShreddedFormat.JSON)
       val result = Common.isTabular(jsonFormat)(input)
       result should beFalse
     }
@@ -49,8 +50,8 @@ class CommonSpec extends Specification {
 
 object CommonSpec {
 
-  val formats = ShredderConfig.Formats(
-    LoaderMessage.Format.TSV,
+  val formats = TransformerConfig.Formats.Shred(
+    TypesInfo.Shredded.ShreddedFormat.TSV,
     List(
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(1),None,None),
       SchemaCriterion("com.acme","tsv-event","jsonschema",Some(2),None,None)

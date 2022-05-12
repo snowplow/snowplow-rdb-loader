@@ -45,6 +45,8 @@ object PureTransaction {
           })
         }
 
+      def resume: Pure[Unit] =
+        Pure.unit
 
       def run[A](io: Pure[A]): Pure[A] =
         Pure.modify(_.log(NoTransaction)) *>
