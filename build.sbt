@@ -14,209 +14,86 @@
 lazy val root = project.in(file("."))
   .aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
 
-lazy val aws = project.in(file("modules/aws"))
-  .settings(BuildSettings.buildSettings)
-  .settings(
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-    libraryDependencies ++= Seq(
-      Dependencies.aws2s3,
-      Dependencies.aws2sqs,
-      Dependencies.aws2sns,
-      Dependencies.fs2,
-      Dependencies.catsRetry,
-    )
-  )
+lazy val aws = project
+  .in(file("modules/aws"))
+  .settings(BuildSettings.awsBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.awsDependencies)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val common: Project = project.in(file("modules/common"))
-  .settings(Seq(
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
-  ))
-  .settings(BuildSettings.scoverageSettings)
-  .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.addExampleConfToTestCp)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(
-    libraryDependencies ++= Seq(
-      Dependencies.decline,
-      Dependencies.badrows,
-      Dependencies.igluClient,
-      Dependencies.circeGeneric,
-      Dependencies.circeGenericExtra,
-      Dependencies.circeLiteral,
-      Dependencies.pureconfig,
-      Dependencies.pureconfigCirce,
-      Dependencies.cron4sCirce,
-      Dependencies.schemaDdl,
-      Dependencies.http4sCore,
-      Dependencies.aws2regions,
-
-      Dependencies.specs2,
-      Dependencies.monocle,
-      Dependencies.monocleMacro,
-    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
-  )
+lazy val common: Project = project
+  .in(file("modules/common"))
+  .settings(BuildSettings.commonBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.commonDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val loader = project.in(file("modules/loader"))
-  .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.addExampleConfToTestCp)
-  .settings(BuildSettings.assemblySettings)
-  .settings(BuildSettings.dynVerSettings)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-    libraryDependencies ++= Seq(
-      Dependencies.slf4j,
-      Dependencies.ssm,
-      Dependencies.dynamodb,
-      Dependencies.jSch,
-      Dependencies.sentry,
-
-      Dependencies.scalaTracker,
-      Dependencies.scalaTrackerEmit,
-      Dependencies.fs2Blobstore,
-      Dependencies.fs2Cron,
-      Dependencies.http4sCirce,
-      Dependencies.http4sClient,
-      Dependencies.igluClientHttp4s,
-      Dependencies.doobie,
-      Dependencies.doobieHikari,
-      Dependencies.catsRetry,
-      Dependencies.log4cats,
-
-      Dependencies.specs2,
-      Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck,
-      Dependencies.catsEffectLaws,
-      Dependencies.catsTesting,
-    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
-  )
+lazy val loader = project
+  .in(file("modules/loader"))
+  .settings(BuildSettings.loaderBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.loaderDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoader = project
   .in(file("modules/redshift-loader"))
-  .settings(
-    name := "snowplow-redshift-loader",
-    Docker / packageName := "snowplow/rdb-loader-redshift",
-    initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
-    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
-  )
-  .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.addExampleConfToTestCp)
-  .settings(BuildSettings.assemblySettings)
-  .settings(BuildSettings.dockerSettings)
-  .settings(BuildSettings.dynVerSettings)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-    libraryDependencies ++= Seq(
-      Dependencies.redshift,
-      Dependencies.redshiftSdk
-    )
-  )
+  .settings(BuildSettings.redshiftBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val redshiftLoaderDistroless = project
+  .in(file("modules/distroless/redshift-loader"))
+  .settings(sourceDirectory := (redshiftLoader / sourceDirectory).value)
+  .settings(BuildSettings.redshiftDistrolessBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val snowflakeLoader = project
   .in(file("modules/snowflake-loader"))
-  .settings(
-    name := "snowplow-snowflake-loader",
-    Docker / packageName := "snowplow/rdb-loader-snowflake",
-    initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
-    Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
-  )
-  .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.addExampleConfToTestCp)
-  .settings(BuildSettings.assemblySettings)
-  .settings(BuildSettings.dockerSettings)
-  .settings(BuildSettings.dynVerSettings)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-    libraryDependencies ++= Seq(
-      Dependencies.enumeratum,
-      Dependencies.snowflakeJdbc
-    )
-  )
+  .settings(BuildSettings.snowflakeBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
   .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
-lazy val transformerBatch = project.in(file("modules/transformer-batch"))
-  .settings(
-    name        := "snowplow-transformer-batch",
-    description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
-    buildInfoKeys := List(name, version, description),
-    BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
-  )
-  .settings(BuildSettings.buildSettings)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(BuildSettings.transformerAssemblySettings)
-  .settings(BuildSettings.dynVerSettings)
-  .settings(
-    libraryDependencies ++= Seq(
-      // Java
-      Dependencies.sqs,
-      Dependencies.sns,
-      Dependencies.dynamodb,
-      Dependencies.slf4j,
-      Dependencies.sentry,
-      // Scala
-      Dependencies.eventsManifest,
-      Dependencies.sparkCore,
-      Dependencies.sparkSQL,
-      Dependencies.jacksonModule,
-      Dependencies.jacksonDatabind,
-      Dependencies.jacksonCbor,
-      // Scala (test only)
-      Dependencies.circeOptics,
-      Dependencies.specs2,
-      Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
-    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
-  )
+lazy val snowflakeLoaderDistroless = project
+  .in(file("modules/distroless/snowflake-loader"))
+  .settings(sourceDirectory := (snowflakeLoader / sourceDirectory).value)
+  .settings(BuildSettings.snowflakeDistrolessBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
+
+lazy val transformerBatch = project
+  .in(file("modules/transformer-batch"))
+  .settings(BuildSettings.transformerBatchBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.batchTransformerDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common)
   .enablePlugins(BuildInfoPlugin)
 
-lazy val transformerKinesis = project.in(file("modules/transformer-kinesis"))
-  .settings(
-    name        := "snowplow-transformer-kinesis",
-    description := "Stream Shredding job",
-    buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
-    buildInfoKeys := List(name, version, description),
-    Docker / packageName := "snowplow/transformer-kinesis",
-    addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1"),
-  )
-  .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.assemblySettings)
-  .settings(BuildSettings.dockerSettings)
-  .settings(BuildSettings.dynVerSettings)
-  .settings(resolvers ++= Dependencies.resolutionRepos)
-  .settings(
-    libraryDependencies ++= Seq(
-      // Java
-      Dependencies.dynamodb,
-      Dependencies.slf4j,
-      Dependencies.protobuf,
-      Dependencies.commons,
-      Dependencies.kafkaClients,
-      // Scala
-      Dependencies.log4cats,
-      Dependencies.fs2Blobstore,
-      Dependencies.fs2Io,
-      Dependencies.fs2Aws,
-      Dependencies.fs2AwsSqs,
-      Dependencies.aws2kinesis,
-      Dependencies.http4sClient,
-      Dependencies.circeOptics,
-      // Scala (test only)
-      Dependencies.circeOptics,
-      Dependencies.specs2,
-      Dependencies.specs2ScalaCheck,
-      Dependencies.scalaCheck
-    ).map(_.excludeAll(ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")))
-  )
+lazy val transformerKinesis = project
+  .in(file("modules/transformer-kinesis"))
+  .settings(BuildSettings.transformerKinesisBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common, aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val transformerKinesisDistroless = project
+  .in(file("modules/distroless/transformer-kinesis"))
+  .settings(sourceDirectory := (transformerKinesis / sourceDirectory).value)
+  .settings(BuildSettings.transformerKinesisDistrolessBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
+  .dependsOn(common, aws)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)

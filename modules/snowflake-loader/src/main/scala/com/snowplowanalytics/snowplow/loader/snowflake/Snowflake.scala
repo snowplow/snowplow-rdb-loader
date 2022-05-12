@@ -98,7 +98,7 @@ object Snowflake {
                 // This is validated on config decoding stage
                 val stageName = monitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
-                sql"~ INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
+                sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
               case Statement.EventsCopy(path, _) =>
                 val frTableName = Fragment.const(EventsTable.MainName)
