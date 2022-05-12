@@ -1,55 +1,103 @@
+/*
+ * Copyright (c) 2021-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
+
+import java.util.UUID
+import java.net.URI
+
+import scala.concurrent.duration.DurationInt
+
+import cats.implicits._
 
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-import cats.implicits._
-import com.snowplowanalytics.aws.AWSQueue
+
+import fs2.concurrent.SignallingRef
+
+import blobstore.Store
+
+import io.circe.Json
+
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
+
+import com.snowplowanalytics.aws.AWSQueue
+
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-import fs2.concurrent.SignallingRef
-import io.circe.Json
-import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{MetricsReporters, QueueConfig}
+
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{file, s3}
 
-import java.util.UUID
-import scala.concurrent.duration.DurationInt
-
-case class Resources[F[_]](iglu: Client[F, Json],
-                           atomicLengths: Map[String, Int],
-                           awsQueue: AWSQueue[F],
-                           instanceId: String,
-                           blocker: Blocker,
-                           halt: SignallingRef[F, Boolean],
-                           windows: State.Windows[F],
-                           global: Ref[F, Long],
-                           metrics: Metrics[F])
+case class Resources[F[_]](
+  iglu: Client[F, Json],
+  atomicLengths: Map[String, Int],
+  awsQueue: AWSQueue[F],
+  instanceId: String,
+  blocker: Blocker,
+  halt: SignallingRef[F, Boolean],
+  windows: State.Windows[F],
+  global: Ref[F, Long],
+  store: Store[F],
+  metrics: Metrics[F]
+)
 
 object Resources {
 
   implicit private def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
-                                                                         queueConfig: QueueConfig,
-                                                                         metricsConfig: MetricsReporters): Resource[F, Resources[F]] = {
-    mkQueueFromConfig(queueConfig).flatMap(mk(igluConfig, _, metricsConfig))
-  }
+  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
+    igluConfig: Json,
+    queueConfig: QueueConfig,
+    metricsConfig: MetricsReporters,
+    outputPath: URI
+  ): Resource[F, Resources[F]] =
+    for {
+      awsQueue <- mkQueueFromConfig(queueConfig)
+      resources <- mk(igluConfig, awsQueue, metricsConfig, outputPath)
+    } yield resources
 
-  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](igluConfig: Json,
-                                                                         awsQueue: AWSQueue[F],
-                                                                         metricsConfig: MetricsReporters): Resource[F, Resources[F]] = {
+  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
+    igluConfig: Json,
+    awsQueue: AWSQueue[F],
+    metricsConfig: MetricsReporters,
+    outputPath: URI
+  ): Resource[F, Resources[F]] =
     for {
       client        <- mkClient(igluConfig)
       atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
-      blocker       <- Blocker[F]
-      initialState  <- mkInitialState
-      sinks         <- Resource.eval(Ref.of(0L))
       instanceId    <- mkTransformerInstanceId
+      blocker       <- Blocker[F]
       halt          <- mkHaltingSignal(instanceId)
+      initialState  <- mkInitialState
+      global        <- Resource.eval(Ref.of(0L))
+      store         <- Resource.eval(mkStore[F](blocker, outputPath))
       metrics       <- Resource.eval(Metrics.build[F](blocker, metricsConfig))
-    } yield Resources(client, atomicLengths, awsQueue, instanceId.toString, blocker, halt, initialState, sinks, metrics)
-  }
+    } yield
+      Resources(
+        client,
+        atomicLengths,
+        awsQueue,
+        instanceId.toString,
+        blocker,
+        halt,
+        initialState,
+        global,
+        store,
+        metrics
+      )
 
   private def mkClient[F[_]: Sync: InitSchemaCache: InitListCache](igluConfig: Json): Resource[F, Client[F, Json]] = Resource.eval {
     Client
@@ -102,4 +150,13 @@ object Resources {
     }
   }
 
+  private def mkStore[F[_]: ConcurrentEffect: ContextShift: Sync](blocker: Blocker, outputPath: URI): F[Store[F]] =
+    Option(outputPath.getScheme) match {
+      case Some("s3" | "s3a" | "s3n") =>
+        s3.initStore[F]
+      case Some("file") =>
+        Sync[F].delay(file.initStore[F](blocker, outputPath))
+      case _ =>
+        Sync[F].raiseError(new IllegalArgumentException(s"Can't create store for path $outputPath"))
+    }
 }

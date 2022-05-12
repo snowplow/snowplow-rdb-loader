@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2021 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2021-2022 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -32,7 +32,12 @@ object Main extends IOApp {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
       res <- parsed match {
         case Right(cliConfig) =>
-          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue, cliConfig.config.monitoring.metrics).use { resources =>
+          Resources.mk[IO](
+            cliConfig.igluConfig,
+            cliConfig.config.queue,
+            cliConfig.config.monitoring.metrics,
+            cliConfig.config.output.path
+          ).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
               Processing.run[IO](resources, cliConfig.config)
                 .merge(resources.metrics.report)
