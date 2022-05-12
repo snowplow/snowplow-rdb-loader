@@ -41,7 +41,8 @@ object Dependencies {
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.14.3"
-    val jacksonModule    = "2.12.6" // Override incompatible version in spark runtime
+    val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
+    val jacksonDatabind  = "2.13.2.2"
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
@@ -112,7 +113,7 @@ object Dependencies {
   val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
 
   val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
-  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonDatabind
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
 
 
@@ -172,6 +173,7 @@ object Dependencies {
     schemaDdl,
     http4sCore,
     aws2regions,
+    jacksonDatabind,
     specs2,
     monocle,
     monocleMacro,
