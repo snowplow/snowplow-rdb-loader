@@ -102,7 +102,6 @@ object Transaction {
           ds.setDataSourceProperties(target.properties)
         }
       })
-      _ <- Resource.eval(target.initializers.traverse_(fr => fr.query[Unit].option.transact(xa).void))
     } yield xa
 
   /**
@@ -111,7 +110,10 @@ object Transaction {
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
   def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
+    for {
+      t <- buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
+      _ <- Resource.eval(target.initializers.traverse_(fr => t.run(fr.update.run).void))
+    } yield t
 
   /**
    * Surprisingly, for statements disallowed in transaction block we need to set autocommit

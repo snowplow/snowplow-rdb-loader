@@ -136,8 +136,8 @@ object StorageTarget {
 
     override def initializers: List[Fragment] =
       List(
-        fr"USE CATALOG $catalog",
-        fr"USE $schema"
+        sql"USE CATALOG ${Fragment.const0(catalog)}",
+        sql"USE SCHEMA ${Fragment.const0(schema)}"
       )
   }
 
