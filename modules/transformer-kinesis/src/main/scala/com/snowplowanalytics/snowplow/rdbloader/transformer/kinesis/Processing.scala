@@ -98,6 +98,8 @@ object Processing {
       .through(handleTransformResult(transformer))
       .through(getSink[F](resources.store, resources.instanceId, config.output, sinkId, onComplete))
       .flatMap(_.sink)  // Sinks must be issued sequentially
+      .merge(resources.metrics.report)
+      .merge(resources.telemetry.report)
   }
 
   /**

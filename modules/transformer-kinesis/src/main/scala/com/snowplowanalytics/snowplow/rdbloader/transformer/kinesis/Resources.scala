@@ -16,6 +16,11 @@ import java.util.UUID
 import java.net.URI
 
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.ExecutionContext
+
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import io.circe.Json
 
 import cats.implicits._
 
@@ -28,18 +33,20 @@ import blobstore.Store
 
 import io.circe.Json
 
-import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
 
 import com.snowplowanalytics.aws.AWSQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{MetricsReporters, QueueConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
+import com.snowplowanalytics.snowplow.rdbloader.transformer.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{file, s3}
+
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 case class Resources[F[_]](
   iglu: Client[F, Json],
@@ -51,7 +58,8 @@ case class Resources[F[_]](
   windows: State.Windows[F],
   global: Ref[F, Long],
   store: Store[F],
-  metrics: Metrics[F]
+  metrics: Metrics[F],
+  telemetry: Telemetry[F]
 )
 
 object Resources {
@@ -60,20 +68,19 @@ object Resources {
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
-    queueConfig: QueueConfig,
-    metricsConfig: MetricsReporters,
-    outputPath: URI
+    config: TransformerConfig.Stream,
+    executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
-      awsQueue <- mkQueueFromConfig(queueConfig)
-      resources <- mk(igluConfig, awsQueue, metricsConfig, outputPath)
+      awsQueue <- mkQueueFromConfig(config.queue)
+      resources <- mk(igluConfig, config, awsQueue, executionContext)
     } yield resources
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
+    config: TransformerConfig.Stream,
     awsQueue: AWSQueue[F],
-    metricsConfig: MetricsReporters,
-    outputPath: URI
+    executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
       client        <- mkClient(igluConfig)
@@ -83,8 +90,9 @@ object Resources {
       halt          <- mkHaltingSignal(instanceId)
       initialState  <- mkInitialState
       global        <- Resource.eval(Ref.of(0L))
-      store         <- Resource.eval(mkStore[F](blocker, outputPath))
-      metrics       <- Resource.eval(Metrics.build[F](blocker, metricsConfig))
+      store         <- Resource.eval(mkStore[F](blocker, config.output.path))
+      metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      telemetry     <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
     } yield
       Resources(
         client,
@@ -96,7 +104,8 @@ object Resources {
         initialState,
         global,
         store,
-        metrics
+        metrics,
+        telemetry
       )
 
   private def mkClient[F[_]: Sync: InitSchemaCache: InitListCache](igluConfig: Json): Resource[F, Client[F, Json]] = Resource.eval {

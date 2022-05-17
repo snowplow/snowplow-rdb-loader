@@ -38,9 +38,9 @@ object TestApplication {
         case Right(cliConfig) =>
           Resources.mk[IO](
             cliConfig.igluConfig,
+            cliConfig.config,
             queueFromDeferred(forCompletionMessage),
-            cliConfig.config.monitoring.metrics,
-            cliConfig.config.output.path
+            concurrent.ExecutionContext.global
           )
           .use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>

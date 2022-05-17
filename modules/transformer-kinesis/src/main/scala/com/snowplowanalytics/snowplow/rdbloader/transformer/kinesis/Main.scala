@@ -14,12 +14,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
 import cats.effect.{IOApp, IO, ExitCode, Sync}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
-import org.typelevel.log4cats.slf4j.Slf4jLogger
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 object Main extends IOApp {
 
@@ -34,13 +35,11 @@ object Main extends IOApp {
         case Right(cliConfig) =>
           Resources.mk[IO](
             cliConfig.igluConfig,
-            cliConfig.config.queue,
-            cliConfig.config.monitoring.metrics,
-            cliConfig.config.output.path
+            cliConfig.config,
+            executionContext
           ).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
               Processing.run[IO](resources, cliConfig.config)
-                .merge(resources.metrics.report)
                 .compile
                 .drain
                 .as(ExitCode.Success)

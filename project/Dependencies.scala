@@ -246,6 +246,8 @@ object Dependencies {
     http4sClient,
     catsEffectLaws,
     circeOptics,
+    scalaTracker,
+    scalaTrackerEmit,
     specs2,
     specs2ScalaCheck,
     scalaCheck

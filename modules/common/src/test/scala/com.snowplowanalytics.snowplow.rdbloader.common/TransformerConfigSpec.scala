@@ -108,6 +108,7 @@ class TransformerConfigSpec extends Specification {
         exampleSQSConfig,
         TransformerConfig.Formats.WideRow.JSON,
         exampleMonitoringStream,
+        exampleTelemetry,
         exampleDefaultFeatureFlags,
         exampleValidations
       )
@@ -123,6 +124,7 @@ class TransformerConfigSpec extends Specification {
         exampleSNSConfig,
         TransformerConfig.Formats.WideRow.JSON,
         exampleDefaultMonitoringStream,
+        defaultTelemetry,
         exampleDefaultFeatureFlags,
         emptyValidations
       )
@@ -242,6 +244,34 @@ object TransformerConfigSpec {
     TransformerConfig.MetricsReporters(None, Some(TransformerConfig.MetricsReporters.Stdout(1.minutes, None)))
   )
   val exampleDeduplication = TransformerConfig.Deduplication(TransformerConfig.Deduplication.Synthetic.Broadcast(1))
+  val exampleTelemetry =
+    TransformerConfig.Telemetry(
+      false,
+      15.minutes,
+      "POST",
+      "collector-g.snowplowanalytics.com",
+      443,
+      true,
+      Some("my_pipeline"),
+      Some("hfy67e5ydhtrd"),
+      Some("665bhft5u6udjf"),
+      Some("transformer-kinesis-ce"),
+      Some("1.0.0")
+    )
+  val defaultTelemetry =
+    TransformerConfig.Telemetry(
+      false,
+      15.minutes,
+      "POST",
+      "collector-g.snowplowanalytics.com",
+      443,
+      true,
+      None,
+      None,
+      None,
+      None,
+      None
+    )
   val emptyRunInterval = TransformerConfig.RunInterval(None, None, None)
   val exampleRunInterval = TransformerConfig.RunInterval(
     Some(TransformerConfig.RunInterval.IntervalInstant(Instant.parse("2021-10-12T14:55:22.00Z"))),
