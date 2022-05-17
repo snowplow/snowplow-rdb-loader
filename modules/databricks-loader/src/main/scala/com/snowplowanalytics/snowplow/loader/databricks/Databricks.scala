@@ -23,9 +23,10 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target, AtomicColumns}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 
 object Databricks {
 
@@ -41,7 +42,21 @@ object Databricks {
           def extendTable(info: ShreddedType.Info): Option[Block] = None
 
           def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, List.empty))
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery)))
+
+          def getColumns(discovery: DataDiscovery): List[String] = {
+            val atomicColumns = AtomicColumns.Columns
+            val shredTypeColumns = discovery.shreddedTypes
+              .filterNot(_.isAtomic)
+              .map(getShredTypeColumn)
+            atomicColumns ::: shredTypeColumns
+          }
+
+          def getShredTypeColumn(shreddedType: ShreddedType): String = {
+            val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
+            val info = shreddedType.info
+            SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model)
+          }
 
           def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
 
@@ -88,10 +103,16 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
                       FILEFORMAT = CSV""";
-              case Statement.EventsCopy(path, _, _) =>
-                val frTableName = Fragment.const(EventsTable.withSchema(config.storage.schema))
-                val frPath      = Fragment.const0(s"$path/output=good")
-                sql"""COPY INTO $frTableName FROM '$frPath' FILEFORMAT = PARQUET COPY_OPTIONS('MERGESCHEMA' = 'TRUE')""";
+              case Statement.EventsCopy(path, _, columns) =>
+                val frTableName     = Fragment.const(EventsTable.withSchema(config.storage.schema))
+                val frPath          = Fragment.const0(s"$path/output=good")
+                val frSelectColumns = Fragment.const0(columns.mkString(",") + ", current_timestamp() as load_tstamp")
+                sql"""COPY INTO $frTableName
+                      FROM (
+                        SELECT $frSelectColumns from '$frPath'
+                      )
+                      FILEFORMAT = PARQUET
+                      COPY_OPTIONS('MERGESCHEMA' = 'TRUE')""";
               case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.CreateTransient =>

@@ -148,6 +148,8 @@ object Loader {
 
   def addLoadTstampColumn[F[_]: DAO: Monad: Logging](targetConfig: StorageTarget): F[Unit] =
     targetConfig match {
+      // Adding load_tstamp column explicitly is not needed due to merge schema
+      // feature of Databricks. It will create missing column itself.
       case _: StorageTarget.Databricks => Monad[F].unit
       case _ =>
         for {
