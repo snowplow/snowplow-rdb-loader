@@ -157,7 +157,7 @@ class TypeAccumJob(@transient val spark: SparkSession,
 
   def run(folderName: String): List[TypesInfo.WideRow.Type] = {
     val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
-    sc.textFile(inputFolder)
+    val types = sc.textFile(inputFolder)
       .map { line =>
         for {
           event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
@@ -170,6 +170,12 @@ class TypeAccumJob(@transient val spark: SparkSession,
         case Left(_) =>
           List.empty
       }.distinct().collect().toList
+
+    config.deduplication.synthetic match {
+      case TransformerConfig.Deduplication.Synthetic.None => types
+      // Include duplicate schema to types list if synthetic deduplication is enabled
+      case _ => TypesInfo.WideRow.Type(Deduplication.DuplicateSchema, SnowplowEntity.Context) :: types
+    }
   }
 }
 

@@ -281,6 +281,13 @@ message spark_schema {
       }
     }
   }
+  optional group contexts_com_snowplowanalytics_snowplow_duplicate_1 (LIST) {
+    repeated group list {
+      required group element {
+        required binary original_event_id (UTF8);
+      }
+    }
+  }
   optional group contexts_com_snowplowanalytics_snowplow_geolocation_context_1 (LIST) {
     repeated group list {
       required group element {
