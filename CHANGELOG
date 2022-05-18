@@ -1,3 +1,8 @@
+Version 3.0.3 (2022-05-18)
+--------------------------
+Loader: bump version of load_succeeded schema to 3.0.0 (#889)
+Common: bump schema-ddl to 0.15.0 (#894)
+
 Version 3.0.2 (2022-05-12)
 --------------------------
 Common: bump snowplow-scala-analytics-sdk to 3.0.1 (#872)
