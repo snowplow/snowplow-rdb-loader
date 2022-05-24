@@ -1,3 +1,22 @@
+Version 4.0.0 (2022-05-26)
+--------------------------
+Common: Change http4s client backend to async-http-client (#903)
+Common: bump http4s to 0.21.33 (#902)
+Transformer kinesis: support Parquet output option (#900)
+Loader: check if target is ready before submitting the statement (#846)
+Add Databricks as a destination (#860)
+Batch Transformer: add Parquet output option (#896)
+Transformer kinesis: add telemetry (#863)
+Transformer kinesis: write shredding_complete.json to S3 (#867)
+Snowflake Loader: add load_tstamp (#815)
+Redshift Loader: add load_tstamp (#571)
+Transformer kinesis: report metrics (#862)
+RDB Loader: emit latency statistics on constant intervals (#795)
+Transformer kinesis: use output of transformation in updating global state (#824)
+Transformer kinesis: fix updating total and bad number of events counter in global state (#823)
+Transformer kinesis: add tests for whole processing pipeline (#835)
+Transformer-kinesis: fix passing checkpoint action during creation of windowed records (#762)
+
 Version 3.0.3 (2022-05-18)
 --------------------------
 Loader: bump version of load_succeeded schema to 3.0.0 (#889)
