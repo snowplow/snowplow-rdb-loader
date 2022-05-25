@@ -35,8 +35,7 @@ object Main extends IOApp {
         case Right(cliConfig) =>
           Resources.mk[IO](
             cliConfig.igluConfig,
-            cliConfig.config,
-            executionContext
+            cliConfig.config
           ).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
               Processing.run[IO](resources, cliConfig.config)
