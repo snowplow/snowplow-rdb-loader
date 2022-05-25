@@ -101,7 +101,7 @@ object Dependencies {
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
   val catsRetry         = "com.github.cb372"           %% "cats-retry"                        % V.catsRetry
   val log4cats          = "org.typelevel"              %% "log4cats-slf4j"                    % V.log4cats
-  val http4sClient      = "org.http4s"                 %% "http4s-blaze-client"               % V.http4s
+  val http4sClient      = "org.http4s"                 %% "http4s-async-http-client"          % V.http4s
   val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
   val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
 
