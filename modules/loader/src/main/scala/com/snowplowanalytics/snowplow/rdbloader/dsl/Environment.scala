@@ -22,7 +22,7 @@ import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEff
 
 import doobie.ConnectionIO
 
-import org.http4s.client.asynchttpclient.AsyncHttpClient
+import org.http4s.ember.client.EmberClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
 
@@ -76,7 +76,7 @@ object Environment {
 
     for {
       blocker <- Blocker[F]
-      httpClient <- AsyncHttpClient.resource[F]()
+      httpClient <- EmberClientBuilder.default[F].build
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)

@@ -20,12 +20,12 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{ConcurrentEffect, Resource, Sync, Timer}
+import cats.effect.{ConcurrentEffect, Resource, Sync, Timer, ContextShift}
 
 import fs2.Stream
 
 import org.http4s.client.{Client => HttpClient}
-import org.http4s.client.asynchttpclient.AsyncHttpClient
+import org.http4s.ember.client.EmberClientBuilder
 
 import io.circe.Json
 import io.circe.Encoder
@@ -51,13 +51,13 @@ object Telemetry {
   private implicit def unsafeLogger[F[_]: Sync]: Logger[F] =
     Slf4jLogger.getLogger[F]
 
-  def build[F[_]: ConcurrentEffect: Timer](
+  def build[F[_]: ConcurrentEffect: Timer: ContextShift](
     config: TransformerConfig.Stream,
     appName: String,
     appVersion: String
   ): Resource[F, Telemetry[F]] =
     for {
-      httpClient <- AsyncHttpClient.resource[F]()
+      httpClient <- EmberClientBuilder.default[F].build
       tracker <- initTracker(config.telemetry, appName, httpClient)
     } yield new Telemetry[F] {
       def report: Stream[F, Unit] =
