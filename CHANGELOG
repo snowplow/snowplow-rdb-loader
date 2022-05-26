@@ -1,3 +1,9 @@
+Version 4.0.1 (2022-06-03)
+--------------------------
+Common: change http4s client backend to blaze-client (#905)
+RDB Loader: Fix sqs visibility extensions when processing retries (#908)
+Databricks Loader: bump Databricks JDBC driver to 2.6.25 (#910)
+
 Version 4.0.0 (2022-05-26)
 --------------------------
 Common: Change http4s client backend to async-http-client (#903)
