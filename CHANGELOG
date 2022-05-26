@@ -1,3 +1,7 @@
+Version 4.0.1 (2022-05-27)
+--------------------------
+Common: change http4s client backend to ember-client (#905)
+
 Version 4.0.0 (2022-05-26)
 --------------------------
 Common: Change http4s client backend to async-http-client (#903)
