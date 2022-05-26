@@ -1,3 +1,8 @@
+Version 4.0.1 (2022-06-01)
+--------------------------
+Common: change http4s client backend to ember-client (#905)
+RDB Loader: Fix sqs visibility extensions when processing retries (#908)
+
 Version 4.0.0 (2022-05-26)
 --------------------------
 Common: Change http4s client backend to async-http-client (#903)
