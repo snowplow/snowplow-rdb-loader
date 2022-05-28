@@ -25,7 +25,7 @@ import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
@@ -36,7 +36,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, Dat
 package object rdbloader {
 
   /** Stream of discovered folders. `LoaderMessage` is here for metainformation */
-  type DiscoveryStream[F[_]] = Stream[F, Message[F, DataDiscovery.WithOrigin]]
+  type DiscoveryStream[F[_]] = Stream[F, DataDiscovery.WithOrigin]
 
   /** List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables */
   type LoadStatements = NonEmptyList[Statement.Loading]

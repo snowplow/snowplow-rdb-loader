@@ -56,9 +56,6 @@ object SQS {
               val extend = (timeout: FiniteDuration) =>
                 Sync[F].delay(client.changeMessageVisibility(buildExtend(queueUrl, message.receiptHandle(), timeout)))
                   .void
-                  .recoverWith {
-                    case e => Sync[F].delay(println(e))
-                  }
               (message, delete, extend)
             }
         }

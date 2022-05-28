@@ -48,7 +48,7 @@ class StateMonitoringSpec extends Specification {
         state => state.copy(loading = Load.Status.Loading(S3.Folder.coerce("s3://folder"), Stage.MigrationIn))
       val (error, _) = StateMonitoringSpec.checkRun(setMigrationIn)
 
-      error must beSome("Loader is stuck. Ongoing processing of s3://folder/ at in-transaction migrations. Spent 13 minutes at this stage")
+      error must beSome("Loader is stuck. Ongoing processing of s3://folder/ at in-transaction migrations. Spent 15 minutes at this stage")
     }
   }
 
@@ -72,8 +72,8 @@ class StateMonitoringSpec extends Specification {
       }
 
       logs must beEqualTo(List(
-        "INFO Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Extending processing for 270 seconds",
-        "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Spent 8 minutes at this stage. Extending processing for 270 seconds"
+        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
+        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage."
       ))
       isBusy must beFalse
       error must beNone
@@ -90,10 +90,10 @@ class StateMonitoringSpec extends Specification {
       }
 
       logs must beEqualTo(List(
-        "INFO Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Extending processing for 270 seconds",
-        "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at migration building. Spent 8 minutes at this stage. Extending processing for 270 seconds",
-        "INFO Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at pre-transaction migrations. Extending processing for 270 seconds",
-        "WARNING Loading is ongoing, but approached SQS timeout. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 7 minutes at this stage. Extending processing for 270 seconds"
+        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
+        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage.",
+        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations.",
+        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 9 minutes at this stage."
       ))
       isBusy must beFalse
       error must beNone
@@ -119,7 +119,7 @@ object StateMonitoringSpec {
       state     <- State.mk[IO]
       _         <- state.update(init)
 
-      error      = StateMonitoring.run[IO](Timeouts, state.get, _ => IO.unit)
+      error      = StateMonitoring.run[IO](Timeouts, state.get)
       result    <- (error, logStore.get).tupled
     } yield result
 
@@ -143,7 +143,7 @@ object StateMonitoringSpec {
       busyRef   <- Ref.of[IO, Boolean](true)
       busy       = Resource.make(IO.pure(busyRef))(res => res.set(false)).void
 
-      error      = StateMonitoring.inBackground(Timeouts, state.get, busy, _ => IO.unit)(action(state, T)).attempt.map(_.swap.toOption)
+      error      = StateMonitoring.inBackground(Timeouts, state.get, busy)(action(state, T)).attempt.map(_.swap.toOption)
       result    <- (error, logStore.get.map(_.reverse), busyRef.get).tupled
     } yield result
 
