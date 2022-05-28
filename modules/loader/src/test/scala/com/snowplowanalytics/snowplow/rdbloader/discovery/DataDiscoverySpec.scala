@@ -14,8 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 
-import scala.concurrent.duration.FiniteDuration
-
 import cats.data.NonEmptyList
 import cats.syntax.either._
 
@@ -89,23 +87,23 @@ class DataDiscoverySpec extends Specification {
   }
 
   "handle" should {
-    "raise an error and ack a message if JSONPath cannot be found" >> {
+    "return discovery errors if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
 
       val message = DataDiscoverySpec.shreddingComplete
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack")), DataDiscoverySpec.extendNoOp).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
 
       result must beLeft(LoaderError.DiscoveryError(NonEmptyList.of(
         DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
         DiscoveryFailure.JsonpathDiscoveryFailure(("com.acme/event_b_1.json")))
       ))
-      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json (miss)"), LogEntry.Message("GET com.acme/event_b_1.json (miss)"), LogEntry.Message("ack"))
+      state.getLog must contain(LogEntry.Message("GET com.acme/event_a_1.json (miss)"), LogEntry.Message("GET com.acme/event_b_1.json (miss)"))
     }
 
-    "not ack message if it can be handled" >> {
+    "return discovered data if it can be handled" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
       implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
@@ -121,9 +119,9 @@ class DataDiscoverySpec extends Specification {
         Compression.Gzip
       )
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message, Pure.modify(_.log("ack")), DataDiscoverySpec.extendNoOp).run
+      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
 
-      result.map(_.map(_.data.discovery)) must beRight(Some(expected))
+      result.map(_.map(_.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
         LogEntry.Message("GET com.acme/event_a_1.json (miss)"),
         LogEntry.Message("PUT com.acme/event_a_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json)"),
@@ -136,11 +134,6 @@ class DataDiscoverySpec extends Specification {
 }
 
 object DataDiscoverySpec {
-
-  def extendNoOp(duration: FiniteDuration): Pure[Unit] = {
-    val _ = duration
-    Pure.unit
-  }
 
   val shreddingComplete = LoaderMessage.ShreddingComplete(
     S3.Folder.coerce("s3://bucket/folder/"),

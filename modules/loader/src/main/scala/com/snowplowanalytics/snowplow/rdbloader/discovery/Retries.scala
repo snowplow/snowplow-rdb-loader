@@ -26,7 +26,7 @@ import fs2.concurrent.InspectableQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache, FolderMonitoring}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
@@ -122,11 +122,10 @@ object Retries {
 
   /** Confert S3 paths to respective discoveries */
   def readMessages[F[_]: AWS: Cache: Logging: MonadThrow](region: String,
-                                                          assets: Option[S3.Folder]): Pipe[F, S3.Folder, Message[F, DataDiscovery.WithOrigin]] =
+                                                          assets: Option[S3.Folder]): Pipe[F, S3.Folder, DataDiscovery.WithOrigin] =
     folders => folders
       .evalMap(readShreddingComplete[F])
       .evalMapFilter(fromLoaderMessage[F](region, assets))
-      .map(mkMessage[F, DataDiscovery.WithOrigin])
 
   def fromLoaderMessage[F[_]: Monad: AWS: Cache: Logging](region: String, assets: Option[S3.Folder])
                                                          (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
@@ -164,12 +163,6 @@ object Retries {
       }
 
     go
-  }
-
-  def mkMessage[F[_]: Logging, A](a: A): Message[F, A] = {
-    val ack = Logging[F].info("Trying to ack non-SQS message, no-op")
-    val extend = Logging[F].info("Trying to extend non-SQS message, no-op")
-    Message(a, ack, _ => extend)
   }
 
   /**
