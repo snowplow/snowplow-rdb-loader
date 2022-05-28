@@ -21,7 +21,6 @@ import cats.effect.{Clock, Timer, MonadThrow, Concurrent}
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.common.Message
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest, Control => DbControl, AtomicColumns, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
@@ -110,11 +109,11 @@ object Loader {
    */
   def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
                        C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
-                                                 (discovery: Message[F, DataDiscovery.WithOrigin]): F[Unit] = {
-    val folder = discovery.data.origin.base
+                                                 (discovery: DataDiscovery.WithOrigin): F[Unit] = {
+    val folder = discovery.origin.base
     val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
     val backgroundCheck: F[Unit] => F[Unit] =
-      StateMonitoring.inBackground[F](config.timeouts, control.get, busy, discovery.extend)
+      StateMonitoring.inBackground[F](config.timeouts, control.get, busy)
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
@@ -124,15 +123,14 @@ object Loader {
     val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
-        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery.data)
+        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery)
         attempts <- control.getAndResetAttempts
-        _        <- discovery.ack
         _        <- result match {
           case Right(ingested) =>
             val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
             for {
               loaded <- ingested.map(Monad[F].pure).getOrElse(now)
-              _      <- Load.congratulate[F](attempts, start, loaded, discovery.data.origin)
+              _      <- Load.congratulate[F](attempts, start, loaded, discovery.origin)
               _      <- control.removeFailure(folder)
               _      <- control.incrementLoaded
             } yield ()
@@ -172,15 +170,14 @@ object Loader {
    * @param discovery the original discovery
    * @param error the actual error, typically `SQLException`
    */
-  def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: Message[F, DataDiscovery.WithOrigin],
+  def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: DataDiscovery.WithOrigin,
                                                           addFailure: Throwable => F[Boolean])
                                                          (error: Throwable): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
-    val alert = Monitoring.AlertPayload.warn(message, discovery.data.origin.base)
-    val logNoRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Not adding into retry queue. $message")
-    val logRetry = Logging[F].error(s"Loading of ${discovery.data.origin.base} has failed. Adding intro retry queue. $message")
+    val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
+    val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
+    val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
 
-    discovery.ack *>
       Monitoring[F].alert(alert) *>
       addFailure(error).ifM(logRetry, logNoRetry)
   }
