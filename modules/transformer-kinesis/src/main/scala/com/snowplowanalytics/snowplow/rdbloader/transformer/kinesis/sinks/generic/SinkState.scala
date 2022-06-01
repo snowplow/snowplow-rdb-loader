@@ -1,13 +1,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic
 
-import cats.Show
+import cats.{Monoid, Show}
 import cats.implicits._
 
-import cats.effect.{Concurrent, Resource}
+import cats.effect.{Concurrent, Sync}
 
-import fs2.Pipe
-
-import org.typelevel.log4cats.Logger
+import fs2.{Pipe, Stream}
 
 /**
  * A top buffer type for [[Partitioned]], static over existence of the window
@@ -17,31 +15,34 @@ import org.typelevel.log4cats.Logger
  * but [[SinkState]] is for [[Partitioned]] sink
  *
  * @param id
- * @param processed amount of *partitioned* (after split) items
- * @param enqueue
+ * @param enqueue pending data to be emitted to sinks
+ * @param data extra local state which is accumulated as records are processed. Not used by [[Partitioned]] but needed by the surrounding application.
  */
-final case class SinkState[F[_], W, K, V](id: Option[W], processed: Long, enqueue: KeyedEnqueue[F, K, V]) {
-  def getId: String = id.fold(SinkState.Initial)(_.toString)
-  def isNoop: Boolean = id.isEmpty
-  def increment: SinkState[F, W, K, V] = this.copy(processed = processed + 1)
+final case class SinkState[W, K, V, D](id: W, enqueue: KeyedEnqueue[K, V], data: D) {
 
-  def nextQueue(getSink: K => Pipe[F, V, Unit])(implicit C: Concurrent[F], K: Show[K]): F[SinkState[F, W, K, V]] =
-    KeyedEnqueue.mk[F, K, V](getSink).map(handler => SinkState(id, 0, handler))
+  /** To be called mid-window after flushing the queue. The window's id and data are preserved */
+  def nextQueue: SinkState[W, K, V, D] =
+    SinkState(id, KeyedEnqueue.empty, data)
+
+  /** Enqueue a K,V pair, until we are ready to sink it */
+  def enqueueKVD[F[_]](k: K, v: V, d: D)(implicit F: Sync[F], M: Monoid[D], KS: Show[K]): F[SinkState[W, K, V, D]] =
+    KeyedEnqueue.enqueueKV(enqueue, k, v).map { e =>
+      SinkState(id, e, data |+| d)
+    }
+
+  /** processed amount of *partitioned* (after split) items */
+  def processed: Long =
+    enqueue.queues.values.map(_.size.toLong).sum
+
+  /** Write all pending data to a sink, via a key-specific pipe */
+  def sink[F[_]](getSink: W => D => K => Pipe[F, V, Unit])(implicit F: Concurrent[F], S: Show[K]): Stream[F, Unit] =
+    KeyedEnqueue.sink(enqueue, getSink(id)(data))
 }
 
 object SinkState {
 
-  val Initial: String = "Initial"
+  def init[W, K, V, D: Monoid](id: W): SinkState[W, K, V, D] =
+    SinkState(id, KeyedEnqueue.empty, Monoid[D].empty)
 
-  def start[F[_]: Concurrent: Logger, W, K: Show, V](window: Option[W], getSink: W => K => Pipe[F, V, Unit]): Resource[F, SinkState[F, W, K, V]] =
-    window match {
-      case Some(w) =>
-        val acquire = KeyedEnqueue.mk[F, K, V](getSink(w))
-        val releaseMessage = s"Tried to terminate ${window.fold(Initial)(_.toString)} window's KeyedEnqueue as resource"
-        val release = (_: KeyedEnqueue[F, K, V]) => Logger[F].info(releaseMessage)
-        Resource.make(acquire)(release).map(h => SinkState(window, 0L, h))
-      case None =>
-        Resource.eval(KeyedEnqueue.noop[F, K, V]).map(h => SinkState(window, 0L, h))
-    }
 }
 

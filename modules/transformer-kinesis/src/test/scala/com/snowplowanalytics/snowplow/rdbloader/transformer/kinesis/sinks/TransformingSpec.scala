@@ -29,10 +29,9 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Transformer}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, file => FileSource}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, State, Transformer}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{ParsedF, file => FileSource}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.TestApplication.checkpointer
 import org.specs2.mutable.Specification
 
 class TransformingSpec extends Specification {
@@ -58,8 +57,8 @@ class TransformingSpec extends Specification {
       // Checks whether transformed events are identical with the expected ones.
       // Only the paths in "pathsToCheck" are compared to not add
       // all shredded events to the test folder.
-      good must contain(beLike[(SinkPath, Transformed.Data)] {
-        case (path: SinkPath, data) if testFileNameMap.contains(path) =>
+      good must contain(beLike[(SinkPath, Transformed.Data, State)] {
+        case (path: SinkPath, data, _) if testFileNameMap.contains(path) =>
           expectedTransformedMap(path) must contain(data.str.get)
         case _ => ok
       }).forall
@@ -91,17 +90,17 @@ class TransformingSpec extends Specification {
 }
 
 object TransformingSpec {
-  type TransformedList = List[(SinkPath, Transformed.Data)]
+  type TransformedList = List[(SinkPath, Transformed.Data, State)]
   type TransformedMap = Map[SinkPath, List[String]]
 
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
-  implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data)) {
-    def getBad: Option[(SinkPath, Transformed.Data)] =
+  implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data, State)) {
+    def getBad: Option[(SinkPath, Transformed.Data, State)] =
       if (value.path.value.contains(BadPathPrefix)) Some(value) else None
 
-    def getGood: Option[(SinkPath, Transformed.Data)] =
+    def getGood: Option[(SinkPath, Transformed.Data, State)] =
       if (getBad.isDefined) None else Some(value)
 
     def path: SinkPath = value._1
@@ -135,21 +134,19 @@ object TransformingSpec {
     val transformer = createTransformer(format)
     val validations = TransformerConfig.Validations(timestampLowerLimit)
 
+
     val eventStream = parsedEventStream(resourcePath)
-      .through(Processing.attemptTransform(transformer, validations))
+      .through(Processing.transform(transformer, validations))
       .through(Processing.handleTransformResult(transformer))
 
-    val transformed = eventStream.compile.toList.unsafeRunSync().flatMap {
-      case Record.Data(_, _, i) => Some(i)
-      case Record.EndWindow(_, _, _) => None
-    }
+    val transformed = eventStream.compile.toList.unsafeRunSync().flatMap(_._1)
     (transformed.flatMap(_.getGood), transformed.flatMap(_.getBad))
   }
 
-  def parsedEventStream(resourcePath: String): Stream[IO, Windowed[IO, Parsed]] =
+  def parsedEventStream(resourcePath: String): Stream[IO, ParsedF[IO, IO[Unit]]] =
     fileStream(resourcePath)
       .map(FileSource.parse)
-      .map(Record.Data[IO, Window, Parsed](defaultWindow, Option.empty, _))
+      .map(p => (p, IO.unit))
 
   def getResourceLines(resourcePath: String): List[String] =
     fileStream(resourcePath)
@@ -171,7 +168,7 @@ object TransformingSpec {
                                    testNumber: Int,
                                    format: LoaderMessage.TypesInfo.Shredded.ShreddedFormat): TransformedMap =
     transformedList.flatMap {
-      case (path: SinkPath, _) if testFileNameMap.contains(path) =>
+      case (path: SinkPath, _, _) if testFileNameMap.contains(path) =>
         val testFilePath = s"/processing-spec/${testNumber}/output/good/${format.path}/${testFileNameMap(path)}"
         Some((path, getResourceLines(testFilePath)))
       case _ =>

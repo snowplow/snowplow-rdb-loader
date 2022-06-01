@@ -4,10 +4,10 @@ import fs2.Pipe
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.ParquetData.FieldWithValue
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{KeyedEnqueue, Record}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
 
 package object sinks {
-  type Grouping[F[_]] = Pipe[F, Record[F, Window, (SinkPath, Transformed.Data)], KeyedEnqueue[F, SinkPath, Transformed.Data]]
+  type Grouping[F[_]] = Pipe[F, Record[F, Window, List[(SinkPath, Transformed.Data, State)]], (Window, F[Unit], State)]
 
   implicit class TransformedDataOps(t: Transformed.Data) {
     def str: Option[String] = t match {

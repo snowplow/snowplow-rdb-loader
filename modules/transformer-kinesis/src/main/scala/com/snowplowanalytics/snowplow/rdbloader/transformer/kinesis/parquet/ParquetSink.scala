@@ -14,7 +14,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet
 
-import cats.Functor
 import cats.data.EitherT
 import cats.effect.{Blocker, Concurrent, ContextShift, Timer}
 import cats.implicits._
@@ -44,11 +43,12 @@ object ParquetSink {
                                                             compression: Compression,
                                                             uri: URI)
                                                            (window: Window)
+                                                           (state: State)
                                                            (path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
     transformedData =>
 
       val targetPath = Path.of(uri.toString, window.getDir, path.value)
-      val schemaCreation = createSchemaFromTypes(resources, window).value
+      val schemaCreation = createSchemaFromTypes(resources, state).value
 
       Stream.eval(schemaCreation).flatMap {
         case Left(error) =>
@@ -65,22 +65,11 @@ object ParquetSink {
 
 
   private def createSchemaFromTypes[F[_] : Concurrent : ContextShift : Timer](resources: Resources[F],
-                                                                              window: Window): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
+                                                                              state: State): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
     for {
-      typesForWindow <- EitherT.liftF(getAllWideRowTypesForWindow(resources.windows, window))
-      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.iglu.resolver, typesForWindow)
+      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.iglu.resolver, state.types.toList.map(WideRow.Type.from))
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
-  }
-
-  private def getAllWideRowTypesForWindow[F[_]: Functor](state: State.Windows[F],
-                                                         currentWindow: Window): F[List[WideRow.Type]] = {
-    State
-      .findTypesForWindow(state, currentWindow)
-      .map(
-        _.map(WideRow.Type.from)
-          .toList
-      )
   }
 
   private def writeAsParquet[F[_] : Concurrent : ContextShift : Timer](blocker: Blocker,

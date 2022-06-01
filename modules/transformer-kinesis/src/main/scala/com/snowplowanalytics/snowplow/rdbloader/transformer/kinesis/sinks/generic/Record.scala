@@ -12,7 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic
 
-import scala.annotation.tailrec
 import scala.concurrent.duration._
 
 import cats.Applicative
@@ -20,50 +19,48 @@ import cats.implicits._
 
 import cats.effect.{Timer, Concurrent}
 
-import fs2.{Pipe, RaiseThrowable, Stream, Pure, Pull}
+import fs2.{Pipe, RaiseThrowable, Stream, Pull}
 
 /**
  * A generic stream type, either holding data with associated window
  * or denoting that window is over. Latter is necessary for downstream
  * sinks to trigger actions without elements with next window
  */
-sealed trait Record[F[_], W, A] extends Product with Serializable {
+sealed trait Record[F[_], W, +A] extends Product with Serializable {
   def window: W
 
-  def map[B](f: A => B): Record[F, W, B] =
+  def map[C](f: A => C): Record[F, W, C] =
     this match {
-      case Record.Data(window, checkpoint, item) => Record.Data[F, W, B](window, checkpoint, f(item))
-      case Record.EndWindow(window, next, checkpoint) => Record.EndWindow(window, next, checkpoint)
+      case Record.Data(window, item) => Record.Data[F, W, C](window, f(item))
+      case Record.EndWindow(window, checkpoint) => Record.EndWindow(window, checkpoint)
     }
 
-  def traverse[G[_]: Applicative, B](f: A => G[B]): G[Record[F, W, B]] =
+  def traverse[G[_]: Applicative, C](f: A => G[C]): G[Record[F, W, C]] =
     this match {
-      case Record.Data(window, checkpoint, item) => f(item).map(b => Record.Data(window, checkpoint, b))
-      case Record.EndWindow(window, next, checkpoint) => Applicative[G].pure(Record.EndWindow(window, next, checkpoint))
+      case Record.Data(window, item) => f(item).map(b => Record.Data(window, b))
+      case Record.EndWindow(window, checkpoint) => Applicative[G].pure(Record.EndWindow(window, checkpoint))
     }
 }
 
 object Record {
 
-  /**
-   * Actual windowed datum
-   * Not every `Data` can be checkpointed because a `Data` can be a middle of
-   * original record e.g. if it's one of multiple contexts
-   */
-  final case class Data[F[_], W, A](window: W, checkpoint: Option[F[Unit]], item: A) extends Record[F, W, A]
-  /** It belongs to `window`, but knows about `next` window */
-  final case class EndWindow[F[_], W, A](window: W, next: W, checkpoint: F[Unit]) extends Record[F, W, A]
+  /** Actual windowed datum */
+  final case class Data[F[_], W, A](window: W, item: A) extends Record[F, W, A]
+  /** It belongs to `window`, and knows how to checkpoint all records in the window */
+  final case class EndWindow[F[_], W](window: W, checkpoint: F[Unit]) extends Record[F, W, Nothing]
 
-  def windowed[F[_]: Concurrent: Timer, W, A](getWindow: F[W]): Pipe[F, (A, F[Unit]), Record[F, W, A]] = {
+  /** Convert regular stream to a windowed stream */
+  def windowed[F[_]: Concurrent: Timer, W, A, C: Checkpointer[F, *]](getWindow: F[W]): Pipe[F, (A, C), Record[F, W, A]] = {
     in =>
-      val merged = Stream
+      val windows = Stream
         .fixedRate(1.second)
         .evalMap(_ => getWindow)
-        .either(in)
+        .map(_.asLeft)
+        .mergeHaltR(in.map(_.asRight))
 
       val initialWindow = Stream.eval(getWindow.map(_.asLeft))  // To prevent IllegalStateException
 
-      (initialWindow ++ merged).through(fromEither)
+      (initialWindow ++ windows).through(fromEither)
   }
 
   /**
@@ -72,51 +69,58 @@ object Record {
    * Must be used in conjunction with `windowed` because it ensures that head
    * is always `Left`
    */
-  private def fromEither[F[_]: RaiseThrowable: Applicative, W, A]: Pipe[F, Either[W, (A, F[Unit])], Record[F, W, A]] = {
-    def go(lastWindow: Option[W],
-           lastCheckpoint: F[Unit],
-           s: Stream[F, Either[W, (A, F[Unit])]]): Pull[F, Record[F, W, A], Unit] =
+  private def fromEither[F[_]: RaiseThrowable: Applicative, W, A, C: Checkpointer[F, *]]: Pipe[F, Either[W, (A, C)], Record[F, W, A]] = {
+    def go(fes: FromEitherState[W, C],
+           s: Stream[F, Either[W, (A, C)]]): Pull[F, Record[F, W, A], Unit] =
       s.pull.uncons1.flatMap {
+
         // Process Record.Data
-        case Some((Right((a, checkpoint)), tail)) =>
-          lastWindow match {
-            case Some(window) => Pull.output1[F, Record[F, W, A]](Record.Data(window, Some(checkpoint), a)) >> go(Some(window), checkpoint, tail)
-            case None => Pull.raiseError[F](new IllegalStateException("windowing hasn't started with an initial window"))
+        case Some((Right((a, checkpointer)), tail)) =>
+          fes match {
+            case HeadOfStream =>
+              Pull.raiseError[F](new IllegalStateException("windowing hasn't started with an initial window"))
+            case HeadOfWindow(window) =>
+              Pull.output1[F, Record[F, W, A]](Record.Data(window, a)) >>
+                go(InWindow(window, checkpointer), tail)
+            case InWindow(window, lastCheckpoint) =>
+              Pull.output1[F, Record[F, W, A]](Record.Data(window, a)) >>
+                go(InWindow(window, Checkpointer[F, C].combine(lastCheckpoint, checkpointer)), tail)
           }
+
         // Process Record.EndWindow
         case Some((Left(w), tail)) =>
-          lastWindow match {
-            case Some(window) if window == w =>
+          fes match {
+            case HeadOfStream =>
+              go(HeadOfWindow(w), tail)
+            case HeadOfWindow(_) =>
+              // The window is empty so far
+              go(HeadOfWindow(w), tail)
+            case InWindow(lastWindow, checkpointer) if lastWindow == w =>
               // Same window, drop Left(w)
-              go(Some(w), lastCheckpoint, tail)
-            case Some(window) =>
-              // New window, emit Left(w)
-              Pull.output1(Record.EndWindow[F, W, A](window, w, lastCheckpoint)) >> go(Some(w), Applicative[F].unit, tail)
-            case None =>
-              // Initial window, drop and use second one
-              go(Some(w), Applicative[F].unit, tail)
+              go(InWindow(w, checkpointer), tail)
+            case InWindow(lastWindow, lastCheckpointer) =>
+              Pull.output1(Record.EndWindow[F, W](lastWindow, Checkpointer[F, C].checkpoint(lastCheckpointer))) >>
+                go(HeadOfWindow(w), tail)
           }
+
         case None =>
-          Pull.done
+          fes match {
+            case HeadOfStream =>
+              Pull.done
+            case HeadOfWindow(_) =>
+              Pull.done
+            case InWindow(lastWindow, lastCheckpointer) =>
+              Pull.output1(Record.EndWindow[F, W](lastWindow, Checkpointer[F, C].checkpoint(lastCheckpointer)))
+          }
       }
 
-    in => go(None, Applicative[F].unit, in).stream
+    in => go(HeadOfStream, in).stream
   }
 
-  /** Apply `f` function to all elements in a list, except last one, where `lastF` applied */
-  def mapWithLast[A, B](as: List[A])(f: A => B, lastF: A => B): Stream[Pure, B] = {
-    @tailrec
-    def go(aas: List[A], accum: Vector[B]): Vector[B] =
-      aas match {
-        case Nil =>
-          accum
-        case last :: Nil =>
-          accum :+ lastF(last)
-        case a :: remaining =>
-          go(remaining, accum :+ f(a))
-      }
-
-    Stream.emits(go(as, Vector.empty))
-  }
+  /** Grammar to help with the `fromEither` function */
+  private sealed trait FromEitherState[+W, +C]
+  private case object HeadOfStream extends FromEitherState[Nothing, Nothing]
+  private case class HeadOfWindow[W](window: W) extends FromEitherState[ W, Nothing]
+  private case class InWindow[W, C](window: W, checkpointer: C) extends FromEitherState[W, C]
 }
 

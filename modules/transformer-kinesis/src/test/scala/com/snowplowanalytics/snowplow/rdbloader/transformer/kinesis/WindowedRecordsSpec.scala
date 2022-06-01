@@ -19,6 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.WindowedReco
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.WindowedRecordsSpec._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.TestApplication.checkpointer
 import fs2.Stream
 import org.specs2.mutable.Specification
 
@@ -36,7 +37,7 @@ class WindowedRecordsSpec extends Specification {
 
   "Windowed stream" should {
     "be correctly created when" >> {
-      "there is no input data, only ending windows" in {
+      "nothing is emitted for empty input" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, //every minute
           streamingDuration = 2.minutes + 5.seconds 
@@ -44,10 +45,7 @@ class WindowedRecordsSpec extends Specification {
 
         val input = List()
 
-        val expectedOutput = List(
-          End(closing = `00:00`, next = `00:01`, checkpoints = None),
-          End(closing = `00:01`, next = `00:02`, checkpoints = None),
-        )
+        val expectedOutput = List()
 
         run(windowing, input, expectedOutput).unsafeRunSync()
       }
@@ -65,7 +63,7 @@ class WindowedRecordsSpec extends Specification {
           Data(id = 1, window = `00:00`),
           Data(id = 2, window = `00:00`),
           Data(id = 3, window = `00:00`),
-          End(closing = `00:00`, next = `00:01`, checkpoints = Some(3))
+          End(closing = `00:00`, checkpoints = Some(3))
         )
 
         run(windowing, input, expectedOutput).unsafeRunSync()
@@ -88,7 +86,7 @@ class WindowedRecordsSpec extends Specification {
           Data(id = 4, window = `00:00`),
           Data(id = 5, window = `00:00`),
           Data(id = 6, window = `00:00`),
-          End(closing = `00:00`, next = `00:01`, checkpoints = Some(6))
+          End(closing = `00:00`, checkpoints = Some(6))
         )
 
         run(windowing, input, expectedOutput).unsafeRunSync()
@@ -109,11 +107,11 @@ class WindowedRecordsSpec extends Specification {
           Data(id = 1, window = `00:00`),
           Data(id = 2, window = `00:00`),
           Data(id = 3, window = `00:00`),
-          End(closing = `00:00`, next = `00:01`, checkpoints = Some(3)),
+          End(closing = `00:00`, checkpoints = Some(3)),
           Data(id = 4, window = `00:01`),
           Data(id = 5, window = `00:01`),
           Data(id = 6, window = `00:01`),
-          End(closing = `00:01`, next = `00:02`, checkpoints = Some(6))
+          End(closing = `00:01`, checkpoints = Some(6))
         )
 
         run(windowing, input, expectedOutput).unsafeRunSync()
@@ -132,8 +130,7 @@ class WindowedRecordsSpec extends Specification {
           Data(id = 1, window = `00:00`),
           Data(id = 2, window = `00:00`),
           Data(id = 3, window = `00:00`),
-          End(closing = `00:00`, next = `00:01`, checkpoints = Some(3)),
-          End(closing = `00:01`, next = `00:02`, checkpoints = None)
+          End(closing = `00:00`, checkpoints = Some(3)),
         )
 
         run(windowing, input, expectedOutput).unsafeRunSync()
@@ -153,10 +150,11 @@ class WindowedRecordsSpec extends Specification {
           Data(id = 1, window = `00:00`),
           Data(id = 2, window = `00:00`),
           Data(id = 3, window = `00:00`),
-          End(closing = `00:00`, next = `00:10`, checkpoints = Some(3)),
+          End(closing = `00:00`, checkpoints = Some(3)),
           Data(id = 4, window = `00:10`),
           Data(id = 5, window = `00:10`),
-          Data(id = 6, window = `00:10`)
+          Data(id = 6, window = `00:10`),
+          End(closing = `00:10`, checkpoints = Some(6))
         )
 
         run(windowing, input, expectedOutput).unsafeRunSync()
@@ -196,7 +194,6 @@ class WindowedRecordsSpec extends Specification {
 
     inputStream
       .through(Record.windowed(windowProvider))
-      .interruptAfter(windowing.streamingDuration)
       .compile
       .toList
   }
@@ -210,8 +207,8 @@ class WindowedRecordsSpec extends Specification {
       case (actual: Record.Data[IO, Window, Int], expected: OutputRecord.Data) =>  
         expected.id must beEqualTo(actual.item) and (expected.window must beEqualTo(actual.window))
         
-      case (actual: Record.EndWindow[IO, Window, Int], expected: OutputRecord.End) =>
-        val matchingWindows = actual.window must beEqualTo(expected.closing) and (actual.next must beEqualTo(expected.next))
+      case (actual: Record.EndWindow[IO, Window], expected: OutputRecord.End) =>
+        val matchingWindows = actual.window must beEqualTo(expected.closing)
         val actualCheckpoint = (actual.checkpoint *> checkpointRef.get <* checkpointRef.set(0)).unsafeRunSync()
         val expectedCheckpoint = expected.checkpoints.getOrElse(0) 
         
@@ -235,7 +232,6 @@ object WindowedRecordsSpec {
     final case class Data(id: Int, window: Window) extends OutputRecord
 
     final case class End(closing: Window,
-                         next: Window,
                          checkpoints: Option[Int] // checkpoints item with provided it
                         )
       extends OutputRecord

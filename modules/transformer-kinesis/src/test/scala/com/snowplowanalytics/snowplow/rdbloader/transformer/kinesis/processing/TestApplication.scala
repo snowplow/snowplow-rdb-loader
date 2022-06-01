@@ -18,9 +18,9 @@ import cats.effect.concurrent.Deferred
 import cats.effect.{Clock, ContextShift, IO, Sync, Timer}
 import com.snowplowanalytics.aws.AWSQueue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedF
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Resources}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Checkpointer
 import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -30,7 +30,7 @@ object TestApplication {
 
   def run(args: Seq[String],
           forCompletionMessage: Deferred[IO, String],
-          windowedRecords: Stream[IO, Windowed[IO, Parsed]])
+          sourceRecords: Stream[IO, ParsedF[IO, IO[Unit]]])
          (implicit CS: ContextShift[IO], T: Timer[IO], C: Clock[IO]): IO[Unit] =
     for {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
@@ -44,7 +44,7 @@ object TestApplication {
           )
           .use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-              Processing.runWindowed[IO](windowedRecords, resources, cliConfig.config)
+              Processing.runFromSource[IO, IO[Unit]](sourceRecords, resources, cliConfig.config)
                 .compile
                 .drain
           }
@@ -58,5 +58,10 @@ object TestApplication {
     override def sendMessage(groupId: Option[String], message: String): IO[Unit] = {
       deferred.complete(message)
     }
+  }
+
+  implicit val checkpointer: Checkpointer[IO, IO[Unit]] = new Checkpointer[IO, IO[Unit]] {
+    def checkpoint(c: IO[Unit]): IO[Unit] = c
+    def combine(older: IO[Unit], newer: IO[Unit]): IO[Unit] = older *> newer
   }
 }

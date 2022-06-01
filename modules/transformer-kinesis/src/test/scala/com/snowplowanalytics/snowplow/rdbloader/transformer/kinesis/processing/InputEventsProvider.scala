@@ -16,27 +16,18 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
 import cats.effect.{ContextShift, IO}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.TransformingSpec.testBlocker
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, file => FileSource}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{ParsedF, file => FileSource}
 import fs2.Stream
 
 
 object InputEventsProvider {
 
-  def eventStream(inputEventsPath: String,
-                  currentWindow: Window,
-                  nextWindow: Window)
-                 (implicit cs: ContextShift[IO]): Stream[IO, Windowed[IO, Parsed]] = {
-    val dataRecords = FileUtils.resourceFileStream(testBlocker, inputEventsPath)
+  def eventStream(inputEventsPath: String)
+                 (implicit cs: ContextShift[IO]): Stream[IO, ParsedF[IO, IO[Unit]]] = {
+    FileUtils.resourceFileStream(testBlocker, inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines
-      .map(FileSource.parse)
-      .map(Record.Data[IO, Window, Parsed](currentWindow, Option.empty, _))
-
-    val endingWindow = Stream.emit(Record.EndWindow[IO, Window, Parsed](currentWindow, nextWindow, IO.pure(())))
-    dataRecords ++ endingWindow
+      .map(f => (FileSource.parse(f), IO.pure(())))
   }
 }

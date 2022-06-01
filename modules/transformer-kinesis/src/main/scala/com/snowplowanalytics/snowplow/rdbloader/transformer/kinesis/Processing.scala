@@ -16,9 +16,10 @@ import java.net.URI
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import cats.Applicative
+import cats.{Applicative, Monad, Monoid, Parallel}
 import cats.data.EitherT
 import cats.implicits._
+import cats.effect.implicits._
 
 import cats.effect.{Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
 
@@ -43,8 +44,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.Bu
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet.ParquetSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.SinkPath.PathType
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Status.{Closed, Sealed}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Checkpointer, Partitioned, Record}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, ParsedF}
 
 
@@ -58,20 +58,24 @@ object Processing {
   
   type Windowed[F[_], A] = Record[F, Window, A]
   type TransformationResult = Either[BadRow, SuccessfulTransformation]
+  type TransformationResultF[F[_], C] = (List[TransformationResult], C)
 
-  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](resources: Resources[F],
-                                                              config: TransformerConfig.Stream): Stream[F, Unit] = {
-    val windowing: Pipe[F, ParsedF[F], Windowed[F, Parsed]] =
-      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
+  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel](resources: Resources[F],
+                                                                        config: TransformerConfig.Stream): Stream[F, Unit] =
+    config.input match {
+      case TransformerConfig.StreamInput.Kinesis(appName, streamName, region, position) =>
+        val source = sources.Kinesis.read[F](appName, streamName, region, position)
+        runFromSource(source, resources, config)
+      case TransformerConfig.StreamInput.File(dir) =>
+        val source = sources.file.read[F](resources.blocker, dir)
+        implicit val checkpointer = Checkpointer.noOpCheckpointer[F, Unit]
+        runFromSource(source, resources, config)
+    }
 
-    val streamOfWindowedRecords = getSource[F](resources, config.input).through(windowing)
+  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](source: Stream[F, ParsedF[F, C]],
+                                                                                                         resources: Resources[F],
+                                                                                                         config: TransformerConfig.Stream): Stream[F, Unit] = {
 
-    runWindowed(streamOfWindowedRecords, resources, config)
-  }
-
-  def runWindowed[F[_]: ConcurrentEffect: ContextShift: Clock: Timer](windowedRecords: Stream[F, Windowed[F, Parsed]],
-                                                                      resources: Resources[F],
-                                                                      config: TransformerConfig.Stream): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths)
@@ -79,35 +83,38 @@ object Processing {
         Transformer.WideRowTransformer(resources.iglu, f)
     }
 
-    val onComplete: Window => F[Unit] =
-      getOnComplete(
-        resources.store,
-        config.output.compression,
-        transformer.typesInfo,
-        config.output.path,
-        resources.awsQueue,
-        resources.windows,
-        config.featureFlags.legacyMessageFormat,
-        _
-      )
-    val sinkId: Window => F[Int] =
-      getSinkId(resources.windows)
+    def windowing[A]: Pipe[F, (List[A], C), Windowed[F, List[A]]] =
+      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
 
-    windowedRecords
-      .interruptWhen(resources.halt)
-      .through(attemptTransform(transformer, config.validations))
-      .evalTap(State.update(resources.windows))
-      .evalTap(incrementMetrics(resources.metrics, _))
+    val onComplete: ((Window, F[Unit], State)) => F[Unit] = {
+      case (window, checkpoint, state) =>
+        getOnComplete(
+          resources.store,
+          config.output.compression,
+          transformer.typesInfo,
+          config.output.path,
+          resources.awsQueue,
+          config.featureFlags.legacyMessageFormat,
+          window,
+          checkpoint,
+          state
+        )
+    }
+
+    source
+      .through(transform(transformer, config.validations))
+      .through(incrementMetrics(resources.metrics))
       .through(handleTransformResult(transformer))
-      .through(getSink[F](resources, config.output, sinkId, onComplete, config.formats))
-      .flatMap(_.sink)  // Sinks must be issued sequentially
-      .merge(resources.metrics.report)
-      .merge(resources.telemetry.report)
+      .through(windowing)
+      .through(getSink[F](resources, config.output, config.formats))
+      .evalMap(onComplete)
+      .concurrently(resources.metrics.report)
+      .concurrently(resources.telemetry.report)
   }
 
   /**
    * Get a callback that will be executed when window has been full written to destination
-   * The callback sends an SQS message and modifies the global state to reflect closed window
+   * The callback sends an SQS message, and then checkpoints all records from the window
    */
   def getOnComplete[F[_]: Clock: ConcurrentEffect: ContextShift: Sync](
     store: Store[F],
@@ -115,69 +122,44 @@ object Processing {
     getTypes: Set[Data.ShreddedType] => TypesInfo,
     outputPath: URI,
     awsQueue: AWSQueue[F],
-    state: State.Windows[F],
     legacyMessageFormat: Boolean,
-    window: Window
+    window: Window,
+    checkpoint: F[Unit],
+    state: State
   ): F[Unit] = {
-    val find: State.WState => Boolean = {
-      case (w, status, _) => w == window && status == Sealed
-    }
-    val update: State.WState => State.WState = {
-      case (w, _, state) => (w, Closed, state)
-    }
 
     val writeShreddingComplete = getWriteShreddingComplete[F](store, outputPath)
-
-    state.modify(State.updateState(find, update, _._3)).flatMap { state =>
-      Completion.seal[F](compression, getTypes, outputPath, awsQueue, legacyMessageFormat, writeShreddingComplete)(window, state)
-    } *> logger[F].debug(s"ShreddingComplete message for ${window.getDir} has been sent")
+    Completion.seal[F](compression, getTypes, outputPath, awsQueue, legacyMessageFormat, writeShreddingComplete)(window, state) *>
+    checkpoint *>
+    logger[F].debug(s"ShreddingComplete message for ${window.getDir} has been sent")
   }
-
-  /** Auto-incrementing sink ids (file suffix) */
-  def getSinkId[F[_]](windows: State.Windows[F])(window: Window): F[Int] =
-    windows.modify { stack =>
-      val update: State.WState => State.WState = {
-        case (w, s, state) => (w, s, state.copy(sinks = state.sinks + 1))
-      }
-      State.updateState(_._1 == window, update, _._3.sinks)(stack)
-    }
-
-  /** Build a `Stream` of parsed Snowplow events */
-  def getSource[F[_]: ConcurrentEffect: ContextShift](resources: Resources[F],
-                                                      config: TransformerConfig.StreamInput): Stream[F, ParsedF[F]] =
-    config match {
-      case TransformerConfig.StreamInput.Kinesis(appName, streamName, region, position) =>
-        sources.Kinesis.read[F](appName, streamName, region, position)
-      case TransformerConfig.StreamInput.File(dir) =>
-        sources.file.read[F](resources.blocker, dir)
-    }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
   def getSink[F[_]: ConcurrentEffect: ContextShift: Timer](
     resources: Resources[F],
     config: TransformerConfig.Output,
-    sinkCount: Window => F[Int],
-    onComplete: Window => F[Unit],
     formats: Formats
   ): Grouping[F] = {
     
     val parquetSink = ParquetSink.parquetSink[F](resources, config.compression, config.path) _
     val nonParquetSink = Option(config.path.getScheme) match {
       case Some("file") =>
-        file.getSink[F](resources.store, config.compression, sinkCount) _
+        (w: Window) => (_: State) => (k: SinkPath) =>
+          file.getSink[F](resources.store, config.compression, w, k)
       case Some("s3" | "s3a" | "s3n") =>
         val (bucket, prefix) = S3.splitS3Path(S3.Folder.coerce(config.path.toString))
-        s3.getSink[F](resources.store, bucket, prefix, config.compression, sinkCount, resources.instanceId) _
+        (w: Window) => (_: State) => (k: SinkPath) =>
+          s3.getSink[F](resources.store, bucket, prefix, config.compression, w, k)
       case _ =>
         val error = new IllegalArgumentException(s"Cannot create sink for ${config.path} Possible options are file://, s3://, s3a:// and s3n://")
-        (_: Window) => (_: SinkPath) =>
+        (_: Window) => (_: State) => (_: SinkPath) =>
           (_: Stream[F, Transformed.Data]) =>
             Stream.raiseError[F](error)
     }
 
-    val parquetCombinedSink = (w: Window) => (s: SinkPath) => s.pathType match {
-      case PathType.Good => parquetSink(w)(s)
-      case PathType.Bad => nonParquetSink(w)(s)
+    val parquetCombinedSink = (w: Window) => (s: State) => (k: SinkPath) => k.pathType match {
+      case PathType.Good => parquetSink(w)(s)(k)
+      case PathType.Bad => nonParquetSink(w)(s)(k)
     }
 
     val dataSink = formats match {
@@ -185,41 +167,68 @@ object Processing {
       case _ => nonParquetSink
     }
 
-    Partitioned.write[F, Window, SinkPath, Transformed.Data](dataSink, onComplete)
+    Partitioned.write[F, Window, SinkPath, Transformed.Data, State](dataSink)
   }
 
-  def attemptTransform[F[_]: Concurrent: Clock: Timer](transformer: Transformer[F],
-                                                       validations: TransformerConfig.Validations): Pipe[F, Windowed[F, Parsed], Windowed[F, TransformationResult]] = {
-    _.evalMap { record =>
-      record.traverse { parsed =>
-        (for {
-          event       <- EitherT.fromEither[F](parsed)
-          _           <- EitherT.fromEither[F](ShredderValidations(Application, event, validations).toLeft(()))
-          transformed <- transformer.goodTransform(event)
-        } yield SuccessfulTransformation(original = event, output = transformed)).value
+  /** Chunk-wise transforms incoming events into either a BadRow or a list of transformed outputs */
+  def transform[F[_]: Concurrent: Parallel, C](transformer: Transformer[F], 
+                                               validations: TransformerConfig.Validations): Pipe[F, ParsedF[F, C], TransformationResultF[F, C]] =
+    _.chunks
+      .flatMap { chunk =>
+        chunk.last match {
+          case None =>
+            Stream.empty
+          case Some((_, checkpoint)) =>
+            Stream.eval {
+              chunk
+                .toList
+                .map(_._1)
+                .map(transformSingle(transformer, validations))
+                .parSequenceN(100)
+                .map(results => (results, checkpoint))
+            }
+        }
+     }
+
+  /** Transform a single event into either a BadRow or a list of transformed outputs */
+  def transformSingle[F[_]: Monad](transformer: Transformer[F],
+                                   validations: TransformerConfig.Validations)
+                                   (parsed: Parsed): F[TransformationResult] = {
+    val eitherT = for {
+      event       <- EitherT.fromEither[F](parsed)
+      _           <- EitherT.fromEither[F](ShredderValidations(Application, event, validations).toLeft(()))
+      transformed <- transformer.goodTransform(event)
+    } yield SuccessfulTransformation(original = event, output = transformed)
+
+    eitherT.value
+  }
+
+
+  /** Unifies a stream of {Either of BadRow or Transformed outputs} into a stream of data with a path
+   *  to where it should sink. Processes in batches for efficiency. */
+  def handleTransformResult[F[_], C: Checkpointer[F, *]](transformer: Transformer[F]): Pipe[F, TransformationResultF[F, C], (List[(SinkPath, Transformed.Data, State)], C)] =
+    _.map { case (items, checkpoint) =>
+      val mapped = items.flatMap { result =>
+        val state = State.fromEvent(result)
+        result.map(_.output) match {
+          case Left(bad) =>
+            val t = transformer.badTransform(bad)
+            List((t.getPath, t.data, state))
+          case Right(head :: tail) =>
+            (head.getPath, head.data, state) :: tail.map(t => (t.getPath, t.data, Monoid[State].empty))
+          case Right(Nil) =>
+            Nil
+        }
       }
+      (mapped, checkpoint)
     }
-  }
 
-  def handleTransformResult[F[_]](transformer: Transformer[F]): Pipe[F, Windowed[F, TransformationResult], Windowed[F, (SinkPath, Transformed.Data)]] = {
-    _.flatMap { record =>
-      record.map(_.leftMap(transformer.badTransform)) match {
-        case Record.Data(window, checkpoint, Right(shredded)) =>
-          Record.mapWithLast(shredded.output)(s => Record.Data(window, None, s.split), s => Record.Data(window, checkpoint, s.split))
-        case Record.Data(window, checkpoint, Left(badRow)) =>
-          Stream.emit(Record.Data(window, checkpoint, badRow.split))
-        case Record.EndWindow(window, next, checkpoint) =>
-          Stream.emit(Record.EndWindow[F, Window, (SinkPath, Transformed.Data)](window, next, checkpoint))
-      }
-    }
-  }
 
-  def incrementMetrics[F[_]: Applicative](metrics: Metrics[F], transformed: Windowed[F, TransformationResult]): F[Unit] =
-    transformed.traverse {
-      case Left(_) => metrics.badCount
-      case Right(_) => metrics.goodCount
+  def incrementMetrics[F[_]: Applicative, C](metrics: Metrics[F]): Pipe[F, TransformationResultF[F, C], TransformationResultF[F, C]] =
+    _.evalTap { transformed =>
+      val (good, bad) = transformed._1.partition(_.isRight)
+      metrics.goodCount(good.size) *> metrics.badCount(bad.size)
     }
-      .void
 
   def getWriteShreddingComplete[F[_]: ConcurrentEffect: ContextShift](
     store: Store[F],

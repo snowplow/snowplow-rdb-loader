@@ -25,65 +25,44 @@ import org.specs2.mutable.Specification
 class KeyedEnqueueSpec extends Specification {
   import KeyedEnqueueSpec._
 
-  "enqueueKV" should {
-    "have no effect if sink is not called" in {
-      val action = for {
-        (store, getSink) <- KeyedEnqueueSpec.sinkAndStore
-        keyedEnqueue <- KeyedEnqueue.mk[IO, String, String](getSink)
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-1")
-        finalResult <- store.get
-      } yield finalResult
-
-      val result = action.unsafeRunSync()
-      result must beEmpty
-    }
-
-    "throw an exception if tried to write to a terminated enqueue" in {
-      val action = for {
-        (store, getSink) <- KeyedEnqueueSpec.sinkAndStore
-        keyedEnqueue <- KeyedEnqueue.mk[IO, String, String](getSink)
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-1")
-        _ <- keyedEnqueue.terminate
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-3")
-        _ <- keyedEnqueue.sink.compile.drain
-        finalResult <- store.get
-      } yield finalResult
-
-      action.unsafeRunSync() must throwAn[IllegalStateException]
-    }
-  }
-
   "sink" should {
 
-    "block the execution (without termination), but write elements" in {
+    "write elements to the pipe when they share the same key" in {
       val action = for {
         (store, getSink) <- KeyedEnqueueSpec.sinkAndStore
-        keyedEnqueue <- KeyedEnqueue.mk[IO, String, String](getSink)
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-1")
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-2")
-        timeout <- keyedEnqueue.sink.compile.drain.timeout(500.millis).attempt
+        keyedEnqueue <- KeyedEnqueue.empty[String, String].pure[IO]
+        keyedEnqueue <- KeyedEnqueue.enqueueKV[IO, String, String](keyedEnqueue, "key-1", "element-1")
+        keyedEnqueue <- KeyedEnqueue.enqueueKV[IO, String, String](keyedEnqueue, "key-1", "element-2")
+        timeout <- KeyedEnqueue.sink(keyedEnqueue, getSink).compile.drain.timeout(500.millis).attempt
         finalResult <- store.get
-      } yield (timeout.isLeft, finalResult)
+      } yield (timeout.isRight, finalResult)
 
-      val (timeout, map) = action.unsafeRunSync()
+      val (timeout, stored) = action.unsafeRunSync()
       timeout must beTrue
-      map must beEqualTo(Map("key-1" -> List("element-2", "element-1")))
+      stored.sorted must beEqualTo(Vector(
+        ("key-1", "element-1"),
+        ("key-1", "element-2")
+      ))
     }
 
-    "not block the execution when terminated" in {
+    "write elements to the pipe when they have different keys" in {
       val action = for {
         (store, getSink) <- KeyedEnqueueSpec.sinkAndStore
-        keyedEnqueue <- KeyedEnqueue.mk[IO, String, String](getSink)
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-1")
-        _ <- keyedEnqueue.enqueueKV("key-1", "element-2")
-        _ <- keyedEnqueue.terminate
-        _ <- keyedEnqueue.sink.compile.drain
+        keyedEnqueue <- KeyedEnqueue.empty[String, String].pure[IO]
+        keyedEnqueue <- KeyedEnqueue.enqueueKV[IO, String, String](keyedEnqueue, "key-1", "element-1")
+        keyedEnqueue <- KeyedEnqueue.enqueueKV[IO, String, String](keyedEnqueue, "key-2", "element-2")
+        timeout <- KeyedEnqueue.sink(keyedEnqueue, getSink).compile.drain.timeout(500.millis).attempt
         finalResult <- store.get
-      } yield finalResult
+      } yield (timeout.isRight, finalResult)
 
-      val map = action.unsafeRunSync()
-      map must beEqualTo(Map("key-1" -> List("element-2", "element-1")))
+      val (timeout, stored) = action.unsafeRunSync()
+      timeout must beTrue
+      stored.sorted must beEqualTo(Vector(
+        ("key-1", "element-1"),
+        ("key-2", "element-2")
+      ))
     }
+
   }
 }
 
@@ -91,18 +70,14 @@ object KeyedEnqueueSpec {
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
-  def sinkAndStore: IO[(Ref[IO, Map[String, List[String]]], String => Pipe[IO, String, Unit])] = {
-    Ref.of[IO, Map[String, List[String]]](Map.empty).map { ref =>
+  def sinkAndStore: IO[(Ref[IO, Vector[(String, String)]], String => Pipe[IO, String, Unit])] = {
+    Ref.of[IO, Vector[(String, String)]](Vector.empty).map { ref =>
       def pipe(key: String): Pipe[IO, String, Unit] =
         _.evalMap { s =>
-          ref.update { map =>
-            map.get(key) match {
-              case Some(list) => map.updated(key, s :: list)
-              case None => map.updated(key, List(s))
-            }
+          ref.update { items =>
+            items :+ ((key, s))
           }
         }
-
       (ref, pipe)
     }
   }
