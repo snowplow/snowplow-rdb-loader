@@ -15,7 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 import java.util.UUID
 import java.net.URI
 
-import scala.concurrent.duration.DurationInt
 import scala.concurrent.ExecutionContext
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -24,10 +23,7 @@ import io.circe.Json
 
 import cats.implicits._
 
-import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-
-import fs2.concurrent.SignallingRef
 
 import blobstore.Store
 
@@ -54,9 +50,6 @@ case class Resources[F[_]](
   awsQueue: AWSQueue[F],
   instanceId: String,
   blocker: Blocker,
-  halt: SignallingRef[F, Boolean],
-  windows: State.Windows[F],
-  global: Ref[F, Long],
   store: Store[F],
   metrics: Metrics[F],
   telemetry: Telemetry[F]
@@ -87,9 +80,6 @@ object Resources {
       atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
       instanceId    <- mkTransformerInstanceId
       blocker       <- Blocker[F]
-      halt          <- mkHaltingSignal(instanceId)
-      initialState  <- mkInitialState
-      global        <- Resource.eval(Ref.of(0L))
       store         <- Resource.eval(mkStore[F](blocker, config.output.path))
       metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
       telemetry     <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
@@ -100,9 +90,6 @@ object Resources {
         awsQueue,
         instanceId.toString,
         blocker,
-        halt,
-        initialState,
-        global,
         store,
         metrics,
         telemetry
@@ -126,30 +113,10 @@ object Resources {
     }
   }
 
-  private def mkInitialState[F[_]: Sync] = {
-    Resource.make(State.init[F]) { state =>
-      state.get.flatMap { stack =>
-        if (stack.isEmpty)
-          logger.warn(s"Final window state is empty")
-        else
-          logger.info(s"Final window state:\n${stack.mkString("\n")}")
-      }
-    }
-  }
-
   private def mkTransformerInstanceId[F[_]: Sync] = {
     Resource
       .eval(Sync[F].delay(UUID.randomUUID()))
       .evalTap(id => logger.info(s"Instantiated $id shredder instance"))
-  }
-
-  private def mkHaltingSignal[F[_]: Concurrent: Timer](instanceId: UUID) = {
-    Resource.make(SignallingRef(false)) { s =>
-      logger.warn("Halting the source, sleeping for 5 seconds...") *>
-        s.set(true) *>
-        Timer[F].sleep(5.seconds) *>
-        logger.warn(s"Shutting down $instanceId instance")
-    }
   }
 
   private def mkQueueFromConfig[F[_]: Concurrent](queueConfig: QueueConfig): Resource[F, AWSQueue[F]] = {

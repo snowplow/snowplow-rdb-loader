@@ -2,7 +2,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
 
 import java.time.{Instant, ZoneOffset, ZonedDateTime}
 
-import cats.{Order, Functor}
+import cats.{Order, Functor, Show}
 
 import cats.effect.Clock
 import cats.syntax.functor._
@@ -36,4 +36,7 @@ object Window {
   }
 
   private def prep0(s: Int): String = if (s.toString.length > 1) s.toString else s"0$s"
+
+  implicit val windowShow: Show[Window] =
+    Show(_.getDir)
 }

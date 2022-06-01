@@ -16,23 +16,17 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.ShredTsvProcessingSpec.{appConfig, igluConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 
 import java.nio.file.Path
 
 class ShredTsvProcessingSpec extends BaseProcessingSpec {
-
-  val `window-10:30` = Window(1970, 1, 1, 10, 30)
-  val `window-10:31` = Window(1970, 1, 1, 10, 31)
 
   "Streaming transformer" should {
     "process items correctly in shred tsv format" in {
       temporaryDirectory.use { outputDirectory =>
 
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/1/input/events",
-          currentWindow = `window-10:30`,
-          nextWindow = `window-10:31`
+          inputEventsPath = "/processing-spec/1/input/events"
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -50,7 +44,8 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
           expectedConsentRows       <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-consent_document")
           expectedBadRows           <- readLinesFromResource("/processing-spec/1/output/bad")
         } yield {
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
 
           assertStringRows(actualAtomicRows, expectedAtomicRows)
           assertStringRows(actualOptimizelyRows, expectedOptimizelyRows)
@@ -64,9 +59,7 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
       temporaryDirectory.use { outputDirectory =>
 
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/3/input/events",
-          currentWindow = `window-10:30`,
-          nextWindow = `window-10:31`
+          inputEventsPath = "/processing-spec/3/input/events"
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -79,7 +72,8 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
           expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", outputDirectory)
           expectedBadRows           <- readLinesFromResource("/processing-spec/3/output/bad")
         } yield {
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
           actualAtomicRows.size must beEqualTo(1)
           assertStringRows(actualBadRows, expectedBadRows)
         }

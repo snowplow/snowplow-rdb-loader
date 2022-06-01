@@ -14,16 +14,17 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ContextShift, IO, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils.{createTempDirectory, directoryStream}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ProcessingOutput, TransformerConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedF
 import fs2.Stream
 import org.specs2.mutable.Specification
+
+import scala.concurrent.duration.DurationInt
 
 import java.nio.file.Path
 import java.util.Base64
@@ -34,25 +35,26 @@ trait BaseProcessingSpec extends Specification {
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val T: Timer[IO]         = IO.timer(concurrent.ExecutionContext.global)
 
-  //returns always 1970-01-01-10:31
+  //returns always 1970-01-01-10:30
   implicit val clock: Clock[IO] = new Clock[IO] {
-    override def realTime(unit: TimeUnit): IO[Long] = IO(unit.convert(37860L, TimeUnit.SECONDS)) 
-    override def monotonic(unit: TimeUnit): IO[Long] = IO(unit.convert(37860L, TimeUnit.SECONDS))
+    override def realTime(unit: TimeUnit): IO[Long] = IO(unit.convert(37800L, TimeUnit.SECONDS)) 
+    override def monotonic(unit: TimeUnit): IO[Long] = IO(unit.convert(37800L, TimeUnit.SECONDS))
   }
   
   val blocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
   protected val temporaryDirectory = createTempDirectory(blocker)
 
-  protected def process(input: Stream[IO, Windowed[IO, Parsed]],
+  protected def process(input: Stream[IO, ParsedF[IO, Unit]],
                         config: TransformerConfig): IO[ProcessingOutput] = {
       val args = prepareAppArgs(config)
 
       for {
-        waitingForCompletionMessage <- Deferred[IO, String]
-        runningApp                  <- TestApplication.run(args, waitingForCompletionMessage, input).start
-        completionMessage           <- waitingForCompletionMessage.get
-        _                           <- runningApp.cancel
-      } yield ProcessingOutput(completionMessage) 
+        checkpointRef  <- Ref.of[IO, Int](0)
+        completionsRef <- Ref.of[IO, Vector[String]](Vector.empty)
+        _              <- TestApplication.run(args, completionsRef, checkpointRef, input).timeout(60.seconds)
+        checkpointed   <- checkpointRef.get
+        completions    <- completionsRef.get
+      } yield ProcessingOutput(completions, checkpointed) 
     }
 
   protected def assertStringRows(actualRows: List[String],
@@ -98,5 +100,5 @@ trait BaseProcessingSpec extends Specification {
 object BaseProcessingSpec {
 
   final case class TransformerConfig(app: String, iglu: String)
-  final case class ProcessingOutput(completionMessage: String)
+  final case class ProcessingOutput(completionMessages: Vector[String], checkpointed: Int)
 }

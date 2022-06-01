@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
 
 import java.net.URI
 import java.nio.file.{Path => NioPath, Paths}
+import java.util.UUID
 
 import cats.data.Chain
 import cats.implicits._
@@ -39,10 +40,7 @@ object file {
   def getSink[F[_]: Concurrent: ContextShift](
                                                store: Store[F],
                                                compression: Compression,
-                                               counter: Window => F[Int]
-                                             )(
-                                               window: Window
-                                             )(
+                                               window: Window,
                                                path: SinkPath
                                              ): Pipe[F, Transformed.Data, Unit] = {
     val p = BasePath.empty
@@ -54,12 +52,16 @@ object file {
       case Compression.Gzip => (gzip(), "txt.gz")
     }
 
-    def sink(id: Int): Pipe[F, Byte, Unit] =
+    def sink(id: UUID): Pipe[F, Byte, Unit] =
       store.put(p.withFileName(Some(s"data-$id.$extension")), false)
 
     in =>
-      Stream.eval(counter(window)).flatMap { id =>
-        in.mapFilter(_.str).intersperse("\n").through(utf8Encode[F]).through(finalPipe).through(sink(id))
+      Stream.eval(Sync[F].delay(UUID.randomUUID)).flatMap { sinkId =>
+        in.mapFilter(_.str)
+          .intersperse("\n")
+          .through(utf8Encode[F])
+          .through(finalPipe)
+          .through(sink(sinkId))
       }
   }
 

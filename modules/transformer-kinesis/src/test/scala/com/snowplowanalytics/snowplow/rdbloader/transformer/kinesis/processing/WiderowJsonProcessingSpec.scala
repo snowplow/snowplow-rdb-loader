@@ -16,23 +16,17 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 
 import java.nio.file.Path
 
 class WiderowJsonProcessingSpec extends BaseProcessingSpec {
-
-  val `window-10:30` = Window(1970, 1, 1, 10, 30)
-  val `window-10:31` = Window(1970, 1, 1, 10, 31)
 
   "Streaming transformer" should {
     "process items correctly in widerow json format" in {
       temporaryDirectory.use { outputDirectory =>
 
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/1/input/events",
-          currentWindow = `window-10:30`,
-          nextWindow = `window-10:31`
+          inputEventsPath = "/processing-spec/1/input/events"
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -48,7 +42,8 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
           expectedGoodRows          <- readLinesFromResource("/processing-spec/1/output/good/widerow/events")
           expectedBadRows           <- readLinesFromResource("/processing-spec/1/output/bad")
         } yield {
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
           assertStringRows(actualGoodRows, expectedGoodRows)
           assertStringRows(actualBadRows, expectedBadRows)
         }
