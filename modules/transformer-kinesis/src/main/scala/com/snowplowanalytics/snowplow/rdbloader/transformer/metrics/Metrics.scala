@@ -29,10 +29,10 @@ trait Metrics[F[_]] {
   def report: Stream[F, Unit]
 
   /** Increment count of successfully transformed events */
-  def goodCount: F[Unit]
+  def goodCount(count: Int): F[Unit]
 
   /** Increment count of events that couldn't get transformed */
-  def badCount: F[Unit]
+  def badCount(count: Int): F[Unit]
 }
 
 object Metrics {
@@ -82,13 +82,13 @@ object Metrics {
         rep1.concurrently(rep2)
       }
 
-      def goodCount: F[Unit] =
-        refsStatsd.goodCount.update(_ + 1) *>
-          refsStdout.goodCount.update(_ + 1)
+      def goodCount(count: Int): F[Unit] =
+        refsStatsd.goodCount.update(_ + count) *>
+          refsStdout.goodCount.update(_ + count)
 
-      def badCount: F[Unit] =
-        refsStatsd.badCount.update(_ + 1) *>
-          refsStdout.badCount.update(_ + 1)
+      def badCount(count: Int): F[Unit] =
+        refsStatsd.badCount.update(_ + count) *>
+          refsStdout.badCount.update(_ + count)
     }
 
   private final case class MetricRefs[F[_]](
@@ -126,8 +126,8 @@ object Metrics {
   def noop[F[_]: Async]: Metrics[F] =
     new Metrics[F] {
       def report: Stream[F, Unit] = Stream.never[F]
-      def goodCount: F[Unit] = Applicative[F].unit
-      def badCount: F[Unit] = Applicative[F].unit
+      def goodCount(count: Int): F[Unit] = Applicative[F].unit
+      def badCount(count: Int): F[Unit] = Applicative[F].unit
     }
 
   def normalizeMetric(prefix: Option[String], metric: String): String =

@@ -29,10 +29,8 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Transformer}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Parsed, file => FileSource}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.Record
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, ParsedF, file => FileSource}
 import org.specs2.mutable.Specification
 
 class TransformingSpec extends Specification {
@@ -99,7 +97,7 @@ object TransformingSpec {
 
   implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data)) {
     def getBad: Option[(SinkPath, Transformed.Data)] =
-      if (value.path.value.contains(BadPathPrefix)) Some(value) else None
+      if (value._1.value.contains(BadPathPrefix)) Some(value) else None
 
     def getGood: Option[(SinkPath, Transformed.Data)] =
       if (getBad.isDefined) None else Some(value)
@@ -134,22 +132,21 @@ object TransformingSpec {
                           timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList) = {
     val transformer = createTransformer(format)
     val validations = TransformerConfig.Validations(timestampLowerLimit)
+    implicit val checkpointer = Checkpointer.noOpCheckpointer[IO, Unit]
+
 
     val eventStream = parsedEventStream(resourcePath)
-      .through(Processing.attemptTransform(transformer, validations))
+      .through(Processing.transform(transformer, validations))
       .through(Processing.handleTransformResult(transformer))
 
-    val transformed = eventStream.compile.toList.unsafeRunSync().flatMap {
-      case Record.Data(_, _, i) => Some(i)
-      case Record.EndWindow(_, _, _) => None
-    }
+    val transformed = eventStream.compile.toList.unsafeRunSync().flatMap(_._1)
     (transformed.flatMap(_.getGood), transformed.flatMap(_.getBad))
   }
 
-  def parsedEventStream(resourcePath: String): Stream[IO, Windowed[IO, Parsed]] =
+  def parsedEventStream(resourcePath: String): Stream[IO, ParsedF[IO, Unit]] =
     fileStream(resourcePath)
       .map(FileSource.parse)
-      .map(Record.Data[IO, Window, Parsed](defaultWindow, Option.empty, _))
+      .map(p => (p, ()))
 
   def getResourceLines(resourcePath: String): List[String] =
     fileStream(resourcePath)

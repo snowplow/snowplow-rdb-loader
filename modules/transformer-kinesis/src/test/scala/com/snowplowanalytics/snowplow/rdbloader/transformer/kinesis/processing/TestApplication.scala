@@ -14,13 +14,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
-import cats.effect.concurrent.Deferred
+import cats.effect.concurrent.Ref
 import cats.effect.{Clock, ContextShift, IO, Sync, Timer}
 import com.snowplowanalytics.aws.AWSQueue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Windowed
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Parsed
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedF
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Resources}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
 import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -29,34 +29,41 @@ object TestApplication {
   private def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   def run(args: Seq[String],
-          forCompletionMessage: Deferred[IO, String],
-          windowedRecords: Stream[IO, Windowed[IO, Parsed]])
+          completionsRef: Ref[IO, Vector[String]],
+          checkpointRef: Ref[IO, Int],
+          sourceRecords: Stream[IO, ParsedF[IO, Unit]])
          (implicit CS: ContextShift[IO], T: Timer[IO], C: Clock[IO]): IO[Unit] =
     for {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
+      implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
       res <- parsed match {
         case Right(cliConfig) =>
           Resources.mk[IO](
             cliConfig.igluConfig,
             cliConfig.config,
-            queueFromDeferred(forCompletionMessage),
+            queueFromRef(completionsRef),
             concurrent.ExecutionContext.global
           )
           .use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-              Processing.runWindowed[IO](windowedRecords, resources, cliConfig.config)
+              Processing.runFromSource[IO, Unit](sourceRecords, resources, cliConfig.config)
                 .compile
                 .drain
           }
         case Left(e) =>
-          logger[IO].error(s"Configuration error: $e")
+          IO.raiseError(new RuntimeException(s"Configuration error: $e"))
       }
     } yield res
 
 
-  private def queueFromDeferred(deferred: Deferred[IO, String]): AWSQueue[IO] = new AWSQueue[IO] {
-    override def sendMessage(groupId: Option[String], message: String): IO[Unit] = {
-      deferred.complete(message)
-    }
+  private def queueFromRef(ref: Ref[IO, Vector[String]]): AWSQueue[IO] = new AWSQueue[IO] {
+    override def sendMessage(groupId: Option[String], message: String): IO[Unit] =
+      ref.update(_ :+ message)
+  }
+
+  def checkpointer(count: Ref[IO, Int]): Checkpointer[IO, Unit] = new Checkpointer[IO, Unit] {
+    def checkpoint(c: Unit): IO[Unit] = count.update(_ + 1)
+    def combine(older: Unit, newer: Unit): Unit = ()
+    def empty: Unit = ()
   }
 }

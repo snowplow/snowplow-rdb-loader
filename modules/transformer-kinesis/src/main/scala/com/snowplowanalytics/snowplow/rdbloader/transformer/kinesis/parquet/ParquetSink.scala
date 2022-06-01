@@ -14,12 +14,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet
 
-import cats.Functor
 import cats.data.EitherT
 import cats.effect.{Blocker, Concurrent, ContextShift, Timer}
 import cats.implicits._
 import com.github.mjakubowski84.parquet4s.parquet.viaParquet
 import com.github.mjakubowski84.parquet4s.{ParquetWriter, RowParquetRecord}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -30,7 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fi
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet.Codecs._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{SinkPath, TransformedDataOps, Window}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Resources, State}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Resources
 import fs2.{Pipe, Stream}
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.parquet.schema.MessageType
@@ -41,15 +41,16 @@ object ParquetSink {
 
   def parquetSink[F[_] : Concurrent : ContextShift : Timer](resources: Resources[F],
                                                             compression: Compression,
-                                                            uri: URI)
-                                                           (window: Window)
-                                                           (path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
+                                                            uri: URI,
+                                                            window: Window,
+                                                            types: List[Data.ShreddedType],
+                                                            path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
     transformedData =>
 
       // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
       // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
       val targetPath = s"${uri.toString}/${window.getDir}/${path.value}"
-      val schemaCreation = createSchemaFromTypes(resources, window).value
+      val schemaCreation = createSchemaFromTypes(resources, types).value
 
       Stream.eval(schemaCreation).flatMap {
         case Left(error) =>
@@ -66,22 +67,11 @@ object ParquetSink {
 
 
   private def createSchemaFromTypes[F[_] : Concurrent : ContextShift : Timer](resources: Resources[F],
-                                                                              window: Window): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
+                                                                              types: List[Data.ShreddedType]): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
     for {
-      typesForWindow <- EitherT.liftF(getAllWideRowTypesForWindow(resources.windows, window))
-      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.iglu.resolver, typesForWindow)
+      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.iglu.resolver, types.map(WideRow.Type.from))
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
-  }
-
-  private def getAllWideRowTypesForWindow[F[_]: Functor](state: State.Windows[F],
-                                                         currentWindow: Window): F[List[WideRow.Type]] = {
-    State
-      .findTypesForWindow(state, currentWindow)
-      .map(
-        _.map(WideRow.Type.from)
-          .toList
-      )
   }
 
   private def writeAsParquet[F[_] : Concurrent : ContextShift : Timer](blocker: Blocker,
