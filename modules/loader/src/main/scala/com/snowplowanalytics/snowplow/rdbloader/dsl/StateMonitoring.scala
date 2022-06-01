@@ -55,11 +55,13 @@ object StateMonitoring {
       StateMonitoring.run(timeouts, getState, extend).background <* busy
 
     backgroundCheck.use { join =>
-      Concurrent[F].race(loading, join).flatMap { 
-        case Left(_) => Concurrent[F].unit
-        case Right(None) => Concurrent[F].unit
-        case Right(Some(error)) =>
-          Logging[F].error(error) *> Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
+      Concurrent[F].racePair(loading, join).flatMap { 
+        case Left((_, fiber)) => fiber.cancel
+        case Right((fiber, None)) => fiber.join
+        case Right((fiber, Some(error))) =>
+          Logging[F].error(error) *>
+          fiber.cancel.timeoutTo(60.seconds, Logging[F].warning("Timed out cancelling transaction")) *>
+          Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
       }
     }
   }
