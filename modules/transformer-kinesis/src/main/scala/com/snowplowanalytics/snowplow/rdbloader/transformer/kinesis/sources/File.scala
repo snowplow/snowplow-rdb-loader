@@ -2,7 +2,6 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources
 
 import java.nio.file.Paths
 
-import cats.Applicative
 import cats.syntax.either._
 
 import cats.effect.{Concurrent, Blocker, Sync, ContextShift}
@@ -22,13 +21,13 @@ object file {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def read[F[_]: Concurrent: ContextShift](blocker: Blocker, dirPath: String): Stream[F, ParsedF[F]] =
+  def read[F[_]: Concurrent: ContextShift](blocker: Blocker, dirPath: String): Stream[F, ParsedF[F, Unit]] =
     directoryStream(blocker, Paths.get(dirPath))
       .flatMap { filePath =>
         Stream.eval_(logger.debug(s"Reading $filePath")) ++
           readAll(filePath, blocker, 4096).through(utf8Decode).through(lines)
       }
-      .map(line => (parse(line), Applicative[F].unit))
+      .map(line => (parse(line), ()))
 
   def parse(line: String): Parsed =
     Event.parse(line).toEither.leftMap { error =>

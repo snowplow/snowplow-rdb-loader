@@ -30,6 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
 
 import com.snowplowanalytics.aws.AWSQueue
 
@@ -45,7 +46,12 @@ object Completion {
   final val sealFile = "shredding_complete.json"
 
   /**
-   * Finalize the batch by sending a `ShreddingComplete` SQS message
+   * Finalize the batch
+   *
+   * The order is:
+   * 1. Write a `shredding_complete` file to S3. This is the official seal that says a batch is complete.
+   * 2. Checkpoint processed events to the source stream, so we don't process them again.
+   * 3. Send a `ShreddingComplete` SQS message.
    *
    * @param compression a compression type used in the batch
    * @param getTypes a function converts set of event inventory items to TypesInfo
@@ -56,13 +62,14 @@ object Completion {
    * @param window run id (when batch has been started)
    * @param state all metadata shredder extracted from a batch
    */
-  def seal[F[_]: Clock: Sync](compression: Compression,
-                              getTypes: Set[Data.ShreddedType] => TypesInfo,
-                              root: URI,
-                              awsQueue: AWSQueue[F],
-                              legacyMessageFormat: Boolean,
-                              writeShreddingComplete: (String, String) => F[Unit])
-                             (window: Window, state: State): F[Unit] = {
+  def seal[F[_]: Clock: Sync, C: Checkpointer[F, *]](compression: Compression,
+                                                     getTypes: Set[Data.ShreddedType] => TypesInfo,
+                                                     root: URI,
+                                                     awsQueue: AWSQueue[F],
+                                                     legacyMessageFormat: Boolean,
+                                                     writeShreddingComplete: (String, String) => F[Unit],
+                                                     window: Window,
+                                                     state: State[C]): F[Unit] = {
     for {
       timestamps <- Clock[F].instantNow.map { now =>
         Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
@@ -72,6 +79,7 @@ object Completion {
       message = LoaderMessage.ShreddingComplete(S3.Folder.coerce(base), getTypes(state.types), timestamps, compression, MessageProcessor, Some(count))
       body = message.selfDescribingData(legacyMessageFormat).asJson.noSpaces
       _ <- writeShreddingComplete(shreddingCompletePath, body)
+      _ <- Checkpointer[F, C].checkpoint(state.checkpointer)
       _ <- awsQueue.sendMessage(Some(MessageGroupId), body)
     } yield ()
   }

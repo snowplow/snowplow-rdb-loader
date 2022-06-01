@@ -2,7 +2,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources
 
 import java.util.Date
 
-import cats.syntax.either._
+import cats.Applicative
+import cats.implicits._
 
 import cats.effect.{Sync, ContextShift, ConcurrentEffect}
 
@@ -24,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.A
 
 object Kinesis {
 
-  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedF[F]] = {
+  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedF[F, KinesisCheckpointer[F]]] = {
     val settings = Either.catchOnly[IllegalArgumentException](AWSRegion.of(region.name)) match {
       case Right(region) =>
         Sync[F].pure(KinesisConsumerSettings(streamName, appName, region, initialPositionInStream = fromConfig(position)))
@@ -35,7 +36,7 @@ object Kinesis {
     for {
       settings <- Stream.eval(settings)
       record   <- readFromKinesisStream(settings)
-    } yield (parse(record), record.checkpoint)
+    } yield (parse(record), checkpointer(record))
   }
 
 
@@ -56,4 +57,21 @@ object Kinesis {
       case InitPosition.TrimHorizon       => InitialPositionInStream.TRIM_HORIZON.asLeft
       case InitPosition.AtTimestamp(date) => Date.from(date).asRight
     }
+
+  def checkpointer[F[_]: Sync](record: CommittableRecord): KinesisCheckpointer[F] =
+    KinesisCheckpointer[F](Map(record.shardId -> record.checkpoint))
+
+
+  case class KinesisCheckpointer[F[_]](byShard: Map[String, F[Unit]])
+
+  object KinesisCheckpointer {
+    implicit def kinesisCheckpointer[F[_]: Applicative]: Checkpointer[F, KinesisCheckpointer[F]] = new Checkpointer[F, KinesisCheckpointer[F]] {
+      def checkpoint(c: KinesisCheckpointer[F]): F[Unit] = c.byShard.values.toList.sequence_
+      def combine(older: KinesisCheckpointer[F], newer: KinesisCheckpointer[F]): KinesisCheckpointer[F] =
+        KinesisCheckpointer[F](byShard = older.byShard ++ newer.byShard) // order is important!
+      def empty: KinesisCheckpointer[F] =
+        KinesisCheckpointer(Map.empty)
+    }
+
+  }
 }

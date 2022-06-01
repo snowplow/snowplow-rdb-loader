@@ -23,7 +23,6 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.ParquetUtils.readParquetColumns
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.WiderowParquetProcessingSpec.{appConfig, igluConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 import io.circe.syntax.EncoderOps
 import io.circe.{Json, JsonObject}
 import org.apache.parquet.column.ColumnDescriptor
@@ -35,8 +34,6 @@ import java.util.UUID
 
 class WiderowParquetProcessingSpec extends BaseProcessingSpec {
   
-  val `window-10:30` = Window(1970, 1, 1, 10, 30)
-  val `window-10:31` = Window(1970, 1, 1, 10, 31)
   val badEventIds = List(
     UUID.fromString("3ebc0e5e-340e-414b-b67d-23f7948c2df2"),
     UUID.fromString("7f2c98b2-4a3f-49c0-806d-e8ea2f580ef7")
@@ -47,9 +44,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
       temporaryDirectory.use { outputDirectory =>
         
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/4/input/events", //the same events as in resource file used in WideRowParquetSpec for batch transformer
-          currentWindow   = `window-10:30`,
-          nextWindow      = `window-10:31`
+          inputEventsPath = "/processing-spec/4/input/events" //the same events as in resource file used in WideRowParquetSpec for batch transformer
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -70,7 +65,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
 
           actualParquetRows.size must beEqualTo(46)
           actualBadRows.size must beEqualTo(4)
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
 
           assertParquetRows(actualParquetRows, expectedParquetRows)
           assertParquetColumnsInAllFiles(actualParquetColumns, expectedParquetColumns)
@@ -82,9 +78,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
       temporaryDirectory.use { outputDirectory =>
         
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/5/input/input-events-custom-contexts", //the same events as in resource file used in WideRowParquetSpec for batch transformer
-          currentWindow   = `window-10:30`,
-          nextWindow      = `window-10:31`
+          inputEventsPath = "/processing-spec/5/input/input-events-custom-contexts" //the same events as in resource file used in WideRowParquetSpec for batch transformer
         )
 
         val config =  TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -100,7 +94,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         } yield {
 
           actualParquetRows.size must beEqualTo(100)
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
 
           assertParquetRows(actualParquetRows, expectedParquetRows)
           assertParquetColumnsInAllFiles(actualParquetColumns, expectedParquetColumns)
@@ -111,9 +106,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
       temporaryDirectory.use { outputDirectory =>
         
         val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/6/input/input-events-custom-unstruct", //the same events as in resource file used in WideRowParquetSpec for batch transformer
-          currentWindow   = `window-10:30`,
-          nextWindow      = `window-10:31`
+          inputEventsPath = "/processing-spec/6/input/input-events-custom-unstruct" //the same events as in resource file used in WideRowParquetSpec for batch transformer
         )
 
         val config =  TransformerConfig(appConfig(outputDirectory), igluConfig)
@@ -129,7 +122,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         } yield {
           
           actualParquetRows.size must beEqualTo(100)
-          output.completionMessage must beEqualTo(expectedCompletionMessage)
+          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          output.checkpointed must beEqualTo(1)
           
           assertParquetRows(actualParquetRows, expectedParquetRows)
           assertParquetColumnsInAllFiles(actualParquetColumns, expectedParquetColumns)

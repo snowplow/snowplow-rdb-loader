@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
 
+import java.util.UUID
+
 import cats.implicits._
 
 import cats.effect.{Sync, ConcurrentEffect}
@@ -39,9 +41,9 @@ object s3 {
       store <- S3Store[F](client)
     } yield store
 
-  def getPath(bucket: String, prefix: String, window: Window, path: SinkPath, instanceId: String, extension: String, sinkId: Int): S3Path = {
+  def getPath(bucket: String, prefix: String, window: Window, path: SinkPath, sinkId: UUID, extension: String): S3Path = {
     val prefixClean = if (prefix.endsWith("/")) prefix else prefix ++ "/"
-    S3Path(bucket, prefixClean ++ window.getDir ++ "/" ++ path.value ++ s"sink-$instanceId-${prep(sinkId)}.$extension", None)
+    S3Path(bucket, prefixClean ++ window.getDir ++ "/" ++ path.value ++ s"sink-$sinkId.$extension", None)
   }
 
   def getSink[F[_]: ConcurrentEffect](
@@ -49,11 +51,7 @@ object s3 {
                                        bucket: String,
                                        prefix: String,
                                        compression: Compression,
-                                       getSinkId: Window => F[Int],
-                                       instanceId: String
-                                     )(
-                                       window: Window
-                                     )(
+                                       window: Window,
                                        path: SinkPath
                                      ): Pipe[F, Transformed.Data, Unit] = {
     val (finalPipe, extension) = compression match {
@@ -62,17 +60,14 @@ object s3 {
     }
 
     in =>
-      Stream.eval(getSinkId(window)).flatMap { sinkId =>
+      Stream.eval(Sync[F].delay(UUID.randomUUID)).flatMap { sinkId =>
         in.mapFilter(_.str)
           .intersperse("\n")
           .through(utf8Encode[F])
           .through(finalPipe)
-          .through(store.put(getPath(bucket, prefix, window, path, instanceId, extension, sinkId), false))
+          .through(store.put(getPath(bucket, prefix, window, path, sinkId, extension), false))
       }
   }
-
-  private def prep(s: Int): String =
-    "0".repeat(4 - s.toString.length) ++ s.toString
 
   def writeFile[F[_]: ConcurrentEffect](
                                          store: Store[F],
