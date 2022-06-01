@@ -16,6 +16,7 @@ import java.util.UUID
 import java.net.URI
 
 import scala.concurrent.duration.DurationInt
+import scala.concurrent.ExecutionContext
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -67,17 +68,19 @@ object Resources {
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
-    config: TransformerConfig.Stream
+    config: TransformerConfig.Stream,
+    executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
       awsQueue <- mkQueueFromConfig(config.queue)
-      resources <- mk(igluConfig, config, awsQueue)
+      resources <- mk(igluConfig, config, awsQueue, executionContext)
     } yield resources
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
     config: TransformerConfig.Stream,
-    awsQueue: AWSQueue[F]
+    awsQueue: AWSQueue[F],
+    executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
       client        <- mkClient(igluConfig)
@@ -89,7 +92,7 @@ object Resources {
       global        <- Resource.eval(Ref.of(0L))
       store         <- Resource.eval(mkStore[F](blocker, config.output.path))
       metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
-      telemetry     <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version)
+      telemetry     <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
     } yield
       Resources(
         client,

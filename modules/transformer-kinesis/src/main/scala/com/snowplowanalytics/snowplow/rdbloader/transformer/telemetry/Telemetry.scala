@@ -14,6 +14,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.telemetry
 
+import scala.concurrent.ExecutionContext
+
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -25,7 +27,7 @@ import cats.effect.{ConcurrentEffect, Resource, Sync, Timer}
 import fs2.Stream
 
 import org.http4s.client.{Client => HttpClient}
-import org.http4s.client.asynchttpclient.AsyncHttpClient
+import org.http4s.client.blaze.BlazeClientBuilder
 
 import io.circe.Json
 import io.circe.Encoder
@@ -54,10 +56,11 @@ object Telemetry {
   def build[F[_]: ConcurrentEffect: Timer](
     config: TransformerConfig.Stream,
     appName: String,
-    appVersion: String
+    appVersion: String,
+    executionContext: ExecutionContext
   ): Resource[F, Telemetry[F]] =
     for {
-      httpClient <- AsyncHttpClient.resource[F]()
+      httpClient <- BlazeClientBuilder[F](executionContext).resource
       tracker <- initTracker(config.telemetry, appName, httpClient)
     } yield new Telemetry[F] {
       def report: Stream[F, Unit] =
