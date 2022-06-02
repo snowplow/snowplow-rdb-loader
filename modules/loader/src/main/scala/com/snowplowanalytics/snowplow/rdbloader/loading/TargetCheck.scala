@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
+import cats.Applicative
 import cats.effect.{MonadThrow, Timer}
 import cats.implicits._
 
@@ -44,12 +45,13 @@ object TargetCheck {
     retryingOnSomeErrors(retryPolicy, isWorth, onError)(fa)
   }
 
-  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(show"Target is not ready. $d. Caught exception: ${e.toString}")
+  def log[F[_]: Logging: Applicative](e: Throwable, d: RetryDetails): F[Unit] =
+    Logging[F].info(show"Target is not ready. $d") *>
+      Logging[F].debug(show"Caught exception during target check: ${e.toString}")
 
   /** Check if error is worth retrying */
   def isWorth(e: Throwable): Boolean = {
-    e.toString.toLowerCase.contains("[simba][sparkjdbcdriver](700100) connection timeout expired. details: none") ||
-    e.toString.toLowerCase.contains("[simba][sparkjdbcdriver](500051) error processing query/statement")
+    e.toString.toLowerCase.contains("(700100) connection timeout expired. details: none") ||
+    e.toString.toLowerCase.contains("(500051) error processing query/statement")
   }
 }

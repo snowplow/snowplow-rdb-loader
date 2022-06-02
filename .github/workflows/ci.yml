@@ -77,8 +77,9 @@ jobs:
           java-version: 11
       - name: Get the latest Databricks JDBC driver
         run: |
-          curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
-          unzip SparkJDBC.jar.zip
+          curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.25/DatabricksJDBC42-2.6.25.1044.zip --output DatabricksJDBC42.jar.zip
+          unzip DatabricksJDBC42.jar.zip
+          cp DatabricksJDBC42-2.6.25.1044/DatabricksJDBC42.jar DatabricksJDBC42.jar
       - name: Docker login
         uses: docker/login-action@v1
         with:
@@ -167,8 +168,9 @@ jobs:
         java-version: 11
     - name: Get the latest Databricks JDBC driver
       run: |
-        curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.22/SimbaSparkJDBC42-2.6.22.1040.zip --output SparkJDBC.jar.zip
-        unzip SparkJDBC.jar.zip
+        curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.25/DatabricksJDBC42-2.6.25.1044.zip --output DatabricksJDBC42.jar.zip
+        unzip DatabricksJDBC42.jar.zip
+        cp DatabricksJDBC42-2.6.25.1044/DatabricksJDBC42.jar DatabricksJDBC42.jar
     - name: Build redshift-loader jar
       env:
         SKIP_TEST: true

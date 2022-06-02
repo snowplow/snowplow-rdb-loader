@@ -236,7 +236,7 @@ object BuildSettings {
       Docker / packageName := "snowplow/rdb-loader-databricks",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
-      Compile / unmanagedJars += file("SparkJDBC42.jar")
+      Compile / unmanagedJars += file("DatabricksJDBC42.jar")
     ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
   }
 

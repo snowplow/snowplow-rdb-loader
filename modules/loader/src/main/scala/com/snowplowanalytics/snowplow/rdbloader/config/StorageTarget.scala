@@ -114,9 +114,9 @@ object StorageTarget {
 
     override def username: String = "token"
 
-    override def driver: String = "com.simba.spark.jdbc.Driver"
+    override def driver: String = "com.databricks.client.jdbc.Driver"
 
-    override def connectionUrl: String = s"jdbc:spark://$host:$port"
+    override def connectionUrl: String = s"jdbc:databricks://$host:$port"
 
     override def doobieCommitStrategy: Strategy   = Strategy.void
     override def doobieNoCommitStrategy: Strategy = Strategy.void
