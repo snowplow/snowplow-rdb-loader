@@ -41,8 +41,12 @@
     "transformedStage": "snowplow_stage",
     # A stage name where the data for monitoring.folders is stored. Must be provided iff monitoring.folders is configured
     "folderMonitoringStage": "snowplow_folders_stage"
-    # a table copy statement will skip an input file when the number of errors in it exceeds the specified number
-    "maxError": 10
+    # Optional, the default value is "CONTINUE".
+    # Specifies the strategy when some error occurred during load operation.
+    # Possible values are CONTINUE, ABORT_STATEMENT.
+    # Detailed information can be found from the following link:
+    # https://docs.snowflake.com/en/sql-reference/sql/copy-into-table.html#copy-options-copyoptions
+    "onError": "ABORT_STATEMENT"
     # An optional host name that will take a priority over automatically derived
     "jdbcHost": "acme.eu-central-1.snowflake.com"
   },

@@ -30,7 +30,7 @@ class ConfigSpec extends Specification {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.snowflake.password"))))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
-        .copy(maxError = Some(10))
+        .copy(onError = StorageTarget.Snowflake.AbortStatement)
         .copy(folderMonitoringStage = Some("snowplow_folders_stage"))
       val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
       val expected = Config(

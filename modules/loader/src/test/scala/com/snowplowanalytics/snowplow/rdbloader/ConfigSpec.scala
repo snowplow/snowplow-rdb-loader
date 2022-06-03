@@ -67,7 +67,7 @@ object ConfigSpec {
     "snowplow_stage",
     "Snowplow_OSS",
     None,
-    None,
+    StorageTarget.Snowflake.Continue,
     None
   )
   val exampleSchedules: Config.Schedules = Config.Schedules(List(

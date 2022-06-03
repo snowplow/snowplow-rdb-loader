@@ -48,7 +48,7 @@ object Snowflake {
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, schema, stage, _, monitoringStage, _, _) =>
+      case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, schema, stage, _, monitoringStage, onError, _) =>
         val result = new Target {
           def updateTable(migration: Migration): Block = {
             val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
@@ -123,10 +123,12 @@ object Snowflake {
                 val frPath = Fragment.const0(s"@$schema.$stage/${path.folderName}/output=good/")
                 val frCopy = Fragment.const0(s"$schema.${EventsTable.MainName}($columnsForCopy)")
                 val frSelectColumns = Fragment.const0(columnsForSelect)
+                val frOnError = Fragment.const0(s"ON_ERROR = ${onError.asJson.noSpaces}")
                 sql"""|COPY INTO $frCopy
                       |FROM (
                       |  SELECT $frSelectColumns FROM $frPath
-                      |)""".stripMargin
+                      |)
+                      |$frOnError""".stripMargin
               }
               case Statement.ShreddedCopy(_, _) =>
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
