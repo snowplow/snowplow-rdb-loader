@@ -20,14 +20,14 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 /** Set of common functions to control DB entities */
 object Control {
   def renameTable[F[_]: Functor: DAO](from: String, to: String): F[Unit] =
-    DAO[F].executeUpdate(Statement.RenameTable(from, to)).void
+    DAO[F].executeUpdate(Statement.RenameTable(from, to), DAO.Purpose.NonLoading).void
 
   def tableExists[F[_]: DAO](tableName: String): F[Boolean] =
     DAO[F].executeQuery[Boolean](Statement.TableExists(tableName))
 
   def getColumns[F[_]: Monad: DAO](tableName: String): F[List[String]] =
     for {
-      _       <- DAO[F].executeUpdate(Statement.SetSchema)
+      _       <- DAO[F].executeUpdate(Statement.SetSchema, DAO.Purpose.NonLoading)
       columns <- DAO[F].executeQueryList[String](Statement.GetColumns(tableName))
     } yield columns
 }

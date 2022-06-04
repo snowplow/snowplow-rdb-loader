@@ -28,7 +28,7 @@ import io.sentry.{SentryClient, Sentry, SentryOptions}
 
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config}
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
@@ -44,7 +44,8 @@ class Environment[F[_]](cache: Cache[F],
                         aws: AWS[F],
                         transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
-                        target: Target) {
+                        target: Target,
+                        timeouts: Config.Timeouts) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -52,7 +53,7 @@ class Environment[F[_]](cache: Cache[F],
   implicit val awsF: AWS[F] = aws
   implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
-  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target)
+  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
 
   def control: Control[F] =
@@ -85,7 +86,7 @@ object Environment {
 
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {

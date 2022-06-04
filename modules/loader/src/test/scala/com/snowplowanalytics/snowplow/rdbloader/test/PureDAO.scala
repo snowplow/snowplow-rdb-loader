@@ -74,7 +74,7 @@ object PureDAO {
   val init: PureDAO = custom(getResult)
 
   def interpreter(results: PureDAO, tgt: Target = DummyTarget): DAO[Pure] = new DAO[Pure] {
-    def executeUpdate(sql: Statement): Pure[Int] =
+    def executeUpdate(sql: Statement, purpose: DAO.Purpose): Pure[Int] =
       results.executeUpdate(sql)
 
     def executeQuery[A](query: Statement)(implicit A: Read[A]): Pure[A] =
@@ -85,9 +85,6 @@ object PureDAO {
 
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): Pure[Option[A]] =
       results.executeQuery.asInstanceOf[Statement => Pure[Option[A]]](query)
-
-    def rollback: Pure[Unit] =
-      Pure.modify(_.log(PureTransaction.Rollback))
 
     def target: Target = tgt
   }

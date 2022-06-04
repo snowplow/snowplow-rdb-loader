@@ -43,9 +43,6 @@ object Statement {
   }
 
   // Common
-  case object Begin extends Statement
-  case object Commit extends Statement
-  case object Abort extends Statement
   case object Select1 extends Statement
   case object ReadyCheck extends Statement
 
