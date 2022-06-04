@@ -38,7 +38,7 @@ object TargetCheck {
     val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
     val fa: F[Unit] = target match {
       case _: StorageTarget.Snowflake =>
-        Transaction[F, C].run(DAO[C].executeUpdate(Statement.ReadyCheck)).void
+        Transaction[F, C].run(DAO[C].executeUpdate(Statement.ReadyCheck, DAO.Purpose.NonLoading)).void
       case _: StorageTarget.Databricks | _: StorageTarget.Redshift =>
         Transaction[F, C].run(DAO[C].executeQuery[Int](Statement.ReadyCheck)).void
     }

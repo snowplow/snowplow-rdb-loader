@@ -12,9 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import doobie.{Read, ConnectionIO}
-import doobie.free.connection
+import doobie.{Read, ConnectionIO, HPS, HRS}
 
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
 
 /**
@@ -30,7 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
 trait DAO[C[_]] {
 
   /** Execute single SQL statement */
-  def executeUpdate(sql: Statement): C[Int]
+  def executeUpdate(sql: Statement, purpose: DAO.Purpose): C[Int]
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: Statement)(implicit A: Read[A]): C[A]
@@ -41,34 +41,47 @@ trait DAO[C[_]] {
   /** Execute query and parse results into 0 or one `A` */
   def executeQueryOption[A](query: Statement)(implicit A: Read[A]): C[Option[A]]
 
-  /** Rollback the transaction */
-  def rollback: C[Unit]
-
   /** Get the DB interpreter */
   def target: Target
 }
 
 object DAO {
 
+  sealed trait Purpose
+  object Purpose {
+    case object Loading extends Purpose
+    case object NonLoading extends Purpose
+  }
+
   def apply[F[_]](implicit ev: DAO[F]): DAO[F] = ev
 
-  def connectionIO(dbTarget: Target): DAO[ConnectionIO] = new DAO[ConnectionIO] {
+  def connectionIO(dbTarget: Target, timeouts: Config.Timeouts): DAO[ConnectionIO] = new DAO[ConnectionIO] {
     /** Execute single SQL statement (against target in interpreter) */
-    def executeUpdate(sql: Statement): ConnectionIO[Int] =
-      dbTarget.toFragment(sql).update.run
+    def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] = {
+      val timeout = purpose match {
+        case Purpose.Loading => timeouts.loading
+        case Purpose.NonLoading => timeouts.nonLoading
+      }
+      dbTarget.toFragment(sql).execWith {
+        HPS.setQueryTimeout(timeout.toSeconds.toInt).flatMap(_ => HPS.executeUpdate)
+      }
+    }
 
     /** Execute query and parse results into `A` */
     def executeQuery[A](query: Statement)(implicit A: Read[A]): ConnectionIO[A] =
-      dbTarget.toFragment(query).query[A].unique
+      dbTarget.toFragment(query).execWith {
+        HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.getUnique))
+      }
 
     def executeQueryList[A](query: Statement)(implicit A: Read[A]): ConnectionIO[List[A]] =
-      dbTarget.toFragment(query).query[A].to[List]
+      dbTarget.toFragment(query).execWith {
+        HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.build))
+      }
 
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): ConnectionIO[Option[A]] =
-      dbTarget.toFragment(query).query[A].option
-
-    def rollback: ConnectionIO[Unit] =
-      connection.rollback
+      dbTarget.toFragment(query).execWith {
+        HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.getOption))
+      }
 
     def target: Target =
       dbTarget

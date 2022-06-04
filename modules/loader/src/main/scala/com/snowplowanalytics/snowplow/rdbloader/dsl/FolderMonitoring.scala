@@ -144,9 +144,9 @@ object FolderMonitoring {
                                                                                            readyCheck: Config.Retries,
                                                                                            storageTarget: StorageTarget): F[List[AlertPayload]] = {
     val getBatches = for {
-      _                 <- DAO[C].executeUpdate(DropAlertingTempTable)
-      _                 <- DAO[C].executeUpdate(CreateAlertingTempTable)
-      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom))
+      _                 <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
+      _                 <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
+      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom), DAO.Purpose.NonLoading)
       onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 

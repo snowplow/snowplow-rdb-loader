@@ -12,7 +12,7 @@
  */
 
 lazy val root = project.in(file("."))
-  .aggregate(common, aws, loader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
+  .aggregate(common, aws, loader, databricksLoader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
 
 lazy val aws = project
   .in(file("modules/aws"))

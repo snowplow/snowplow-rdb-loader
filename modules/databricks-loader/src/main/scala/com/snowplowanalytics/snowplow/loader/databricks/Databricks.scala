@@ -81,9 +81,6 @@ object Databricks {
 
           def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Begin   => sql"BEGIN"
-              case Statement.Commit  => sql"COMMIT"
-              case Statement.Abort   => sql"ABORT"
               case Statement.Select1 => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
 

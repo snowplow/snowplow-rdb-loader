@@ -134,7 +134,7 @@ object Load {
       _ <- DAO[F].target.getLoadStatements(discovery).traverse_ { statement =>
         Logging[F].info(statement.title) *>
           setLoading(statement.table) *>
-          DAO[F].executeUpdate(statement).void
+          DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
       }
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
     } yield ()

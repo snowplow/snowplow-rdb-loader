@@ -93,9 +93,6 @@ object Snowflake {
 
           def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Begin => sql"BEGIN"
-              case Statement.Commit => sql"COMMIT"
-              case Statement.Abort => sql"ABORT"
               case Statement.Select1 => sql"SELECT 1"     // OK
               case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED"
 

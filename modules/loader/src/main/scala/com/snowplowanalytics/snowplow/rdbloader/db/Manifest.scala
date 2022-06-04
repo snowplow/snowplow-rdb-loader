@@ -63,7 +63,7 @@ object Manifest {
         _ <- status match {
           case InitStatus.Migrated | InitStatus.Created =>
             target match {
-              case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"))
+              case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"), DAO.Purpose.NonLoading)
               case _           => Monad[F].unit
             }
           case _ =>
@@ -73,14 +73,14 @@ object Manifest {
   }
 
   def add[F[_]: DAO: Functor](item: LoaderMessage.ManifestItem): F[Unit] =
-    DAO[F].executeUpdate(Statement.ManifestAdd(item)).void
+    DAO[F].executeUpdate(Statement.ManifestAdd(item), DAO.Purpose.NonLoading).void
 
   def get[F[_]: DAO](base: S3.Folder): F[Option[Entry]] =
     DAO[F].executeQueryOption[Entry](Statement.ManifestGet(base))(Entry.entryRead)
 
   /** Create manifest table */
   def create[F[_]: DAO: Functor]: F[Unit] =
-    DAO[F].executeUpdate(DAO[F].target.getManifest).void
+    DAO[F].executeUpdate(DAO[F].target.getManifest, DAO.Purpose.NonLoading).void
 
 
   case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)

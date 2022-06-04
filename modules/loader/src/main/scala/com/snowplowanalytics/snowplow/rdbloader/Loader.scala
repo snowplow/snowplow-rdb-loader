@@ -155,7 +155,7 @@ object Loader {
           _ <- if (columns.map(_.toLowerCase).contains(AtomicColumns.ColumnsWithDefault.LoadTstamp))
             Logging[F].info("load_tstamp column already exists")
           else
-            DAO[F].executeUpdate(Statement.AddLoadTstampColumn).void *>
+            DAO[F].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
               Logging[F].info("load_tstamp column is added successfully")
         } yield ()
     }
