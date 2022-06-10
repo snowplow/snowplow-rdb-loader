@@ -54,7 +54,7 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
 
 object WiderowJsonProcessingSpec {
 
-  private val appConfig = (outputPath: Path) => {
+  val appConfig = (outputPath: Path) => {
     s"""|{
         | "input": {
         |   "type": "file"
@@ -78,7 +78,7 @@ object WiderowJsonProcessingSpec {
         |}""".stripMargin
   }
 
-  private val igluConfig =
+  val igluConfig =
     """|{
        |  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
        |  "data": {

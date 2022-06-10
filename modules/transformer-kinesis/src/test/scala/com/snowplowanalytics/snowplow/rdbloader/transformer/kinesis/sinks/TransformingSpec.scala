@@ -30,7 +30,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Transformer}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, ParsedF, file => FileSource}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, ParsedC, file => FileSource}
 import org.specs2.mutable.Specification
 
 class TransformingSpec extends Specification {
@@ -143,7 +143,7 @@ object TransformingSpec {
     (transformed.flatMap(_.getGood), transformed.flatMap(_.getBad))
   }
 
-  def parsedEventStream(resourcePath: String): Stream[IO, ParsedF[IO, Unit]] =
+  def parsedEventStream(resourcePath: String): Stream[IO, ParsedC[Unit]] =
     fileStream(resourcePath)
       .map(FileSource.parse)
       .map(p => (p, ()))

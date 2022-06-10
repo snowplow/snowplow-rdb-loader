@@ -17,14 +17,14 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 import cats.effect.{ContextShift, IO}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.TransformingSpec.testBlocker
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{ParsedF, file => FileSource}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{ParsedC, file => FileSource}
 import fs2.Stream
 
 
 object InputEventsProvider {
 
   def eventStream(inputEventsPath: String)
-                 (implicit cs: ContextShift[IO]): Stream[IO, ParsedF[IO, Unit]] = {
+                 (implicit cs: ContextShift[IO]): Stream[IO, ParsedC[Unit]] = {
     FileUtils.resourceFileStream(testBlocker, inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines

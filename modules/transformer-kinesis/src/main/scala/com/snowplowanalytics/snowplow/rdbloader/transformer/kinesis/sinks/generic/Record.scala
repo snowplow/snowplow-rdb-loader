@@ -32,7 +32,10 @@ object Record {
 
 /** Actual windowed datum */
 final case class Data[W, A, S](window: W, item: A, state: S) extends Record[W, A, S]
-/** It belongs to `window`, and knows how to checkpoint all records in the window */
+
+/** Signifies the preceding window is now shut. It should be emitted immediately upon shutting the
+ *  window; not only when the next record becomes available.
+ *  */
 case object EndWindow extends Record[Nothing, Nothing, Nothing]
 
   /** Convert regular stream to a windowed stream */

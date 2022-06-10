@@ -21,7 +21,7 @@ object file {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def read[F[_]: Concurrent: ContextShift](blocker: Blocker, dirPath: String): Stream[F, ParsedF[F, Unit]] =
+  def read[F[_]: Concurrent: ContextShift](blocker: Blocker, dirPath: String): Stream[F, ParsedC[Unit]] =
     directoryStream(blocker, Paths.get(dirPath))
       .flatMap { filePath =>
         Stream.eval_(logger.debug(s"Reading $filePath")) ++
