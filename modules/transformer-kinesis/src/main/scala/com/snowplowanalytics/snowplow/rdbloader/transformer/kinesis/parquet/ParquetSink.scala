@@ -18,8 +18,8 @@ import cats.Functor
 import cats.data.EitherT
 import cats.effect.{Blocker, Concurrent, ContextShift, Timer}
 import cats.implicits._
-import com.github.mjakubowski84.parquet4s.{ParquetWriter, RowParquetRecord}
 import com.github.mjakubowski84.parquet4s.parquet.viaParquet
+import com.github.mjakubowski84.parquet4s.{ParquetWriter, RowParquetRecord}
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -35,7 +35,6 @@ import fs2.{Pipe, Stream}
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.parquet.schema.MessageType
 
-import java.nio.file.Path
 import java.net.URI
 
 object ParquetSink {
@@ -47,7 +46,11 @@ object ParquetSink {
                                                            (path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
     transformedData =>
 
-      val targetPath = Path.of(uri.toString, window.getDir, path.value)
+      /**
+       * As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
+       * Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
+       */
+      val targetPath = s"${uri.toString}/${window.getDir}/${path.value}"
       val schemaCreation = createSchemaFromTypes(resources, window).value
 
       Stream.eval(schemaCreation).flatMap {
@@ -85,7 +88,7 @@ object ParquetSink {
 
   private def writeAsParquet[F[_] : Concurrent : ContextShift : Timer](blocker: Blocker,
                                                                        compression: Compression,
-                                                                       path: Path,
+                                                                       path: String,
                                                                        schema: MessageType) = {
     implicit val targetSchema = schema
 
@@ -97,7 +100,7 @@ object ParquetSink {
     viaParquet[F, List[FieldWithValue]]
       .preWriteTransformation(buildParquetRecord)
       .options(ParquetWriter.Options(compressionCodecName = compressionCodecName))
-      .write(blocker, path.toString)
+      .write(blocker, path)
   }
 
   private def buildParquetRecord(fieldsWithValues: List[FieldWithValue]) = Stream.emit {

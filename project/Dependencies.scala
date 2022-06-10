@@ -120,6 +120,7 @@ object Dependencies {
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.jacksonModule
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
   val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
+  val hadoopAws         = "org.apache.hadoop"                % "hadoop-aws"                % V.hadoopClient % Runtime
   val parquetFormat     = "org.apache.parquet"               % "parquet-format-structures" % V.parquetFormat
 
   // Java (Loader)
@@ -253,6 +254,7 @@ object Dependencies {
     circeOptics,
     parquet4s,
     hadoop,
+    hadoopAws,
     parquetFormat,
     scalaTracker,
     scalaTrackerEmit,
