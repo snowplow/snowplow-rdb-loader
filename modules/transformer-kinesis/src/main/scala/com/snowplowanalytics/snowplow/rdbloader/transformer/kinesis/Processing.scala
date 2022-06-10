@@ -43,7 +43,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.parquet.Parq
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.SinkPath.PathType
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.generic.{Partitioned, Record}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, Parsed, ParsedF}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, Parsed, ParsedC}
 
 
 object Processing {
@@ -69,7 +69,7 @@ object Processing {
         runFromSource(source, resources, config)
     }
 
-  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](source: Stream[F, ParsedF[F, C]],
+  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](source: Stream[F, ParsedC[C]],
                                                                                                          resources: Resources[F],
                                                                                                          config: TransformerConfig.Stream): Stream[F, Unit] = {
 
@@ -97,13 +97,18 @@ object Processing {
         )
     }
 
-    source
-      .through(transform(transformer, config.validations))
-      .through(incrementMetrics(resources.metrics))
-      .through(handleTransformResult(transformer))
-      .through(windowing)
-      .through(getSink(resources, config.output, config.formats))
-      .evalMap(onComplete)
+    val transformedSource: Stream[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]]] =
+      source
+        .through(transform(transformer, config.validations))
+        .through(incrementMetrics(resources.metrics))
+        .through(handleTransformResult(transformer))
+        .through(windowing)
+
+    val sink: Pipe[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]], Unit] =
+      _.through(getSink(resources, config.output, config.formats))
+       .evalMap(onComplete)
+
+    Shutdown.run(transformedSource, sink)
       .concurrently(resources.metrics.report)
       .concurrently(resources.telemetry.report)
   }
@@ -174,7 +179,7 @@ object Processing {
 
   /** Chunk-wise transforms incoming events into either a BadRow or a list of transformed outputs */
   def transform[F[_]: Concurrent: Parallel, C](transformer: Transformer[F], 
-                                               validations: TransformerConfig.Validations): Pipe[F, ParsedF[F, C], TransformationResults[C]] =
+                                               validations: TransformerConfig.Validations): Pipe[F, ParsedC[C], TransformationResults[C]] =
     _.chunks
       .flatMap { chunk =>
         chunk.last match {
