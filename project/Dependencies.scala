@@ -121,6 +121,8 @@ object Dependencies {
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
   val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
   val parquetFormat     = "org.apache.parquet"               % "parquet-format-structures" % V.parquetFormat
+  val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
+    .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
@@ -253,6 +255,7 @@ object Dependencies {
     circeOptics,
     parquet4s,
     hadoop,
+    hadoopAws,
     parquetFormat,
     scalaTracker,
     scalaTrackerEmit,
