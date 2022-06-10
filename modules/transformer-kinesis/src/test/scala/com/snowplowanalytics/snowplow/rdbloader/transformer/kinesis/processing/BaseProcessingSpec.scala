@@ -20,7 +20,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils.{createTempDirectory, directoryStream}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ProcessingOutput, TransformerConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedF
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedC
 import fs2.Stream
 import org.specs2.mutable.Specification
 
@@ -44,7 +44,7 @@ trait BaseProcessingSpec extends Specification {
   val blocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
   protected val temporaryDirectory = createTempDirectory(blocker)
 
-  protected def process(input: Stream[IO, ParsedF[IO, Unit]],
+  protected def process(input: Stream[IO, ParsedC[Unit]],
                         config: TransformerConfig): IO[ProcessingOutput] = {
       val args = prepareAppArgs(config)
 
@@ -87,7 +87,7 @@ trait BaseProcessingSpec extends Specification {
     FileUtils.readLines(blocker, resource)
   }
 
-  private def prepareAppArgs(config: TransformerConfig) = {
+  protected def prepareAppArgs(config: TransformerConfig) = {
     val encoder = Base64.getUrlEncoder
 
     List(

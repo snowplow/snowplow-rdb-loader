@@ -18,7 +18,7 @@ import cats.effect.concurrent.Ref
 import cats.effect.{Clock, ContextShift, IO, Sync, Timer}
 import com.snowplowanalytics.aws.AWSQueue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedF
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedC
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Resources}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
 import fs2.Stream
@@ -31,7 +31,7 @@ object TestApplication {
   def run(args: Seq[String],
           completionsRef: Ref[IO, Vector[String]],
           checkpointRef: Ref[IO, Int],
-          sourceRecords: Stream[IO, ParsedF[IO, Unit]])
+          sourceRecords: Stream[IO, ParsedC[Unit]])
          (implicit CS: ContextShift[IO], T: Timer[IO], C: Clock[IO]): IO[Unit] =
     for {
       parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value

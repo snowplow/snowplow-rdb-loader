@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.A
 
 object Kinesis {
 
-  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedF[F, KinesisCheckpointer[F]]] = {
+  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedC[KinesisCheckpointer[F]]] = {
     val settings = Either.catchOnly[IllegalArgumentException](AWSRegion.of(region.name)) match {
       case Right(region) =>
         Sync[F].pure(KinesisConsumerSettings(streamName, appName, region, initialPositionInStream = fromConfig(position)))
