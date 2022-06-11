@@ -188,6 +188,10 @@ object Snowflake {
                 ddl
               case Statement.AlterTable(ddl) =>
                 ddl
+              case Statement.TestQuery(eventId) =>
+                sql"""SELECT event_id FROM ${Fragment.const0(EventsTable.withSchema(schema))} WHERE event_id = $eventId"""
+              case Statement.DeleteEvent(eventId) =>
+                sql"""DELETE FROM ${Fragment.const0(EventsTable.withSchema(schema))} WHERE event_id = $eventId"""
             }
         }
 

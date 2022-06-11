@@ -82,4 +82,8 @@ object Statement {
   case class CreateTable(ddl: Fragment) extends Statement
   case class AlterTable(ddl: Fragment) extends Statement
   case class DdlFile(ddl: Fragment) extends Statement
+
+  // Connection test statements
+  case class TestQuery(eventId: String) extends Statement
+  case class DeleteEvent(eventId: String) extends Statement
 }

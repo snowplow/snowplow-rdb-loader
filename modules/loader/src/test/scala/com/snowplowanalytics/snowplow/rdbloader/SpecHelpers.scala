@@ -20,7 +20,7 @@ import doobie.util.update.Update0
 import io.circe.jawn.parse
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget, ConnectionTestConfig}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 
 object SpecHelpers {
@@ -42,7 +42,8 @@ object SpecHelpers {
     ConfigSpec.exampleRetries,
     ConfigSpec.exampleReadyCheck
   )
-  val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
+  val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson, None)
+  val validConnectionTestConfig: ConnectionTestConfig = ConnectionTestConfig(S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"))
 
   /**
     * Pretty prints a Scala value similar to its source represention.

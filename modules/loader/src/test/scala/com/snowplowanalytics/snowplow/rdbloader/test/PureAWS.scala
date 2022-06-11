@@ -21,6 +21,9 @@ object PureAWS {
     def sinkS3(path: Key, overwrite: Boolean): Pipe[Pure, Byte, Unit] =
       in => in.map(_ => ())
 
+    def remove(path: Key): Pure[Unit] =
+      Pure.pure(())
+
     def readKey(path: Key): Pure[Either[Throwable, String]] =
       Pure.pure(Left(new NotImplementedError("Not used in tests")))
 

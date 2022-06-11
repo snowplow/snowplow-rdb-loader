@@ -37,9 +37,14 @@ object Runner {
         Environment.initialize[F](parsed, statements).use { env: Environment[F] =>
           import env._
 
-          Logging[F]
-            .info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${parsed.config.messageQueue}") *>
-            Loader.run[F, ConnectionIO](parsed.config, control).as(ExitCode.Success)
+          parsed.connectionTest match {
+            case None =>
+              Logging[F]
+                .info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${parsed.config.messageQueue}") *>
+                Loader.run[F, ConnectionIO](parsed.config, control).as(ExitCode.Success)
+            case Some(connectionTestConf) =>
+              ConnectionTest.run(parsed.config, connectionTestConf, env.blocker)
+          }
         }
       }
       exitCode <- EitherT.liftF[F, String, ExitCode](application)

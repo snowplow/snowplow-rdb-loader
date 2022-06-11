@@ -45,7 +45,8 @@ class Environment[F[_]](cache: Cache[F],
                         transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
                         target: Target,
-                        timeouts: Config.Timeouts) {
+                        timeouts: Config.Timeouts,
+                        b: Blocker) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -55,6 +56,7 @@ class Environment[F[_]](cache: Cache[F],
 
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
+  val blocker: Blocker = b
 
   def control: Control[F] =
     Control(state)
@@ -86,7 +88,7 @@ object Environment {
 
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts, blocker)
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {

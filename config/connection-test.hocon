@@ -1,0 +1,4 @@
+{
+  # Path to transformer archive (must be same as Transformer's `output.path`)
+  "transformerOutput": "s3://acme-snowplow/loader/transformed/"
+}

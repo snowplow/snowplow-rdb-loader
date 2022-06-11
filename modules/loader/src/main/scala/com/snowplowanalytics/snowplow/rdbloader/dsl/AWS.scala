@@ -44,6 +44,8 @@ trait AWS[F[_]] { self =>
 
   def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
 
+  def remove(path: S3.Key): F[Unit]
+
   def readKey(path: S3.Key): F[Either[Throwable, String]]
 
   /** Check if S3 key exist */
@@ -97,6 +99,11 @@ object AWS {
     def sinkS3(path: S3.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
       val (bucket, s3Key) = S3.splitS3Key(path)
       client.put(S3Path(bucket, s3Key, None), overwrite)
+    }
+
+    def remove(path: S3.Key): F[Unit] = {
+      val (bucket, s3Key) = S3.splitS3Key(path)
+      client.remove(S3Path(bucket, s3Key, None))
     }
 
     /**

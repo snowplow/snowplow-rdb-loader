@@ -28,13 +28,19 @@ class CliConfigSpec extends Specification {
     )
   )
 
+  val connectionTestConfigB64 = new String(
+    Base64.getEncoder.encode(
+      ConfigSpec.readResource("/connection-test.hocon").getBytes
+    )
+  )
+
   "parse" should {
     "parse valid configuration" in {
       val cli = Array(
         "--config", configB64,
         "--iglu-config", resolverConfig)
 
-      val expected = CliConfig(validConfig, false, resolverJson)
+      val expected = CliConfig(validConfig, false, resolverJson, None)
       val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
       result must beRight(expected)
     }
@@ -45,7 +51,18 @@ class CliConfigSpec extends Specification {
         "--iglu-config", resolverConfig,
         "--dry-run")
 
-      val expected = CliConfig(validConfig, true, resolverJson)
+      val expected = CliConfig(validConfig, true, resolverJson, None)
+      val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
+      result must beRight(expected)
+    }
+
+    "parse CLI options with connection-test" in {
+      val cli = Array(
+        "--config", configB64,
+        "--iglu-config", resolverConfig,
+        "--connection-test", connectionTestConfigB64)
+
+      val expected = CliConfig(validConfig, false, resolverJson, Some(validConnectionTestConfig))
       val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
       result must beRight(expected)
     }

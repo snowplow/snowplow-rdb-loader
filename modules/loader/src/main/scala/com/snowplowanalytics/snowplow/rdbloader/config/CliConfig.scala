@@ -32,11 +32,11 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
  */
-case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json)
+case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json, connectionTest: Option[ConnectionTestConfig])
 
 object CliConfig {
 
-  case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json)
+  case class RawCliConfig(config: String, dryRun: Boolean, resolverConfig: Json, connectionTest: Option[String])
 
   val config = Opts.option[String]("config",
     "base64-encoded HOCON configuration", "c", "config.hocon")
@@ -47,8 +47,13 @@ object CliConfig {
     .mapValidated(ConfigUtils.validateResolverJson)
   val dryRun = Opts.flag("dry-run", "do not perform loading, just print SQL statements").orFalse
 
-  val cliConfig = (config, dryRun, igluConfig).mapN {
-    case (cfg, dry, iglu) => RawCliConfig(cfg, dry, iglu)
+  val connectionTestConfig = Opts.option[String]("connection-test",
+    "base64-encoded HOCON configuration for database connection test")
+    .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel)
+    .orNone
+
+  val cliConfig = (config, dryRun, igluConfig, connectionTestConfig).mapN {
+    case (cfg, dry, iglu, test) => RawCliConfig(cfg, dry, iglu, test)
   }
 
   val parser = Command[RawCliConfig](BuildInfo.name, BuildInfo.version)(cliConfig)
@@ -69,5 +74,8 @@ object CliConfig {
     for {
       raw  <- EitherT.fromEither[F](parser.parse(argv).leftMap(_.show))
       conf <- Config.fromString[F](raw.config)
-    } yield CliConfig(conf, raw.dryRun, raw.resolverConfig)
+      connectionTest <- raw.connectionTest
+        .map(s => ConnectionTestConfig.fromString[F](s).map(c => Some(c)))
+        .getOrElse(EitherT.pure[F, String](None))
+    } yield CliConfig(conf, raw.dryRun, raw.resolverConfig, connectionTest)
 }

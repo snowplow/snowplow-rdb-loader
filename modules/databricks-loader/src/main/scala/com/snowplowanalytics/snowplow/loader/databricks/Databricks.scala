@@ -160,6 +160,10 @@ object Databricks {
                 ddl
               case Statement.AppendTransient =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
+              case Statement.TestQuery(eventId) =>
+                sql"""SELECT event_id FROM ${Fragment.const(qualifiedTableName(tgt, EventsTable.MainName))} WHERE event_id = $eventId"""
+              case Statement.DeleteEvent(eventId) =>
+                sql"""DELETE FROM ${Fragment.const(qualifiedTableName(tgt, EventsTable.MainName))} WHERE event_id = $eventId"""
             }
         }
         Right(result)
