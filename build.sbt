@@ -42,7 +42,7 @@ lazy val redshiftLoader = project
   .settings(BuildSettings.redshiftBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoaderDistroless = project
@@ -51,7 +51,7 @@ lazy val redshiftLoaderDistroless = project
   .settings(BuildSettings.redshiftDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val snowflakeLoader = project
@@ -59,7 +59,7 @@ lazy val snowflakeLoader = project
   .settings(BuildSettings.snowflakeBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val snowflakeLoaderDistroless = project
@@ -68,14 +68,14 @@ lazy val snowflakeLoaderDistroless = project
   .settings(BuildSettings.snowflakeDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val databricksLoader = project
   .in(file("modules/databricks-loader"))
   .settings(BuildSettings.databricksBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val databricksLoaderDistroless = project
@@ -83,7 +83,7 @@ lazy val databricksLoaderDistroless = project
   .settings(sourceDirectory := (databricksLoader / sourceDirectory).value)
   .settings(BuildSettings.databricksDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws, loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerBatch = project

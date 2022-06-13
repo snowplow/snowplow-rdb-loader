@@ -54,6 +54,7 @@ object Dependencies {
     val aws              = "1.12.161"
     val aws2             = "2.17.59"
     val jSch             = "0.1.55"
+    val nettyTcNative    = "2.0.52.Final"
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
     val commons          = "2.7"    // Fix CVE
@@ -124,12 +125,13 @@ object Dependencies {
   val parquetFormat     = "org.apache.parquet"               % "parquet-format-structures" % V.parquetFormat
 
   // Java (Loader)
-  val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
-  val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshiftJdbc
-  val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
-  val sentry            = "io.sentry"             % "sentry"                    % V.sentry
-  val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
-  val enumeratum        = "com.beachape"          %% "enumeratum"               % V.enumeratum
+  val slf4j             = "org.slf4j"            % "slf4j-simple"                    % V.slf4j
+  val redshift          = "com.amazon.redshift"  % "redshift-jdbc42-no-awssdk"       % V.redshiftJdbc
+  val jSch              = "com.jcraft"           % "jsch"                            % V.jSch
+  val nettyTcNative     = "io.netty"             % "netty-tcnative-boringssl-static" % V.nettyTcNative % Runtime
+  val sentry            = "io.sentry"            % "sentry"                          % V.sentry
+  val snowflakeJdbc     = "net.snowflake"        % "snowflake-jdbc"                  % V.snowflakeJdbc
+  val enumeratum        = "com.beachape"         %% "enumeratum"                     % V.enumeratum
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
@@ -190,6 +192,7 @@ object Dependencies {
     ssm,
     dynamodb,
     jSch,
+    nettyTcNative,
     sentry,
     scalaTracker,
     scalaTrackerEmit,
