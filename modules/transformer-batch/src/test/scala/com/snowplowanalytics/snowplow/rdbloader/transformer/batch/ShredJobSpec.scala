@@ -54,7 +54,7 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, ShredderCliConfig, Region}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 
 // Specs2
@@ -243,7 +243,7 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: TransformerConfig.Batch, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Option[WideRow]) = {
+  private def storageConfig(shredder: Config, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Option[WideRow]) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
@@ -388,19 +388,19 @@ object ShredJobSpec {
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
-  def getShredder(events: Events, dirs: OutputDirs): TransformerConfig.Batch = {
+  def getShredder(events: Events, dirs: OutputDirs): Config = {
     val input = events match {
       case r: ResourceFile => r.toUri
       case l: Lines => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
     }
-    TransformerConfig.Batch(
+    Config(
       input,
       TransformerConfig.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1")),
       TransformerConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
-      TransformerConfig.MonitoringBatch(None),
-      TransformerConfig.Deduplication(TransformerConfig.Deduplication.Synthetic.Broadcast(1)),
-      TransformerConfig.RunInterval(None, None, None),
+      Config.Monitoring(None),
+      Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1)),
+      Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None),
       TransformerConfig.Validations(None)
     )
@@ -440,7 +440,7 @@ trait ShredJobSpec extends SparkSpec {
       (Array.empty[String], None)
     }
 
-    ShredderCliConfig.Batch.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
+    CliConfig.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)

@@ -58,12 +58,12 @@ object Processing {
   type SerializationResults[C] = (List[(SinkPath, Transformed.Data)], State[C])
 
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel](resources: Resources[F],
-                                                                        config: TransformerConfig.Stream): Stream[F, Unit] =
+                                                                        config: Config): Stream[F, Unit] =
     config.input match {
-      case TransformerConfig.StreamInput.Kinesis(appName, streamName, region, position) =>
+      case Config.StreamInput.Kinesis(appName, streamName, region, position) =>
         val source = sources.Kinesis.read[F](appName, streamName, region, position)
         runFromSource(source, resources, config)
-      case TransformerConfig.StreamInput.File(dir) =>
+      case Config.StreamInput.File(dir) =>
         val source = sources.file.read[F](resources.blocker, dir)
         implicit val checkpointer = Checkpointer.noOpCheckpointer[F, Unit]
         runFromSource(source, resources, config)
@@ -71,7 +71,7 @@ object Processing {
 
   def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](source: Stream[F, ParsedC[C]],
                                                                                                          resources: Resources[F],
-                                                                                                         config: TransformerConfig.Stream): Stream[F, Unit] = {
+                                                                                                         config: Config): Stream[F, Unit] = {
 
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>

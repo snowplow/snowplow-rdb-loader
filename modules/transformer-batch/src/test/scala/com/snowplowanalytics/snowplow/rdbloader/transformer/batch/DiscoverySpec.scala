@@ -22,7 +22,7 @@ import scala.concurrent.duration._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.RunInterval
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.RunInterval
 
 import org.specs2.mutable.Specification
 

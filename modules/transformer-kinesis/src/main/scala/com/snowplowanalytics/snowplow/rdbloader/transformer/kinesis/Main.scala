@@ -18,8 +18,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import cats.effect.{IOApp, IO, ExitCode, Sync}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 object Main extends IOApp {
@@ -30,7 +28,7 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     for {
-      parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
+      parsed <- CliConfig.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
       res <- parsed match {
         case Right(cliConfig) =>
           Resources.mk[IO](

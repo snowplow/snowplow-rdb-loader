@@ -91,7 +91,7 @@ lazy val transformerBatch = project
   .settings(BuildSettings.transformerBatchBuildSettings)
   .settings(libraryDependencies ++= Dependencies.batchTransformerDependencies)
   .settings(excludeDependencies ++= Dependencies.exclusions)
-  .dependsOn(common)
+  .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 
 lazy val transformerKinesis = project
@@ -100,7 +100,7 @@ lazy val transformerKinesis = project
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
   .settings(excludeDependencies ++= Dependencies.transformerKinesisExclusions)
-  .dependsOn(common, aws)
+  .dependsOn(common % "compile->compile;test->test", aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesisDistroless = project

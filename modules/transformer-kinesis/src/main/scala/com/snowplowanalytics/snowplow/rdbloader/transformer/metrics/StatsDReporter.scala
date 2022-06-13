@@ -21,7 +21,7 @@ import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.MetricsReporters
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.MetricsReporters
 
 /**
  * Reports metrics to a StatsD server over UDP

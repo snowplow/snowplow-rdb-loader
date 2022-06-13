@@ -201,7 +201,7 @@ object BuildSettings {
   lazy val commonBuildSettings = {
     Seq(
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
-    ) ++ scoverageSettings ++ buildSettings ++ addExampleConfToTestCp
+    ) ++ scoverageSettings ++ buildSettings
   }
 
   lazy val loaderBuildSettings = {
@@ -249,7 +249,7 @@ object BuildSettings {
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
       buildInfoKeys := List(name, version, description),
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
-    ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
   lazy val transformerKinesisBuildSettings = {
@@ -258,7 +258,7 @@ object BuildSettings {
       Docker / packageName := "snowplow/transformer-kinesis",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
       buildInfoKeys := List(name, version, description),
-    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
   lazy val transformerKinesisDistrolessBuildSettings = transformerKinesisBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless

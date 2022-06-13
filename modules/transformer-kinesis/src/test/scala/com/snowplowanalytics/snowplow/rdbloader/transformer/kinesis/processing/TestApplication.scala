@@ -17,9 +17,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 import cats.effect.concurrent.Ref
 import cats.effect.{Clock, ContextShift, IO, Sync, Timer}
 import com.snowplowanalytics.aws.AWSQueue
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedC
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Resources}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{CliConfig, Processing, Resources}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
 import fs2.Stream
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -34,7 +33,7 @@ object TestApplication {
           sourceRecords: Stream[IO, ParsedC[Unit]])
          (implicit CS: ContextShift[IO], T: Timer[IO], C: Clock[IO]): IO[Unit] =
     for {
-      parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
+      parsed <- CliConfig.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
       implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
       res <- parsed match {
         case Right(cliConfig) =>

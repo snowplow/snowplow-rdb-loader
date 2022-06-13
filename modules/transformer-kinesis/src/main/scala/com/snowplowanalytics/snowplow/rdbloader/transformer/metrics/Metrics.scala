@@ -21,7 +21,7 @@ import fs2.Stream
 
 import scala.concurrent.duration.FiniteDuration
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.MetricsReporters
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.MetricsReporters
 
 trait Metrics[F[_]] {
 

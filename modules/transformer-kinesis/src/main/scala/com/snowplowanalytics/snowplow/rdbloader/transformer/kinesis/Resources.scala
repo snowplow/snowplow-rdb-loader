@@ -35,7 +35,6 @@ import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCach
 import com.snowplowanalytics.aws.AWSQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
@@ -61,7 +60,7 @@ object Resources {
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
-    config: TransformerConfig.Stream,
+    config: Config,
     executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
@@ -71,7 +70,7 @@ object Resources {
 
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
-    config: TransformerConfig.Stream,
+    config: Config,
     awsQueue: AWSQueue[F],
     executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =

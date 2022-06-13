@@ -19,9 +19,9 @@ import software.amazon.kinesis.common.InitialPositionInStream
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.InitPosition
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Application
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.InitPosition
 
 object Kinesis {
 
