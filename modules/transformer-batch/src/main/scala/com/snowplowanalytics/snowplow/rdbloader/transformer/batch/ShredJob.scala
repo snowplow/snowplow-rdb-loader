@@ -56,7 +56,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.Buil
  */
 class ShredJob[T](@transient val spark: SparkSession,
                   transformer: Transformer[T],
-                  config: TransformerConfig.Batch) extends Serializable {
+                  config: Config) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   /**
@@ -152,7 +152,7 @@ class ShredJob[T](@transient val spark: SparkSession,
 }
 
 class TypeAccumJob(@transient val spark: SparkSession,
-                   config: TransformerConfig.Batch) extends Serializable {
+                   config: Config) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   def run(folderName: String): List[TypesInfo.WideRow.Type] = {
@@ -172,7 +172,7 @@ class TypeAccumJob(@transient val spark: SparkSession,
       }.distinct().collect().toList
 
     config.deduplication.synthetic match {
-      case TransformerConfig.Deduplication.Synthetic.None => types
+      case Config.Deduplication.Synthetic.None => types
       // Include duplicate schema to types list if synthetic deduplication is enabled
       case _ => TypesInfo.WideRow.Type(Deduplication.DuplicateSchema, SnowplowEntity.Context) :: types
     }
@@ -188,7 +188,7 @@ object ShredJob {
     spark: SparkSession,
     igluConfig: Json,
     duplicateStorageConfig: Option[Json],
-    config: TransformerConfig.Batch
+    config: Config
   ): Unit = {
     val s3Client = Cloud.createS3Client(config.output.region)
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)

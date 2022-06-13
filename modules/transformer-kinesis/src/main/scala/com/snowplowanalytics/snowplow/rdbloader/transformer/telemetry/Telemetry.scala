@@ -40,9 +40,9 @@ import com.snowplowanalytics.snowplow.scalatracker.Emitter._
 import com.snowplowanalytics.snowplow.scalatracker.Emitter.{Result => TrackerResult}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Telemetry => TelemetryConfig}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.StreamInput.Kinesis
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.{Telemetry => TelemetryConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.StreamInput.Kinesis
 
 trait Telemetry[F[_]] {
   def report: Stream[F, Unit]
@@ -54,7 +54,7 @@ object Telemetry {
     Slf4jLogger.getLogger[F]
 
   def build[F[_]: ConcurrentEffect: Timer](
-    config: TransformerConfig.Stream,
+    config: Config,
     appName: String,
     appVersion: String,
     executionContext: ExecutionContext
@@ -138,13 +138,13 @@ object Telemetry {
       )
     )
 
-  private def getRegionFromConfig(config: TransformerConfig.Stream): Option[String] =
+  private def getRegionFromConfig(config: Config): Option[String] =
     config.input match {
       case Kinesis(_, _, region, _) => Some(region.name)
       case _ => None
     }
 
-  private def getCloudFromConfig(config: TransformerConfig.Stream): Option[Cloud] =
+  private def getCloudFromConfig(config: Config): Option[Cloud] =
     config.input match {
       case _: Kinesis => Some(Cloud.Aws)
       case _ => None

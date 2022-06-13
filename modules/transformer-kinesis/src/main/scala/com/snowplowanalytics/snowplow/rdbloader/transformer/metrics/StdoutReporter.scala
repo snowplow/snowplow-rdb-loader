@@ -18,7 +18,7 @@ import cats.effect.Sync
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.MetricsReporters
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.MetricsReporters
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics.MetricSnapshot
 
 /** Report metrics to stdout (logger) */

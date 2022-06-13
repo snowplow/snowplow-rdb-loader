@@ -15,10 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader.common.config
 import java.net.URI
 import java.time.Instant
 
-import scala.concurrent.duration.{Duration, FiniteDuration}
-
-import cats.effect.Sync
-import cats.data.EitherT
 import cats.syntax.either._
 
 import io.circe._
@@ -28,61 +24,11 @@ import io.circe.generic.semiauto._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common._
 
-sealed trait TransformerConfig {
-  def formats: TransformerConfig.Formats
-}
-
 object TransformerConfig {
-  implicit val finiteDurationDecoder: Decoder[FiniteDuration] =
-    Decoder[String].emap { str =>
-      Either
-        .catchOnly[NumberFormatException](Duration.create(str))
-        .leftMap(_.toString)
-        .flatMap { duration =>
-          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
-          else Left(s"Cannot convert Duration $duration to FiniteDuration")
-        }
-    }
 
-  final case class Batch(input: URI,
-                         output: Output,
-                         queue: QueueConfig,
-                         formats: Formats,
-                         monitoring: MonitoringBatch,
-                         deduplication: Deduplication,
-                         runInterval: RunInterval,
-                         featureFlags: FeatureFlags,
-                         validations: Validations) extends TransformerConfig
-  object Batch {
-    def fromString(conf: String): Either[String, Batch] =
-      fromString(conf, implicits().batchConfigDecoder)
-
-    def fromString(conf: String, batchConfigDecoder: Decoder[Batch]): Either[String, Batch] = {
-      implicit val implBatchConfigDecoder: Decoder[Batch] = batchConfigDecoder
-      ConfigUtils.fromString[Batch](conf).flatMap(configCheck)
-    }
-  }
-
-  final case class Stream(input: StreamInput,
-                          windowing: Duration,
-                          output: Output,
-                          queue: QueueConfig,
-                          formats: Formats,
-                          monitoring: MonitoringStream,
-                          telemetry: Telemetry,
-                          featureFlags: FeatureFlags,
-                          validations: Validations) extends TransformerConfig
-  object Stream {
-    def fromString[F[_]: Sync](conf: String): EitherT[F, String, Stream] =
-      fromString(conf, implicits().streamConfigDecoder)
-
-    def fromString[F[_]: Sync](conf: String, streamConfigDecoder: Decoder[Stream]): EitherT[F, String, Stream] = {
-      implicit val implStreamConfigDecoder: Decoder[Stream] = streamConfigDecoder
-      ConfigUtils.fromStringF[F, Stream](conf).flatMap(e => EitherT.fromEither(configCheck(e)))
-    }
-  }
 
   final case class Output(path: URI, compression: Compression, region: Region)
 
@@ -98,62 +44,11 @@ object TransformerConfig {
       Encoder.instance(_.toString.toUpperCase.asJson)
   }
 
-  sealed trait StreamInput extends Product with Serializable
-  object StreamInput {
-    final case class Kinesis(appName: String, streamName: String, region: Region, position: InitPosition) extends StreamInput
-    final case class File(dir: String) extends StreamInput
-  }
-
-  sealed trait InitPosition extends Product with Serializable
-  object InitPosition {
-    case object Latest extends InitPosition
-    case object TrimHorizon extends InitPosition
-    final case class AtTimestamp(timestamp: Instant) extends InitPosition
-  }
 
   sealed trait QueueConfig extends Product with Serializable
   object QueueConfig {
     final case class SNS(topicArn: String, region: Region) extends QueueConfig
     final case class SQS(queueName: String, region: Region) extends QueueConfig
-  }
-
-  final case class Deduplication(synthetic: Deduplication.Synthetic)
-
-  object Deduplication {
-
-    /**
-     * Configuration for in-batch synthetic deduplication
-     */
-    sealed trait Synthetic
-    object Synthetic {
-      final case object Join extends Synthetic
-      final case class Broadcast(cardinality: Int) extends Synthetic
-      final case object None extends Synthetic
-
-      implicit val ioCirceSyntheticDecoder: Decoder[Synthetic] =
-        Decoder.instance { cur =>
-          val typeCur = cur.downField("type")
-          typeCur.as[String].map(_.toLowerCase) match {
-            case Right("none") =>
-              Right(None)
-            case Right("join") =>
-              Right(Join)
-            case Right("broadcast") =>
-              cur.downField("cardinality").as[Int].map(Broadcast.apply)
-            case Right(other) =>
-              Left(DecodingFailure(s"Type $other is unknown for synthetic deduplication", cur.history))
-            case Left(other) =>
-              Left(other)
-          }
-        }
-      implicit val ioCirceSyntheticEncoder: Encoder[Synthetic] =
-        deriveEncoder[Synthetic]
-    }
-
-    implicit val ioCirceDeduplicationDecoder: Decoder[Deduplication] =
-      deriveDecoder[Deduplication]
-    implicit val ioCirceDeduplicationEncoder: Encoder[Deduplication] =
-      deriveEncoder[Deduplication]
   }
 
   sealed trait Formats extends Product with Serializable
@@ -204,157 +99,6 @@ object TransformerConfig {
         case (acc, _) => acc
       }
     }
-  }
-
-  final case class Validations(minimumTimestamp: Option[Instant])
-
-  final case class MonitoringBatch(sentry: Option[Sentry])
-  final case class MonitoringStream(sentry: Option[Sentry], metrics: MetricsReporters)
-  final case class Sentry(dsn: URI)
-  final case class MetricsReporters(
-    statsd: Option[MetricsReporters.StatsD],
-    stdout: Option[MetricsReporters.Stdout]
-  )
-
-  object MetricsReporters {
-    final case class Stdout(period: FiniteDuration, prefix: Option[String])
-    final case class StatsD(
-      hostname: String,
-      port: Int,
-      tags: Map[String, String],
-      period: FiniteDuration,
-      prefix: Option[String]
-    )
-
-    implicit val stdoutDecoder: Decoder[Stdout] =
-      deriveDecoder[Stdout].emap { stdout =>
-        if (stdout.period < Duration.Zero)
-          "metrics report period in config file cannot be less than 0".asLeft
-        else
-          stdout.asRight
-      }
-
-    implicit val statsDecoder: Decoder[StatsD] =
-      deriveDecoder[StatsD].emap { statsd =>
-        if (statsd.period < Duration.Zero)
-          "metrics report period in config file cannot be less than 0".asLeft
-        else
-          statsd.asRight
-      }
-
-    implicit val metricsReportersDecoder: Decoder[MetricsReporters] =
-      deriveDecoder[MetricsReporters]
-  }
-
-  case class Telemetry(
-    disable: Boolean,
-    interval: FiniteDuration,
-    method: String,
-    collectorUri: String,
-    collectorPort: Int,
-    secure: Boolean,
-    userProvidedId: Option[String],
-    autoGeneratedId: Option[String],
-    instanceId: Option[String],
-    moduleName: Option[String],
-    moduleVersion: Option[String]
-  )
-
-  final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
-
-  final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
-  object RunInterval {
-    final case class IntervalInstant(value: Instant)
-  }
-
-  /**
-   * All config implicits are put into case class because we want to make region decoder
-   * replaceable to write unit tests for config parsing.
-   */
-  final case class implicits(regionConfigDecoder: Decoder[Region] = Region.regionConfigDecoder) {
-    implicit val implRegionConfigDecoder: Decoder[Region] =
-      regionConfigDecoder
-
-    implicit val batchConfigDecoder: Decoder[Batch] =
-      deriveDecoder[Batch]
-
-    implicit val streamConfigDecoder: Decoder[Stream] =
-      deriveDecoder[Stream]
-
-    implicit val outputConfigDecoder: Decoder[Output] =
-      deriveDecoder[Output]
-
-    implicit val streamInputConfigDecoder: Decoder[StreamInput] =
-      Decoder.instance { cur =>
-        val typeCur = cur.downField("type")
-        typeCur.as[String].map(_.toLowerCase) match {
-          case Right("file") =>
-            cur.as[StreamInput.File]
-          case Right("kinesis") =>
-            cur.as[StreamInput.Kinesis]
-          case Right(other) =>
-            Left(DecodingFailure(s"Shredder input type $other is not supported yet. Supported types: 'kinesis', 's3' and 'file'", typeCur.history))
-          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
-            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
-          case Left(other) =>
-            Left(other)
-        }
-      }
-
-    implicit val streamInputKinesisConfigDecoder: Decoder[StreamInput.Kinesis] =
-      deriveDecoder[StreamInput.Kinesis]
-
-    implicit val streamInputFileConfigDecoder: Decoder[StreamInput.File] =
-      deriveDecoder[StreamInput.File]
-
-    implicit val queueConfigDecoder: Decoder[QueueConfig] =
-      Decoder.instance { cur =>
-        val typeCur = cur.downField("type")
-        typeCur.as[String].map(_.toLowerCase) match {
-          case Right("sns") =>
-            cur.as[QueueConfig.SNS]
-          case Right("sqs") =>
-            cur.as[QueueConfig.SQS]
-          case Right(other) =>
-            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS' and 'SQS'", typeCur.history))
-          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
-            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
-          case Left(other) =>
-            Left(other)
-        }
-      }
-
-    implicit val snsConfigDecoder: Decoder[QueueConfig.SNS] =
-      deriveDecoder[QueueConfig.SNS]
-
-    implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
-      deriveDecoder[QueueConfig.SQS]
-
-    implicit val initPositionConfigDecoder: Decoder[InitPosition] =
-      Decoder.decodeJson.emap { json =>
-        json.asString match {
-          case Some("TRIM_HORIZON") => InitPosition.TrimHorizon.asRight
-          case Some("LATEST") => InitPosition.Latest.asRight
-          case Some(other) =>
-            s"Initial position $other is unknown. Choose from LATEST and TRIM_HORIZON. AT_TIMESTAMP must provide the timestamp".asLeft
-          case None =>
-            val result = for {
-              root <- json.asObject.map(_.toMap)
-              atTimestamp <- root.get("AT_TIMESTAMP")
-              atTimestampObj <- atTimestamp.asObject.map(_.toMap)
-              timestampStr <- atTimestampObj.get("timestamp")
-              timestamp <- timestampStr.as[Instant].toOption
-            } yield InitPosition.AtTimestamp(timestamp)
-            result match {
-              case Some(atTimestamp) => atTimestamp.asRight
-              case None =>
-                "Initial position can be either LATEST or TRIM_HORIZON string or AT_TIMESTAMP object (e.g. 2020-06-03T00:00:00Z)".asLeft
-            }
-        }
-      }
-
-    implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
-      deriveDecoder[FeatureFlags]
 
     implicit val formatsConfigDecoder: Decoder[Formats] =
       Decoder.instance { cur =>
@@ -392,44 +136,79 @@ object TransformerConfig {
             Left(other)
         }
       }
+  }
 
-    implicit val monitoringBatchConfigDecoder: Decoder[MonitoringBatch] =
-      deriveDecoder[MonitoringBatch]
-
-    implicit val monitoringStreamConfigDecoder: Decoder[MonitoringStream] =
-      deriveDecoder[MonitoringStream]
-
-    implicit val runIntervalConfigDecoder: Decoder[RunInterval] =
-      deriveDecoder[RunInterval]
-
-    implicit val runIntervalInstantConfigDecoder: Decoder[RunInterval.IntervalInstant] =
-      Decoder[String].emap(v => Common.parseFolderTime(v).leftMap(_.toString).map(RunInterval.IntervalInstant))
-
-    implicit val sentryConfigDecoder: Decoder[Sentry] =
-      deriveDecoder[Sentry]
-
-    implicit val telemetryDecoder: Decoder[Telemetry] =
-      deriveDecoder[Telemetry]
-
-    implicit val durationDecoder: Decoder[Duration] =
-      Decoder[String].emap(s => Either.catchOnly[NumberFormatException](Duration(s)).leftMap(_.toString))
-
-    implicit val uriDecoder: Decoder[URI] =
-      Decoder[String].emap(s => Either.catchOnly[IllegalArgumentException](URI.create(s)).leftMap(_.toString))
-
+  final case class Validations(minimumTimestamp: Option[Instant])
+  object Validations {
     implicit val validationsDecoder: Decoder[Validations] =
       deriveDecoder[Validations]
   }
 
-  def configCheck[A <: TransformerConfig](config: A): Either[String, A] =
-    config.formats match {
-      case _: Formats.WideRow => config.asRight
+  final case class Sentry(dsn: URI)
+  object Sentry {
+    implicit val sentryConfigDecoder: Decoder[Sentry] =
+      deriveDecoder[Sentry]
+  }
+
+  final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
+
+  object FeatureFlags {
+    implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
+      deriveDecoder[FeatureFlags]
+  }
+
+  trait RegionDecodable {
+    implicit def regionDecoder: Decoder[Region]
+  }
+
+  trait ImpureRegionDecodable extends RegionDecodable {
+    override implicit val regionDecoder: Decoder[Region] =
+      Region.regionConfigDecoder
+  }
+
+  /**
+   * All config implicits are put into trait because we want to make region decoder
+   * replaceable to write unit tests for config parsing.
+   */
+  trait Decoders extends RegionDecodable {
+
+    implicit val outputConfigDecoder: Decoder[Output] =
+      deriveDecoder[Output]
+
+    implicit val queueConfigDecoder: Decoder[QueueConfig] =
+      Decoder.instance { cur =>
+        val typeCur = cur.downField("type")
+        typeCur.as[String].map(_.toLowerCase) match {
+          case Right("sns") =>
+            cur.as[QueueConfig.SNS]
+          case Right("sqs") =>
+            cur.as[QueueConfig.SQS]
+          case Right(other) =>
+            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS' and 'SQS'", typeCur.history))
+          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }
+
+    implicit val snsConfigDecoder: Decoder[QueueConfig.SNS] =
+      deriveDecoder[QueueConfig.SNS]
+
+    implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
+      deriveDecoder[QueueConfig.SQS]
+
+  }
+
+  def formatsCheck(formats: Formats): Either[String, Formats] =
+    formats match {
+      case _: Formats.WideRow => formats.asRight
       case s: Formats.Shred =>
         val overlaps = s.findOverlaps
         val message =
           s"Following schema criterions overlap in different groups (TSV, JSON, skip): " +
             s"${overlaps.map(_.asString).mkString(", ")}. " +
             s"Make sure every schema can have only one format"
-        Either.cond(overlaps.isEmpty, config, message)
+        Either.cond(overlaps.isEmpty, formats, message)
     }
 }
