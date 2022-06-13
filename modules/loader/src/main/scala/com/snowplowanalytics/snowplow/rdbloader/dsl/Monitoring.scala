@@ -173,6 +173,8 @@ object Monitoring {
               .use { response =>
                 if (response.status.isSuccess) Sync[F].unit
                 else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+              }.handleErrorWith { e =>
+                Logging[F].error(e)(s"Webhook ${webhook.endpoint} resulted in exception without a response")
               }
             Some(req)
           case None =>
