@@ -270,6 +270,13 @@ object Dependencies {
   )
 
   val transformerKinesisExclusions = {
-    exclusions ++ Seq(ExclusionRule(organization = "ch.qos.logback"))
+    exclusions ++ Seq(
+      ExclusionRule(organization = "ch.qos.logback"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-client"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-mapreduce-client-jobclient"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-hdfs-client"),
+      ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7"),
+    )
   }
 }
