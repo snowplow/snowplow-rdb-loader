@@ -46,6 +46,7 @@ object ParquetUtils {
     new File(path.toString)
       .listFiles(parquetFileFilter)
       .map { parquetFile =>
+        @annotation.nowarn("cat=deprecation")
         val parquetMetadata = ParquetFileReader.readFooter(conf, new HadoopPath(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
         val columns = parquetMetadata.getFileMetaData.getSchema.getColumns.asScala.toList
         (parquetFile, columns)

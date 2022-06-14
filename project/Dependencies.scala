@@ -45,7 +45,7 @@ object Dependencies {
     val jacksonDatabind  = "2.13.2.2"
     val parquet4s        = "1.9.4"
     val hadoopClient     = "3.3.3"
-    val parquetFormat    = "1.12.2"
+    val parquetHadoop    = "1.12.3"
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
@@ -120,7 +120,7 @@ object Dependencies {
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.jacksonModule
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
   val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
-  val parquetFormat     = "org.apache.parquet"               % "parquet-format-structures" % V.parquetFormat
+  val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
 
@@ -256,7 +256,7 @@ object Dependencies {
     parquet4s,
     hadoop,
     hadoopAws,
-    parquetFormat,
+    parquetHadoop,
     scalaTracker,
     scalaTrackerEmit,
     specs2,
