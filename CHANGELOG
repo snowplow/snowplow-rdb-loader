@@ -1,3 +1,20 @@
+Version 4.0.2 (2022-06-14)
+--------------------------
+Transformer kinesis: Bump parquet-hadoop to 1.12.3 (#933)
+Transformer kinesis: exclude hadoop transitive dependencies (#932)
+Batch Transformer: add fileFormat field to formats section of example hocon (#848)
+Common: set region in the SQS client builder (#587)
+Common: Snyk action should only run on push to master (#929)
+Snowflake loader: Bump snowflake-jdbc to 3.13.9 (#928)
+Loader: use forked version of jsch lib for ssh (#927)
+Loader: recover from exceptions on alerting webhook (#925)
+Transformer kinesis: always end up in consistent state (#873)
+Transformer kinesis: no checkpointing until after SQS message is sent (#917)
+Loader: Add logging around using SSH tunnel (#923)
+Transformer-kinesis: add missing hadoop-aws dependency for s3 parquet files upload (#920)
+Loader: Timeouts on JDBC statements (#914)
+Snowflake Loader: make ON_ERROR copy option configurable (#912)
+
 Version 4.0.1 (2022-06-03)
 --------------------------
 Common: change http4s client backend to blaze-client (#905)
