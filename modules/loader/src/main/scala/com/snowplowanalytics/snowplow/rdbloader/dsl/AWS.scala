@@ -72,7 +72,7 @@ object AWS {
   /** If we extend for exact SQS VisibilityTimeout it could be too late and SQS returns an error */
   val ExtendAllowance: FiniteDuration = 30.seconds
 
-  def awsInterpreter[F[_]: ConcurrentEffect: Logging: Timer](client: S3Store[F], sqsVisibility: FiniteDuration): AWS[F] = new AWS[F] {
+  def awsInterpreter[F[_]: ConcurrentEffect: Logging: Timer](client: S3Store[F], sqsVisibility: FiniteDuration, region: String): AWS[F] = new AWS[F] {
     /** * Transform S3 object summary into valid S3 key string */
     def getKey(path: S3Path): S3.BlobObject = {
       val key = S3.Key.coerce(s"s3://${path.bucket}/${path.key}")
@@ -131,7 +131,7 @@ object AWS {
 
     def readSqs(name: String, stop: Stream[F, Boolean]): Stream[F, String] = {
       val awakePeriod: FiniteDuration = sqsVisibility - ExtendAllowance
-      SQS.readQueue(name, sqsVisibility.toSeconds.toInt, stop).flatMap { case (msg, ack, extend) =>
+      SQS.readQueue(name, sqsVisibility.toSeconds.toInt, Region.of(region), stop).flatMap { case (msg, ack, extend) =>
         Stream.emit(msg.body())
           .concurrently {
             Stream.awakeEvery[F](awakePeriod).evalMap { _ =>

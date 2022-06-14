@@ -79,7 +79,7 @@ object Environment {
       amazonS3 <- Resource.eval(AWS.getClient[F](cli.config.region.name))
       cache = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility)
+      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility, cli.config.region.name)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
