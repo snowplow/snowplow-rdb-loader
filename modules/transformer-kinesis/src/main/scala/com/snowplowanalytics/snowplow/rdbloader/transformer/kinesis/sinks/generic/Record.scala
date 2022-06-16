@@ -84,7 +84,8 @@ case object EndWindow extends Record[Nothing, Nothing, Nothing]
               // Same window, drop Left(w)
               go(Some(w), tail, emptyWindow)
             case Some(_) if emptyWindow =>
-                Pull.pure(())
+              // New window, but nothing to emit
+              go(Some(w), tail, true)
             case Some(_) =>
               Pull.output1[F, Record[W, A, S]](Record.EndWindow) *>
                 go(Some(w), tail, true)
