@@ -52,8 +52,8 @@ object Metrics {
     config: MetricsReporters
   ): F[Metrics[F]] =
     config match {
-      case MetricsReporters(None, None) => noop[F].pure[F]
-      case MetricsReporters(statsd, stdout) => impl[F](blocker, statsd, stdout)
+      case MetricsReporters(None, None, _) => noop[F].pure[F]
+      case MetricsReporters(statsd, stdout, _) => impl[F](blocker, statsd, stdout)
     }
 
   private def impl[F[_]: ContextShift: ConcurrentEffect: Timer](

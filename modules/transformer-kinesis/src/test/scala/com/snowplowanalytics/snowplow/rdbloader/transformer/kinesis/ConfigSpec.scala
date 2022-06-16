@@ -71,7 +71,12 @@ object ConfigSpec {
     "acme-snowplow-transformer",
     "enriched-events",
     Region("us-east-1"),
-    Config.InitPosition.Latest
+    Config.InitPosition.Latest,
+    Config.Retrieval.Polling(10000),
+    3,
+    None,
+    None,
+    None
   )
   val exampleDefaultStreamInput = exampleStreamInput.copy(
     appName = "snowplow-transformer",
@@ -107,11 +112,12 @@ object ConfigSpec {
     Config.MetricsReporters(
       Some(Config.MetricsReporters.StatsD("localhost", 8125, Map("app" -> "transformer"), 1.minute, None)),
       Some(Config.MetricsReporters.Stdout(1.minutes, None)),
+      true
     )
   )
   val exampleDefaultMonitoringStream = Config.Monitoring(
     None,
-    Config.MetricsReporters(None, Some(Config.MetricsReporters.Stdout(1.minutes, None)))
+    Config.MetricsReporters(None, Some(Config.MetricsReporters.Stdout(1.minutes, None)), true)
   )
   val exampleTelemetry =
     Config.Telemetry(

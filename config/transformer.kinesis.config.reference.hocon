@@ -3,19 +3,49 @@
     # kinesis and file are the only options for transformer-kinesis
     # Optional, default value kinesis
     "type": "kinesis",
+
     # KCL app name - a DynamoDB table will be created with the same name
     # Optional, default value snowplow-transformer-kinesis
     "appName": "acme-snowplow-transformer",
+
     # Kinesis Stream name
     "streamName": "enriched-events",
+
     # Kinesis region
     # This field is optional if it can be resolved with AWS region provider chain.
     # It checks places like env variables, system properties, AWS profile file.
     # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
     "region": "us-east-1",
+
     # Kinesis position: LATEST or TRIM_HORIZON
     # Optional, default value LATEST
     "position": "LATEST"
+
+    # Optional, set the mode for retrieving records.
+    "retrievalMode": {
+      "type": "Polling"
+      # Maximum size of a batch returned by a call to getRecords.
+      "maxRecords": 10000
+    }
+    # "retrievalMode": {
+    #   "type": "FanOut"
+    # }
+
+    # Optional. Size of the internal buffer used when reading messages from Kinesis,
+    # each buffer holding up to maxRecords from above
+    "bufferSize": 3
+
+    # Optional, endpoint url configuration to override aws kinesis endpoints
+    # Can be used to specify local endpoint when using localstack
+    # "customEndpoint": "http://localhost:4566"
+
+    # Optional, endpoint url configuration to override aws dyanomdb endpoint for Kinesis checkpoints lease table
+    # Can be used to specify local endpoint when using localstack
+    # "dynamodbCustomEndpoint": "http://localhost:4569"
+
+    # Optional, endpoint url configuration to override aws cloudwatch endpoint for metrics
+    # Can be used to specify local endpoint when using localstack
+    # "cloudwatchCustomEndpoint": "http://localhost:4582"
   }
 
   # Path to transformed archive
@@ -115,6 +145,8 @@
         # Optional. Override the default metric prefix
         # "prefix": "snowplow.transformer."
       }
+      # Optional. Send KCL metrics to Cloudwatch
+      "cloudwatch": true
     }
   }
 

@@ -140,7 +140,7 @@ object Telemetry {
 
   private def getRegionFromConfig(config: Config): Option[String] =
     config.input match {
-      case Kinesis(_, _, region, _) => Some(region.name)
+      case c: Kinesis => Some(c.region.name)
       case _ => None
     }
 
