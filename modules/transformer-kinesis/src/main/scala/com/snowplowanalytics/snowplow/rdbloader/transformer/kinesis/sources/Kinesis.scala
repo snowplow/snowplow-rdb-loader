@@ -1,44 +1,61 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources
 
-import java.util.Date
+import java.util.{Date, UUID}
+import java.net.{InetAddress, URI}
 
 import cats.Applicative
 import cats.implicits._
 
-import cats.effect.{Sync, ContextShift, ConcurrentEffect}
+import cats.effect._
+
+import eu.timepit.refined._
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.auto._
+import eu.timepit.refined.numeric._
 
 import fs2.Stream
 
-import fs2.aws.kinesis.CommittableRecord
-import fs2.aws.kinesis.consumer.readFromKinesisStream
-import fs2.aws.kinesis.KinesisConsumerSettings
+import fs2.aws.kinesis.{CommittableRecord, Kinesis => Fs2Kinesis, KinesisConsumerSettings}
 
 import software.amazon.awssdk.regions.{Region => AWSRegion}
-import software.amazon.kinesis.common.InitialPositionInStream
+import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
+import software.amazon.kinesis.coordinator.Scheduler
+import software.amazon.kinesis.metrics.MetricsLevel
+import software.amazon.kinesis.processor.ShardRecordProcessorFactory
+import software.amazon.kinesis.retrieval.polling.PollingConfig
+import software.amazon.kinesis.retrieval.fanout.FanOutConfig
+import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
+import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Processing.Application
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.InitPosition
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.{InitPosition, Retrieval}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.StreamInput.{Kinesis => KinesisConfig}
 
 object Kinesis {
 
-  def read[F[_]: ConcurrentEffect: ContextShift](appName: String, streamName: String, region: Region, position: InitPosition): Stream[F, ParsedC[KinesisCheckpointer[F]]] = {
-    val settings = Either.catchOnly[IllegalArgumentException](AWSRegion.of(region.name)) match {
-      case Right(region) =>
-        Sync[F].pure(KinesisConsumerSettings(streamName, appName, region, initialPositionInStream = fromConfig(position)))
-      case Left(error) =>
-        Sync[F].raiseError[KinesisConsumerSettings](new IllegalArgumentException(s"Cannot parse ${region.name} as valid AWS region", error))
-    }
-
+  def read[F[_]: ConcurrentEffect: ContextShift: Timer](blocker: Blocker, config: KinesisConfig, cloudwatchEnabled: Boolean): Stream[F, ParsedC[KinesisCheckpointer[F]]] =
     for {
-      settings <- Stream.eval(settings)
-      record   <- readFromKinesisStream(settings)
+      region <- Stream.emit(AWSRegion.of(config.region.name))
+      bufferSize <- Stream.eval[F, Int Refined Positive](
+        refineV[Positive](config.bufferSize) match {
+          case Right(mc) => Sync[F].pure(mc)
+          case Left(e) =>
+            Sync[F].raiseError(
+              new IllegalArgumentException(s"${config.bufferSize} can't be refined as positive: $e")
+            )
+        }
+      )
+      consumerSettings = KinesisConsumerSettings(config.streamName, config.appName, bufferSize = bufferSize)
+      kinesisClient <- Stream.resource(mkKinesisClient[F](region, config.customEndpoint))
+      dynamoClient <- Stream.resource(mkDynamoDbClient[F](region, config.dynamodbCustomEndpoint))
+      cloudWatchClient <- Stream.resource(mkCloudWatchClient[F](region, config.cloudwatchCustomEndpoint))
+      kinesis = Fs2Kinesis.create(blocker, scheduler(kinesisClient, dynamoClient, cloudWatchClient, config, cloudwatchEnabled, _))
+      record  <- kinesis.readFromKinesisStream(consumerSettings)
     } yield (parse(record), checkpointer(record))
-  }
-
 
   def parse(record: CommittableRecord): Parsed = {
     val buf = new Array[Byte](record.record.data().remaining())
@@ -48,15 +65,6 @@ object Kinesis {
       BadRow.LoaderParsingError(Application, error, Payload.RawPayload(str))
     }
   }
-
-
-  /** Turn it into fs2-aws-compatible structure */
-  def fromConfig(initPosition: InitPosition): Either[InitialPositionInStream, Date] =
-    initPosition match {
-      case InitPosition.Latest            => InitialPositionInStream.LATEST.asLeft
-      case InitPosition.TrimHorizon       => InitialPositionInStream.TRIM_HORIZON.asLeft
-      case InitPosition.AtTimestamp(date) => Date.from(date).asRight
-    }
 
   def checkpointer[F[_]: Sync](record: CommittableRecord): KinesisCheckpointer[F] =
     KinesisCheckpointer[F](Map(record.shardId -> record.checkpoint))
@@ -74,4 +82,105 @@ object Kinesis {
     }
 
   }
+
+  private def scheduler[F[_]: Sync](
+                                     kinesisClient: KinesisAsyncClient,
+                                     dynamoDbClient: DynamoDbAsyncClient,
+                                     cloudWatchClient: CloudWatchAsyncClient,
+                                     kinesisConfig: KinesisConfig,
+                                     cloudWatchEnabled: Boolean,
+                                     recordProcessorFactory: ShardRecordProcessorFactory
+                                   ): F[Scheduler] = {
+    def build(uuid: UUID, hostname: String): F[Scheduler] = {
+
+      val configsBuilder =
+        new ConfigsBuilder(kinesisConfig.streamName,
+          kinesisConfig.appName,
+          kinesisClient,
+          dynamoDbClient,
+          cloudWatchClient,
+          s"$hostname:$uuid",
+          recordProcessorFactory
+        )
+
+      val initPositionExtended = kinesisConfig.position match {
+        case InitPosition.Latest =>
+          InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.LATEST)
+        case InitPosition.TrimHorizon =>
+          InitialPositionInStreamExtended.newInitialPosition(InitialPositionInStream.TRIM_HORIZON)
+        case InitPosition.AtTimestamp(timestamp) =>
+          InitialPositionInStreamExtended.newInitialPositionAtTimestamp(Date.from(timestamp))
+      }
+
+      val retrievalConfig =
+        configsBuilder.retrievalConfig
+          .initialPositionInStreamExtended(initPositionExtended)
+          .retrievalSpecificConfig {
+            kinesisConfig.retrievalMode match {
+              case Retrieval.FanOut =>
+                new FanOutConfig(kinesisClient).streamName(kinesisConfig.streamName).applicationName(kinesisConfig.appName)
+              case Retrieval.Polling(maxRecords) =>
+                new PollingConfig(kinesisConfig.streamName, kinesisClient).maxRecords(maxRecords)
+            }
+          }
+
+      val metricsConfig = configsBuilder.metricsConfig.metricsLevel {
+        if (cloudWatchEnabled) MetricsLevel.DETAILED else MetricsLevel.NONE
+      }
+
+      Sync[F].delay {
+        new Scheduler(
+          configsBuilder.checkpointConfig,
+          configsBuilder.coordinatorConfig,
+          configsBuilder.leaseManagementConfig,
+          configsBuilder.lifecycleConfig,
+          metricsConfig,
+          configsBuilder.processorConfig,
+          retrievalConfig
+        )
+      }
+    }
+
+    for {
+      uuid      <- Sync[F].delay(UUID.randomUUID)
+      hostname  <- Sync[F].delay(InetAddress.getLocalHost().getCanonicalHostName)
+      scheduler <- build(uuid, hostname)
+    } yield scheduler
+  }
+
+  private def mkKinesisClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, KinesisAsyncClient] =
+    Resource.fromAutoCloseable {
+      Sync[F].delay {
+        val builder =
+          KinesisAsyncClient
+            .builder()
+            .region(region)
+        val customized = customEndpoint.map(builder.endpointOverride).getOrElse(builder)
+        customized.build
+      }
+    }
+
+  private def mkDynamoDbClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, DynamoDbAsyncClient] =
+    Resource.fromAutoCloseable {
+      Sync[F].delay {
+        val builder =
+          DynamoDbAsyncClient
+            .builder()
+            .region(region)
+        val customized = customEndpoint.map(builder.endpointOverride).getOrElse(builder)
+        customized.build
+      }
+    }
+
+  private def mkCloudWatchClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, CloudWatchAsyncClient] =
+    Resource.fromAutoCloseable {
+      Sync[F].delay {
+        val builder =
+          CloudWatchAsyncClient
+            .builder()
+            .region(region)
+        val customized = customEndpoint.map(builder.endpointOverride).getOrElse(builder)
+        customized.build
+      }
+    }
 }

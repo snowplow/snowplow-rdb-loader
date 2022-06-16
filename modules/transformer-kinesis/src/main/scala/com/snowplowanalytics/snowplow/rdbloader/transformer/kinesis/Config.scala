@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
 import java.time.Instant
+import java.net.URI
 
 import cats.implicits._
 import cats.data.EitherT
@@ -54,7 +55,13 @@ object Config {
     final case class Kinesis(appName: String,
                              streamName: String,
                              region: Region,
-                             position: InitPosition) extends StreamInput
+                             position: InitPosition,
+                             retrievalMode: Retrieval,
+                             bufferSize: Int,
+                             customEndpoint: Option[URI],
+                             dynamodbCustomEndpoint: Option[URI],
+                             cloudwatchCustomEndpoint: Option[URI]
+                            ) extends StreamInput
 
     final case class File(dir: String) extends StreamInput
     object File {
@@ -93,6 +100,34 @@ object Config {
       }
   }
 
+  sealed trait Retrieval
+  object Retrieval {
+    case class Polling(maxRecords: Int) extends Retrieval
+    case object FanOut extends Retrieval
+
+    case class RetrievalRaw(`type`: String, maxRecords: Option[Int])
+    implicit val retrievalRawDecoder: Decoder[RetrievalRaw] = deriveDecoder[RetrievalRaw]
+
+    implicit val retrievalDecoder: Decoder[Retrieval] =
+      Decoder.instance { cur =>
+        for {
+          rawParsed <- cur.as[RetrievalRaw].map(raw => raw.copy(`type` = raw.`type`.toUpperCase))
+          retrieval <- rawParsed match {
+            case RetrievalRaw("POLLING", Some(maxRecords)) =>
+              Polling(maxRecords).asRight
+            case RetrievalRaw("FANOUT", _) =>
+              FanOut.asRight
+            case other =>
+              DecodingFailure(
+                s"Retrieval mode $other is not supported. Possible types are FanOut and Polling (must provide maxRecords field)",
+                cur.history
+              ).asLeft
+          }
+        } yield retrieval
+      }
+    implicit val retrievalEncoder: Encoder[Retrieval] = deriveEncoder[Retrieval]
+  }
+
   final case class Monitoring(sentry: Option[TransformerConfig.Sentry], metrics: MetricsReporters)
   object Monitoring {
     implicit val decoder: Decoder[Monitoring] =
@@ -101,7 +136,8 @@ object Config {
 
   final case class MetricsReporters(
     statsd: Option[MetricsReporters.StatsD],
-    stdout: Option[MetricsReporters.Stdout]
+    stdout: Option[MetricsReporters.Stdout],
+    cloudwatch: Boolean
   )
 
   object MetricsReporters {

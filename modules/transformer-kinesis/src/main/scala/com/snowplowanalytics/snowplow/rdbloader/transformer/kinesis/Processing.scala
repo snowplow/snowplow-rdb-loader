@@ -60,11 +60,11 @@ object Processing {
   def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel](resources: Resources[F],
                                                                         config: Config): Stream[F, Unit] =
     config.input match {
-      case Config.StreamInput.Kinesis(appName, streamName, region, position) =>
-        val source = sources.Kinesis.read[F](appName, streamName, region, position)
+      case conf: Config.StreamInput.Kinesis =>
+        val source = sources.Kinesis.read[F](resources.blocker, conf, config.monitoring.metrics.cloudwatch)
         runFromSource(source, resources, config)
-      case Config.StreamInput.File(dir) =>
-        val source = sources.file.read[F](resources.blocker, dir)
+      case conf: Config.StreamInput.File =>
+        val source = sources.file.read[F](resources.blocker, conf)
         implicit val checkpointer = Checkpointer.noOpCheckpointer[F, Unit]
         runFromSource(source, resources, config)
     }
