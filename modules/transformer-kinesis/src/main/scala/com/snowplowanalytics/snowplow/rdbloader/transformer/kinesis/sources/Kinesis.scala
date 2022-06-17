@@ -37,40 +37,25 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.Strea
 
 object Kinesis {
 
-  def read[F[_]: ConcurrentEffect: ContextShift: Timer](blocker: Blocker, config: KinesisConfig, cloudwatchEnabled: Boolean): Stream[F, ParsedC[KinesisCheckpointer[F]]] = {
-    val resources =
-      for {
-        region <- Resource.pure[F, AWSRegion](AWSRegion.of(config.region.name))
-        bufferSize <- Resource.eval[F, Int Refined Positive](
-          refineV[Positive](config.bufferSize) match {
-            case Right(mc) => Sync[F].pure(mc)
-            case Left(e) =>
-              Sync[F].raiseError(
-                new IllegalArgumentException(s"${config.bufferSize} can't be refined as positive: $e")
-              )
-          }
-        )
-        consumerSettings <- Resource.pure[F, KinesisConsumerSettings](
-          KinesisConsumerSettings(
-            config.streamName,
-            config.appName,
-            bufferSize = bufferSize
-          )
-        )
-        kinesisClient <- mkKinesisClient[F](region, config.customEndpoint)
-        dynamoClient <- mkDynamoDbClient[F](region, config.dynamodbCustomEndpoint)
-        cloudWatchClient <- mkCloudWatchClient[F](region, config.cloudwatchCustomEndpoint)
-        kinesis <- Resource.pure[F, Fs2Kinesis[F]](
-          Fs2Kinesis.create(blocker, scheduler(kinesisClient, dynamoClient, cloudWatchClient, config, cloudwatchEnabled, _))
-        )
-      } yield (consumerSettings, kinesis)
-
+  def read[F[_]: ConcurrentEffect: ContextShift: Timer](blocker: Blocker, config: KinesisConfig, cloudwatchEnabled: Boolean): Stream[F, ParsedC[KinesisCheckpointer[F]]] =
     for {
-      (settings, kinesis) <- Stream.resource(resources)
-      record  <- kinesis.readFromKinesisStream(settings)
+      region <- Stream.emit(AWSRegion.of(config.region.name))
+      bufferSize <- Stream.eval[F, Int Refined Positive](
+        refineV[Positive](config.bufferSize) match {
+          case Right(mc) => Sync[F].pure(mc)
+          case Left(e) =>
+            Sync[F].raiseError(
+              new IllegalArgumentException(s"${config.bufferSize} can't be refined as positive: $e")
+            )
+        }
+      )
+      consumerSettings = KinesisConsumerSettings(config.streamName, config.appName, bufferSize = bufferSize)
+      kinesisClient <- Stream.resource(mkKinesisClient[F](region, config.customEndpoint))
+      dynamoClient <- Stream.resource(mkDynamoDbClient[F](region, config.dynamodbCustomEndpoint))
+      cloudWatchClient <- Stream.resource(mkCloudWatchClient[F](region, config.cloudwatchCustomEndpoint))
+      kinesis = Fs2Kinesis.create(blocker, scheduler(kinesisClient, dynamoClient, cloudWatchClient, config, cloudwatchEnabled, _))
+      record  <- kinesis.readFromKinesisStream(consumerSettings)
     } yield (parse(record), checkpointer(record))
-  }
-
 
   def parse(record: CommittableRecord): Parsed = {
     val buf = new Array[Byte](record.record.data().remaining())
@@ -105,9 +90,8 @@ object Kinesis {
                                      kinesisConfig: KinesisConfig,
                                      cloudWatchEnabled: Boolean,
                                      recordProcessorFactory: ShardRecordProcessorFactory
-                                   ): F[Scheduler] =
-    Sync[F].delay(UUID.randomUUID()).map { uuid =>
-      val hostname = InetAddress.getLocalHost().getCanonicalHostName()
+                                   ): F[Scheduler] = {
+    def build(uuid: UUID, hostname: String): F[Scheduler] = {
 
       val configsBuilder =
         new ConfigsBuilder(kinesisConfig.streamName,
@@ -144,16 +128,25 @@ object Kinesis {
         if (cloudWatchEnabled) MetricsLevel.DETAILED else MetricsLevel.NONE
       }
 
-      new Scheduler(
-        configsBuilder.checkpointConfig,
-        configsBuilder.coordinatorConfig,
-        configsBuilder.leaseManagementConfig,
-        configsBuilder.lifecycleConfig,
-        metricsConfig,
-        configsBuilder.processorConfig,
-        retrievalConfig
-      )
+      Sync[F].delay {
+        new Scheduler(
+          configsBuilder.checkpointConfig,
+          configsBuilder.coordinatorConfig,
+          configsBuilder.leaseManagementConfig,
+          configsBuilder.lifecycleConfig,
+          metricsConfig,
+          configsBuilder.processorConfig,
+          retrievalConfig
+        )
+      }
     }
+
+    for {
+      uuid      <- Sync[F].delay(UUID.randomUUID)
+      hostname  <- Sync[F].delay(InetAddress.getLocalHost().getCanonicalHostName)
+      scheduler <- build(uuid, hostname)
+    } yield scheduler
+  }
 
   private def mkKinesisClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, KinesisAsyncClient] =
     Resource.fromAutoCloseable {
