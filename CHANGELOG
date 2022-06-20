@@ -1,3 +1,8 @@
+Version 4.0.4 (2022-06-20)
+--------------------------
+Transformer kinesis: make Kinesis consumer more configurable (close #865)
+Transformer: split batch and streaming configs (close #937)
+
 Version 4.0.3 (2022-06-16)
 --------------------------
 Transformer kinesis: version 4.0.2 Throws java.lang.InterruptedException: sleep interrupted (#938)
