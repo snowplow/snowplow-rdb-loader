@@ -130,7 +130,7 @@ object Telemetry {
         "moduleName" -> teleCfg.moduleName.asJson,
         "moduleVersion" -> teleCfg.moduleVersion.asJson,
         "instanceId" -> teleCfg.instanceId.asJson,
-        "appGeneratedId" -> java.util.UUID.randomUUID.toString.asJson,
+        "appGeneratedId" -> com.snowplowanalytics.snowplow.rdbloader.transformer.AppId.appId.asJson,
         "cloud" -> cloud.asJson,
         "region" -> region.asJson,
         "applicationName" -> appName.asJson,

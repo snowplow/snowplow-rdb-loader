@@ -15,9 +15,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import cats.effect.{IOApp, IO, ExitCode, Sync}
-
+import cats.effect.{ExitCode, IO, IOApp, Sync}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 object Main extends IOApp {
@@ -37,6 +36,7 @@ object Main extends IOApp {
             executionContext
           ).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
+            logger[IO].info(s"RDB Shredder app id is  ${AppId.appId}") *>
               Processing.run[IO](resources, cliConfig.config)
                 .compile
                 .drain

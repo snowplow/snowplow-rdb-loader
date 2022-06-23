@@ -1,17 +1,16 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks
 
 import java.time.{Instant, ZoneOffset, ZonedDateTime}
-
-import cats.{Order, Functor, Show}
-
+import cats.{Functor, Order, Show}
 import cats.effect.Clock
 import cats.syntax.functor._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
 
 case class Window(year: Int, month: Int, day: Int, hour: Int, minute: Int) {
   import Window.prep0
 
   def getDir: String =
-    s"run=${prep0(year)}-${prep0(month)}-${prep0(day)}-${prep0(hour)}-${prep0(minute)}-00"
+    s"run=${prep0(year)}-${prep0(month)}-${prep0(day)}-${prep0(hour)}-${prep0(minute)}-00-${AppId.appId}"
 
   def toInstant: Instant =
     ZonedDateTime.of(year, month, day, hour, minute, 0, 0, ZoneOffset.UTC).toInstant

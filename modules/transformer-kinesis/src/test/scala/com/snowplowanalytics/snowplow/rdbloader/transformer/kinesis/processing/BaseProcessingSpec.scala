@@ -17,6 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ContextShift, IO, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.FileUtils.{createTempDirectory, directoryStream}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.{ProcessingOutput, TransformerConfig}
@@ -25,12 +26,13 @@ import fs2.Stream
 import org.specs2.mutable.Specification
 
 import scala.concurrent.duration.DurationInt
-
 import java.nio.file.Path
 import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 trait BaseProcessingSpec extends Specification {
+
+  def removeAppId(s: List[String]) : List[String] = s.map(_.replace(s"-${AppId.appId}", ""))
 
   implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   implicit val T: Timer[IO]         = IO.timer(concurrent.ExecutionContext.global)
