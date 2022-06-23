@@ -104,7 +104,11 @@ object Databricks {
               case Statement.EventsCopy(path, _, columns) =>
                 val frTableName     = Fragment.const(qualifiedTableName(tgt, EventsTable.MainName))
                 val frPath          = Fragment.const0(s"$path/output=good")
-                val frSelectColumns = Fragment.const0(columns.mkString(",") + ", current_timestamp() as load_tstamp")
+                val allColumns = columns ::: List(
+                    "current_timestamp() AS load_tstamp",
+                    "DATE(collector_tstamp) AS collector_tstamp_date"
+                  )
+                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
                 sql"""COPY INTO $frTableName
                       FROM (
                         SELECT $frSelectColumns from '$frPath'
