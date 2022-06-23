@@ -14,6 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
 
@@ -30,8 +31,8 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-        val goodPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good")
-        val badPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=bad")
+        val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+        val badPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
         for {
           output                    <- process(inputStream, config)
@@ -42,7 +43,7 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
           expectedGoodRows          <- readLinesFromResource("/processing-spec/1/output/good/widerow/events")
           expectedBadRows           <- readLinesFromResource("/processing-spec/1/output/bad")
         } yield {
-          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
           output.checkpointed must beEqualTo(1)
           assertStringRows(actualGoodRows, expectedGoodRows)
           assertStringRows(actualBadRows, expectedBadRows)

@@ -19,6 +19,7 @@ import com.github.mjakubowski84.parquet4s._
 import com.github.mjakubowski84.parquet4s.parquet.fromParquet
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.ParquetUtils.readParquetColumns
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing.BaseProcessingSpec.TransformerConfig
@@ -48,8 +49,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         )
 
         val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-        val goodPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good")
-        val badPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=bad")
+        val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+        val badPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
         for {
           output                    <- process(inputStream, config)
@@ -65,7 +66,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
 
           actualParquetRows.size must beEqualTo(46)
           actualBadRows.size must beEqualTo(4)
-          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
           output.checkpointed must beEqualTo(1)
 
           assertParquetRows(actualParquetRows, expectedParquetRows)
@@ -82,7 +83,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         )
 
         val config =  TransformerConfig(appConfig(outputDirectory), igluConfig)
-        val goodPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good")
+        val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
         for {
           output                    <- process(inputStream, config)
@@ -94,7 +95,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         } yield {
 
           actualParquetRows.size must beEqualTo(100)
-          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
           output.checkpointed must beEqualTo(1)
 
           assertParquetRows(actualParquetRows, expectedParquetRows)
@@ -110,7 +111,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         )
 
         val config =  TransformerConfig(appConfig(outputDirectory), igluConfig)
-        val goodPath = Path.of(outputDirectory.toString, "run=1970-01-01-10-30-00/output=good")
+        val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
         for {
           output                    <- process(inputStream, config)
@@ -122,7 +123,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         } yield {
           
           actualParquetRows.size must beEqualTo(100)
-          output.completionMessages must beEqualTo(Vector(expectedCompletionMessage))
+          removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
           output.checkpointed must beEqualTo(1)
           
           assertParquetRows(actualParquetRows, expectedParquetRows)
