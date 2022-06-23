@@ -65,8 +65,8 @@ object Snowflake {
             Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery)), Nil)
+          def getLoadStatements(discovery: DataDiscovery, eventsColumns: List[String]): LoadStatements =
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery), Nil))
 
           // Technically, Snowflake Loader cannot create new tables
           def createTable(schemas: SchemaList): Block = {
@@ -76,6 +76,8 @@ object Snowflake {
 
           def getManifest: Statement =
             Statement.CreateTable(SnowflakeManifest.getManifestDef(schema).toFragment)
+
+          def requiresEventsColumns: Boolean = false
 
           def getColumns(discovery: DataDiscovery): List[String] = {
             val atomicColumns = AtomicColumns.Columns
@@ -113,7 +115,7 @@ object Snowflake {
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, _, columns) => {
+              case Statement.EventsCopy(path, _, columns, _) => {
                 def columnsForCopy: String = columns.mkString(",") + ",load_tstamp"
                 def columnsForSelect: String = columns.map(c => s"$$1:$c").mkString(",") + ",current_timestamp()"
 

@@ -32,6 +32,8 @@ object Databricks {
 
   val AlertingTempTableName = "rdb_folder_monitoring"
   val ManifestName = "manifest"
+  val UnstructPrefix = "unstruct_event_"
+  val ContextsPrefix = "contexts_"
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
@@ -42,8 +44,13 @@ object Databricks {
 
           def extendTable(info: ShreddedType.Info): Option[Block] = None
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery)))
+          def getLoadStatements(discovery: DataDiscovery, eventsColumns: List[String]): LoadStatements = {
+            val toCopy = getColumns(discovery)
+            val toSkip = eventsColumns
+              .filter(c => c.startsWith(UnstructPrefix) || c.startsWith(ContextsPrefix))
+              .diff(toCopy)
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip))
+          }
 
           def getColumns(discovery: DataDiscovery): List[String] = {
             val atomicColumns = AtomicColumns.Columns
@@ -79,6 +86,8 @@ object Databricks {
                                  |""".stripMargin)
             )
 
+          def requiresEventsColumns: Boolean = true
+
           def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
@@ -101,10 +110,13 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
                       FILEFORMAT = CSV""";
-              case Statement.EventsCopy(path, _, columns) =>
+              case Statement.EventsCopy(path, _, toCopy, toSkip) =>
                 val frTableName     = Fragment.const(qualify(EventsTable.MainName))
-                val frPath          = Fragment.const0(s"$path/output=good")
-                val frSelectColumns = Fragment.const0(columns.mkString(",") + ", current_timestamp() as load_tstamp")
+                val frPath          = Fragment.const0(path.append("output=good"))
+                val allColumns = toCopy ::: toSkip.map (c => s"NULL AS $c") ::: List(
+                    "current_timestamp() AS load_tstamp"
+                  )
+                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
                 sql"""COPY INTO $frTableName
                       FROM (
                         SELECT $frSelectColumns from '$frPath'
@@ -124,9 +136,10 @@ object Databricks {
               case _: Statement.RenameTable =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.SetSearchPath =>
-                throw new IllegalStateException("Databricks Loader does not support migrations")
-              case _: Statement.GetColumns =>
-                throw new IllegalStateException("Databricks Loader does not support migrations")
+                Fragment.const0(s"USE ${tgt.catalog}.${tgt.schema}")
+              case Statement.GetColumns(tableName) =>
+                val qualifiedName = Fragment.const(qualify(tableName))
+                sql"SHOW columns in $qualifiedName"
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(ManifestName))
                 val types     = message.types.asJson.noSpaces

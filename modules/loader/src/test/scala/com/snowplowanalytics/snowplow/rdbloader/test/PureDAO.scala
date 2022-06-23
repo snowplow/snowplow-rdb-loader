@@ -93,9 +93,9 @@ object PureDAO {
     def toFragment(statement: Statement): Fragment =
       Fragment.const0(statement.toString)
 
-    def getLoadStatements(discovery: DataDiscovery): LoadStatements =
+    def getLoadStatements(discovery: DataDiscovery, eventsColumns: List[String]): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip, List.empty),
+        Statement.EventsCopy(discovery.base, Compression.Gzip, List.empty, List.empty),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }
@@ -117,5 +117,7 @@ object PureDAO {
       val entity = Migration.Entity.Table("public", schemas.latest.schemaKey)
       Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), entity)
     }
+
+    def requiresEventsColumns: Boolean = false
   }
 }

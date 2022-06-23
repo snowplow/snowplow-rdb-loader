@@ -35,8 +35,10 @@ trait Target {
    * Transform `DataDiscovery` into `LoadStatements`
    * The statements could be either single statement (only `events` table)
    * or multi-statement (`events` plus shredded types)
+   * @param discovery TODO
+   * @param eventsColumns TODO
    */
-  def getLoadStatements(discovery: DataDiscovery): LoadStatements
+  def getLoadStatements(discovery: DataDiscovery, eventsColumns: List[String]): LoadStatements
 
   /** Get DDL of a manifest table */
   def getManifest: Statement
@@ -49,4 +51,7 @@ trait Target {
 
   /** Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates on `events` table */
   def extendTable(info: ShreddedType.Info): Option[Block]
+
+  /** Whether the target needs to know existing columns in the events table */
+  def requiresEventsColumns: Boolean
 }

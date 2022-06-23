@@ -70,14 +70,14 @@ object Redshift {
           def extendTable(info: ShreddedType.Info): Option[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements = {
+          def getLoadStatements(discovery: DataDiscovery, eventsColumns: List[String]): LoadStatements = {
             val shreddedStatements = discovery
               .shreddedTypes
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
             // Since EventsCopy is used only for atomic events in Redshift Loader,
             // 'columns' field of EventsCopy isn't needed therefore it is set to empty list.
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, List.empty)
+            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, List.empty, List.empty)
             NonEmptyList(atomic, shreddedStatements)
           }
 
@@ -90,6 +90,8 @@ object Redshift {
 
           def getManifest: Statement =
             Statement.CreateTable(Fragment.const0(getManifestDef(schema).render))
+
+          def requiresEventsColumns: Boolean = false
 
           def toFragment(statement: Statement): Fragment =
             statement match {
@@ -111,7 +113,7 @@ object Redshift {
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, _) =>
+              case Statement.EventsCopy(path, compression, _, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
@@ -194,8 +196,7 @@ object Redshift {
               case Statement.SetSearchPath =>
                 Fragment.const0(s"SET search_path TO ${schema}")
               case Statement.GetColumns(tableName) =>
-                val fullName = qualify(tableName)
-                sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $fullName AND schemaname = $schema"""
+                sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName AND schemaname = $schema"""
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(ManifestName))
                 val types     = message.types.asJson.noSpaces

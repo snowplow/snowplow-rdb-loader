@@ -17,6 +17,7 @@ import doobie.Fragment
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
+import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
 
 /**
@@ -53,8 +54,8 @@ object Statement {
   case class FoldersCopy(source: S3.Folder) extends Statement
 
   // Loading
-  case class EventsCopy(path: S3.Folder, compression: Compression, columns: List[String]) extends Statement with Loading {
-    def table: String = "events"
+  case class EventsCopy(path: S3.Folder, compression: Compression, columnsToCopy: List[String], columnsToSkip: List[String]) extends Statement with Loading {
+    def table: String = EventsTable.MainName
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
     def table: String = shreddedType.info.getName
