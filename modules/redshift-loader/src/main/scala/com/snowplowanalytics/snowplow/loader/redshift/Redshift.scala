@@ -12,31 +12,27 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift
 
-import java.sql.Timestamp
-
 import cats.data.NonEmptyList
-import cats.implicits._
-
-import io.circe.syntax._
-import doobie.Fragment
-import doobie.implicits._
-import doobie.implicits.javasql._
-
 import com.snowplowanalytics.iglu.core.SchemaKey
-
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGenerator, MigrationGenerator}
-
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Entity, Item, Block, NoPreStatements, NoStatements}
-import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target, AtomicColumns }
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{ShreddedType, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
+import doobie.Fragment
+import doobie.implicits._
+import doobie.implicits.javasql._
+import io.circe.syntax._
+
+import java.sql.Timestamp
 
 object Redshift {
 
@@ -48,7 +44,10 @@ object Redshift {
     config.storage match {
       case StorageTarget.Redshift(_, _, _, _, roleArn, schema, _, _, maxError, _) =>
         val result = new Target {
-          def updateTable(migration: Migration): Block = {
+
+          override val requiresEventsColumns: Boolean = false
+
+          override def updateTable(migration: Migration): Block = {
             val ddlFile = MigrationGenerator.generateMigration(migration, 4096, Some(schema))
 
             val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
@@ -67,31 +66,30 @@ object Redshift {
             Block(preTransaction.reverse, inTransaction.reverse, Entity.Table(schema, target))
           }
 
-          def extendTable(info: ShreddedType.Info): Option[Block] =
+          override def extendTable(info: ShreddedType.Info): Option[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements = {
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements = {
             val shreddedStatements = discovery
               .shreddedTypes
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
-            // Since EventsCopy is used only for atomic events in Redshift Loader,
-            // 'columns' field of EventsCopy isn't needed therefore it is set to empty list.
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, List.empty)
+            
+            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none)
             NonEmptyList(atomic, shreddedStatements)
           }
 
-          def createTable(schemas: SchemaList): Block = {
+          override def createTable(schemas: SchemaList): Block = {
             val subschemas = FlatSchema.extractProperties(schemas)
             val tableName = StringUtils.getTableName(schemas.latest)
             val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some(schema), 4096, false)
             Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), Entity.Table(schema, schemas.latest.schemaKey))
           }
 
-          def getManifest: Statement =
+          override def getManifest: Statement =
             Statement.CreateTable(Fragment.const0(getManifestDef(schema).render))
 
-          def toFragment(statement: Statement): Fragment =
+          override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
@@ -111,7 +109,7 @@ object Redshift {
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
@@ -119,7 +117,7 @@ object Redshift {
                 val frRegion = Fragment.const0(config.region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
-                val frColumns = Fragment.const0(AtomicColumns.Columns.mkString(","))
+                val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
 
                 sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                      | CREDENTIALS '$frRoleArn'
@@ -191,13 +189,11 @@ object Redshift {
                 val ddl = DdlFile(List(AlterTable(qualify(from), RenameTo(to))))
                 val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
                 Fragment.const0(str)
-              case Statement.SetSearchPath =>
-                Fragment.const0(s"SET search_path TO ${schema}")
               case Statement.GetColumns(tableName) =>
-                val fullName = qualify(tableName)
-                sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $fullName AND schemaname = $schema"""
+                sql"""SELECT column_name FROM information_schema.columns 
+                      WHERE table_name = $tableName and table_schema = $schema"""
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(qualify(ManifestName))
+                val tableName = Fragment.const(qualify(Manifest.Name))
                 val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
@@ -228,7 +224,7 @@ object Redshift {
                 ddl
             }
 
-          def qualify(tableName: String): String =
+          private def qualify(tableName: String): String =
             s"$schema.$tableName"
         }
 
@@ -243,8 +239,6 @@ object Redshift {
       case Compression.Gzip => Fragment.const("GZIP")
       case Compression.None => Fragment.empty
     }
-
-  val ManifestName = "manifest"
 
   val ManifestColumns = List(
     Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull),KeyConstaint(PrimaryKey))),
@@ -266,7 +260,7 @@ object Redshift {
   /** Add `schema` to otherwise static definition of manifest table */
   def getManifestDef(schema: String): CreateTable =
     CreateTable(
-      s"$schema.$ManifestName",
+      s"$schema.${Manifest.Name}",
       ManifestColumns,
       Set.empty,
       Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))

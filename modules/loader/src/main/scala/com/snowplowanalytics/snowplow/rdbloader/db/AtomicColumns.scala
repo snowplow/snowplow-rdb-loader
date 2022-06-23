@@ -1,12 +1,14 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
+
 object AtomicColumns {
 
   object ColumnsWithDefault {
-    val LoadTstamp = "load_tstamp"
+    val LoadTstamp = ColumnName("load_tstamp")
   }
 
-  val Columns: List[String] = List(
+  val Columns: List[ColumnName] = List(
     "app_id",
     "platform",
     "etl_tstamp",
@@ -135,5 +137,5 @@ object AtomicColumns {
     "event_version",
     "event_fingerprint",
     "true_tstamp",
-  )
+  ).map(ColumnName)
 }

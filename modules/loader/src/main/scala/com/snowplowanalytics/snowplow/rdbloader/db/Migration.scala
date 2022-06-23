@@ -12,22 +12,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import cats.{~>, Applicative, Monad, MonadThrow}
 import cats.data.EitherT
 import cats.implicits._
-
-import doobie.Fragment
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaMap, SchemaKey}
-
+import cats.{Applicative, Monad, MonadThrow, ~>}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration}
-
-import com.snowplowanalytics.snowplow.rdbloader.{readSchemaKey, LoaderError, LoaderAction}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, Migration => SchemaMigration}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
+import doobie.Fragment
 
 
 /**
@@ -179,7 +175,7 @@ object Migration {
           schemaKey <- getVersion[F](tableName)
           matches = schemas.latest.schemaKey == schemaKey
           block <- if (matches) emptyBlock[F]
-          else Control.getColumns[F](tableName).flatMap { (columns: List[String]) =>
+          else Control.getColumns[F](tableName).flatMap { (columns: List[ColumnName]) =>
             migrateTable(target, schemaKey, columns, schemas) match {
               case Left(migrationError) => MonadThrow[F].raiseError[Option[Block]](migrationError)
               case Right(block) => MonadThrow[F].pure(block.some)
@@ -195,7 +191,7 @@ object Migration {
     }
   }
 
-  def migrateTable(target: Target, current: SchemaKey, columns: List[String], schemaList: SchemaList): Either[LoaderError, Block] = {
+  def migrateTable(target: Target, current: SchemaKey, columns: List[ColumnName], schemaList: SchemaList): Either[LoaderError, Block] = {
     schemaList match {
       case s: SchemaList.Full =>
         val migrations = s.extractSegments.map(SchemaMigration.fromSegment)
@@ -207,7 +203,7 @@ object Migration {
             DiscoveryFailure.IgluError(message).toLoaderError.asLeft
         }
       case s: SchemaList.Single =>
-        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.mkString(", ")}\nstate: $schemaList"
+        val message = s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns.map(_.value).mkString(", ")}\nstate: $schemaList"
         LoaderError.MigrationError(message).asLeft
     }
   }

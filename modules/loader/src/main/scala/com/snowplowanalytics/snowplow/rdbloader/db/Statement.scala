@@ -13,10 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import doobie.Fragment
-
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
+import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
 
 /**
@@ -53,8 +54,11 @@ object Statement {
   case class FoldersCopy(source: S3.Folder) extends Statement
 
   // Loading
-  case class EventsCopy(path: S3.Folder, compression: Compression, columns: List[String]) extends Statement with Loading {
-    def table: String = "events"
+  case class EventsCopy(path: S3.Folder,
+                        compression: Compression,
+                        columnsToCopy: ColumnsToCopy,
+                        columnsToSkip: ColumnsToSkip) extends Statement with Loading {
+    def table: String = EventsTable.MainName
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
     def table: String = shreddedType.info.getName
@@ -69,7 +73,6 @@ object Statement {
   case class GetVersion(tableName: String) extends Statement
   case class RenameTable(from: String, to: String) extends Statement
 
-  case object SetSearchPath extends Statement
   case class GetColumns(tableName: String) extends Statement
   case class CommentOn(tableName: String, comment: String) extends Statement
   case object AddLoadTstampColumn extends Statement

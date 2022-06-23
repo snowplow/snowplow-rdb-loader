@@ -14,19 +14,16 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import doobie.{Read, Fragment}
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import doobie.{Fragment, Read}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, Migration => SchemaMigration}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
-
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, Migration}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Item}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
@@ -93,9 +90,9 @@ object PureDAO {
     def toFragment(statement: Statement): Fragment =
       Fragment.const0(statement.toString)
 
-    def getLoadStatements(discovery: DataDiscovery): LoadStatements =
+    def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip, List.empty),
+        Statement.EventsCopy(discovery.base, Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty)),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }
@@ -117,5 +114,7 @@ object PureDAO {
       val entity = Migration.Entity.Table("public", schemas.latest.schemaKey)
       Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), entity)
     }
+
+    def requiresEventsColumns: Boolean = false
   }
 }

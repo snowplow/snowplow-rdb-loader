@@ -10,6 +10,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.{Databricks, Redshift}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, DAO, Logging, Transaction}
 
 object Manifest {
@@ -26,7 +27,7 @@ object Manifest {
     "commit_tstamp",
     "event_count",
     "shredded_cardinality"
-  )
+  ).map(ColumnName)
 
   def initialize[F[_]: MonadThrow: Logging: Timer: AWS, C[_]: DAO: Monad](
     target: StorageTarget
@@ -51,8 +52,8 @@ object Manifest {
       for {
         exists <- Control.tableExists[F](Name)
         status <- if (exists) for {
-          columns <- Control.getColumns[F](Name)
-          legacy = columns.toSet === LegacyColumns.toSet
+          existingTableColumns <- Control.getColumns[F](Name)
+          legacy = existingTableColumns.toSet === LegacyColumns.toSet
           status <- if (legacy)
             Control.renameTable[F](Name, LegacyName) *>
               create[F].as[InitStatus](InitStatus.Migrated)

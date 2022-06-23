@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import cats.{Functor, Monad}
 import cats.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
 /** Set of common functions to control DB entities */
@@ -25,9 +25,7 @@ object Control {
   def tableExists[F[_]: DAO](tableName: String): F[Boolean] =
     DAO[F].executeQuery[Boolean](Statement.TableExists(tableName))
 
-  def getColumns[F[_]: Monad: DAO](tableName: String): F[List[String]] =
-    for {
-      _       <- DAO[F].executeUpdate(Statement.SetSearchPath, DAO.Purpose.NonLoading)
-      columns <- DAO[F].executeQueryList[String](Statement.GetColumns(tableName))
-    } yield columns
+  def getColumns[F[_]: Monad: DAO](tableName: String): F[List[ColumnName]] =
+    DAO[F].executeQueryList[String](Statement.GetColumns(tableName))
+      .map(_.map(ColumnName))
 }

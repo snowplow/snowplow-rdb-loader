@@ -18,6 +18,7 @@ import cats.implicits._
 import cats.effect.{Clock, Concurrent, MonadThrow, Timer}
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
@@ -87,8 +88,8 @@ object Loader {
    * A primary loading processing, pulling information from discovery streams
    * (SQS and retry queue) and performing the load operation itself
    */
-  def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
-                 C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
+  private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
+                         C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
     val retryDiscovery: DiscoveryStream[F] =
@@ -105,9 +106,9 @@ object Loader {
    * over to `Load`. A primary function handling the global state - everything
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
-  def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
-                       C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
-                                                 (discovery: DataDiscovery.WithOrigin): F[Unit] = {
+  private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
+                               C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
+                                                              (discovery: DataDiscovery.WithOrigin): F[Unit] = {
     val folder = discovery.origin.base
     val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
     val backgroundCheck: F[Unit] => F[Unit] =
@@ -142,21 +143,27 @@ object Loader {
     loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
   }
 
-  def addLoadTstampColumn[F[_]: DAO: Monad: Logging](targetConfig: StorageTarget): F[Unit] =
+  private def addLoadTstampColumn[F[_]: DAO: Monad: Logging](targetConfig: StorageTarget): F[Unit] =
     targetConfig match {
       // Adding load_tstamp column explicitly is not needed due to merge schema
       // feature of Databricks. It will create missing column itself.
       case _: StorageTarget.Databricks => Monad[F].unit
       case _ =>
         for {
-          columns <- DbControl.getColumns[F](EventsTable.MainName)
-          _ <- if (columns.map(_.toLowerCase).contains(AtomicColumns.ColumnsWithDefault.LoadTstamp))
+          allColumns <- DbControl.getColumns[F](EventsTable.MainName)
+          _ <- if (loadTstampColumnExist(allColumns))
             Logging[F].info("load_tstamp column already exists")
           else
             DAO[F].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
               Logging[F].info("load_tstamp column is added successfully")
         } yield ()
     }
+
+  private def loadTstampColumnExist(eventTableColumns: EventTableColumns) = {
+    eventTableColumns
+      .map(_.value.toLowerCase)
+      .contains(AtomicColumns.ColumnsWithDefault.LoadTstamp.value)
+  }
 
   /**
    * Handle a failure during loading.
@@ -168,9 +175,9 @@ object Loader {
    * @param discovery the original discovery
    * @param error the actual error, typically `SQLException`
    */
-  def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: DataDiscovery.WithOrigin,
-                                                          addFailure: Throwable => F[Boolean])
-                                                         (error: Throwable): F[Unit] = {
+  private def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: DataDiscovery.WithOrigin,
+                                                                  addFailure: Throwable => F[Boolean])
+                                                                  (error: Throwable): F[Unit] = {
     val message = error match {
       case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
       case _ => Option(error.getMessage).getOrElse(error.toString)
@@ -184,7 +191,7 @@ object Loader {
   }
 
   /** Last level of failure handling, called when non-loading stream fail. Called on an application crash */
-  def reportFatal[F[_]: Apply: Logging: Monitoring]: PartialFunction[Throwable, F[Unit]] = {
+  private def reportFatal[F[_]: Apply: Logging: Monitoring]: PartialFunction[Throwable, F[Unit]] = {
     case error =>
       Logging[F].error("Loader shutting down") *>
         Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>

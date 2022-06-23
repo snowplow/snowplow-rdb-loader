@@ -12,58 +12,53 @@
  */
 package com.snowplowanalytics.snowplow.loader.databricks
 
-import java.sql.Timestamp
 import cats.data.NonEmptyList
-import io.circe.syntax._
-import doobie.Fragment
-import doobie.implicits.javasql._
-import doobie.implicits._
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target, AtomicColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+import doobie.Fragment
+import doobie.implicits._
+import doobie.implicits.javasql._
+import io.circe.syntax._
+
+import java.sql.Timestamp
 
 object Databricks {
 
   val AlertingTempTableName = "rdb_folder_monitoring"
-  val ManifestName = "manifest"
+  val UnstructPrefix = "unstruct_event_"
+  val ContextsPrefix = "contexts_"
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
       case tgt: StorageTarget.Databricks =>
         val result = new Target {
-          def updateTable(migration: Migration): Block =
+          
+          override val requiresEventsColumns: Boolean = true
+
+          override def updateTable(migration: Migration): Block =
             Block(Nil, Nil, Entity.Table(tgt.schema, SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)))
 
-          def extendTable(info: ShreddedType.Info): Option[Block] = None
+          override def extendTable(info: ShreddedType.Info): Option[Block] = None
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, getColumns(discovery)))
-
-          def getColumns(discovery: DataDiscovery): List[String] = {
-            val atomicColumns = AtomicColumns.Columns
-            val shredTypeColumns = discovery.shreddedTypes
-              .filterNot(_.isAtomic)
-              .map(getShredTypeColumn)
-            atomicColumns ::: shredTypeColumns
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements = {
+            val toCopy = ColumnsToCopy.fromDiscoveredData(discovery) 
+            val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
+            
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip))
           }
 
-          def getShredTypeColumn(shreddedType: ShreddedType): String = {
-            val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
-            val info = shreddedType.info
-            SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model)
-          }
+          override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
 
-          def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
-
-          def getManifest: Statement =
+          override def getManifest: Statement =
             Statement.CreateTable(
-              Fragment.const0(s"""CREATE TABLE IF NOT EXISTS ${qualify(ManifestName)} (
+              Fragment.const0(s"""CREATE TABLE IF NOT EXISTS ${qualify(Manifest.Name)} (
                                  |  base VARCHAR(512) NOT NULL,
                                  |  types VARCHAR(65535) NOT NULL,
                                  |  shredding_started TIMESTAMP NOT NULL,
@@ -79,7 +74,7 @@ object Databricks {
                                  |""".stripMargin)
             )
 
-          def toFragment(statement: Statement): Fragment =
+          override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
@@ -93,7 +88,7 @@ object Databricks {
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frManifest  = Fragment.const(qualify(ManifestName))
+                val frManifest  = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
@@ -101,10 +96,15 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
                       FILEFORMAT = CSV""";
-              case Statement.EventsCopy(path, _, columns) =>
-                val frTableName     = Fragment.const(qualify(EventsTable.MainName))
-                val frPath          = Fragment.const0(s"$path/output=good")
-                val frSelectColumns = Fragment.const0(columns.mkString(",") + ", current_timestamp() as load_tstamp")
+              case Statement.EventsCopy(path, _, toCopy, toSkip) =>
+                val frTableName      = Fragment.const(qualify(EventsTable.MainName))
+                val frPath           = Fragment.const0(path.append("output=good"))
+                val nonNulls         = toCopy.names.map(_.value)
+                val nulls            = toSkip.names.map(c => s"NULL AS ${c.value}")
+                val currentTimestamp = "current_timestamp() AS load_tstamp"
+                val allColumns       = (nonNulls ::: nulls) :+ currentTimestamp 
+                 
+                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
                 sql"""COPY INTO $frTableName
                       FROM (
                         SELECT $frSelectColumns from '$frPath'
@@ -123,12 +123,11 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case _: Statement.RenameTable =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
-              case Statement.SetSearchPath =>
-                throw new IllegalStateException("Databricks Loader does not support migrations")
-              case _: Statement.GetColumns =>
-                throw new IllegalStateException("Databricks Loader does not support migrations")
+              case Statement.GetColumns(tableName) =>
+                val qualifiedName = Fragment.const(qualify(tableName))
+                sql"SHOW columns in $qualifiedName"
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(qualify(ManifestName))
+                val tableName = Fragment.const(qualify(Manifest.Name))
                 val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
@@ -148,7 +147,7 @@ object Databricks {
                       base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp,
                       compression, processor_artifact, processor_version, count_good
-                      FROM ${Fragment.const0(qualify(ManifestName))} WHERE base = $base"""
+                      FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base"""
               case Statement.AddLoadTstampColumn =>
                 throw new IllegalStateException("Databricks Loader does not support load_tstamp column")
               case Statement.CreateTable(ddl) =>
@@ -162,14 +161,18 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not support migrations")
             }
 
-          def qualify(tableName: String): String =
+          private def qualify(tableName: String): String =
             s"${tgt.catalog}.${tgt.schema}.$tableName"
         }
         Right(result)
       case other =>
         Left(s"Invalid State: trying to build Databricks interpreter with unrecognized config (${other.driver} driver)")
     }
-
   }
 
+  private def getEntityColumnsPresentInDbOnly(eventTableColumns: EventTableColumns, toCopy: ColumnsToCopy) = {
+    eventTableColumns
+      .filter(name => name.value.startsWith(UnstructPrefix) || name.value.startsWith(ContextsPrefix))
+      .diff(toCopy.names) 
+  }
 }

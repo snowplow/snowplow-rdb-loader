@@ -13,29 +13,23 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
-
 import scala.concurrent.duration.FiniteDuration
-
 import cats.syntax.option._
-
 import cats.effect.Timer
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Transaction, Iglu, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
-
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
 
 class LoadSpec extends Specification {
   import LoadSpec.{isBeforeFirstCommit, failCommit}
@@ -58,7 +52,7 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, List.empty)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -111,13 +105,13 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, List.empty)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, List.empty)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
