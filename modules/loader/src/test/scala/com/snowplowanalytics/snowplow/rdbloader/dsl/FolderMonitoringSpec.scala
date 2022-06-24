@@ -123,38 +123,74 @@ class FolderMonitoringSpec extends Specification {
       val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
       result must beTrue
     }
+     "for key with UUID" >> {
+       "return false if key is old enough" in {
+         val duration = FiniteDuration.apply(1, "day")
+         val input = S3.Folder.parse("s3://bucket/run=2020-09-01-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
+         val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+         result must beFalse
+       }
 
-    "return false if key is old enough" in {
-      val duration = FiniteDuration.apply(1, "day")
-      val input = S3.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
-      result must beFalse
-    }
+       "return true if key is fresh enough" in {
+         val duration = FiniteDuration.apply(1, "day")
+         val now = Instant.parse("2021-10-30T18:35:24.00Z")
+         val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
+         val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+         result must beTrue
+       }
 
-    "return true if key is fresh enough" in {
-      val duration = FiniteDuration.apply(1, "day")
-      val now = Instant.parse("2021-10-30T18:35:24.00Z")
-      val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
-      result must beTrue
-    }
+       "return false if key is fresh, but not old enough" in {
+         val sinceDuration = FiniteDuration.apply(1, "day")
+         val untilDuration = FiniteDuration.apply(19, "hours")
+         val now = Instant.parse("2021-10-30T18:35:24.00Z")
+         val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
+         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+         result must beFalse
+       }
 
-    "return false if key is fresh, but not old enough" in {
-      val sinceDuration = FiniteDuration.apply(1, "day")
-      val untilDuration = FiniteDuration.apply(19, "hours")
-      val now = Instant.parse("2021-10-30T18:35:24.00Z")
-      val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
-      result must beFalse
-    }
+       "return true if key is fresh and old enough" in {
+         val sinceDuration = FiniteDuration.apply(1, "day")
+         val untilDuration = FiniteDuration.apply(17, "hours")
+         val now = Instant.parse("2021-10-30T18:35:24.00Z")
+         val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
+         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+         result must beTrue
+       } 
+     }
 
-    "return true if key is fresh and old enough" in {
-      val sinceDuration = FiniteDuration.apply(1, "day")
-      val untilDuration = FiniteDuration.apply(17, "hours")
-      val now = Instant.parse("2021-10-30T18:35:24.00Z")
-      val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
-      result must beTrue
+    "for key without UUID" >> {
+      "return false if key is old enough" in {
+        val duration = FiniteDuration.apply(1, "day")
+        val input = S3.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+        result must beFalse
+      }
+
+      "return true if key is fresh enough" in {
+        val duration = FiniteDuration.apply(1, "day")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+        result must beTrue
+      }
+
+      "return false if key is fresh, but not old enough" in {
+        val sinceDuration = FiniteDuration.apply(1, "day")
+        val untilDuration = FiniteDuration.apply(19, "hours")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        result must beFalse
+      }
+
+      "return true if key is fresh and old enough" in {
+        val sinceDuration = FiniteDuration.apply(1, "day")
+        val untilDuration = FiniteDuration.apply(17, "hours")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        result must beTrue
+      }
     }
   }
 }

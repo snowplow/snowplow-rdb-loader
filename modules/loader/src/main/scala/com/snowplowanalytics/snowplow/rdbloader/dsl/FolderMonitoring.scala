@@ -76,19 +76,22 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
-    Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
-      case Right(accessor) => 
+  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean = {
+    val noRunPrefix = folder.folderName.stripPrefix("run=")
+    val dateOnly = noRunPrefix.take(TimePattern.length)
+    
+    Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(dateOnly)) match {
+      case Right(accessor) =>
         (since, until) match {
-          case (Some(sinceDuration), Some(untilDuration))  =>
+          case (Some(sinceDuration), Some(untilDuration)) =>
             val oldest = now.minusMillis(sinceDuration.toMillis)
             val newest = now.minusMillis(untilDuration.toMillis)
             val time = accessor.query(Instant.from)
             time.isAfter(oldest) && time.isBefore(newest)
-          case (None, Some(untilDuration))  =>
+          case (None, Some(untilDuration)) =>
             val newest = now.minusMillis(untilDuration.toMillis)
             accessor.query(Instant.from).isBefore(newest)
-          case (Some(sinceDuration), None)  =>
+          case (Some(sinceDuration), None) =>
             val oldest = now.minusMillis(sinceDuration.toMillis)
             accessor.query(Instant.from).isAfter(oldest)
           case (None, None) => true
@@ -96,6 +99,7 @@ object FolderMonitoring {
       case Left(_) =>
         true
     }
+  }
 
   /**
    * Sink all processed paths of folders in `input` (shredded archive) into `output` (temp staging)
