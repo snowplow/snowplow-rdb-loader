@@ -140,11 +140,11 @@ object StorageTarget {
       )
   }
 
-  final case class Snowflake(snowflakeRegion: String,
+  final case class Snowflake(snowflakeRegion: Option[String],
                              username: String,
                              role: Option[String],
                              password: PasswordConfig,
-                             account: String,
+                             account: Option[String],
                              warehouse: String,
                              database: String,
                              schema: String,
@@ -159,7 +159,7 @@ object StorageTarget {
 
     def properties: Properties = {
       val props: Properties = new Properties()
-      props.put("account", account)
+      account.foreach(a => props.put("account", a))
       props.put("warehouse", warehouse)
       props.put("db", database)
       props.put("schema", schema)
@@ -186,13 +186,13 @@ object StorageTarget {
       jdbcHost match {
         case Some(overrideHost) => overrideHost
         case None =>
-          if (snowflakeRegion == AwsUsWest2Region)
+          if (snowflakeRegion.get == AwsUsWest2Region)
             s"${account}.snowflakecomputing.com"
-          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion))
+          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion.get))
             s"${account}.${snowflakeRegion}.snowflakecomputing.com"
-          else if (AwsRegionsWithSegment.contains(snowflakeRegion))
+          else if (AwsRegionsWithSegment.contains(snowflakeRegion.get))
             s"${account}.${snowflakeRegion}.aws.snowflakecomputing.com"
-          else if (GcpRegions.contains(snowflakeRegion))
+          else if (GcpRegions.contains(snowflakeRegion.get))
             s"${account}.${snowflakeRegion}.gcp.snowflakecomputing.com"
           else s"${account}.${snowflakeRegion}.azure.snowflakecomputing.com"
       }
