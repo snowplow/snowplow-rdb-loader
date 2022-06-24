@@ -56,11 +56,11 @@ object ConfigSpec {
     None
   )
   val exampleSnowflake = StorageTarget.Snowflake(
-    "us-west-2",
+    Some("us-west-2"),
     "admin",
     None,
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    "acme",
+    Some("acme"),
     "wh",
     "snowplow",
     "atomic",

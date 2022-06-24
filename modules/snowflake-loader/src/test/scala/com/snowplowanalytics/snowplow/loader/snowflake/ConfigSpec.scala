@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.loader.snowflake
 import scala.concurrent.duration._
 
 import cats.effect.IO
-
+import cats.syntax.all._
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 
@@ -63,6 +63,27 @@ class ConfigSpec extends Specification {
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       )
       result must beRight(expected)
+    }
+
+    "be able to infer host" in {
+      val exampleSnowflake = StorageTarget.Snowflake(
+        snowflakeRegion = Some("us-west-2"),
+        username = "admin",
+        role = None,
+        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        account = Some("acme"),
+        warehouse = "wh",
+        database = "snowplow",
+        schema = "atomic",
+        transformedStage = "snowplow_stage",
+        appName = "Snowplow_OSS",
+        folderMonitoringStage = None,
+        onError = StorageTarget.Snowflake.Continue,
+        jdbcHost = None)
+      exampleSnowflake.host must beRight("acme.snowflakecomputing.com")
+      exampleSnowflake.copy(jdbcHost = "override".some).host must beRight("override")
+      exampleSnowflake.copy(snowflakeRegion = "us-east-1".some).host must beRight("acme.us-east-1.snowflakecomputing.com")
+      exampleSnowflake.copy(snowflakeRegion = "us-east-1-gov".some).host must beRight("acme.us-east-1-gov.aws.snowflakecomputing.com")
     }
   }
 }

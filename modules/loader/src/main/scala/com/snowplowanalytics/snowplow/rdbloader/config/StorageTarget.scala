@@ -140,11 +140,11 @@ object StorageTarget {
       )
   }
 
-  final case class Snowflake(snowflakeRegion: String,
+  final case class Snowflake(snowflakeRegion: Option[String],
                              username: String,
                              role: Option[String],
                              password: PasswordConfig,
-                             account: String,
+                             account: Option[String],
                              warehouse: String,
                              database: String,
                              schema: String,
@@ -153,13 +153,20 @@ object StorageTarget {
                              folderMonitoringStage: Option[String],
                              onError: Snowflake.OnError,
                              jdbcHost: Option[String]) extends StorageTarget {
-    def connectionUrl: String = s"jdbc:snowflake://$host"
+
+    def connectionUrl: String =
+      host match {
+        case Right(h) =>
+          s"jdbc:snowflake://$h"
+        case Left(e) =>
+          // Should not happen because config has been validated
+          throw new IllegalStateException(s"Error deriving host: $e")
+      }
 
     def sshTunnel: Option[TunnelConfig] = None
 
     def properties: Properties = {
       val props: Properties = new Properties()
-      props.put("account", account)
       props.put("warehouse", warehouse)
       props.put("db", database)
       props.put("schema", schema)
@@ -170,7 +177,7 @@ object StorageTarget {
 
     def driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
 
-    def host: String = {
+    def host: Either[String, String] = {
       // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
       val AwsUsWest2Region = "us-west-2"
       // A list of AWS region names for which the Snowflake account name doesn't have the `aws` segment
@@ -183,18 +190,21 @@ object StorageTarget {
 
       // Host corresponds to Snowflake full account name which might include cloud platform and region
       // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
-      jdbcHost match {
-        case Some(overrideHost) => overrideHost
-        case None =>
-          if (snowflakeRegion == AwsUsWest2Region)
-            s"${account}.snowflakecomputing.com"
-          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.snowflakecomputing.com"
-          else if (AwsRegionsWithSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.aws.snowflakecomputing.com"
-          else if (GcpRegions.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.gcp.snowflakecomputing.com"
-          else s"${account}.${snowflakeRegion}.azure.snowflakecomputing.com"
+      (jdbcHost, account, snowflakeRegion) match {
+        case (Some(overrideHost), _, _) =>
+          overrideHost.asRight
+        case (None, Some(a), Some(r)) =>
+          if (r == AwsUsWest2Region)
+            s"$a.snowflakecomputing.com".asRight
+          else if (AwsRegionsWithoutSegment.contains(r))
+            s"$a.$r.snowflakecomputing.com".asRight
+          else if (AwsRegionsWithSegment.contains(r))
+            s"$a.$r.aws.snowflakecomputing.com".asRight
+          else if (GcpRegions.contains(r))
+            s"$a.$r.gcp.snowflakecomputing.com".asRight
+          else s"$a.$r.azure.snowflakecomputing.com".asRight
+        case (_, _, _) =>
+          "Snowflake config requires either jdbcHost or both account and region".asLeft
       }
     }
   }
