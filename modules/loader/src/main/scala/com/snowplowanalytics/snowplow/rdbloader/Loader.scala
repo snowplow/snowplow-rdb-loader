@@ -13,20 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-
-import cats.{Monad, Apply}
+import cats.{Apply, Monad}
 import cats.implicits._
-
-import cats.effect.{Clock, Timer, MonadThrow, Concurrent}
-
+import cats.effect.{Clock, Concurrent, MonadThrow, Timer}
 import fs2.Stream
-
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.{HealthCheck, Manifest, Control => DbControl, AtomicColumns, Statement}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{NoOperation, Retries, DataDiscovery}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Cache, Iglu, Logging, Monitoring, FolderMonitoring, StateMonitoring, Transaction, AWS}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage, TargetCheck, EventsTable }
-import com.snowplowanalytics.snowplow.rdbloader.state.{ Control, MakeBusy }
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck}
+import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
+
+import java.sql.SQLException
 
 object Loader {
 
@@ -173,7 +171,10 @@ object Loader {
   def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: DataDiscovery.WithOrigin,
                                                           addFailure: Throwable => F[Boolean])
                                                          (error: Throwable): F[Unit] = {
-    val message = Option(error.getMessage).getOrElse(error.toString)
+    val message = error match {
+      case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
+      case _ => Option(error.getMessage).getOrElse(error.toString)
+    }
     val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
     val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
