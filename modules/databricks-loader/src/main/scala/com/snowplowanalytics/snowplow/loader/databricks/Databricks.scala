@@ -63,7 +63,7 @@ object Databricks {
 
           def getManifest: Statement =
             Statement.CreateTable(
-              Fragment.const0(s"""CREATE TABLE IF NOT EXISTS ${qualifiedTableName(tgt, ManifestName)} (
+              Fragment.const0(s"""CREATE TABLE IF NOT EXISTS ${qualify(ManifestName)} (
                                  |  base VARCHAR(512) NOT NULL,
                                  |  types VARCHAR(65535) NOT NULL,
                                  |  shredding_started TIMESTAMP NOT NULL,
@@ -85,24 +85,24 @@ object Databricks {
               case Statement.ReadyCheck => sql"SELECT 1"
 
               case Statement.CreateAlertingTempTable =>
-                val frTableName = Fragment.const(qualifiedTableName(tgt, AlertingTempTableName))
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 // It is not possible to create temp table in Databricks
                 sql"CREATE TABLE IF NOT EXISTS $frTableName ( run_id VARCHAR(512) )"
               case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(qualifiedTableName(tgt, AlertingTempTableName))
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
-                val frTableName = Fragment.const(qualifiedTableName(tgt, AlertingTempTableName))
-                val frManifest  = Fragment.const(qualifiedTableName(tgt, ManifestName))
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
+                val frManifest  = Fragment.const(qualify(ManifestName))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source) =>
-                val frTableName = Fragment.const(qualifiedTableName(tgt, AlertingTempTableName))
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frPath      = Fragment.const0(source)
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
                       FILEFORMAT = CSV""";
               case Statement.EventsCopy(path, _, columns) =>
-                val frTableName     = Fragment.const(qualifiedTableName(tgt, EventsTable.MainName))
+                val frTableName     = Fragment.const(qualify(EventsTable.MainName))
                 val frPath          = Fragment.const0(s"$path/output=good")
                 val frSelectColumns = Fragment.const0(columns.mkString(",") + ", current_timestamp() as load_tstamp")
                 sql"""COPY INTO $frTableName
@@ -123,12 +123,12 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case _: Statement.RenameTable =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
-              case Statement.SetSchema =>
+              case Statement.SetSearchPath =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case _: Statement.GetColumns =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(qualifiedTableName(tgt, ManifestName))
+                val tableName = Fragment.const(qualify(ManifestName))
                 val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
@@ -148,7 +148,7 @@ object Databricks {
                       base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp,
                       compression, processor_artifact, processor_version, count_good
-                      FROM ${Fragment.const0(qualifiedTableName(tgt, ManifestName))} WHERE base = $base"""
+                      FROM ${Fragment.const0(qualify(ManifestName))} WHERE base = $base"""
               case Statement.AddLoadTstampColumn =>
                 throw new IllegalStateException("Databricks Loader does not support load_tstamp column")
               case Statement.CreateTable(ddl) =>
@@ -161,13 +161,15 @@ object Databricks {
               case Statement.AppendTransient =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
             }
+
+          def qualify(tableName: String): String =
+            s"${tgt.catalog}.${tgt.schema}.$tableName"
         }
         Right(result)
       case other =>
         Left(s"Invalid State: trying to build Databricks interpreter with unrecognized config (${other.driver} driver)")
     }
+
   }
 
-  def qualifiedTableName(target: StorageTarget.Databricks, tableName: String): String =
-    s"${target.catalog}.${target.schema}.$tableName"
 }

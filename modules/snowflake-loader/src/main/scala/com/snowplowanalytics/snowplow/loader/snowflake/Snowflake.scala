@@ -148,7 +148,7 @@ object Snowflake {
 
               case Statement.RenameTable(from, to) =>
                 Fragment.const0(s"ALTER TABLE $from RENAME TO $to")
-              case Statement.SetSchema =>
+              case Statement.SetSearchPath =>
                 Fragment.const0(s"USE SCHEMA ${schema}")
               case Statement.GetColumns(tableName) =>
                 val frSchemaName = Fragment.const0(schema.toUpperCase)
@@ -189,6 +189,8 @@ object Snowflake {
               case Statement.AlterTable(ddl) =>
                 ddl
             }
+          def qualify(tableName: String): String =
+            s"$schema.$tableName"
         }
 
         Right(result)
