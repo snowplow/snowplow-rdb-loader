@@ -140,11 +140,11 @@ object StorageTarget {
       )
   }
 
-  final case class Snowflake(snowflakeRegion: String,
+  final case class Snowflake(snowflakeRegion: Option[String],
                              username: String,
                              role: Option[String],
                              password: PasswordConfig,
-                             account: String,
+                             account: Option[String],
                              warehouse: String,
                              database: String,
                              schema: String,
@@ -186,15 +186,15 @@ object StorageTarget {
       jdbcHost match {
         case Some(overrideHost) => overrideHost
         case None =>
-          if (snowflakeRegion == AwsUsWest2Region)
-            s"${account}.snowflakecomputing.com"
-          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.snowflakecomputing.com"
-          else if (AwsRegionsWithSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.aws.snowflakecomputing.com"
-          else if (GcpRegions.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.gcp.snowflakecomputing.com"
-          else s"${account}.${snowflakeRegion}.azure.snowflakecomputing.com"
+          if (snowflakeRegion.get == AwsUsWest2Region)
+            s"${account.get}.snowflakecomputing.com"
+          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion.get))
+            s"${account.get}.${snowflakeRegion.get}.snowflakecomputing.com"
+          else if (AwsRegionsWithSegment.contains(snowflakeRegion.get))
+            s"${account.get}.${snowflakeRegion.get}.aws.snowflakecomputing.com"
+          else if (GcpRegions.contains(snowflakeRegion.get))
+            s"${account.get}.${snowflakeRegion.get}.gcp.snowflakecomputing.com"
+          else s"${account.get}.${snowflakeRegion.get}.azure.snowflakecomputing.com"
       }
     }
   }
