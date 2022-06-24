@@ -134,7 +134,7 @@ object Redshift {
                      | $frCompression""".stripMargin
 
               case Statement.ShreddedCopy(shreddedType, compression) =>
-                val frTableName = Fragment.const0(s"${schema}.${shreddedType.info.getName}")
+                val frTableName = Fragment.const0(qualify(shreddedType.info.getName))
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frRegion = Fragment.const0(config.region.name)
@@ -188,15 +188,16 @@ object Redshift {
                      WHERE nspname = ${schema})
                   AND relname = $tableName""".stripMargin
               case Statement.RenameTable(from, to) =>
-                val ddl = DdlFile(List(AlterTable(s"$schema.$from", RenameTo(to))))
+                val ddl = DdlFile(List(AlterTable(qualify(from), RenameTo(to))))
                 val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
                 Fragment.const0(str)
-              case Statement.SetSchema =>
+              case Statement.SetSearchPath =>
                 Fragment.const0(s"SET search_path TO ${schema}")
               case Statement.GetColumns(tableName) =>
-                sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $tableName"""
+                val fullName = qualify(tableName)
+                sql"""SELECT "column" FROM PG_TABLE_DEF WHERE tablename = $fullName AND schemaname = $schema"""
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(s"$schema.$ManifestName")
+                val tableName = Fragment.const(qualify(ManifestName))
                 val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
@@ -220,12 +221,15 @@ object Redshift {
               case Statement.CreateTable(ddl) =>
                 ddl
               case Statement.CommentOn(table, comment) =>
-                Fragment.const0(CommentOn(table, comment).toDdl)
+                Fragment.const0(CommentOn(qualify(table), comment).toDdl)
               case Statement.DdlFile(ddl) =>
                 ddl
               case Statement.AlterTable(ddl) =>
                 ddl
             }
+
+          def qualify(tableName: String): String =
+            s"$schema.$tableName"
         }
 
         Right(result)

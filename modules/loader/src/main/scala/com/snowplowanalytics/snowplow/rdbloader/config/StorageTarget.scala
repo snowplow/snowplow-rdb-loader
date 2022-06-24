@@ -23,8 +23,6 @@ import io.circe.generic.semiauto._
 
 import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
-import doobie.util.fragment.Fragment
-import doobie.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 
@@ -39,9 +37,6 @@ sealed trait StorageTarget extends Product with Serializable {
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
-  def shreddedTable(tableName: String): String =
-    s"$schema.$tableName"
-
   def doobieCommitStrategy: Strategy = Strategy.default
 
   /**
@@ -53,7 +48,6 @@ sealed trait StorageTarget extends Product with Serializable {
   def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
-  def initializers: List[Fragment] = Nil
 }
 
 object StorageTarget {
@@ -132,12 +126,6 @@ object StorageTarget {
       props.put("UserAgentEntry", userAgent)
       props
     }
-
-    override def initializers: List[Fragment] =
-      List(
-        sql"USE CATALOG ${Fragment.const0(catalog)}",
-        sql"USE ${Fragment.const0(schema)}"
-      )
   }
 
   final case class Snowflake(snowflakeRegion: Option[String],
@@ -169,7 +157,6 @@ object StorageTarget {
       val props: Properties = new Properties()
       props.put("warehouse", warehouse)
       props.put("db", database)
-      props.put("schema", schema)
       props.put("application", appName)
       role.foreach(r => props.put("role", r))
       props

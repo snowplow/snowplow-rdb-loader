@@ -27,7 +27,7 @@ object Control {
 
   def getColumns[F[_]: Monad: DAO](tableName: String): F[List[String]] =
     for {
-      _       <- DAO[F].executeUpdate(Statement.SetSchema, DAO.Purpose.NonLoading)
+      _       <- DAO[F].executeUpdate(Statement.SetSearchPath, DAO.Purpose.NonLoading)
       columns <- DAO[F].executeQueryList[String](Statement.GetColumns(tableName))
     } yield columns
 }

@@ -130,11 +130,9 @@ object Transaction {
 
     new Transaction[F, ConnectionIO] {
       def transact[A](io: ConnectionIO[A]): F[A] =
-        target.initializers.traverse_(fr => DefaultTransactor.trans.apply(fr.update.run).void) *>
         DefaultTransactor.trans.apply(io)
 
       def run[A](io: ConnectionIO[A]): F[A] =
-        target.initializers.traverse_(fr => NoCommitTransactor.trans.apply(fr.update.run).void) *>
         NoCommitTransactor.trans.apply(io)
 
       def arrowBack: F ~> ConnectionIO =

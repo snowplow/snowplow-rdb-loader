@@ -69,7 +69,7 @@ object Statement {
   case class GetVersion(tableName: String) extends Statement
   case class RenameTable(from: String, to: String) extends Statement
 
-  case object SetSchema extends Statement
+  case object SetSearchPath extends Statement
   case class GetColumns(tableName: String) extends Statement
   case class CommentOn(tableName: String, comment: String) extends Statement
   case object AddLoadTstampColumn extends Statement
