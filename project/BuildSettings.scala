@@ -61,14 +61,6 @@ object BuildSettings {
 
   lazy val assemblySettings = Seq(
     jarName,
-
-    assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename(
-        // EMR has 0.1.42 installed
-        "com.jcraft.jsch.**" -> "shadejsch.@1"
-      ).inAll
-    ),
-
     assembly / assemblyMergeStrategy := {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
@@ -248,6 +240,12 @@ object BuildSettings {
       description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
       buildInfoKeys := List(name, version, description),
+      assembly / assemblyShadeRules := Seq(
+        ShadeRule.rename(
+          // EMR has 0.1.42 installed
+          "com.jcraft.jsch.**" -> "shadejsch.@1"
+        ).inProject
+      ),
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
     ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
