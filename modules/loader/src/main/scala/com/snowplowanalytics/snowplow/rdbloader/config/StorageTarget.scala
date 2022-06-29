@@ -48,6 +48,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
+  def loadAuthMethod: StorageTarget.LoadAuthMethod
 }
 
 object StorageTarget {
@@ -93,6 +94,8 @@ object StorageTarget {
       }
       props
     }
+
+    def loadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
   }
 
   final case class Databricks(
@@ -103,7 +106,8 @@ object StorageTarget {
                                httpPath: String,
                                password: PasswordConfig,
                                sshTunnel: Option[TunnelConfig],
-                               userAgent: String
+                               userAgent: String,
+                               loadAuthMethod: LoadAuthMethod
                              ) extends StorageTarget {
 
     override def username: String = "token"
@@ -194,6 +198,8 @@ object StorageTarget {
           "Snowflake config requires either jdbcHost or both account and region".asLeft
       }
     }
+
+    def loadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
   }
 
   object Snowflake {
@@ -300,6 +306,13 @@ object StorageTarget {
     }
   }
 
+  sealed trait LoadAuthMethod extends Product with Serializable
+
+  object LoadAuthMethod {
+    final case object NoCreds extends LoadAuthMethod
+    final case class TempCreds(roleArn: String, roleSessionName: String) extends LoadAuthMethod
+  }
+
   /**
     * SSH configuration, enabling target to be loaded though tunnel
     *
@@ -346,6 +359,26 @@ object StorageTarget {
       case Snowflake.Continue => "CONTINUE"
       case Snowflake.AbortStatement => "ABORT_STATEMENT"
     }
+
+  implicit def loadAuthMethodDecoder: Decoder[LoadAuthMethod] =
+    Decoder.instance { cur =>
+      val typeCur = cur.downField("type")
+      typeCur.as[String].map(_.toLowerCase) match {
+        case Right("nocreds") =>
+          Right(LoadAuthMethod.NoCreds)
+        case Right("tempcreds") =>
+          cur.as[LoadAuthMethod.TempCreds]
+        case Right(other) =>
+          Left(DecodingFailure(s"Load auth method of type $other is not supported yet. Supported types: 'NoCreds', 'TempCreds'", typeCur.history))
+        case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+          Left(DecodingFailure("Cannot find 'type' string in load auth method", typeCur.history))
+        case Left(other) =>
+          Left(other)
+      }
+    }
+
+  implicit def tempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds] =
+    deriveDecoder[LoadAuthMethod.TempCreds]
 
   implicit def storageTargetDecoder: Decoder[StorageTarget] =
     Decoder.instance { cur =>

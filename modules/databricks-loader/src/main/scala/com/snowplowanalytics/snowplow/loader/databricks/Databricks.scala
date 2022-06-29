@@ -20,6 +20,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
@@ -47,11 +48,11 @@ object Databricks {
 
           override def extendTable(info: ShreddedType.Info): Option[Block] = None
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements = {
-            val toCopy = ColumnsToCopy.fromDiscoveredData(discovery) 
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
+            val toCopy = ColumnsToCopy.fromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
-            
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo))
+
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod))
           }
 
           override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
@@ -90,24 +91,27 @@ object Databricks {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest  = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source) =>
+              case Statement.FoldersCopy(source, loadAuthMethod) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frPath      = Fragment.const0(source)
+                val frAuth      = loadAuthMethodFragment(loadAuthMethod)
+
                 sql"""COPY INTO $frTableName
-                      FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
-                      FILEFORMAT = CSV""";
-              case Statement.EventsCopy(path, _, toCopy, toSkip, _) =>
+                      FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
+                      FILEFORMAT = CSV"""
+              case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod) =>
                 val frTableName      = Fragment.const(qualify(EventsTable.MainName))
                 val frPath           = Fragment.const0(path.append("output=good"))
                 val nonNulls         = toCopy.names.map(_.value)
                 val nulls            = toSkip.names.map(c => s"NULL AS ${c.value}")
                 val currentTimestamp = "current_timestamp() AS load_tstamp"
-                val allColumns       = (nonNulls ::: nulls) :+ currentTimestamp 
-                 
-                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
+                val allColumns       = (nonNulls ::: nulls) :+ currentTimestamp
+                val frAuth           = loadAuthMethodFragment(loadAuthMethod)
+                val frSelectColumns  = Fragment.const0(allColumns.mkString(","))
+
                 sql"""COPY INTO $frTableName
                       FROM (
-                        SELECT $frSelectColumns from '$frPath'
+                        SELECT $frSelectColumns from '$frPath' $frAuth
                       )
                       FILEFORMAT = PARQUET
                       COPY_OPTIONS('MERGESCHEMA' = 'TRUE')""";
@@ -175,4 +179,12 @@ object Databricks {
       .filter(name => name.value.startsWith(UnstructPrefix) || name.value.startsWith(ContextsPrefix))
       .diff(toCopy.names) 
   }
+
+  private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod): Fragment =
+    loadAuthMethod match {
+      case LoadAuthMethod.NoCreds =>
+        Fragment.empty
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+        Fragment.const0(s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )")
+    }
 }

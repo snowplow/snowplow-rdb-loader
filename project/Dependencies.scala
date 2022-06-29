@@ -144,6 +144,7 @@ object Dependencies {
   val aws2sns           = "software.amazon.awssdk" % "sns"                      % V.aws2
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
+  val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val commons           = "commons-io"             % "commons-io"               % V.commons
   val kafkaClients      = "org.apache.kafka"       % "kafka-clients"            % V.kafkaClients
@@ -189,6 +190,7 @@ object Dependencies {
   val loaderDependencies = Seq(
     slf4j,
     ssm,
+    aws2sts,
     dynamodb,
     jSch,
     sentry,

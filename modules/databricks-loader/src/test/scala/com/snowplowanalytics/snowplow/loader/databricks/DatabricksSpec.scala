@@ -22,6 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEn
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 
 import scala.concurrent.duration.DurationInt
 import org.specs2.mutable.Specification
@@ -51,8 +52,8 @@ class DatabricksSpec extends Specification {
 
       val discovery = DataDiscovery(baseFolder, shreddedTypes, Compression.Gzip, TypesInfo.WideRow(PARQUET, List.empty))
 
-      target.getLoadStatements(discovery, eventsColumns) should be like {
-        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _), Nil) =>
+      target.getLoadStatements(discovery, eventsColumns, LoadAuthMethod.NoCreds) should be like {
+        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _), Nil) =>
           path must beEqualTo(baseFolder)
           compression must beEqualTo(Compression.Gzip)
 
@@ -86,10 +87,28 @@ class DatabricksSpec extends Specification {
         ColumnName("unstruct_event_com_acme_bbb_1"),
         ColumnName("contexts_com_acme_yyy_1"),
       ))
-      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty))
+      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), LoadAuthMethod.NoCreds)
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain("SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/'")
+      }
+    }
+
+    "create sql with credentials for loading" in {
+      val toCopy = ColumnsToCopy(List(
+        ColumnName("app_id"),
+        ColumnName("unstruct_event_com_acme_aaa_1"),
+        ColumnName("contexts_com_acme_xxx_1")
+      ))
+      val toSkip = ColumnsToSkip(List(
+        ColumnName("unstruct_event_com_acme_bbb_1"),
+        ColumnName("contexts_com_acme_yyy_1"),
+      ))
+      val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken")
+      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod)
+
+      target.toFragment(statement).toString must beLike { case sql =>
+        sql must contain(s"SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/' WITH ( CREDENTIAL (AWS_ACCESS_KEY = '${loadAuthMethod.awsAccessKey}', AWS_SECRET_KEY = '${loadAuthMethod.awsSecretKey}', AWS_SESSION_TOKEN = '${loadAuthMethod.awsSessionToken}') )")
       }
     }
   }
@@ -114,7 +133,8 @@ object DatabricksSpec {
       "some/path",
       StorageTarget.PasswordConfig.PlainText("xxx"),
       None,
-      "useragent"
+      "useragent",
+      StorageTarget.LoadAuthMethod.NoCreds
     ),
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),
