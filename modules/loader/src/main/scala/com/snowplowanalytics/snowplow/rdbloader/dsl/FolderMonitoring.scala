@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 import cats.{Functor, Applicative, Monad, MonadThrow}
 import cats.implicits._
 
-import cats.effect.{Timer, Sync, Concurrent}
+import cats.effect.{Timer, Sync, Concurrent, Clock, ContextShift}
 import cats.effect.concurrent.{ Ref, Semaphore }
 
 import doobie.util.Get
@@ -32,6 +32,8 @@ import fs2.text.utf8Encode
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 
@@ -144,13 +146,15 @@ object FolderMonitoring {
    * @param loadFrom list shredded folders
    * @return potentially empty list of alerts
    */
-  def check[C[_]: DAO: Monad, F[_]: MonadThrow: AWS: Transaction[*[_], C]: Timer: Logging](loadFrom: S3.Folder,
-                                                                                           readyCheck: Config.Retries,
-                                                                                           storageTarget: StorageTarget): F[List[AlertPayload]] = {
+  def check[F[_]: MonadThrow: AWS: Transaction[*[_], C]: Timer: Logging,
+            C[_]: DAO: Monad](loadFrom: S3.Folder,
+                              readyCheck: Config.Retries,
+                              storageTarget: StorageTarget,
+                              loadAuthMethod: LoadAuthMethod): F[List[AlertPayload]] = {
     val getBatches = for {
       _                 <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
       _                 <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
-      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom), DAO.Purpose.NonLoading)
+      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod), DAO.Purpose.NonLoading)
       onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 
@@ -182,14 +186,16 @@ object FolderMonitoring {
    * If some configurations are not provided - just prints a warning.
    * Resulting stream has to be running in background.
    */
-  def run[C[_]: DAO: Monad,
-          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow](foldersCheck: Option[Config.Folders],
-                                                                                               readyCheck: Config.Retries,
-                                                                                               storageTarget: StorageTarget,
-                                                                                               isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+  def run[F[_]: Concurrent: Timer: Clock: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
+          C[_]: DAO: Monad](foldersCheck: Option[Config.Folders],
+                            readyCheck: Config.Retries,
+                            storageTarget: StorageTarget,
+                            timeouts: Config.Timeouts,
+                            region: String,
+                            isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[C, F](folders, readyCheck, storageTarget, isBusy)
+        stream[F, C](folders, readyCheck, storageTarget, timeouts, region, isBusy)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -202,11 +208,13 @@ object FolderMonitoring {
    * @param readyCheck configuration for target ready check
    * @param isBusy discrete stream signalling when folders monitoring should not work
    */
-  def stream[C[_]: DAO: Monad,
-             F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring: MonadThrow](folders: Config.Folders,
-                                                                                                  readyCheck: Config.Retries,
-                                                                                                  storageTarget: StorageTarget,
-                                                                                                  isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+  def stream[F[_]: Transaction[*[_], C]: Concurrent: Timer: Clock: AWS: Logging: Monitoring: MonadThrow: ContextShift,
+             C[_]: DAO: Monad](folders: Config.Folders,
+                               readyCheck: Config.Retries,
+                               storageTarget: StorageTarget,
+                               timeouts: Config.Timeouts,
+                               region: String,
+                               isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
         .pauseWhen(isBusy)
@@ -216,16 +224,18 @@ object FolderMonitoring {
               val sinkAndCheck =
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
-                    check[C, F](outputFolder, readyCheck, storageTarget)
-                      .flatMap { alerts =>
-                        alerts.traverse_ { payload =>
+                      for {
+                        now      <- Clock[F].instantNow
+                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.loadAuthMethod, region, now, timeouts.loading.toSeconds.toInt)
+                        alerts   <- check[F, C](outputFolder, readyCheck, storageTarget, loadAuth)
+                        _        <- alerts.traverse_ { payload =>
                           val warn = payload.base match {
                             case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
                             case None => Logging[F].error(s"${payload.message} with unknown path. Invalid state!")
                           }
                           warn *> Monitoring[F].alert(payload)
                         }
-                      },
+                      } yield (),
                       Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
                     ) *> failed.set(0)
 

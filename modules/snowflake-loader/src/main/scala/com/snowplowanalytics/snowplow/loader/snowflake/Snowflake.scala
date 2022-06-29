@@ -24,6 +24,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
@@ -62,13 +63,14 @@ object Snowflake {
             Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements =
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements =
             NonEmptyList.one(
               Statement.EventsCopy(
                 discovery.base,
                 discovery.compression,
                 ColumnsToCopy.fromDiscoveredData(discovery),
-                ColumnsToSkip.none
+                ColumnsToSkip.none,
+                loadAuthMethod
               )
             )
 
@@ -96,14 +98,14 @@ object Snowflake {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source) =>
+              case Statement.FoldersCopy(source, _) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 // This is validated on config decoding stage
                 val stageName = monitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, _, columnsToCopy, _) => {
+              case Statement.EventsCopy(path, _, columnsToCopy, _, _) => {
                 def columnsForCopy: String = columnsToCopy.names.map(_.value).mkString(",") + ",load_tstamp"
                 def columnsForSelect: String = columnsToCopy.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
 

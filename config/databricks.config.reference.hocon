@@ -33,6 +33,29 @@
     "httpPath": "/databricks/http/path",
     # User agent name for Databricks connection. Optional, default value "snowplow-rdbloader-oss"
     "userAgent": "snowplow-rdbloader-oss"
+
+    # Optional, default method is 'NoCreds'
+    # Specifies the auth method to use with 'COPY INTO' statement.
+    "loadAuthMethod": {
+      # With 'NoCreds', no credentials will be passed to 'COPY INTO' statement.
+      # Databricks cluster needs to have permission to access transformer
+      # output S3 bucket. More information can be found here:
+      # https://docs.databricks.com/administration-guide/cloud-configurations/aws/instance-profiles.html
+      "type": "NoCreds"
+    }
+    #"loadAuthMethod": {
+    #  # With 'TempCreds', temporary credentials will be created for every
+    #  # load operation and these temporary credentials will be passed to
+    #  # 'COPY INTO' statement. With this way, Databricks cluster doesn't need
+    #  # permission to access to transformer output S3 bucket.
+    #  # This access will be provided by temporary credentials.
+    #  "type": "TempCreds"
+    #  # IAM role that is used while creating temporary credentials
+    #  # Created credentials will allow to access resources specified in the given role
+    #  # In our case, “s3:GetObject*”, “s3:ListBucket”, and “s3:GetBucketLocation” permissions
+    #  # for transformer output S3 bucket should be specified in the role.
+    #  "roleArn": "arn:aws:iam::123456789:role/role_name"
+    #}
   },
 
   "schedules": {
@@ -173,6 +196,9 @@
     # How long loading (actual COPY statements) can take before considering Redshift unhealthy
     # Without any progress (i.e. different subfolder) within this period, loader
     # will abort the transaction
+    # If 'TempCreds' load auth method is used, this value will be used as session duration
+    # of temporary credentials. In that case, it can't be greater than maximum session duration
+    # of IAM role used for temporary credentials
     "loading": "1 hour",
 
     # How long non-loading steps (such as ALTER TABLE or metadata queries) can take

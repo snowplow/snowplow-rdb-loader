@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
@@ -52,14 +53,14 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), LoadAuthMethod.NoCreds)),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
 
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin, LoadAuthMethod.NoCreds).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -83,7 +84,7 @@ class LoadSpec extends Specification {
         PureTransaction.CommitMessage,
       )
 
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin, LoadAuthMethod.NoCreds).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -105,19 +106,19 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), LoadAuthMethod.NoCreds)),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), LoadAuthMethod.NoCreds)),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage,
       )
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin, LoadAuthMethod.NoCreds).runS
 
       result.getLog must beEqualTo(expected)
     }
@@ -150,7 +151,7 @@ class LoadSpec extends Specification {
         PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
                                                 //       to throw an ad-hoc exception within a transaction
       )
-      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin).runS
+      val result = Load.load[Pure, Pure](SpecHelpers.validCliConfig.config, LoadSpec.setStageNoOp, Pure.unit, LoadSpec.dataDiscoveryWithOrigin, LoadAuthMethod.NoCreds).runS
 
       result.getLog must beEqualTo(expected)
     }

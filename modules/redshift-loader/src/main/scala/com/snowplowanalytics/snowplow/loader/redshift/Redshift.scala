@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
@@ -69,13 +70,13 @@ object Redshift {
           override def extendTable(info: ShreddedType.Info): Option[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements = {
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
             val shreddedStatements = discovery
               .shreddedTypes
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
             
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none)
+            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none, loadAuthMethod)
             NonEmptyList(atomic, shreddedStatements)
           }
 
@@ -104,12 +105,12 @@ object Redshift {
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frManifest = Fragment.const(s"${schema}.manifest")
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source) =>
+              case Statement.FoldersCopy(source, _) =>
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, columnsToCopy, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))

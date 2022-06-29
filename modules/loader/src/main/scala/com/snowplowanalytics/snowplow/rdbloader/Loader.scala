@@ -15,11 +15,11 @@ package com.snowplowanalytics.snowplow.rdbloader
 import scala.concurrent.duration._
 import cats.{Apply, Monad}
 import cats.implicits._
-import cats.effect.{Clock, Concurrent, MonadThrow, Timer}
+import cats.effect.{Clock, Concurrent, MonadThrow, Timer, ContextShift}
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
-import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl, AuthService}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck}
@@ -47,10 +47,10 @@ object Loader {
    *           Unlike `F` it cannot pull `A` out of DB (perform a transaction), but just
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
-  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring,
+  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift,
           C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[C, F](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
+      FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, config.timeouts, config.region.name, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
     val healthCheck =
@@ -88,7 +88,7 @@ object Loader {
    * A primary loading processing, pulling information from discovery streams
    * (SQS and retry queue) and performing the load operation itself
    */
-  private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring,
+  private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring: ContextShift,
                          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
@@ -106,7 +106,7 @@ object Loader {
    * over to `Load`. A primary function handling the global state - everything
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
-  private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring,
+  private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift,
                                C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
                                                               (discovery: DataDiscovery.WithOrigin): F[Unit] = {
     val folder = discovery.origin.base
@@ -122,7 +122,8 @@ object Loader {
     val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
-        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery)
+        loadAuth <- AuthService.getLoadAuthMethod[F](config.storage.loadAuthMethod, config.region.name, start, config.timeouts.loading.toSeconds.toInt)
+        result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery, loadAuth)
         attempts <- control.getAndResetAttempts
         _        <- result match {
           case Right(ingested) =>

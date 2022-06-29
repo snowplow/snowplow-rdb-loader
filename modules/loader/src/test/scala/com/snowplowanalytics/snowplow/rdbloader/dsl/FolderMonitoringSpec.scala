@@ -23,6 +23,7 @@ import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureTransaction, PureDAO, TestState, PureAWS, PureTimer, PureOps, PureLogging}
 
@@ -43,7 +44,7 @@ class FolderMonitoringSpec extends Specification {
       val expectedState = TestState(List(
         PureTransaction.CommitMessage,
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
+        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
         PureTransaction.StartMessage,
@@ -54,7 +55,7 @@ class FolderMonitoringSpec extends Specification {
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -74,7 +75,7 @@ class FolderMonitoringSpec extends Specification {
       val expectedState = TestState(List(
         PureTransaction.CommitMessage,
         TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"))),
+        TestState.LogEntry.Sql(Statement.FoldersCopy(S3.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
         TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
         TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
         PureTransaction.StartMessage,
@@ -85,7 +86,7 @@ class FolderMonitoringSpec extends Specification {
         Monitoring.AlertPayload(Monitoring.Application, Some(S3.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks).run
+      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -215,6 +216,7 @@ object FolderMonitoringSpec {
     "http/path",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     None,
-    "snowplow-rdbloader-oss"
+    "snowplow-rdbloader-oss",
+    StorageTarget.LoadAuthMethod.NoCreds
   )
 }

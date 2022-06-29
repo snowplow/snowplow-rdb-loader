@@ -16,6 +16,7 @@ import doobie.Fragment
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
+import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
@@ -51,13 +52,14 @@ object Statement {
   case object CreateAlertingTempTable extends Statement
   case object DropAlertingTempTable extends Statement
   case object FoldersMinusManifest extends Statement
-  case class FoldersCopy(source: S3.Folder) extends Statement
+  case class FoldersCopy(source: S3.Folder, loadAuthMethod: LoadAuthMethod) extends Statement
 
   // Loading
   case class EventsCopy(path: S3.Folder,
                         compression: Compression,
                         columnsToCopy: ColumnsToCopy,
-                        columnsToSkip: ColumnsToSkip) extends Statement with Loading {
+                        columnsToSkip: ColumnsToSkip,
+                        loadAuthMethod: LoadAuthMethod) extends Statement with Loading {
     def table: String = EventsTable.MainName
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
