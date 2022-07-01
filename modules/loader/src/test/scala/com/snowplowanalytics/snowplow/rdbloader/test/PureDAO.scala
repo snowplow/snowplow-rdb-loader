@@ -19,6 +19,7 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, Migration => SchemaMigration}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
@@ -92,7 +93,7 @@ object PureDAO {
 
     def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty)),
+        Statement.EventsCopy(discovery.base, Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), TypesInfo.Shredded(List.empty)),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }

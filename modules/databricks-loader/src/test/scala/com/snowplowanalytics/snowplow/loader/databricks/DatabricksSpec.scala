@@ -13,11 +13,12 @@
 package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.data.NonEmptyList
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.PARQUET
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
@@ -48,10 +49,10 @@ class DatabricksSpec extends Specification {
         ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", 1, SnowplowEntity.Context))
       )
 
-      val discovery = DataDiscovery(baseFolder, shreddedTypes, Compression.Gzip)
+      val discovery = DataDiscovery(baseFolder, shreddedTypes, Compression.Gzip, TypesInfo.WideRow(PARQUET, List.empty))
 
       target.getLoadStatements(discovery, eventsColumns) should be like {
-        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip), Nil) =>
+        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _), Nil) =>
           path must beEqualTo(baseFolder)
           compression must beEqualTo(Compression.Gzip)
 
@@ -85,7 +86,7 @@ class DatabricksSpec extends Specification {
         ColumnName("unstruct_event_com_acme_bbb_1"),
         ColumnName("contexts_com_acme_yyy_1"),
       ))
-      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip)
+      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty))
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain("SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/'")

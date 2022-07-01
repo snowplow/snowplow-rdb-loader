@@ -14,13 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats._
 import cats.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import fs2.Stream
-
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
@@ -32,7 +31,10 @@ import com.snowplowanalytics.snowplow.rdbloader.state.State
   * @param base transformed run folder full path
   * @param shreddedTypes list of shredded types in this directory
   */
-case class DataDiscovery(base: S3.Folder, shreddedTypes: List[ShreddedType], compression: Compression) {
+case class DataDiscovery(base: S3.Folder,
+                         shreddedTypes: List[ShreddedType],
+                         compression: Compression,
+                         typesInfo: TypesInfo) {
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -128,7 +130,7 @@ object DataDiscovery {
         LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
       }
     LoaderAction[F, List[ShreddedType]](types).map { types =>
-      DataDiscovery(message.base, types.distinct, message.compression)
+      DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo)
     }
   }
 

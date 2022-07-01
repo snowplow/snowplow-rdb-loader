@@ -52,7 +52,7 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), TypesInfo.Shredded(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -105,13 +105,13 @@ class LoadSpec extends Specification {
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), TypesInfo.Shredded(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), TypesInfo.Shredded(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -169,7 +169,8 @@ object LoadSpec {
         S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
       )
     ),
-    Compression.Gzip
+    Compression.Gzip,
+    TypesInfo.Shredded(List.empty)
   )
 
   val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"
