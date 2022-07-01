@@ -33,7 +33,10 @@ object Loader {
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /** How often Loader should print its internal state */
-  val StateLoggingFrequency: FiniteDuration = 5.minutes
+  private val StateLoggingFrequency: FiniteDuration = 5.minutes
+  
+  /** Restrict the length of an alert message to be compliant with alert iglu schema */
+  private val MaxAlertPayloadLength = 4096
 
   /**
    * Primary application's entry-point, responsible for launching all processes
@@ -182,7 +185,8 @@ object Loader {
       case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
       case _ => Option(error.getMessage).getOrElse(error.toString)
     }
-    val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
+    val trimmedMessage = message.take(MaxAlertPayloadLength)
+    val alert = Monitoring.AlertPayload.warn(trimmedMessage, discovery.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
     val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
 
