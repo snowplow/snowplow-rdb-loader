@@ -17,9 +17,13 @@ import fs2.Stream
 
 import fs2.aws.kinesis.{CommittableRecord, Kinesis => Fs2Kinesis, KinesisConsumerSettings}
 
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+import org.typelevel.log4cats.Logger
+
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
 import software.amazon.kinesis.coordinator.Scheduler
+import software.amazon.kinesis.exceptions.ShutdownException
 import software.amazon.kinesis.metrics.MetricsLevel
 import software.amazon.kinesis.processor.ShardRecordProcessorFactory
 import software.amazon.kinesis.retrieval.polling.PollingConfig
@@ -36,6 +40,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.{Init
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.Config.StreamInput.{Kinesis => KinesisConfig}
 
 object Kinesis {
+
+  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   def read[F[_]: ConcurrentEffect: ContextShift: Timer](blocker: Blocker, config: KinesisConfig, cloudwatchEnabled: Boolean): Stream[F, ParsedC[KinesisCheckpointer[F]]] =
     for {
@@ -67,7 +73,16 @@ object Kinesis {
   }
 
   def checkpointer[F[_]: Sync](record: CommittableRecord): KinesisCheckpointer[F] =
-    KinesisCheckpointer[F](Map(record.shardId -> record.checkpoint))
+    KinesisCheckpointer[F](Map(record.shardId -> safelyCheckpoint(record)))
+
+  private def safelyCheckpoint[F[_]: Sync](record: CommittableRecord): F[Unit] =
+    record.checkpoint.recoverWith {
+      // The ShardRecordProcessor instance has been shutdown. This just means another KCL worker
+      // has stolen our lease. It is expected during autoscaling of instances, and is safe to
+      // ignore.
+      case _: ShutdownException =>
+        Logger[F].warn(s"Skipping checkpointing of shard ${record.shardId} because this worker no longer owns the lease")
+    }
 
 
   case class KinesisCheckpointer[F[_]](byShard: Map[String, F[Unit]])
