@@ -21,7 +21,7 @@ import scala.concurrent.duration._
 import cats.{Functor, Applicative, Monad, MonadThrow}
 import cats.implicits._
 
-import cats.effect.{Timer, Sync, Concurrent, Clock, ContextShift}
+import cats.effect.{Timer, Sync, Concurrent, ContextShift}
 import cats.effect.concurrent.{ Ref, Semaphore }
 
 import doobie.util.Get
@@ -186,7 +186,7 @@ object FolderMonitoring {
    * If some configurations are not provided - just prints a warning.
    * Resulting stream has to be running in background.
    */
-  def run[F[_]: Concurrent: Timer: Clock: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
+  def run[F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
           C[_]: DAO: Monad](foldersCheck: Option[Config.Folders],
                             readyCheck: Config.Retries,
                             storageTarget: StorageTarget,
@@ -208,7 +208,7 @@ object FolderMonitoring {
    * @param readyCheck configuration for target ready check
    * @param isBusy discrete stream signalling when folders monitoring should not work
    */
-  def stream[F[_]: Transaction[*[_], C]: Concurrent: Timer: Clock: AWS: Logging: Monitoring: MonadThrow: ContextShift,
+  def stream[F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring: MonadThrow: ContextShift,
              C[_]: DAO: Monad](folders: Config.Folders,
                                readyCheck: Config.Retries,
                                storageTarget: StorageTarget,
@@ -225,8 +225,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                       for {
-                        now      <- Clock[F].instantNow
-                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.loadAuthMethod, region, now, timeouts.loading.toSeconds.toInt)
+                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.loadAuthMethod, region, timeouts.loading)
                         alerts   <- check[F, C](outputFolder, readyCheck, storageTarget, loadAuth)
                         _        <- alerts.traverse_ { payload =>
                           val warn = payload.base match {

@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import java.time.Instant
+import scala.concurrent.duration.FiniteDuration
 
 import cats.effect.{Concurrent, ContextShift}
 
@@ -52,8 +52,7 @@ object AuthService {
    */
   def getLoadAuthMethod[F[_]: Concurrent: ContextShift](authMethodConfig: StorageTarget.LoadAuthMethod,
                                     region: String,
-                                    now: Instant,
-                                    sessionDuration: Integer): F[LoadAuthMethod] =
+                                    sessionDuration: FiniteDuration): F[LoadAuthMethod] =
     authMethodConfig match {
       case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
       case StorageTarget.LoadAuthMethod.TempCreds(roleArn) =>
@@ -65,9 +64,9 @@ object AuthService {
             )
           assumeRoleRequest <- Concurrent[F].delay(
               AssumeRoleRequest.builder()
-                .durationSeconds(sessionDuration)
+                .durationSeconds(sessionDuration.toSeconds.toInt)
                 .roleArn(roleArn)
-                .roleSessionName(s"rdb_loader_${now.getEpochSecond}")
+                .roleSessionName(s"rdb_loader")
                 .build()
             )
           response <- Common.fromCompletableFuture(
