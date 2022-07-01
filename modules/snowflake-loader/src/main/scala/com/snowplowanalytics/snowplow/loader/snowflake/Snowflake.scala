@@ -19,7 +19,8 @@ import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
@@ -68,7 +69,8 @@ object Snowflake {
                 discovery.base,
                 discovery.compression,
                 ColumnsToCopy.fromDiscoveredData(discovery),
-                ColumnsToSkip.none
+                ColumnsToSkip.none,
+                discovery.typesInfo
               )
             )
 
@@ -103,7 +105,7 @@ object Snowflake {
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, _, columnsToCopy, _) => {
+              case Statement.EventsCopy(path, _, columnsToCopy, _, typesInfo) => {
                 def columnsForCopy: String = columnsToCopy.names.map(_.value).mkString(",") + ",load_tstamp"
                 def columnsForSelect: String = columnsToCopy.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
 
@@ -111,10 +113,12 @@ object Snowflake {
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}($columnsForCopy)")
                 val frSelectColumns = Fragment.const0(columnsForSelect)
                 val frOnError = Fragment.const0(s"ON_ERROR = ${onError.asJson.noSpaces}")
+                val frFileFormat = buildFileFormatFragment(typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM (
                       |  SELECT $frSelectColumns FROM $frPath
                       |)
+                      |$frFileFormat
                       |$frOnError""".stripMargin
               }
               case Statement.ShreddedCopy(_, _) =>
@@ -185,6 +189,17 @@ object Snowflake {
         Right(result)
       case other =>
         Left(s"Invalid State: trying to build Snowflake interpreter with unrecognized config (${other.driver} driver)")
+    }
+  }
+  
+  private def buildFileFormatFragment(typesInfo: TypesInfo): Fragment = {
+    typesInfo match {
+      case TypesInfo.Shredded(_) => 
+        throw new IllegalStateException("Shredded type is not supported for Snowflake")
+      case TypesInfo.WideRow(JSON, _) =>
+        Fragment.const0("FILE_FORMAT = (TYPE = JSON TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF')")
+      case TypesInfo.WideRow(PARQUET, _) =>
+        Fragment.const0("FILE_FORMAT = (TYPE = PARQUET")
     }
   }
 }

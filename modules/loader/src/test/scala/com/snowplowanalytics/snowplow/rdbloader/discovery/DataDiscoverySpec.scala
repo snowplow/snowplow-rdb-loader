@@ -13,23 +13,20 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
-
 import cats.data.NonEmptyList
 import cats.syntax.either._
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.SchemaVer.Full
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat.{JSON, TSV}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
-
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureCache, Pure, PureOps, PureLogging, PureAWS}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureLogging, PureOps}
 
 class DataDiscoverySpec extends Specification {
   "show" should {
@@ -39,7 +36,7 @@ class DataDiscoverySpec extends Specification {
         ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/context_1.json"))
       )
 
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip)
+      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip, TypesInfo.Shredded(List.empty))
       discovery.show must beEqualTo(
         """|my-path with following shredded types:
            |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
@@ -57,7 +54,13 @@ class DataDiscoverySpec extends Specification {
         List(
           ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent)),
         ),
-        Compression.None
+        Compression.None,
+        TypesInfo.Shredded(
+          List(
+            TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", Full(1, 0, 0)), TSV, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+            TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", Full(1, 1, 0)), TSV, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+          )
+        )
       ).asRight
 
       val result = DataDiscovery.fromLoaderMessage[Pure]("eu-central-1", None, DataDiscoverySpec.shreddingCompleteWithSameModel)
@@ -116,7 +119,13 @@ class DataDiscoverySpec extends Specification {
           ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
           ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
         ),
-        Compression.Gzip
+        Compression.Gzip,
+        TypesInfo.Shredded(
+          List(
+            TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", Full(1, 0, 0)), JSON, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+            TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-b", "jsonschema", Full(1, 0, 0)), JSON, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+          )
+        )
       )
 
       val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run

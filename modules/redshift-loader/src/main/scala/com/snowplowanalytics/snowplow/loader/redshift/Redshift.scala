@@ -75,7 +75,7 @@ object Redshift {
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
             
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none)
+            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none, discovery.typesInfo)
             NonEmptyList(atomic, shreddedStatements)
           }
 
@@ -109,7 +109,7 @@ object Redshift {
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, columnsToCopy, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))

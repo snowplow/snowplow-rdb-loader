@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import doobie.Fragment
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -57,7 +58,8 @@ object Statement {
   case class EventsCopy(path: S3.Folder,
                         compression: Compression,
                         columnsToCopy: ColumnsToCopy,
-                        columnsToSkip: ColumnsToSkip) extends Statement with Loading {
+                        columnsToSkip: ColumnsToSkip,
+                        typesInfo: TypesInfo) extends Statement with Loading {
     def table: String = EventsTable.MainName
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {

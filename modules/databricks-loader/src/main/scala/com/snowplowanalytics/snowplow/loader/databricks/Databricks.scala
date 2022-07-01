@@ -51,7 +51,7 @@ object Databricks {
             val toCopy = ColumnsToCopy.fromDiscoveredData(discovery) 
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
             
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip))
+            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo))
           }
 
           override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
@@ -96,7 +96,7 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath')
                       FILEFORMAT = CSV""";
-              case Statement.EventsCopy(path, _, toCopy, toSkip) =>
+              case Statement.EventsCopy(path, _, toCopy, toSkip, _) =>
                 val frTableName      = Fragment.const(qualify(EventsTable.MainName))
                 val frPath           = Fragment.const0(path.append("output=good"))
                 val nonNulls         = toCopy.names.map(_.value)
