@@ -1,3 +1,13 @@
+Version 4.1.0 (2022-07-04)
+--------------------------
+Databricks loader: Support for generated columns (#951)
+Loader: Use explicit schema name everywhere (#952)
+Loader: Jars cannot load jsch (#942)
+Snowflake loader: region and account configuration fields should be optional (#947)
+Loader: Include the SQLState when logging a SQLException (#941)
+Loader: Handle run directories with UUID suffix in folder monitoring (#949)
+Add UUID to streaming transformer directory structure (#945)
+
 Version 4.0.4 (2022-06-20)
 --------------------------
 Transformer kinesis: make Kinesis consumer more configurable (close #865)
