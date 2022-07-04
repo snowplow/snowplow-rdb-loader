@@ -161,22 +161,36 @@ object Config {
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
-
-    /** Post-decoding validation, making sure different parts are consistent */
-    def validateConfig(config: Config[StorageTarget]): List[String] =
-      config.storage match {
-        case storage: StorageTarget.Snowflake =>
-          val monitoringError = (config.monitoring.folders, storage.folderMonitoringStage) match {
-            case (Some(_), Some(_)) => None
-            case (None, None) => None
-            case (Some(_), None) =>
-              Some("Snowflake Loader is configured with Folders Monitoring, but appropriate storage.folderMonitoringStage is missing")
-            case (None, Some(name)) =>
-              Some(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing - both should either present or missing")
-          }
-          val hostError = storage.host.left.toOption
-          List(monitoringError, hostError).flatten
-        case _ => Nil
-      }
   }
+
+  /** Post-decoding validation, making sure different parts are consistent */
+  def validateConfig(config: Config[StorageTarget]): List[String] =
+    config.storage match {
+      case storage: StorageTarget.Snowflake =>
+        val monitoringError = config.monitoring.folders match {
+          case None =>
+            storage.folderMonitoringStage match {
+              case None => None
+              case Some(name) =>
+                Some(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing")
+            }
+          case Some(_) =>
+            (storage.folderMonitoringStage, storage.loadAuthMethod) match {
+              case (None, StorageTarget.LoadAuthMethod.NoCreds) =>
+                Some("Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing")
+              case _ => None
+            }
+        }
+        val hostError = storage.host.left.toOption
+        val authMethodConsistencyCheck = storage.loadAuthMethod match {
+          case _: StorageTarget.LoadAuthMethod.TempCreds => None
+          case StorageTarget.LoadAuthMethod.NoCreds =>
+            storage.transformedStage match {
+              case None => Some("'transformedStage' needs to be provided when 'NoCreds' load auth method is chosen")
+              case Some(_) => None
+            }
+        }
+        List(monitoringError, hostError, authMethodConsistencyCheck).flatten
+      case _ => Nil
+    }
 }

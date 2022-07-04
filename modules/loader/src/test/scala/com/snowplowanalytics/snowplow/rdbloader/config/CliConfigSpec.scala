@@ -20,6 +20,7 @@ import cats.effect.IO
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec
 
 class CliConfigSpec extends Specification {
   val configB64 = new String(

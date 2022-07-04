@@ -41,8 +41,7 @@ object Statement {
 
   sealed trait Loading extends Statement {
     def table: String
-    def path: String
-    def title = s"COPY $table FROM $path"
+    def title: String
   }
 
   // Common
@@ -63,10 +62,27 @@ object Statement {
                         typesInfo: TypesInfo,
                         loadAuthMethod: LoadAuthMethod) extends Statement with Loading {
     def table: String = EventsTable.MainName
+    def title = s"COPY $table FROM $path"
   }
   case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
     def table: String = shreddedType.info.getName
     def path: String = shreddedType.getLoadPath
+    def title = s"COPY $table FROM $path"
+  }
+  case class CreateTempEventTable(table: String) extends Loading {
+    def title: String = s"CREATE TEMP TABLE $table"
+  }
+  case class DropTempEventTable(table: String) extends Loading {
+    def title: String = s"DROP TEMP TABLE $table"
+  }
+  case class EventsCopyToTempTable(path: S3.Folder,
+                                   table: String,
+                                   tempCreds: LoadAuthMethod.TempCreds,
+                                   typesInfo: TypesInfo) extends Loading {
+    def title: String = s"COPY EVENTS FROM $path TO TEMP TABLE $table"
+  }
+  case class EventsCopyFromTempTable(table: String, columnsToCopy: ColumnsToCopy) extends Loading {
+    def title: String = s"COPY EVENTS FROM TEMP TABLE $table TO ATOMIC.EVENTS TABLE"
   }
   case object CreateTransient extends Statement
   case object DropTransient extends Statement

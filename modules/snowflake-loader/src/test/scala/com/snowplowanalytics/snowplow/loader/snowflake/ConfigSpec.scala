@@ -75,11 +75,12 @@ class ConfigSpec extends Specification {
         warehouse = "wh",
         database = "snowplow",
         schema = "atomic",
-        transformedStage = "snowplow_stage",
+        transformedStage = Some("snowplow_stage"),
         appName = "Snowplow_OSS",
         folderMonitoringStage = None,
         onError = StorageTarget.Snowflake.Continue,
-        jdbcHost = None)
+        jdbcHost = None,
+        StorageTarget.LoadAuthMethod.NoCreds)
       exampleSnowflake.host must beRight("acme.snowflakecomputing.com")
       exampleSnowflake.copy(jdbcHost = "override".some).host must beRight("override")
       exampleSnowflake.copy(snowflakeRegion = "us-east-1".some).host must beRight("acme.us-east-1.snowflakecomputing.com")

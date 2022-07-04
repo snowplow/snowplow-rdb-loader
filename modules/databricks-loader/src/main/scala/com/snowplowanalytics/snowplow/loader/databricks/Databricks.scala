@@ -163,6 +163,14 @@ object Databricks {
                 ddl
               case Statement.AppendTransient =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
+              case _: Statement.CreateTempEventTable =>
+                throw new IllegalStateException("Databricks Loader does not use CreateTempEventTable statement")
+              case _: Statement.DropTempEventTable =>
+                throw new IllegalStateException("Databricks Loader does not use DropTempEventTable statement")
+              case _: Statement.EventsCopyToTempTable =>
+                throw new IllegalStateException("Databricks Loader does not use EventsCopyToTempTable statement")
+              case _: Statement.EventsCopyFromTempTable =>
+                throw new IllegalStateException("Databricks Loader does not use EventsCopyFromTempTable statement")
             }
 
           private def qualify(tableName: String): String =

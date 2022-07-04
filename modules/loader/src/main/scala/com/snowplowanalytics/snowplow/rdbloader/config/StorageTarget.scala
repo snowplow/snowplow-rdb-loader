@@ -140,11 +140,12 @@ object StorageTarget {
                              warehouse: String,
                              database: String,
                              schema: String,
-                             transformedStage: String,
+                             transformedStage: Option[String],
                              appName: String,
                              folderMonitoringStage: Option[String],
                              onError: Snowflake.OnError,
-                             jdbcHost: Option[String]) extends StorageTarget {
+                             jdbcHost: Option[String],
+                             loadAuthMethod: LoadAuthMethod) extends StorageTarget {
 
     def connectionUrl: String =
       host match {
@@ -198,8 +199,6 @@ object StorageTarget {
           "Snowflake config requires either jdbcHost or both account and region".asLeft
       }
     }
-
-    def loadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
   }
 
   object Snowflake {

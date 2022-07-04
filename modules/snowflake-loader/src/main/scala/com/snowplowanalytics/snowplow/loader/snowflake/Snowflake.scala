@@ -41,10 +41,12 @@ object Snowflake {
   val EventFieldSeparator = Fragment.const0("\t")
 
   val AlertingTempTableName = "rdb_folder_monitoring"
+  val TempTableColumn = "enriched_data"
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, schema, stage, _, monitoringStage, onError, _) =>
+      case tgt: StorageTarget.Snowflake =>
+        val schema = tgt.schema
         val result = new Target {
           
           override val requiresEventsColumns: Boolean = false
@@ -64,17 +66,33 @@ object Snowflake {
             Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements =
-            NonEmptyList.one(
-              Statement.EventsCopy(
-                discovery.base,
-                discovery.compression,
-                ColumnsToCopy.fromDiscoveredData(discovery),
-                ColumnsToSkip.none,
-                discovery.typesInfo,
-                loadAuthMethod
-              )
-            )
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
+            val columnsToCopy = ColumnsToCopy.fromDiscoveredData(discovery)
+            loadAuthMethod match {
+              case LoadAuthMethod.NoCreds =>
+                NonEmptyList.one(
+                  Statement.EventsCopy(
+                    discovery.base,
+                    discovery.compression,
+                    columnsToCopy,
+                    ColumnsToSkip.none,
+                    discovery.typesInfo,
+                    loadAuthMethod
+                  )
+                )
+              case c: LoadAuthMethod.TempCreds =>
+                val tempTableName = s"snowplow_tmp_${discovery.runId.replace('=', '_').replace('-', '_')}"
+                // It isn't possible to use 'SELECT' statement with external location in 'COPY INTO' statement.
+                // External location is needed for using temp credentials. Therefore, we need to use two-steps copy operation.
+                // Initially, events will be copied to temp table from s3. Then, they will copied from temp table to event table.
+                NonEmptyList.of(
+                  Statement.CreateTempEventTable(tempTableName),
+                  Statement.EventsCopyToTempTable(discovery.base, tempTableName, c, discovery.typesInfo),
+                  Statement.EventsCopyFromTempTable(tempTableName, columnsToCopy),
+                  Statement.DropTempEventTable(tempTableName)
+                )
+            }
+          }
 
           // Technically, Snowflake Loader cannot create new tables
           override def createTable(schemas: SchemaList): Block = {
@@ -88,7 +106,7 @@ object Snowflake {
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"     // OK
-              case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED"
+              case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(tgt.warehouse)} RESUME IF SUSPENDED"
 
               case Statement.CreateAlertingTempTable =>   // OK
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
@@ -100,21 +118,28 @@ object Snowflake {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, _) =>
+              case Statement.FoldersCopy(source, loadAuthMethod) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
+                val frPath = loadAuthMethod match {
+                  case LoadAuthMethod.NoCreds =>
+                    // This is validated on config decoding stage
+                    val stageName = tgt.folderMonitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
+                    Fragment.const0(s"@$schema.$stageName/${source.folderName}")
+                  case _: LoadAuthMethod.TempCreds =>
+                    Fragment.const0(source)
+                }
+                val frCredentials = loadAuthMethodFragment(loadAuthMethod)
+                sql"""|COPY INTO $frTableName
+                      |FROM $frPath $frCredentials
+                      |FILE_FORMAT = (TYPE = CSV)""".stripMargin
+
+              case Statement.EventsCopy(path, _, columns, _, typesInfo, _) =>
                 // This is validated on config decoding stage
-                val stageName = monitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
-                val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
-                sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
-
-              case Statement.EventsCopy(path, _, columnsToCopy, _, typesInfo, _) => {
-                def columnsForCopy: String = columnsToCopy.names.map(_.value).mkString(",") + ",load_tstamp"
-                def columnsForSelect: String = columnsToCopy.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
-
-                val frPath = Fragment.const0(s"@${qualify(stage)}/${path.folderName}/output=good/")
-                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}($columnsForCopy)")
-                val frSelectColumns = Fragment.const0(columnsForSelect)
-                val frOnError = Fragment.const0(s"ON_ERROR = ${onError.asJson.noSpaces}")
+                val stageName = tgt.transformedStage.getOrElse(throw new IllegalStateException("Transformed stage is tried to be used without being provided"))
+                val frPath = Fragment.const0(s"@${qualify(stageName)}/${path.folderName}/output=good/")
+                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
+                val frSelectColumns = Fragment.const0(columnsForSelect(columns))
+                val frOnError = Fragment.const0(s"ON_ERROR = ${tgt.onError.asJson.noSpaces}")
                 val frFileFormat = buildFileFormatFragment(typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM (
@@ -122,7 +147,34 @@ object Snowflake {
                       |)
                       |$frFileFormat
                       |$frOnError""".stripMargin
-              }
+
+              case Statement.CreateTempEventTable(table) =>
+                val frTableName = Fragment.const(qualify(table))
+                val frTableColumn = Fragment.const(TempTableColumn)
+                sql"CREATE TEMPORARY TABLE $frTableName ( $frTableColumn OBJECT )"
+
+              case Statement.DropTempEventTable(table) =>
+                val frTableName = Fragment.const(qualify(table))
+                sql"DROP TABLE IF EXISTS $frTableName"
+
+              case s: Statement.EventsCopyToTempTable =>
+                val frCopy = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
+                val frPath = Fragment.const0(s.path)
+                val frCredentials = loadAuthMethodFragment(s.tempCreds)
+                val frOnError = Fragment.const0(s"ON_ERROR = ${tgt.onError.asJson.noSpaces}")
+                val frFileFormat = buildFileFormatFragment(s.typesInfo)
+                sql"""|COPY INTO $frCopy
+                      |FROM '$frPath' $frCredentials
+                      |$frFileFormat
+                      |$frOnError""".stripMargin
+
+              case Statement.EventsCopyFromTempTable(tempTable, columns) =>
+                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
+                val frSelectColumns = Fragment.const0(columnsForSelect(columns))
+                val frTableName = Fragment.const(qualify(tempTable))
+                sql"""|INSERT INTO $frCopy
+                      |SELECT $frSelectColumns FROM $frTableName""".stripMargin
+
               case Statement.ShreddedCopy(_, _) =>
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
 
@@ -186,6 +238,12 @@ object Snowflake {
             
           private def qualify(tableName: String): String =
             s"$schema.$tableName"
+
+          private def columnsForCopy(columns: ColumnsToCopy): String =
+            columns.names.map(_.value).mkString(",") + ",load_tstamp"
+
+          private def columnsForSelect(columns: ColumnsToCopy): String =
+            columns.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
         }
 
         Right(result)
@@ -204,4 +262,12 @@ object Snowflake {
         Fragment.const0("FILE_FORMAT = (TYPE = PARQUET")
     }
   }
+
+  private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod): Fragment =
+    loadAuthMethod match {
+      case LoadAuthMethod.NoCreds =>
+        Fragment.empty
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+        Fragment.const0(s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')")
+    }
 }

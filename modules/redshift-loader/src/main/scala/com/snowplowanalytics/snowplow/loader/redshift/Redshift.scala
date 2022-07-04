@@ -223,6 +223,14 @@ object Redshift {
                 ddl
               case Statement.AlterTable(ddl) =>
                 ddl
+              case _: Statement.CreateTempEventTable =>
+                throw new IllegalStateException("Redshift Loader does not use CreateTempEventTable statement")
+              case _: Statement.DropTempEventTable =>
+                throw new IllegalStateException("Redshift Loader does not use DropTempEventTable statement")
+              case _: Statement.EventsCopyToTempTable =>
+                throw new IllegalStateException("Redshift Loader does not use EventsCopyToTempTable statement")
+              case _: Statement.EventsCopyFromTempTable =>
+                throw new IllegalStateException("Redshift Loader does not use EventsCopyFromTempTable statement")
             }
 
           private def qualify(tableName: String): String =
