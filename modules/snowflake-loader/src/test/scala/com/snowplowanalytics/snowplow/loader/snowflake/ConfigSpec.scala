@@ -43,7 +43,8 @@ class ConfigSpec extends Specification {
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
-        exampleReadyCheck
+        exampleReadyCheck,
+        exampleInitRetries
       )
       result must beRight(expected)
     }
@@ -60,7 +61,8 @@ class ConfigSpec extends Specification {
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
-        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       )
       result must beRight(expected)
     }

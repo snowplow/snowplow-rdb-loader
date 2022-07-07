@@ -132,6 +132,7 @@ object ConfigSpec {
   val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleReadyCheck: Config.Retries = Config.Retries(Config.Strategy.Constant, None, 15.seconds, None)
   val exampleTempCreds =  StorageTarget.LoadAuthMethod.TempCreds("test_role_arn", "test_role_session_name")
+  val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleConfig = Config(
     exampleRegion,
     None,
@@ -142,7 +143,8 @@ object ConfigSpec {
     exampleSchedules,
     exampleTimeouts,
     exampleRetries,
-    exampleReadyCheck
+    exampleReadyCheck,
+    exampleInitRetries
   )
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =

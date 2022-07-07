@@ -13,16 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-import cats.{Apply, Monad}
+import cats.{Apply, Monad, Applicative}
 import cats.implicits._
 import cats.effect.{Clock, Concurrent, MonadThrow, Timer, ContextShift}
+import retry._
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl, AuthService}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck}
+import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck, Retry}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
 import java.sql.SQLException
@@ -72,7 +74,9 @@ object Loader {
       Manifest.initialize[F, C](config.storage) *>
       Transaction[F, C].transact(addLoadTstampColumn[C](config.storage))
 
-    val process = Stream.eval(init).flatMap { _ =>
+    val initWithRetry: F[Unit] = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(init)
+
+    val process = Stream.eval(initWithRetry).flatMap { _ =>
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)
@@ -182,10 +186,7 @@ object Loader {
   private def reportLoadFailure[F[_]: Logging: Monitoring: Monad](discovery: DataDiscovery.WithOrigin,
                                                                   addFailure: Throwable => F[Boolean])
                                                                   (error: Throwable): F[Unit] = {
-    val message = error match {
-      case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
-      case _ => Option(error.getMessage).getOrElse(error.toString)
-    }
+    val message = getErrorMessage(error)
     val trimmedMessage = message.take(MaxAlertPayloadLength)
     val alert = Monitoring.AlertPayload.warn(trimmedMessage, discovery.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
@@ -202,4 +203,17 @@ object Loader {
         Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
         Monitoring[F].trackException(error)
   }
+
+  private def initRetryLog[F[_]: Logging: Applicative: Monitoring](e: Throwable, d: RetryDetails): F[Unit] = {
+    val errMessage =
+      show"""Exception from init block. $d
+            |${getErrorMessage(e)}""".stripMargin
+    Logging[F].error(errMessage) *> Monitoring[F].alert(Monitoring.AlertPayload.error(errMessage))
+  }
+
+  private def getErrorMessage(error: Throwable): String =
+    error match {
+      case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
+      case _ => Option(error.getMessage).getOrElse(error.toString)
+    }
 }

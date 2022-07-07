@@ -177,6 +177,21 @@
     "strategy": "CONSTANT"
   },
 
+  # Retries configuration for initilization block
+  # It will retry on all exceptions from there
+  "initRetries": {
+    # Starting backoff period
+    "backoff": "30 seconds"
+    # A strategy to use when deciding on next backoff
+    "strategy": "EXPONENTIAL"
+    # How many attempts to make before sending the message into retry queue
+    # If missing - the loader will be retrying until cumulative bound
+    "attempts": 3,
+    # When backoff reaches this delay the Loader will stop retrying
+    # Missing cumulativeBound with missing attempts will force to retry inifintely
+    "cumulativeBound": "1 hour"
+  },
+
   # Additional backlog of recently failed folders that could be automatically retried
   # Retry Queue saves a failed folder and then re-reads the info from shredding_complete S3 file
   "retryQueue": {

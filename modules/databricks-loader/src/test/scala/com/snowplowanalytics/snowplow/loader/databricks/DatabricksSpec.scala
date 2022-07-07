@@ -139,6 +139,7 @@ object DatabricksSpec {
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None)
   )).right.get
 
