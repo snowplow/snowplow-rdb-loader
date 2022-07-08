@@ -18,8 +18,7 @@ import cats.Monad
 import cats.implicits._
 import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
-import io.circe.{Json => CJson}
-import com.snowplowanalytics.iglu.client.{Client, Resolver}
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
@@ -87,13 +86,14 @@ object Transformed {
    * Parse snowplow enriched event into a list of shredded (either JSON or TSV, according to settings) entities
    * TSV will be flattened according to their schema, JSONs will be attached as is
    *
-   * @param igluClient Iglu Client
+   * @param igluResolver Iglu Resolver
    * @param isTabular predicate to decide whether output should be JSON or TSV
    * @param atomicLengths a map to trim atomic event columns
    * @param event enriched event
    * @return either bad row (in case of failed flattening) or list of shredded entities inside original event
    */
-  def shredEvent[F[_]: Monad: RegistryLookup: Clock](igluClient: Client[F, CJson],
+  def shredEvent[F[_]: Monad: RegistryLookup: Clock](igluResolver: Resolver[F],
+                                                     propertiesCache: PropertiesCache[F],
                                                      isTabular: SchemaKey => Boolean,
                                                      atomicLengths: Map[String, Int],
                                                      processor: Processor)
@@ -101,7 +101,7 @@ object Transformed {
     Hierarchy.fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
-        fromHierarchy(tabular, igluClient.resolver)(hierarchy)
+        fromHierarchy(tabular, igluResolver, propertiesCache)(hierarchy)
       }
       .leftMap { error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)) }
       .map { shredded =>
@@ -122,11 +122,14 @@ object Transformed {
    * @param resolver Iglu resolver to request all necessary entities
    * @param hierarchy actual JSON hierarchy from an enriched event
    */
-  private def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](tabular: Boolean, resolver: => Resolver[F])(hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
+  private def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](tabular: Boolean,
+                                                                resolver: => Resolver[F],
+                                                                propertiesCache: PropertiesCache[F])
+                                                               (hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     if (tabular) {
-      EventUtils.flatten(resolver, hierarchy.entity).map { columns =>
+      EventUtils.flatten(resolver, propertiesCache, hierarchy.entity).map { columns =>
         val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
         Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString((meta ++ columns).mkString("\t")))
       }

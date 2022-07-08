@@ -26,18 +26,19 @@ import cats.effect._
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.lrumap.CreateLruMap
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 case class Resources[F[_], C](
-  iglu: Client[F, Json],
+  igluResolver: Resolver[F],
+  propertiesCache: PropertiesCache[F],
   atomicLengths: Map[String, Int],
   producer: Queue.Producer[F],
   instanceId: String,
@@ -68,14 +69,16 @@ object Resources {
     checkpointer: Queue.Consumer.Message[F] => C
   ): Resource[F, Resources[F, C]] =
     for {
-      producer      <- mkQueue(config.queue)
-      client        <- mkClient(igluConfig)
-      atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
-      instanceId    <- mkTransformerInstanceId
-      blocker       <- Blocker[F]
-      metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
-      httpClient    <- BlazeClientBuilder[F](executionContext).resource
-      telemetry     <- Telemetry.build[F](
+      producer        <- mkQueue(config.queue)
+      resolverConfig  <- mkResolverConfig(igluConfig)
+      resolver        <- mkResolver(resolverConfig)
+      propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
+      atomicLengths   <- mkAtomicFieldLengthLimit(resolver)
+      instanceId      <- mkTransformerInstanceId
+      blocker         <- Blocker[F]
+      metrics         <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      httpClient      <- BlazeClientBuilder[F](executionContext).resource
+      telemetry       <- Telemetry.build[F](
         config.telemetry,
         buildName,
         buildVersion,
@@ -88,7 +91,8 @@ object Resources {
       blobStorage   <- mkSink(blocker, config.output)
     } yield
       Resources(
-        client,
+        resolver,
+        propertiesCache,
         atomicLengths,
         producer,
         instanceId.toString,
@@ -100,14 +104,20 @@ object Resources {
         blobStorage
       )
 
-  private def mkClient[F[_]: Sync: InitSchemaCache: InitListCache](igluConfig: Json): Resource[F, Client[F, Json]] = Resource.eval {
-    Client
-      .parseDefault[F](igluConfig)
-      .leftMap(e => new RuntimeException(s"Error while parsing Iglu config: ${e.getMessage()}"))
+  private def mkResolverConfig[F[_]: Sync](igluConfig: Json): Resource[F, ResolverConfig] = Resource.eval {
+    Resolver.parseConfig(igluConfig) match {
+      case Right(resolverConfig) => Sync[F].pure(resolverConfig)
+      case Left(error) => Sync[F].raiseError[ResolverConfig](new RuntimeException(s"Error while parsing Iglu resolver config: ${error.getMessage()}"))
+    }
+  }
+  
+  private def mkResolver[F[_]: Sync: InitSchemaCache: InitListCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] = Resource.eval {
+    Resolver.fromConfig[F](resolverConfig)
+      .leftMap(e => new RuntimeException(s"Error while parsing Iglu resolver config: ${e.getMessage()}"))
       .value
       .flatMap {
         case Right(init) => Sync[F].pure(init)
-        case Left(error) => Sync[F].raiseError[Client[F, Json]](error)
+        case Left(error) => Sync[F].raiseError[Resolver[F]](error)
       }
   }
 

@@ -24,11 +24,14 @@ import fs2.{Stream, text}
 import io.circe.Json
 import io.circe.optics.JsonPath._
 import io.circe.parser.{parse => parseCirce}
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.registries.Registry
+import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication.TestProcessor
@@ -112,7 +115,7 @@ object TransformingSpec {
   val BadPathPrefix = "output=bad"
   val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
 
-  val defaultIgluClient = Client.IgluCentral
+  val defaultIgluResolver: Resolver[IO] = Resolver(List(Registry.IgluCentral), None)
   val defaultAtomicLengths: Map[String, Int] = Map.empty
   val wideRowFormat = TransformerConfig.Formats.WideRow.JSON
   val shredFormat = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
@@ -120,12 +123,14 @@ object TransformingSpec {
   val defaultWindow = Window(1, 1, 1, 1, 1)
   val dummyTransformedData = Transformed.Data.DString("")
 
+  def propertiesCache: PropertiesCache[IO] = CreateLruMap[IO, PropertiesKey, Properties].create(100).unsafeRunSync()
+
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(defaultIgluClient, f, defaultAtomicLengths, TestProcessor)
+        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, defaultAtomicLengths, TestProcessor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(defaultIgluClient, f, TestProcessor)
+        Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
     }
 
   def transformTestEvents(resourcePath: String,

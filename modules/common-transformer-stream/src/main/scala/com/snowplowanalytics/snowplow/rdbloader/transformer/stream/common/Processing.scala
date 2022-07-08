@@ -70,9 +70,9 @@ object Processing {
   ): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths, processor)
+        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(resources.iglu, f, processor)
+        Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
 
      val messageProcessorVersion = Semver
