@@ -17,9 +17,15 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 import java.time.{Instant, ZoneOffset}
 import java.time.format.DateTimeFormatter
 
+import com.snowplowanalytics.lrumap.LruMap
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.Properties 
+
 package object transformation {
 
   private val Formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+
+  type LookupProperties[F[_]] = LruMap[F, SchemaKey, Properties]
 
   implicit class InstantOps(time: Instant) {
     def formatted: String = {

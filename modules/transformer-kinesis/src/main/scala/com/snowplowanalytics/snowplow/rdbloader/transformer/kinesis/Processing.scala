@@ -75,7 +75,7 @@ object Processing {
 
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.iglu, f, resources.atomicLengths)
+        Transformer.ShredTransformer(resources.iglu, resources.lookup, f, resources.atomicLengths)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(resources.iglu, f)
     }

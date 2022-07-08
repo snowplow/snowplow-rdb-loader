@@ -25,10 +25,13 @@ import io.circe.Json
 import io.circe.optics.JsonPath._
 import io.circe.parser.{parse => parseCirce}
 import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.Properties 
+import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{LookupProperties, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.{Checkpointer, ParsedC, file => FileSource}
 import org.specs2.mutable.Specification
@@ -119,10 +122,12 @@ object TransformingSpec {
   val defaultWindow = Window(1, 1, 1, 1, 1)
   val dummyTransformedData = Transformed.Data.DString("")
 
+  def propsLookup: LookupProperties[IO] = CreateLruMap[IO, SchemaKey, Properties].create(100).unsafeRunSync()
+
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(defaultIgluClient, f, defaultAtomicLengths)
+        Transformer.ShredTransformer(defaultIgluClient, propsLookup, f, defaultAtomicLengths)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(defaultIgluClient, f)
     }

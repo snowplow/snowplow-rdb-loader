@@ -26,6 +26,10 @@ import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.snowplowanalytics.iglu.client.Client
 
+import com.snowplowanalytics.lrumap.CreateLruMap
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.Properties 
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.LookupProperties
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
 
 /** Singletons needed for unserializable or stateful classes. */
@@ -88,6 +92,21 @@ object singleton {
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw new IllegalArgumentException(e), _.some)
               case None => None
             }
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object PropertiesLookupSingleton {
+    @volatile private var instance: LookupProperties[Id] = _
+
+    def get: LookupProperties[Id] = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = CreateLruMap[Id, SchemaKey, Properties].create(100)
           }
         }
       }
