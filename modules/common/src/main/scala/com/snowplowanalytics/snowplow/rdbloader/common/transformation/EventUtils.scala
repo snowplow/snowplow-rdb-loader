@@ -30,7 +30,7 @@ import com.snowplowanalytics.iglu.core._
 import com.snowplowanalytics.iglu.client.{Resolver, Client, ClientError}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
+import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatData, FlatSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
@@ -138,8 +138,18 @@ object EventUtils {
     * @param instance self-describing JSON that needs to be transformed
     * @return list of columns or flattening error
     */
-  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
-    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, getString, NullCharacter) }
+  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], lookup: LookupProperties[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] = {
+    val fetchProperties = getOrdered(resolver, instance.schema).map { ordered =>
+      FlatSchema.extractProperties(ordered)
+    }.flatTap { props =>
+      EitherT.right(lookup.put(instance.schema, props))
+    }
+
+    for {
+      propsOpt <- EitherT.right(lookup.get(instance.schema))
+      props <- propsOpt.fold(fetchProperties)(EitherT.rightT(_))
+    } yield props.map { case (pointer, _) => FlatData.getPath(pointer.forData, instance.data, getString, NullCharacter) }
+  }
 
   def getString(json: Json): String =
     json.fold(NullCharacter,
