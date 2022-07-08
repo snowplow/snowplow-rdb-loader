@@ -23,7 +23,6 @@ import io.circe.syntax._
 import org.http4s.client.Client
 
 import com.snowplowanalytics.iglu.client.resolver.{Resolver, ResolverCache}
-import com.snowplowanalytics.iglu.client.{Client => IgluClient}
 import com.snowplowanalytics.iglu.client.resolver.registries.{RegistryLookup, Http4sRegistryLookup}
 
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
@@ -51,11 +50,13 @@ object Iglu {
       Http4sRegistryLookup[F](httpClient)
 
     val buildResolver: F[Resolver[F]] =
-      IgluClient
-        .parseDefault[F](igluConfig)
-        .map(_.resolver.copy(cache = none[ResolverCache[F]])) // Disable cache to not re-fetch the stale state
-        .leftMap { decodingFailure => new IllegalArgumentException(s"Cannot initialize Iglu Resolver: ${decodingFailure.show}") }
-        .rethrowT
+      Resolver.parse[F](igluConfig)
+        .map {
+          _
+            .map(_.copy(cache = none[ResolverCache[F]])) // Disable cache to not re-fetch the stale state
+            .leftMap { decodingFailure => new IllegalArgumentException(s"Cannot initialize Iglu Resolver: ${decodingFailure.show}") }
+        }
+        .rethrow
 
     Resource.eval[F, Resolver[F]](buildResolver).map[F, Iglu[F]] { resolver =>
       (vendor: String, name: String, model: Int) => {

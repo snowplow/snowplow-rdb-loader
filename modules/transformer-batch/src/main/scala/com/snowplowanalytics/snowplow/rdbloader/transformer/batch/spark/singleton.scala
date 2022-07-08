@@ -16,14 +16,19 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 
 import cats.Id
 import cats.syntax.either._
-import cats.syntax.show._
 import cats.syntax.option._
+import cats.syntax.show._
 
-import io.circe.Json
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.schemaddl.Properties
 
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.lrumap.CreateLruMap
 
-import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest}
+import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
+
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -31,18 +36,18 @@ object singleton {
   /** Singleton for Iglu's Resolver to maintain one Resolver per node. */
   object IgluSingleton {
 
-    @volatile private var instance: Client[Id, Json] = _
+    @volatile private var instance: Resolver[Id] = _
 
     /**
       * Retrieve or build an instance of Iglu's Resolver.
       *
       * @param igluConfig JSON representing the Iglu configuration
       */
-    def get(igluConfig: Json): Client[Id, Json] = {
+    def get(resolverConfig: ResolverConfig): Resolver[Id] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = getIgluClient(igluConfig)
+            instance = getIgluResolver(resolverConfig) 
               .valueOr(e => throw new IllegalArgumentException(e))
           }
         }
@@ -56,8 +61,8 @@ object singleton {
       * @param igluConfig JSON representing the Iglu resolver
       * @return A Resolver or one or more error messages boxed in a Scalaz ValidationNel
       */
-    private[spark] def getIgluClient(igluConfig: Json): Either[String, Client[Id, Json]] =
-      Client.parseDefault[Id](igluConfig).leftMap(_.show).value
+    private def getIgluResolver(resolverConfig: ResolverConfig): Either[String, Resolver[Id]] =
+      Resolver.fromConfig[Id](resolverConfig).leftMap(_.show).value
   }
 
   /** Singleton for DuplicateStorage to maintain one per node. */
@@ -80,6 +85,21 @@ object singleton {
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw new IllegalArgumentException(e), _.some)
               case None => None
             }
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object PropertiesCacheSingleton {
+    @volatile private var instance: PropertiesCache[Id] = _
+
+    def get(resolverConfig: ResolverConfig): PropertiesCache[Id] = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = CreateLruMap[Id, PropertiesKey, Properties].create(resolverConfig.cacheSize)
           }
         }
       }

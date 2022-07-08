@@ -69,7 +69,7 @@ object ParquetSink {
   private def createSchemaFromTypes[F[_] : Concurrent : ContextShift : Timer, C](resources: Resources[F, C],
                                                                               types: List[Data.ShreddedType]): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
     for {
-      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.iglu.resolver, types.map(WideRow.Type.from))
+      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.igluResolver, types.map(WideRow.Type.from))
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
   }
