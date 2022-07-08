@@ -73,7 +73,7 @@ object Transformer {
     }
 
     def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
-      Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
+      Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), PropertiesCacheSingleton.get, isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
         case Right(shredded) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.shreddedTypeConverter(findFormat))(event.inventory)
           timestampsAccumulator.add(event)

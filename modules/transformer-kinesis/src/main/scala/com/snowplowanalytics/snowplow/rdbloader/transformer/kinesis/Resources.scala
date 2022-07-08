@@ -27,14 +27,15 @@ import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, 
 
 import blobstore.Store
 
-import io.circe.Json
+import com.snowplowanalytics.lrumap.CreateLruMap
 
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
+import com.snowplowanalytics.iglu.schemaddl.Properties
 
 import com.snowplowanalytics.aws.AWSQueue
 
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
@@ -45,6 +46,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.Bu
 
 case class Resources[F[_]](
   iglu: Client[F, Json],
+  propertiesCache: PropertiesCache[F],
   atomicLengths: Map[String, Int],
   awsQueue: AWSQueue[F],
   instanceId: String,
@@ -75,16 +77,18 @@ object Resources {
     executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
-      client        <- mkClient(igluConfig)
-      atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
-      instanceId    <- mkTransformerInstanceId
-      blocker       <- Blocker[F]
-      store         <- Resource.eval(mkStore[F](blocker, config.output.path))
-      metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
-      telemetry     <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
+      client          <- mkClient(igluConfig)
+      propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(100))
+      atomicLengths   <- mkAtomicFieldLengthLimit(client.resolver)
+      instanceId      <- mkTransformerInstanceId
+      blocker         <- Blocker[F]
+      store           <- Resource.eval(mkStore[F](blocker, config.output.path))
+      metrics         <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      telemetry       <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
     } yield
       Resources(
         client,
+        propertiesCache,
         atomicLengths,
         awsQueue,
         instanceId.toString,

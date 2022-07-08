@@ -16,17 +16,17 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 
 import cats.Id
 import cats.syntax.either._
-import cats.syntax.show._
 import cats.syntax.option._
-
-import io.circe.Json
-
+import cats.syntax.show._
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.snowplowanalytics.iglu.client.Client
-
-import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
+import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.lrumap.CreateLruMap
+import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsManifest, EventsManifestConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
+import io.circe.Json
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -88,6 +88,21 @@ object singleton {
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw new IllegalArgumentException(e), _.some)
               case None => None
             }
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object PropertiesCacheSingleton {
+    @volatile private var instance: PropertiesCache[Id] = _
+
+    def get: PropertiesCache[Id] = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = CreateLruMap[Id, PropertiesKey, Properties].create(100)
           }
         }
       }
