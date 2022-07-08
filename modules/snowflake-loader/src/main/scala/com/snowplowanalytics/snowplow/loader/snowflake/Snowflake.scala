@@ -21,6 +21,8 @@ import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.S3._
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
@@ -123,8 +125,9 @@ object Snowflake {
                 val frPath = loadAuthMethod match {
                   case LoadAuthMethod.NoCreds =>
                     // This is validated on config decoding stage
-                    val stageName = tgt.folderMonitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
-                    Fragment.const0(s"@$schema.$stageName/${source.folderName}")
+                    val stage = tgt.folderMonitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
+                    val afterStage = findPathAfterStage(stage, source)
+                    Fragment.const0(s"@${qualify(stage.name)}/$afterStage")
                   case _: LoadAuthMethod.TempCreds =>
                     Fragment.const0(source)
                 }
@@ -135,8 +138,9 @@ object Snowflake {
 
               case Statement.EventsCopy(path, _, columns, _, typesInfo, _) =>
                 // This is validated on config decoding stage
-                val stageName = tgt.transformedStage.getOrElse(throw new IllegalStateException("Transformed stage is tried to be used without being provided"))
-                val frPath = Fragment.const0(s"@${qualify(stageName)}/${path.folderName}/output=good/")
+                val stage = tgt.transformedStage.getOrElse(throw new IllegalStateException("Transformed stage is tried to be used without being provided"))
+                val afterStage = findPathAfterStage(stage, path)
+                val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
                 val frOnError = Fragment.const0(s"ON_ERROR = ${tgt.onError.asJson.noSpaces}")
@@ -269,5 +273,14 @@ object Snowflake {
         Fragment.empty
       case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
         Fragment.const0(s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')")
+    }
+
+  private def findPathAfterStage(stage: StorageTarget.Snowflake.Stage, pathToLoad: S3.Folder): String =
+    stage.location match {
+      case Some(loc) => pathToLoad.diff(loc) match {
+        case Some(diff) => diff
+        case None => throw new IllegalStateException(s"The stage's path and the path to load don't match: $pathToLoad")
+      }
+      case None => pathToLoad.folderName
     }
 }

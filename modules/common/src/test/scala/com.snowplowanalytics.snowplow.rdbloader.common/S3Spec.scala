@@ -12,9 +12,12 @@
 
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import org.specs2.mutable.Specification
 
-class S3Spec extends Specification {
+import com.snowplowanalytics.snowplow.rdbloader.common.S3._
+
+import org.specs2.mutable.{Specification, Tables}
+
+class S3Spec extends Specification with Tables {
   "S3.Folder.parse()" should {
     "support s3:// prefix" >> {
       val folder = "s3://foo/"
@@ -27,6 +30,22 @@ class S3Spec extends Specification {
     "support s3n:// prefix" >> {
       val folder = "s3n://foo/"
       S3.Folder.parse(folder) must beRight
+    }
+  }
+
+  "S3.Key.diff" should {
+    "return path diff correctly" >> {
+                        "parent"                 |                   "sub"                     |                "diff"             |>
+      "s3://path1"                               !  "s3://path1/path2/path3/runs/run_id"       !  Some("path2/path3/runs/run_id")  |
+      "s3://path1/path2"                         !  "s3://path1/path2/path3/runs/run_id"       !  Some("path3/runs/run_id")        |
+      "s3://path1/path2/path3"                   !  "s3://path1/path2/path3/runs/run_id"       !  Some("runs/run_id")              |
+      "s3://path1/path2/path3/runs"              !  "s3://path1/path2/path3/runs/run_id"       !  Some("run_id")                   |
+      "s3://path1/path2/path3/runs/run_id"       !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
+      "s3://path1/path2/path3/runs/run_id/path4" !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
+      "s3://path1/path2/path4"                   !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
+      { (parent, sub, diff) =>
+        S3.Folder.coerce(sub).diff(S3.Folder.coerce(parent)) must beEqualTo(diff)
+      }
     }
   }
 }

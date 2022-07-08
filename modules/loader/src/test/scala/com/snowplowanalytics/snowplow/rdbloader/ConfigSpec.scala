@@ -37,7 +37,7 @@ class ConfigSpec extends Specification {
 
   "validateConfig" should {
     "not return error message when folder monitoring section is included with storage.folderMonitoringStage" in {
-      val snowflake = exampleSnowflake.copy(folderMonitoringStage = Some("test_folder_monitoring_stage"), loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
+      val snowflake = exampleSnowflake.copy(folderMonitoringStage = Some(exampleFolderMonitoringStage), loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
       val config = exampleConfig.copy(storage = snowflake)
       val res = Config.validateConfig(config)
       res must beEmpty
@@ -61,12 +61,11 @@ class ConfigSpec extends Specification {
       res must beEqualTo(List("Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing"))
     }
     "return error message when storage.folderMonitoringStage is included without folder monitoring section and load auth method is NoCreds" in {
-      val exampleFolderMonitoringStage = "test_folder_monitoring_stage"
       val snowflake = exampleSnowflake.copy(folderMonitoringStage = Some(exampleFolderMonitoringStage), loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
       val monitoring = exampleMonitoring.copy(folders = None)
       val config = exampleConfig.copy(storage = snowflake, monitoring = monitoring)
       val res = Config.validateConfig(config)
-      res must beEqualTo(List(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${exampleFolderMonitoringStage}), but monitoring.folders is missing"))
+      res must beEqualTo(List(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${exampleFolderMonitoringStage.name}), but monitoring.folders is missing"))
     }
     "return error message when storage.transformedStage isn't included when load auth method is 'NoCreds'" in {
       val snowflake = exampleSnowflake.copy(folderMonitoringStage = None, transformedStage = None, loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
@@ -93,6 +92,8 @@ object ConfigSpec {
   )
   val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
   val exampleQueueName = "test-queue"
+  val exampleFolderMonitoringStage = StorageTarget.Snowflake.Stage("test_folder_monitoring_stage", None)
+  val exampleTransformedStage = StorageTarget.Snowflake.Stage("test_transformed_stage", None)
   val exampleRedshift = StorageTarget.Redshift(
     "redshift.amazonaws.com",
     "snowplow",
@@ -114,7 +115,7 @@ object ConfigSpec {
     "wh",
     "snowplow",
     "atomic",
-    Some("snowplow_stage"),
+    Some(exampleTransformedStage),
     "Snowplow_OSS",
     None,
     StorageTarget.Snowflake.Continue,

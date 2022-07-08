@@ -37,11 +37,21 @@
     "schema": "atomic",
     # DB name
     "database": "snowplow",
-    # A stage name where the data is stored. Must be provided if 'NoCreds' is chosen as load auth method.
-    "transformedStage": "snowplow_stage",
-    # A stage name where the data for monitoring.folders is stored.
+    # A stage where the data is stored. Must be provided if 'NoCreds' is chosen as load auth method.
+    "transformedStage":  {
+      # The name of the stage
+      "name": "snowplow_stage"
+      # The S3 path used as stage location
+      "location": "s3://bucket/transformed/"
+    }
+    # A stage where the data for monitoring.folders is stored.
     # Must be provided iff monitoring.folders is configured and 'NoCreds' is chosen as load auth method.
-    "folderMonitoringStage": "snowplow_folders_stage"
+    "folderMonitoringStage": {
+      # The name of the stage
+      "name": "snowplow_folders_stage"
+      # The S3 path used as stage location
+      "location": "s3://bucket/monitoring/"
+    }
     # Optional, the default value is "CONTINUE".
     # Specifies the strategy when some error occurred during load operation.
     # Possible values are CONTINUE, ABORT_STATEMENT.

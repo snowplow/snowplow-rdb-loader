@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 
 import cats.effect.IO
 import cats.syntax.all._
-import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
+import com.snowplowanalytics.snowplow.rdbloader.common.{RegionSpec, S3}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 
 import org.specs2.mutable.Specification
@@ -31,7 +31,8 @@ class ConfigSpec extends Specification {
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.snowflake.password"))))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(onError = StorageTarget.Snowflake.AbortStatement)
-        .copy(folderMonitoringStage = Some("snowplow_folders_stage"))
+        .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(S3.Folder.coerce("s3://bucket/monitoring/")))))
+        .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/")))))
       val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
         exampleRegion,
@@ -57,7 +58,7 @@ class ConfigSpec extends Specification {
         defaultMonitoring,
         exampleQueueName,
         None,
-        exampleSnowflake,
+        exampleSnowflake.copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/"))))),
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
@@ -77,7 +78,7 @@ class ConfigSpec extends Specification {
         warehouse = "wh",
         database = "snowplow",
         schema = "atomic",
-        transformedStage = Some("snowplow_stage"),
+        transformedStage = None,
         appName = "Snowplow_OSS",
         folderMonitoringStage = None,
         onError = StorageTarget.Snowflake.Continue,

@@ -25,6 +25,7 @@ import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 
 /**
@@ -140,9 +141,9 @@ object StorageTarget {
                              warehouse: String,
                              database: String,
                              schema: String,
-                             transformedStage: Option[String],
+                             transformedStage: Option[Snowflake.Stage],
                              appName: String,
-                             folderMonitoringStage: Option[String],
+                             folderMonitoringStage: Option[Snowflake.Stage],
                              onError: Snowflake.OnError,
                              jdbcHost: Option[String],
                              loadAuthMethod: LoadAuthMethod) extends StorageTarget {
@@ -208,6 +209,8 @@ object StorageTarget {
     sealed trait OnError
     case object Continue extends OnError
     case object AbortStatement extends OnError
+
+    case class Stage(name: String, location: Option[S3.Folder])
   }
 
   /**
@@ -378,6 +381,21 @@ object StorageTarget {
 
   implicit def tempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds] =
     deriveDecoder[LoadAuthMethod.TempCreds]
+
+  // Custom decoder for backward compatibility
+  implicit def snowflakeStageDecoder: Decoder[Snowflake.Stage] =
+    Decoder.decodeJson.emap { json =>
+      json.asString match {
+        case Some(stageName) => Snowflake.Stage(stageName, None).asRight
+        case None =>
+          val result = for {
+            root <- json.asObject.map(_.toMap)
+            name <- root.get("name").flatMap(_.as[String].toOption)
+            location = root.get("location").flatMap(_.as[String].toOption).map(S3.Folder.coerce)
+          } yield Snowflake.Stage(name, location)
+          result.toRight("Snowflake stage config couldn't be decoded")
+      }
+    }
 
   implicit def storageTargetDecoder: Decoder[StorageTarget] =
     Decoder.instance { cur =>

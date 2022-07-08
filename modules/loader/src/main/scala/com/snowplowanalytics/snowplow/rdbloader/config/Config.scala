@@ -172,7 +172,7 @@ object Config {
           case None =>
             storage.folderMonitoringStage match {
               case None => None
-              case Some(name) =>
+              case Some(StorageTarget.Snowflake.Stage(name, _)) =>
                 Some(s"Snowflake Loader is being provided with storage.folderMonitoringStage (${name}), but monitoring.folders is missing")
             }
           case Some(_) =>

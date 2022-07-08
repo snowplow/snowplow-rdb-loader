@@ -42,6 +42,27 @@ object S3 {
 
     def bucketName: String =
       f.split("://").last.split("/").head
+
+    /**
+     * Find diff of two S3 paths.
+     * Return None if parent path is longer than sub path or
+     * parent path doesn't match with sub path.
+     */
+    def diff(parent: Folder): Option[String] = {
+      def go(parentParts: List[String], subParts: List[String]): Option[String] =
+        (parentParts, subParts) match {
+          case (_, Nil) =>
+            None
+          case (Nil, s) =>
+            Some(s.mkString("/"))
+          case (pHead :: _, sHead :: _) if pHead != sHead =>
+            None
+          case (pHead :: pTail, sHead :: sTail) if pHead == sHead =>
+            go(pTail, sTail)
+        }
+
+      go(parent.split("/").toList, f.split("/").toList)
+    }
   }
 
 
