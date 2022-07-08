@@ -16,10 +16,11 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import io.circe.Json
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
@@ -40,7 +41,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton._
 
 /**
  * Includes common operations needed in Spark job during event transformation
@@ -57,7 +57,7 @@ sealed trait Transformer[T] extends Product with Serializable {
 }
 
 object Transformer {
-  case class ShredTransformer(igluConfig: Json,
+  case class ShredTransformer(resolverConfig: ResolverConfig,
                               formats: Formats.Shred,
                               atomicLengths: Map[String, Int]) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
@@ -73,7 +73,7 @@ object Transformer {
     }
 
     def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
-      Transformed.shredEvent[Id](IgluSingleton.get(igluConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
+      Transformed.shredEvent[Id](IgluSingleton.get(resolverConfig), PropertiesCacheSingleton.get(resolverConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
         case Right(shredded) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.shreddedTypeConverter(findFormat))(event.inventory)
           timestampsAccumulator.add(event)
@@ -129,9 +129,7 @@ object Transformer {
     }
   }
 
-  case class WideRowParquetTransformer(igluConfig: Json,
-                                       atomicLengths: Map[String, Int],
-                                       allFields: AllFields,
+  case class WideRowParquetTransformer(allFields: AllFields,
                                        schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator

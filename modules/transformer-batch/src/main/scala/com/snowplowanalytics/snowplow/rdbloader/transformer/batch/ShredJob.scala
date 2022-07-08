@@ -16,6 +16,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
+import com.snowplowanalytics.iglu.client.{Client, Resolver}
+import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
@@ -189,8 +191,10 @@ object ShredJob {
     duplicateStorageConfig: Option[Json],
     config: Config
   ): Unit = {
+   
+    val resolverConfig = Resolver.parseConfig(igluConfig).valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}")) 
     val s3Client = Cloud.createS3Client(config.output.region)
-    val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(igluConfig).resolver).fold(err => throw err, identity)
+    val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(resolverConfig)).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(config.input.toString)
     val shreddedFolder = Folder.coerce(config.output.path.toString)
@@ -199,8 +203,9 @@ object ShredJob {
       .getState(enrichedFolder, shreddedFolder, config.runInterval, Instant.now, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
+      val igluClient = Client[Id, Json](IgluSingleton.get(resolverConfig), CirceValidator) 
       val config = EventsManifestConfig
-        .parseJson[Id](com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton.get(igluConfig), json)
+        .parseJson[Id](igluClient, json)
         .valueOr(err => throw new IllegalArgumentException(err))
       val _ = DuplicateStorageSingleton.get(Some(config)) // Just to check it can be initialized
       config
@@ -219,17 +224,17 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(igluConfig, f, atomicLengths)
+        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
-          val resolver = IgluSingleton.get(igluConfig).resolver
+          val resolver = IgluSingleton.get(resolverConfig)
           val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
           
           val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
           
-          Transformer.WideRowParquetTransformer(igluConfig, atomicLengths, allFields, schema)
+          Transformer.WideRowParquetTransformer(allFields, schema)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)

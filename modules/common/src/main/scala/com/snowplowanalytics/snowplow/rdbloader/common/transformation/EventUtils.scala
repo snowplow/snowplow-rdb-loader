@@ -37,7 +37,8 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{ParsingError, Event}
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Failure, Payload, FailureDetails}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import Flattening.{NullCharacter, getOrdered}
+import Flattening.NullCharacter
+import com.snowplowanalytics.iglu.schemaddl.Properties
 
 object EventUtils {
 
@@ -138,8 +139,19 @@ object EventUtils {
     * @param instance self-describing JSON that needs to be transformed
     * @return list of columns or flattening error
     */
-  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
-    getOrdered(resolver, instance.schema).map { ordered => FlatData.flatten(instance.data, ordered, getString, NullCharacter) }
+  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
+                                                  propertiesCache: PropertiesCache[F],
+                                                  instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] = {
+    Flattening.getDdlProperties(resolver, propertiesCache, instance.schema)
+      .map(props => mapProperties(props, instance))
+  }
+
+  private def mapProperties(props: Properties, instance: SelfDescribingData[Json]) = {
+    props
+      .map { case (pointer, _) => 
+        FlatData.getPath(pointer.forData, instance.data, getString, NullCharacter) 
+      }
+  }
 
   def getString(json: Json): String =
     json.fold(NullCharacter,
