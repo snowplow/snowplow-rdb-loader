@@ -16,7 +16,7 @@ object Dependencies {
 
   object V {
     // Scala (Loader)
-    val decline          = "2.1.0"
+    val decline          = "2.3.0"
     val igluClient       = "1.1.1"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
