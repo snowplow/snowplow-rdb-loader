@@ -1,3 +1,69 @@
+Version 4.1.0 (2022-07-04)
+--------------------------
+Databricks loader: Support for generated columns (#951)
+Loader: Use explicit schema name everywhere (#952)
+Loader: Jars cannot load jsch (#942)
+Snowflake loader: region and account configuration fields should be optional (#947)
+Loader: Include the SQLState when logging a SQLException (#941)
+Loader: Handle run directories with UUID suffix in folder monitoring (#949)
+Add UUID to streaming transformer directory structure (#945)
+
+Version 4.0.4 (2022-06-20)
+--------------------------
+Transformer kinesis: make Kinesis consumer more configurable (close #865)
+Transformer: split batch and streaming configs (close #937)
+
+Version 4.0.3 (2022-06-16)
+--------------------------
+Transformer kinesis: version 4.0.2 Throws java.lang.InterruptedException: sleep interrupted (#938)
+
+Version 4.0.2 (2022-06-14)
+--------------------------
+Transformer kinesis: Bump parquet-hadoop to 1.12.3 (#933)
+Transformer kinesis: exclude hadoop transitive dependencies (#932)
+Batch Transformer: add fileFormat field to formats section of example hocon (#848)
+Common: set region in the SQS client builder (#587)
+Common: Snyk action should only run on push to master (#929)
+Snowflake loader: Bump snowflake-jdbc to 3.13.9 (#928)
+Loader: use forked version of jsch lib for ssh (#927)
+Loader: recover from exceptions on alerting webhook (#925)
+Transformer kinesis: always end up in consistent state (#873)
+Transformer kinesis: no checkpointing until after SQS message is sent (#917)
+Loader: Add logging around using SSH tunnel (#923)
+Transformer-kinesis: add missing hadoop-aws dependency for s3 parquet files upload (#920)
+Loader: Timeouts on JDBC statements (#914)
+Snowflake Loader: make ON_ERROR copy option configurable (#912)
+
+Version 4.0.1 (2022-06-03)
+--------------------------
+Common: change http4s client backend to blaze-client (#905)
+RDB Loader: Fix sqs visibility extensions when processing retries (#908)
+Databricks Loader: bump Databricks JDBC driver to 2.6.25 (#910)
+
+Version 4.0.0 (2022-05-26)
+--------------------------
+Common: Change http4s client backend to async-http-client (#903)
+Common: bump http4s to 0.21.33 (#902)
+Transformer kinesis: support Parquet output option (#900)
+Loader: check if target is ready before submitting the statement (#846)
+Add Databricks as a destination (#860)
+Batch Transformer: add Parquet output option (#896)
+Transformer kinesis: add telemetry (#863)
+Transformer kinesis: write shredding_complete.json to S3 (#867)
+Snowflake Loader: add load_tstamp (#815)
+Redshift Loader: add load_tstamp (#571)
+Transformer kinesis: report metrics (#862)
+RDB Loader: emit latency statistics on constant intervals (#795)
+Transformer kinesis: use output of transformation in updating global state (#824)
+Transformer kinesis: fix updating total and bad number of events counter in global state (#823)
+Transformer kinesis: add tests for whole processing pipeline (#835)
+Transformer kinesis: fix passing checkpoint action during creation of windowed records (#762)
+
+Version 3.0.3 (2022-05-18)
+--------------------------
+Loader: bump version of load_succeeded schema to 3.0.0 (#889)
+Common: bump schema-ddl to 0.15.0 (#894)
+
 Version 3.0.2 (2022-05-12)
 --------------------------
 Common: bump snowplow-scala-analytics-sdk to 3.0.1 (#872)

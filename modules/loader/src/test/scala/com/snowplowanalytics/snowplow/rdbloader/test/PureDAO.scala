@@ -14,19 +14,16 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import doobie.{Read, Fragment}
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import doobie.{Fragment, Read}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, Migration => SchemaMigration}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
-
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, LoadStatements}
+import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Block}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement, Migration}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Item}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
@@ -56,6 +53,7 @@ object PureDAO {
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) => None
       case Statement.FoldersMinusManifest => List()
+      case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
@@ -73,7 +71,7 @@ object PureDAO {
   val init: PureDAO = custom(getResult)
 
   def interpreter(results: PureDAO, tgt: Target = DummyTarget): DAO[Pure] = new DAO[Pure] {
-    def executeUpdate(sql: Statement): Pure[Int] =
+    def executeUpdate(sql: Statement, purpose: DAO.Purpose): Pure[Int] =
       results.executeUpdate(sql)
 
     def executeQuery[A](query: Statement)(implicit A: Read[A]): Pure[A] =
@@ -85,9 +83,6 @@ object PureDAO {
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): Pure[Option[A]] =
       results.executeQuery.asInstanceOf[Statement => Pure[Option[A]]](query)
 
-    def rollback: Pure[Unit] =
-      Pure.modify(_.log(PureTransaction.Rollback))
-
     def target: Target = tgt
   }
 
@@ -95,9 +90,9 @@ object PureDAO {
     def toFragment(statement: Statement): Fragment =
       Fragment.const0(statement.toString)
 
-    def getLoadStatements(discovery: DataDiscovery): LoadStatements =
+    def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip),
+        Statement.EventsCopy(discovery.base, Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty)),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }
@@ -109,7 +104,7 @@ object PureDAO {
     def updateTable(migration: SchemaMigration): Migration.Block =
       throw LoaderError.RuntimeError("Not implemented in test suite")
 
-    def extendTable(info: ShreddedType.Info): Block =
+    def extendTable(info: ShreddedType.Info): Option[Block] =
       throw LoaderError.RuntimeError("Not implemented in test suite")
 
     def createTable(schemas: SchemaList): Migration.Block = {
@@ -119,5 +114,7 @@ object PureDAO {
       val entity = Migration.Entity.Table("public", schemas.latest.schemaKey)
       Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), entity)
     }
+
+    def requiresEventsColumns: Boolean = false
   }
 }

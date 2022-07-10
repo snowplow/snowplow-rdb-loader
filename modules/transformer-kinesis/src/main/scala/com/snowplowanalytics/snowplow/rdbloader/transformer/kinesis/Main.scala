@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2021 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2021-2022 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
@@ -14,12 +14,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
-import cats.effect.{IOApp, IO, ExitCode, Sync}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import cats.effect.{ExitCode, IO, IOApp, Sync}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.AppId
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 object Main extends IOApp {
 
@@ -29,12 +27,20 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
     for {
-      parsed <- ShredderCliConfig.Stream.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
+      parsed <- CliConfig.loadConfigFrom[IO](BuildInfo.name, BuildInfo.description)(args: Seq[String]).value
       res <- parsed match {
         case Right(cliConfig) =>
-          Resources.mk[IO](cliConfig.igluConfig, cliConfig.config.queue).use { resources =>
+          Resources.mk[IO](
+            cliConfig.igluConfig,
+            cliConfig.config,
+            executionContext
+          ).use { resources =>
             logger[IO].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-              Processing.run[IO](resources, cliConfig.config).as(ExitCode.Success)
+            logger[IO].info(s"RDB Shredder app id is  ${AppId.appId}") *>
+              Processing.run[IO](resources, cliConfig.config)
+                .compile
+                .drain
+                .as(ExitCode.Success)
           }
         case Left(e) =>
           logger[IO].error(s"Configuration error: $e").as(InvalidConfig)

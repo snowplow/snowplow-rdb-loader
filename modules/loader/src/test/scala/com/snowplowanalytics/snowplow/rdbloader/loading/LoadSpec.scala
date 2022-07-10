@@ -13,29 +13,23 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
-
 import scala.concurrent.duration.FiniteDuration
-
 import cats.syntax.option._
-
 import cats.effect.Timer
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, Processor, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Transaction, Iglu, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Manifest}
-
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{PureDAO, Pure, PureOps, TestState, PureIglu, PureTransaction, PureLogging, PureTimer}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
 
 class LoadSpec extends Specification {
   import LoadSpec.{isBeforeFirstCommit, failCommit}
@@ -50,12 +44,15 @@ class LoadSpec extends Specification {
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -75,12 +72,14 @@ class LoadSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,
       )
 
@@ -98,18 +97,21 @@ class LoadSpec extends Specification {
 
       val info = ShreddedType.Json(ShreddedType.Info("s3://shredded/base/".dir,"com.acme","json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),"s3://assets/com.acme/json_context_1.json".key)
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip)),
+        LogEntry.Sql(Statement.EventsCopy("s3://shredded/base/".dir,Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty))),
         LogEntry.Sql(Statement.ShreddedCopy(info,Compression.Gzip)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -126,6 +128,7 @@ class LoadSpec extends Specification {
         statement match {
           case Statement.ManifestGet(Base) =>
             Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem).some
+          case Statement.ReadyCheck => 1
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
@@ -136,12 +139,14 @@ class LoadSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
 
       val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+
         PureTransaction.NoTransactionMessage,   // Migration.build
         PureTransaction.NoTransactionMessage,   // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
-        PureTransaction.RollbackMessage,
         PureTransaction.CommitMessage,          // TODO: this is potentially dangerous, we need
                                                 //       to throw an ad-hoc exception within a transaction
       )
@@ -181,6 +186,7 @@ object LoadSpec {
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) => Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
       case Statement.FoldersMinusManifest => List()
+      case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
@@ -211,7 +217,7 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_) => ts.getLog.length == 6
+      case Statement.ManifestAdd(_) => ts.getLog.length == 8
       case _ => false
     }
 

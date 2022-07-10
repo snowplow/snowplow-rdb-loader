@@ -12,8 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake
 
-import cats.effect.IO
+import scala.concurrent.duration._
 
+import cats.effect.IO
+import cats.syntax.all._
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 
@@ -28,7 +30,7 @@ class ConfigSpec extends Specification {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.snowflake.password"))))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
-        .copy(maxError = Some(10))
+        .copy(onError = StorageTarget.Snowflake.AbortStatement)
         .copy(folderMonitoringStage = Some("snowplow_folders_stage"))
       val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
@@ -41,6 +43,7 @@ class ConfigSpec extends Specification {
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
+        exampleReadyCheck
       )
       result must beRight(expected)
     }
@@ -50,15 +53,37 @@ class ConfigSpec extends Specification {
       val expected = Config(
         RegionSpec.DefaultTestRegion,
         None,
-        emptyMonitoring,
+        defaultMonitoring,
         exampleQueueName,
         None,
         exampleSnowflake,
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       )
       result must beRight(expected)
+    }
+
+    "be able to infer host" in {
+      val exampleSnowflake = StorageTarget.Snowflake(
+        snowflakeRegion = Some("us-west-2"),
+        username = "admin",
+        role = None,
+        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        account = Some("acme"),
+        warehouse = "wh",
+        database = "snowplow",
+        schema = "atomic",
+        transformedStage = "snowplow_stage",
+        appName = "Snowplow_OSS",
+        folderMonitoringStage = None,
+        onError = StorageTarget.Snowflake.Continue,
+        jdbcHost = None)
+      exampleSnowflake.host must beRight("acme.snowflakecomputing.com")
+      exampleSnowflake.copy(jdbcHost = "override".some).host must beRight("override")
+      exampleSnowflake.copy(snowflakeRegion = "us-east-1".some).host must beRight("acme.us-east-1.snowflakecomputing.com")
+      exampleSnowflake.copy(snowflakeRegion = "us-east-1-gov".some).host must beRight("acme.us-east-1-gov.aws.snowflakecomputing.com")
     }
   }
 }

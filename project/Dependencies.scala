@@ -35,22 +35,25 @@ object Dependencies {
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
     val log4cats         = "1.3.0"
-    val http4s           = "0.21.25"
+    val http4s           = "0.21.33"
     val scalaTracker     = "1.0.0"
 
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.14.3"
+    val schemaDdl        = "0.15.0"
     val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.13.2.2"
+    val parquet4s        = "1.9.4"
+    val hadoopClient     = "3.3.3"
+    val parquetHadoop    = "1.12.3"
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
-    val snowflakeJdbc    = "3.13.5"
+    val snowflakeJdbc    = "3.13.9"
     val enumeratum       = "1.7.0"
     val aws              = "1.12.161"
     val aws2             = "2.17.59"
-    val jSch             = "0.1.55"
+    val jSch             = "0.2.1"
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
     val commons          = "2.7"    // Fix CVE
@@ -112,15 +115,19 @@ object Dependencies {
   val sparkSQL          = "org.apache.spark"             %% "spark-sql"                % V.spark           % Provided
   val fs2Io             = "co.fs2"                       %% "fs2-io"                   % V.fs2
 
-  val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"   % V.jacksonModule
-  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"       % V.jacksonDatabind
-  val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
-
+  val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"     % V.jacksonModule
+  val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"         % V.jacksonDatabind
+  val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.jacksonModule
+  val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
+  val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
+  val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
+  val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
+    .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshiftJdbc
-  val jSch              = "com.jcraft"            % "jsch"                      % V.jSch
+  val jSch              = "com.github.mwiede"     % "jsch"                      % V.jSch
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
   val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
   val enumeratum        = "com.beachape"          %% "enumeratum"               % V.enumeratum
@@ -244,7 +251,14 @@ object Dependencies {
     fs2AwsSqs,
     aws2kinesis,
     http4sClient,
+    catsEffectLaws,
     circeOptics,
+    parquet4s,
+    hadoop,
+    hadoopAws,
+    parquetHadoop,
+    scalaTracker,
+    scalaTrackerEmit,
     specs2,
     specs2ScalaCheck,
     scalaCheck
@@ -252,6 +266,17 @@ object Dependencies {
 
   // exclusions
   val exclusions = Seq(
-    "org.slf4j" % "slf4j-log4j12"
+    ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")
   )
+
+  val transformerKinesisExclusions = {
+    exclusions ++ Seq(
+      ExclusionRule(organization = "ch.qos.logback"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-client"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-mapreduce-client-jobclient"),
+      ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-hdfs-client"),
+      ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7"),
+    )
+  }
 }

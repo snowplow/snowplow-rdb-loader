@@ -20,8 +20,6 @@ import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 import cats.syntax.either._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.ShredderCliConfig
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.Serialization
 
@@ -31,10 +29,11 @@ object Main {
     .setAppName(getClass.getSimpleName)
     .setIfMissing("spark.master", "local[*]")
     .set("spark.serializer", classOf[KryoSerializer].getName)
+    .set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
     .registerKryoClasses(Serialization.classesToRegister)
 
   def main(args: Array[String]): Unit = {
-    ShredderCliConfig.Batch.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
+    CliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
       case Right(cli) =>
         val spark = SparkSession.builder()
           .config(sparkConfig)

@@ -19,9 +19,6 @@ import java.time.format.DateTimeFormatter
 
 package object transformation {
 
-  type WideRowTuple = (String, String)
-  type ShreddedTuple = (String, String, String, String, Int, String)
-
   private val Formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
   implicit class InstantOps(time: Instant) {

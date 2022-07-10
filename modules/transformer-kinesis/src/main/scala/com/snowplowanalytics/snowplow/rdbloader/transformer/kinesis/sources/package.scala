@@ -8,5 +8,6 @@ package object sources {
   type Parsed = Either[BadRow.LoaderParsingError, Event]
 
   /** Initial record data type and potential checkpoint action for that record */
-  type ParsedF[F[_]] = (Parsed, F[Unit])
+  type ParsedC[C] = (Parsed, C)
+
 }

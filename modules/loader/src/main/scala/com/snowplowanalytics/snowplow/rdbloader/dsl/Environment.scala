@@ -28,7 +28,7 @@ import io.sentry.{SentryClient, Sentry, SentryOptions}
 
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config}
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
@@ -44,7 +44,8 @@ class Environment[F[_]](cache: Cache[F],
                         aws: AWS[F],
                         transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
-                        target: Target) {
+                        target: Target,
+                        timeouts: Config.Timeouts) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -52,7 +53,7 @@ class Environment[F[_]](cache: Cache[F],
   implicit val awsF: AWS[F] = aws
   implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
-  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target)
+  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
 
   def control: Control[F] =
@@ -64,16 +65,7 @@ object Environment {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] = {
-    val init = for {
-      cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      amazonS3 <- AWS.getClient[F](cli.config.region.name)
-
-      cache = Cache.cacheInterpreter[F](cacheMap)
-      aws = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility)
-      state <- State.mk[F]
-    } yield (cache, aws, state)
-
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
@@ -81,16 +73,20 @@ object Environment {
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
-      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
-      stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      (cache, awsF, state) <- Resource.eval(init)
-      implicit0(aws: AWS[F]) = awsF
-      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), cli.config.monitoring.webhook, httpClient)
+      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
+      stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
+      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[S3.Key]]](Map.empty))
+      amazonS3 <- Resource.eval(AWS.getClient[F](cli.config.region.name))
+      cache = Cache.cacheInterpreter[F](cacheMap)
+      state <- Resource.eval(State.mk[F])
+      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility, cli.config.region.name)
+      reporters = List(statsdReporter, stdoutReporter)
+      periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
+      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
 
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer)
-  }
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {

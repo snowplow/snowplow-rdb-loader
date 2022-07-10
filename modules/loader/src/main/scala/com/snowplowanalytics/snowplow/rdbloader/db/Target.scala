@@ -12,13 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import doobie.Fragment
-
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, Migration => SchemaMigration}
-
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.EventTableColumns
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import doobie.Fragment
 
 /**
  * Target represents all DB-specific logic and commands
@@ -35,8 +34,11 @@ trait Target {
    * Transform `DataDiscovery` into `LoadStatements`
    * The statements could be either single statement (only `events` table)
    * or multi-statement (`events` plus shredded types)
+   * @param discovery TODO
+   * @param eventTableColumns TODO
    */
-  def getLoadStatements(discovery: DataDiscovery): LoadStatements
+  def getLoadStatements(discovery: DataDiscovery,
+                        eventTableColumns: EventTableColumns): LoadStatements
 
   /** Get DDL of a manifest table */
   def getManifest: Statement
@@ -48,5 +50,8 @@ trait Target {
   def createTable(schemas: SchemaList): Block
 
   /** Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates on `events` table */
-  def extendTable(info: ShreddedType.Info): Block
+  def extendTable(info: ShreddedType.Info): Option[Block]
+
+  /** Whether the target needs to know existing columns in the events table */
+  def requiresEventsColumns: Boolean
 }

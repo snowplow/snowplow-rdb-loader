@@ -61,14 +61,6 @@ object BuildSettings {
 
   lazy val assemblySettings = Seq(
     jarName,
-
-    assembly / assemblyShadeRules := Seq(
-      ShadeRule.rename(
-        // EMR has 0.1.42 installed
-        "com.jcraft.jsch.**" -> "shadejsch.@1"
-      ).inAll
-    ),
-
     assembly / assemblyMergeStrategy := {
       case x if x.endsWith("module-info.class") => MergeStrategy.discard
       case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
@@ -201,7 +193,7 @@ object BuildSettings {
   lazy val commonBuildSettings = {
     Seq(
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"
-    ) ++ scoverageSettings ++ buildSettings ++ addExampleConfToTestCp
+    ) ++ scoverageSettings ++ buildSettings
   }
 
   lazy val loaderBuildSettings = {
@@ -230,14 +222,32 @@ object BuildSettings {
 
   lazy val snowflakeDistrolessBuildSettings = snowflakeBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
+  lazy val databricksBuildSettings = {
+    Seq(
+      name := "snowplow-databricks-loader",
+      Docker / packageName := "snowplow/rdb-loader-databricks",
+      initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
+      Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
+      Compile / unmanagedJars += file("DatabricksJDBC42.jar")
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+  }
+
+  lazy val databricksDistrolessBuildSettings = databricksBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
+
   lazy val transformerBatchBuildSettings = {
     Seq(
       name := "snowplow-transformer-batch",
       description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
       buildInfoKeys := List(name, version, description),
+      assembly / assemblyShadeRules := Seq(
+        ShadeRule.rename(
+          // EMR has 0.1.42 installed
+          "com.jcraft.jsch.**" -> "shadejsch.@1"
+        ).inProject
+      ),
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
-    ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
   lazy val transformerKinesisBuildSettings = {
@@ -246,7 +256,7 @@ object BuildSettings {
       Docker / packageName := "snowplow/transformer-kinesis",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
       buildInfoKeys := List(name, version, description),
-    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
   lazy val transformerKinesisDistrolessBuildSettings = transformerKinesisBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless

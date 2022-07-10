@@ -21,24 +21,31 @@ import io.circe.{CursorOp, _}
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
 
+import doobie.free.connection.setAutoCommit
+import doobie.util.transactor.Strategy
+
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 
+
 /**
- * Common configuration for JDBC target, such as Redshift
- * Any of those can be safely coerced
- */
+  * Common configuration for JDBC target, such as Redshift
+  * Any of those can be safely coerced
+  */
 sealed trait StorageTarget extends Product with Serializable {
-  def host: String
-  def database: String
   def schema: String
   def username: String
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
-  def shreddedTable(tableName: String): String =
-    s"$schema.$tableName"
+  def doobieCommitStrategy: Strategy = Strategy.default
 
+  /**
+    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
+    * @see https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
+    */
+  def doobieNoCommitStrategy: Strategy = Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
   def driver: String
+  def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
 }
@@ -88,29 +95,68 @@ object StorageTarget {
     }
   }
 
-  final case class Snowflake(snowflakeRegion: String,
+  final case class Databricks(
+                               host: String,
+                               catalog: String,
+                               schema: String,
+                               port: Int,
+                               httpPath: String,
+                               password: PasswordConfig,
+                               sshTunnel: Option[TunnelConfig],
+                               userAgent: String
+                             ) extends StorageTarget {
+
+    override def username: String = "token"
+
+    override def driver: String = "com.databricks.client.jdbc.Driver"
+
+    override def connectionUrl: String = s"jdbc:databricks://$host:$port"
+
+    override def doobieCommitStrategy: Strategy   = Strategy.void
+    override def doobieNoCommitStrategy: Strategy = Strategy.void
+    override def withAutoCommit                   = true
+
+    override def properties: Properties = {
+      val props: Properties = new Properties()
+      props.put("httpPath", httpPath)
+      props.put("ssl", 1)
+      //      props.put("LogLevel", 6)
+      props.put("AuthMech", 3)
+      props.put("transportMode", "http")
+      props.put("UserAgentEntry", userAgent)
+      props
+    }
+  }
+
+  final case class Snowflake(snowflakeRegion: Option[String],
                              username: String,
                              role: Option[String],
                              password: PasswordConfig,
-                             account: String,
+                             account: Option[String],
                              warehouse: String,
                              database: String,
                              schema: String,
                              transformedStage: String,
                              appName: String,
                              folderMonitoringStage: Option[String],
-                             maxError: Option[Int],
+                             onError: Snowflake.OnError,
                              jdbcHost: Option[String]) extends StorageTarget {
-    def connectionUrl: String = s"jdbc:snowflake://$host"
+
+    def connectionUrl: String =
+      host match {
+        case Right(h) =>
+          s"jdbc:snowflake://$h"
+        case Left(e) =>
+          // Should not happen because config has been validated
+          throw new IllegalStateException(s"Error deriving host: $e")
+      }
 
     def sshTunnel: Option[TunnelConfig] = None
 
     def properties: Properties = {
       val props: Properties = new Properties()
-      props.put("account", account)
       props.put("warehouse", warehouse)
       props.put("db", database)
-      props.put("schema", schema)
       props.put("application", appName)
       role.foreach(r => props.put("role", r))
       props
@@ -118,7 +164,7 @@ object StorageTarget {
 
     def driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
 
-    def host: String = {
+    def host: Either[String, String] = {
       // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
       val AwsUsWest2Region = "us-west-2"
       // A list of AWS region names for which the Snowflake account name doesn't have the `aws` segment
@@ -131,20 +177,32 @@ object StorageTarget {
 
       // Host corresponds to Snowflake full account name which might include cloud platform and region
       // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
-      jdbcHost match {
-        case Some(overrideHost) => overrideHost
-        case None =>
-          if (snowflakeRegion == AwsUsWest2Region)
-            s"${account}.snowflakecomputing.com"
-          else if (AwsRegionsWithoutSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.snowflakecomputing.com"
-          else if (AwsRegionsWithSegment.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.aws.snowflakecomputing.com"
-          else if (GcpRegions.contains(snowflakeRegion))
-            s"${account}.${snowflakeRegion}.gcp.snowflakecomputing.com"
-          else s"${account}.${snowflakeRegion}.azure.snowflakecomputing.com"
+      (jdbcHost, account, snowflakeRegion) match {
+        case (Some(overrideHost), _, _) =>
+          overrideHost.asRight
+        case (None, Some(a), Some(r)) =>
+          if (r == AwsUsWest2Region)
+            s"$a.snowflakecomputing.com".asRight
+          else if (AwsRegionsWithoutSegment.contains(r))
+            s"$a.$r.snowflakecomputing.com".asRight
+          else if (AwsRegionsWithSegment.contains(r))
+            s"$a.$r.aws.snowflakecomputing.com".asRight
+          else if (GcpRegions.contains(r))
+            s"$a.$r.gcp.snowflakecomputing.com".asRight
+          else s"$a.$r.azure.snowflakecomputing.com".asRight
+        case (_, _, _) =>
+          "Snowflake config requires either jdbcHost or both account and region".asLeft
       }
     }
+  }
+
+  object Snowflake {
+    // https://docs.snowflake.com/en/sql-reference/sql/copy-into-table.html#copy-options-copyoptions
+    // As specified in the above link, CONTINUE and SKIP_FILE have same behavior for semi-structured
+    // data files such as JSON, Parquet, Avro. Therefore, SKIP_FILE isn't specified separately.
+    sealed trait OnError
+    case object Continue extends OnError
+    case object AbortStatement extends OnError
   }
 
   /**
@@ -255,6 +313,9 @@ object StorageTarget {
   implicit def redshiftConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]
 
+  implicit def databricksConfigDecoder: Decoder[Databricks] =
+    deriveDecoder[Databricks]
+
   implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
     deriveDecoder[Snowflake]
 
@@ -273,6 +334,19 @@ object StorageTarget {
   implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
 
+  implicit def snowflakeOnErrorDecoder: Decoder[Snowflake.OnError] =
+    Decoder[String].map(_.toLowerCase.replace("_", "")).emap {
+      case "abortstatement" => Snowflake.AbortStatement.asRight
+      case "continue" => Snowflake.Continue.asRight
+      case other => s"$other cannot be used as onError type. Available choices: CONTINUE, ABORT_STATEMENT".asLeft
+    }
+
+  implicit def snowflakeOnErrorEncoder: Encoder[Snowflake.OnError] =
+    Encoder[String].contramap {
+      case Snowflake.Continue => "CONTINUE"
+      case Snowflake.AbortStatement => "ABORT_STATEMENT"
+    }
+
   implicit def storageTargetDecoder: Decoder[StorageTarget] =
     Decoder.instance { cur =>
       val typeCur = cur.downField("type")
@@ -281,6 +355,8 @@ object StorageTarget {
           cur.as[Redshift]
         case Right("snowflake") =>
           cur.as[Snowflake]
+        case Right("databricks") =>
+          cur.as[Databricks]
         case Right(other) =>
           Left(DecodingFailure(s"Storage target of type $other is not supported yet", typeCur.history))
         case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>

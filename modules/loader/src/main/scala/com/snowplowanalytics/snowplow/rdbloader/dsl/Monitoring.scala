@@ -14,7 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.time.Instant
 
-import cats.~>
 import cats.data.NonEmptyList
 import cats.implicits._
 
@@ -31,14 +30,13 @@ import io.sentry.SentryClient
 
 import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
-
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.PeriodicMetrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
 trait Monitoring[F[_]] { self =>
@@ -51,6 +49,8 @@ trait Monitoring[F[_]] { self =>
 
   /** Track all details about loaded folder */
   def success(payload: Monitoring.SuccessPayload): F[Unit]
+
+  def periodicMetrics: Metrics.PeriodicMetrics[F]
 
   /** 
    * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` 
@@ -65,18 +65,6 @@ trait Monitoring[F[_]] { self =>
     val payload = Monitoring.AlertPayload(Monitoring.Application, Some(folder), Monitoring.AlertPayload.Severity.Error, message, Map.empty)
     alert(payload)
   }
-
-  def mapK[G[_]](arrow: F ~> G): Monitoring[G] =
-    new Monitoring[G] {
-      def trackException(e: Throwable): G[Unit] =
-        arrow(self.trackException(e))
-      def reportMetrics(metrics: Metrics.KVMetrics): G[Unit] =
-        arrow(self.reportMetrics(metrics))
-      def success(payload: Monitoring.SuccessPayload): G[Unit] =
-        arrow(self.success(payload))
-      def alert(payload: Monitoring.AlertPayload): G[Unit] =
-        arrow(self.alert(payload))
-    }
 }
 
 object Monitoring {
@@ -86,7 +74,7 @@ object Monitoring {
 
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(2,0,0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3,0,0))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =
@@ -163,12 +151,13 @@ object Monitoring {
       SuccessPayload(shredding, Application, attempts, start, ingestion, Map.empty)
   }
 
-  def monitoringInterpreter[F[_]: Sync: Logging](
+  def monitoringInterpreter[F[_]: Sync: Logging: Timer](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
     reporters: List[Reporter[F]],
     webhookConfig: Option[Config.Webhook],
-    httpClient: Client[F]
+    httpClient: Client[F],
+    pm: PeriodicMetrics[F]
   ): Monitoring[F] =
     new Monitoring[F] {
 
@@ -184,6 +173,8 @@ object Monitoring {
               .use { response =>
                 if (response.status.isSuccess) Sync[F].unit
                 else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+              }.handleErrorWith { e =>
+                Logging[F].error(e)(s"Webhook ${webhook.endpoint} resulted in exception without a response")
               }
             Some(req)
           case None =>
@@ -209,6 +200,8 @@ object Monitoring {
 
         snowplowRequest *> webhookRequest
       }
+
+      def periodicMetrics: Metrics.PeriodicMetrics[F] = pm
 
       def alert(payload: AlertPayload): F[Unit] = {
         val webhookRequest = viaWebhook[AlertPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {

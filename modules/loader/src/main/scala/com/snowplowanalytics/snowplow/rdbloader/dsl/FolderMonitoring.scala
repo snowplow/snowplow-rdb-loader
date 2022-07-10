@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 
 import scala.concurrent.duration._
 
-import cats.{Functor, Applicative, Monad}
+import cats.{Functor, Applicative, Monad, MonadThrow}
 import cats.implicits._
 
 import cats.effect.{Timer, Sync, Concurrent}
@@ -30,9 +30,10 @@ import fs2.Stream
 import fs2.text.utf8Encode
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 
 /**
  * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
@@ -75,19 +76,22 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean =
-    Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(folder.stripSuffix("/").takeRight(TimePattern.size))) match {
-      case Right(accessor) => 
+  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean = {
+    val noRunPrefix = folder.folderName.stripPrefix("run=")
+    val dateOnly = noRunPrefix.take(TimePattern.length)
+    
+    Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(dateOnly)) match {
+      case Right(accessor) =>
         (since, until) match {
-          case (Some(sinceDuration), Some(untilDuration))  =>
+          case (Some(sinceDuration), Some(untilDuration)) =>
             val oldest = now.minusMillis(sinceDuration.toMillis)
             val newest = now.minusMillis(untilDuration.toMillis)
             val time = accessor.query(Instant.from)
             time.isAfter(oldest) && time.isBefore(newest)
-          case (None, Some(untilDuration))  =>
+          case (None, Some(untilDuration)) =>
             val newest = now.minusMillis(untilDuration.toMillis)
             accessor.query(Instant.from).isBefore(newest)
-          case (Some(sinceDuration), None)  =>
+          case (Some(sinceDuration), None) =>
             val oldest = now.minusMillis(sinceDuration.toMillis)
             accessor.query(Instant.from).isAfter(oldest)
           case (None, None) => true
@@ -95,6 +99,7 @@ object FolderMonitoring {
       case Left(_) =>
         true
     }
+  }
 
   /**
    * Sink all processed paths of folders in `input` (shredded archive) into `output` (temp staging)
@@ -139,16 +144,18 @@ object FolderMonitoring {
    * @param loadFrom list shredded folders
    * @return potentially empty list of alerts
    */
-  def check[C[_]: DAO: Monad, F[_]: Monad: AWS: Transaction[*[_], C]: Timer](loadFrom: S3.Folder): F[List[AlertPayload]] = {
+  def check[C[_]: DAO: Monad, F[_]: MonadThrow: AWS: Transaction[*[_], C]: Timer: Logging](loadFrom: S3.Folder,
+                                                                                           readyCheck: Config.Retries,
+                                                                                           storageTarget: StorageTarget): F[List[AlertPayload]] = {
     val getBatches = for {
-      _                 <- DAO[C].executeUpdate(DropAlertingTempTable)
-      _                 <- DAO[C].executeUpdate(CreateAlertingTempTable)
-      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom))
+      _                 <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
+      _                 <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
+      _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom), DAO.Purpose.NonLoading)
       onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 
     for {
-      _ <- Transaction[F, C].resume
+      _ <- TargetCheck.blockUntilReady[F, C](readyCheck, storageTarget)
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
       } yield foldersWithChecks.map { case (folder, exists) =>
@@ -176,11 +183,13 @@ object FolderMonitoring {
    * Resulting stream has to be running in background.
    */
   def run[C[_]: DAO: Monad,
-          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring](foldersCheck: Option[Config.Folders],
-                                                                                   isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+          F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow](foldersCheck: Option[Config.Folders],
+                                                                                               readyCheck: Config.Retries,
+                                                                                               storageTarget: StorageTarget,
+                                                                                               isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[C, F](folders, isBusy)
+        stream[C, F](folders, readyCheck, storageTarget, isBusy)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -190,11 +199,14 @@ object FolderMonitoring {
    * The stream ignores a first failure just printing an error, hoping it's transient,
    * but second failure in row makes the whole stream to crash
    * @param folders configuration for folders monitoring
+   * @param readyCheck configuration for target ready check
    * @param isBusy discrete stream signalling when folders monitoring should not work
    */
   def stream[C[_]: DAO: Monad,
-             F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring](folders: Config.Folders,
-                                                                                      isBusy: Stream[F, Boolean]): Stream[F, Unit] =
+             F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring: MonadThrow](folders: Config.Folders,
+                                                                                                  readyCheck: Config.Retries,
+                                                                                                  storageTarget: StorageTarget,
+                                                                                                  isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
         .pauseWhen(isBusy)
@@ -204,7 +216,7 @@ object FolderMonitoring {
               val sinkAndCheck =
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
-                    check[C, F](outputFolder)
+                    check[C, F](outputFolder, readyCheck, storageTarget)
                       .flatMap { alerts =>
                         alerts.traverse_ { payload =>
                           val warn = payload.base match {

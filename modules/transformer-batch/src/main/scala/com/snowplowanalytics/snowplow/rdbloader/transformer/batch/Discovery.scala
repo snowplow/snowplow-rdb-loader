@@ -21,9 +21,9 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.RunInterval
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.RunInterval
 
 object Discovery {
 

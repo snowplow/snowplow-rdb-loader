@@ -15,13 +15,18 @@ package com.snowplowanalytics.aws.sns
 import cats.effect.{Sync, Resource}
 import cats.implicits._
 
-import software.amazon.awssdk.services.sns.{SnsClient, SnsClientBuilder}
+import software.amazon.awssdk.regions.Region
+
+import software.amazon.awssdk.services.sns.SnsClient
 import software.amazon.awssdk.services.sns.model.PublishRequest
 
 object SNS {
 
-  def mkClientBuilder[F[_]: Sync](build: SnsClientBuilder => SnsClientBuilder): Resource[F, SnsClient] =
-    Resource.fromAutoCloseable(Sync[F].delay[SnsClient](build(SnsClient.builder()).build()))
+  def mkClient[F[_]: Sync](region: Region): Resource[F, SnsClient] =
+    Resource.fromAutoCloseable(Sync[F].delay[SnsClient] {
+      SnsClient.builder.region(region).build
+    })
+
 
   def sendMessage[F[_]: Sync](client: SnsClient)(topicArn: String, groupId: Option[String], message: String): F[Unit] = {
     def getRequest = {

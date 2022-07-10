@@ -20,18 +20,18 @@ import cats.implicits._
 
 import fs2.Stream
 
-import software.amazon.awssdk.services.sqs.{SqsClient, SqsClientBuilder}
+import software.amazon.awssdk.regions.Region
+import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model.{GetQueueUrlRequest, DeleteMessageRequest, SendMessageRequest, Message, ReceiveMessageRequest, ChangeMessageVisibilityRequest}
 
 object SQS {
 
-  def mkClient[F[_]: Concurrent]: Resource[F, SqsClient] =
-    mkClientBuilder(identity[SqsClientBuilder])
+  def mkClient[F[_]: Concurrent](region: Region): Resource[F, SqsClient] =
+    Resource.fromAutoCloseable(Sync[F].delay[SqsClient] {
+      SqsClient.builder.region(region).build
+    })
 
-  def mkClientBuilder[F[_]: Concurrent](build: SqsClientBuilder => SqsClientBuilder): Resource[F, SqsClient] =
-    Resource.fromAutoCloseable(Sync[F].delay[SqsClient](build(SqsClient.builder()).build()))
-
-  def readQueue[F[_]: Timer: Concurrent](queueName: String, visibilityTimeout: Int, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  def readQueue[F[_]: Timer: Concurrent](queueName: String, visibilityTimeout: Int, region: Region, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest
@@ -41,7 +41,7 @@ object SQS {
         .visibilityTimeout(visibilityTimeout)
         .build()
 
-    Stream.resource(mkClient.evalMap(getUrl[F](queueName))).flatMap { case (client, queueUrl) =>
+    Stream.resource(mkClient(region).evalMap(getUrl[F](queueName))).flatMap { case (client, queueUrl) =>
       Stream
         .awakeEvery[F](1.second)
         .pauseWhen(stop)
@@ -56,9 +56,6 @@ object SQS {
               val extend = (timeout: FiniteDuration) =>
                 Sync[F].delay(client.changeMessageVisibility(buildExtend(queueUrl, message.receiptHandle(), timeout)))
                   .void
-                  .recoverWith {
-                    case e => Sync[F].delay(println(e))
-                  }
               (message, delete, extend)
             }
         }

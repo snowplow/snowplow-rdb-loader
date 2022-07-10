@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
-import scala.concurrent.duration.FiniteDuration
-
 import cats._
 import cats.implicits._
 
@@ -22,7 +20,7 @@ import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
@@ -76,15 +74,15 @@ object DataDiscovery {
     AWS[F]
       .readSqs(config.messageQueue, stop)
       .evalMapFilter { message =>
-        val action = LoaderMessage.fromString(message.data) match {
+        val action = LoaderMessage.fromString(message) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle(config.region.name, config.jsonpaths, parsed, message.ack, message.extend)
+            handle[F](config.region.name, config.jsonpaths, parsed)
           case Left(error) =>
-            ackAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError, message.ack)
+            logAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError)
         }
 
         Logging[F].info("Received a new message") *>
-          Logging[F].debug(message.data) *>
+          Logging[F].debug(message) *>
           incrementMessages.flatMap(state => Logging[F].info(state.show)) *> 
           action
       }
@@ -95,27 +93,22 @@ object DataDiscovery {
    * @param region AWS region to discover JSONPaths
    * @param assets optional bucket with custom JSONPaths
    * @param message payload coming from transformer
-   * @param ack action to acknowledge/delete the message
-   * @param extend action to prolong the visibility of the message
    * @tparam F effect type to perform AWS interactions
    */
   def handle[F[_]: MonadThrow: AWS: Cache: Logging](region: String,
                                                     assets: Option[S3.Folder],
-                                                    message: LoaderMessage.ShreddingComplete,
-                                                    ack: F[Unit],
-                                                    extend: FiniteDuration => F[Unit]) =
+                                                    message: LoaderMessage.ShreddingComplete): F[Option[WithOrigin]] =
     fromLoaderMessage[F](region, assets, message)
       .value
-      .flatMap[Option[Message[F, WithOrigin]]] {
+      .flatMap[Option[WithOrigin]] {
         case Right(_) if isEmpty(message) =>
-          Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt") *>
-            ack.as(none[Message[F, WithOrigin]])
+          Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt").as(none)
         case Right(discovery) =>
           Logging[F]
             .info(s"New data discovery at ${discovery.show}")
-            .as(Some(Message(WithOrigin(discovery, message), ack, extend)))
+            .as(Some(WithOrigin(discovery, message)))
         case Left(error) =>
-          ackAndRaise[F](error, ack)
+          logAndRaise[F](error)
       }
 
   /**
@@ -139,8 +132,8 @@ object DataDiscovery {
     }
   }
 
-  def ackAndRaise[F[_]: MonadThrow: Logging](error: LoaderError, ack: F[Unit]): F[Option[Message[F, WithOrigin]]] =
-    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> ack *> MonadThrow[F].raiseError(error)
+  def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =
+    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =

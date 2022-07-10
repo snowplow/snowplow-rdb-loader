@@ -39,7 +39,8 @@ object SpecHelpers {
     ConfigSpec.exampleRedshift,
     ConfigSpec.exampleSchedules,
     ConfigSpec.exampleTimeouts,
-    ConfigSpec.exampleRetries
+    ConfigSpec.exampleRetries,
+    ConfigSpec.exampleReadyCheck
   )
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 

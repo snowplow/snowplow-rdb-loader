@@ -12,22 +12,23 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
-import cats.Applicative
-import cats.data.EitherT
+import cats.Monad
+import cats.data.{EitherT, NonEmptyList}
 import cats.effect._
-
-import io.circe.Json
-
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.badrows.BadRow
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event}
+import com.snowplowanalytics.snowplow.badrows
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Failure, FailureDetails, Payload}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider, ParquetTransformer}
+import io.circe.Json
 
 /**
  * Includes common operations needed during event transformation
@@ -56,43 +57,67 @@ object Transformer {
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.Shredded.Json(false, vendor, name, model), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.Shredded.Json(false, vendor, name, model, data)
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
       val wrapped = types.map {
         case Data.ShreddedType(shredProperty, schemaKey) =>
-          TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), getSnowplowEntity(shredProperty))
+          TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), SnowplowEntity.from(shredProperty))
       }
       TypesInfo.Shredded(wrapped.toList)
     }
   }
 
-  case class WideRowTransformer[F[_]: Applicative](format: Formats.WideRow) extends Transformer[F] {
-    def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
-      EitherT.pure[F, BadRow](List(Transformed.wideRowEvent(event)))
+  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](iglu: Client[F, Json],
+                                                                   format: Formats.WideRow) extends Transformer[F] {
+    def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] = {
+      val result = format match {
+        case WideRow.JSON =>
+          EitherT.pure[F, badrows.BadRow](Transformed.wideRowEvent(event))
+        case WideRow.PARQUET =>
+          transformToParquet(event)
+      }
+      result.map(List(_))
+    }
 
     def badTransform(badRow: BadRow): Transformed = {
-      val data = Transformed.Data(badRow.compact)
-      Transformed(Transformed.Path.WideRow(false), data)
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.WideRow(false, data)
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
       val wrapped = types.map {
         case Data.ShreddedType(shredProperty, schemaKey) =>
-          TypesInfo.WideRow.Type(schemaKey, getSnowplowEntity(shredProperty))
+          TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
       }
       val fileFormat = format match {
         case Formats.WideRow.JSON => TypesInfo.WideRow.WideRowFormat.JSON
+        case Formats.WideRow.PARQUET => TypesInfo.WideRow.WideRowFormat.PARQUET
       }
       TypesInfo.WideRow(fileFormat, wrapped.toList)
     }
+
+    private def transformToParquet(event: Event): EitherT[F, BadRow, Transformed.Parquet] = {
+      val allTypesFromEvent = event.inventory.map(TypesInfo.WideRow.Type.from)
+
+      NonAtomicFieldsProvider
+        .build(iglu.resolver, allTypesFromEvent.toList)
+        .leftMap { error => igluBadRow(event, error) }
+        .flatMap {
+          nonAtomicFields =>
+            val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+            EitherT.fromEither(ParquetTransformer.transform(event, allFields, Processing.Application))
+        }
+    }
+
+    private def igluBadRow(event: Event, error: FailureDetails.LoaderIgluError): BadRow.LoaderIgluError = {
+      val failure = Failure.LoaderIgluErrors(NonEmptyList.one(error))
+      val payload = Payload.LoaderPayload(event)
+      BadRow.LoaderIgluError(Processing.Application, failure, payload)
+    }
+
   }
 
-  def getSnowplowEntity(shredProperty: Data.ShredProperty): LoaderMessage.SnowplowEntity =
-    shredProperty match {
-      case _: Data.Contexts => LoaderMessage.SnowplowEntity.Context
-      case Data.UnstructEvent => LoaderMessage.SnowplowEntity.SelfDescribingEvent
-    }
 }

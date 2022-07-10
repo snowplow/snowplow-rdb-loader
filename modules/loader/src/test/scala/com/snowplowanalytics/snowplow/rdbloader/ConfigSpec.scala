@@ -36,12 +36,12 @@ object ConfigSpec {
   val exampleMonitoring = Config.Monitoring(
     Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
-    Some(Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)))),
+    Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)), 5.minutes),
     Some(Config.Webhook(uri"https://webhook.acme.com", Map("pipeline" -> "production"))),
     Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3))),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
-  val emptyMonitoring = Config.Monitoring(None, None, None, None, None, None)
+  val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
   val exampleQueueName = "test-queue"
   val exampleRedshift = StorageTarget.Redshift(
     "redshift.amazonaws.com",
@@ -56,18 +56,18 @@ object ConfigSpec {
     None
   )
   val exampleSnowflake = StorageTarget.Snowflake(
-    "us-west-2",
+    Some("us-west-2"),
     "admin",
     None,
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    "acme",
+    Some("acme"),
     "wh",
     "snowplow",
     "atomic",
     "snowplow_stage",
     "Snowplow_OSS",
     None,
-    None,
+    StorageTarget.Snowflake.Continue,
     None
   )
   val exampleSchedules: Config.Schedules = Config.Schedules(List(
@@ -79,6 +79,7 @@ object ConfigSpec {
   val emptySchedules: Config.Schedules = Config.Schedules(Nil)
   val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
   val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleReadyCheck: Config.Retries = Config.Retries(Config.Strategy.Constant, None, 15.seconds, None)
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
     parse(readResource(confPath)).value.unsafeRunSync()

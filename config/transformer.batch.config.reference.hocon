@@ -1,5 +1,5 @@
 {
-  # Path to enriched archive (must be populated separately with run=YYYY-MM-DD-hh-mm-ss directories) for S3 input
+  # Path to enriched archive (must be populated separately with run=YYYY-MM-DD-hh-mm-ss-UUID directories) for S3 input
   "input": "s3://bucket/input/",
 
   # Path to transformer archive
@@ -69,6 +69,13 @@
       "iglu:com.acme/skip-event/jsonschema/1-*-*"
     ]
   },
+  #"formats": {
+  #  # Denotes the type of the transformation (shred or widerow)
+  #  "transformationType": "widerow",
+  #  # Optional. Denotes output file format when transformationType is 'widerow'.
+  #  # Possible values are 'json' and 'parquet'. Default value 'json'.
+  #  "fileFormat": "json"
+  #}
 
   # Specifies interval Transformer will work on
   "runInterval": {

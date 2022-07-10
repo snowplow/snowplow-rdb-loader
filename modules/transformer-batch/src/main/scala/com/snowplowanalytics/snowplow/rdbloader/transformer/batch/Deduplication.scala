@@ -31,7 +31,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifest
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload}
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{ Deduplication => Config }
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.{ Deduplication => DedupConfig }
 
 object Deduplication {
 
@@ -62,9 +62,9 @@ object Deduplication {
   final case class Result(events: RDD[Either[BadRow, Event]], duplicates: Set[UUID])
 
   /** Run a deduplication process against a dataset */
-  def sytheticDeduplication(config: Config, events: RDD[Either[BadRow, Event]]): Result = {
+  def sytheticDeduplication(config: DedupConfig, events: RDD[Either[BadRow, Event]]): Result = {
     val cardinality = config.synthetic match {
-      case Config.Synthetic.Broadcast(c) => c
+      case DedupConfig.Synthetic.Broadcast(c) => c
       case _ => 1
     }
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
@@ -81,9 +81,9 @@ object Deduplication {
       }
 
     config.synthetic match {
-      case Config.Synthetic.None =>
+      case DedupConfig.Synthetic.None =>
         Result(events, Set.empty)
-      case Config.Synthetic.Join =>
+      case DedupConfig.Synthetic.Join =>
         val rdd = events
           .map {
             case Right(event) => event.event_id -> Right(event)
@@ -96,7 +96,7 @@ object Deduplication {
             case (_, (Left(badRow), _)) => Left(badRow)
           }
         Result(rdd, Set.empty)
-      case Config.Synthetic.Broadcast(_) =>
+      case DedupConfig.Synthetic.Broadcast(_) =>
         Result(events, duplicates.collect().toSet)
     }
   }

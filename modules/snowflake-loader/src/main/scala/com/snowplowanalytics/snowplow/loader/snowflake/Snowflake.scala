@@ -12,31 +12,26 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake
 
-import java.sql.Timestamp
-
 import cats.data.NonEmptyList
-
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
+import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
+import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
 import doobie.implicits._
 import doobie.implicits.javasql._
-
 import io.circe.syntax._
 
-import com.snowplowanalytics.iglu.core.SchemaKey
-
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
-
-import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
-import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Statement}
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Item, Entity, Block}
-import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
-import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
-import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
-import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
+import java.sql.Timestamp
 
 
 object Snowflake {
@@ -47,63 +42,81 @@ object Snowflake {
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Snowflake(_, _, _, _, _, _, _, schema, stage, _, monitoringStage, _, _) =>
+      case StorageTarget.Snowflake(_, _, _, _, _, warehouse, _, schema, stage, _, monitoringStage, onError, _) =>
         val result = new Target {
-          def updateTable(migration: Migration): Block = {
+          
+          override val requiresEventsColumns: Boolean = false
+
+          override def updateTable(migration: Migration): Block = {
             val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
             val entity = Entity.Table(schema, target)
             Block(Nil, Nil, entity)
           }
 
-          def extendTable(info: ShreddedType.Info): Block = {
+          override def extendTable(info: ShreddedType.Info): Option[Block] = {
             val isContext = info.entity == SnowplowEntity.Context
             val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
             val columnName = info.getNameFull
             val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
             val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
-            Block(List(addColumn), Nil, Entity.Column(info))
+            Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
-          def getLoadStatements(discovery: DataDiscovery): LoadStatements =
-            NonEmptyList(Statement.EventsCopy(discovery.base, discovery.compression), Nil)
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns): LoadStatements =
+            NonEmptyList.one(
+              Statement.EventsCopy(
+                discovery.base,
+                discovery.compression,
+                ColumnsToCopy.fromDiscoveredData(discovery),
+                ColumnsToSkip.none
+              )
+            )
 
           // Technically, Snowflake Loader cannot create new tables
-          def createTable(schemas: SchemaList): Block = {
+          override def createTable(schemas: SchemaList): Block = {
             val entity = Entity.Table(schema, schemas.latest.schemaKey)
             Block(Nil, Nil, entity)
           }
 
-          def getManifest: Statement =
+          override def getManifest: Statement =
             Statement.CreateTable(SnowflakeManifest.getManifestDef(schema).toFragment)
 
-          def toFragment(statement: Statement): Fragment =
+          override def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Begin => sql"BEGIN"
-              case Statement.Commit => sql"COMMIT"
-              case Statement.Abort => sql"ABORT"
               case Statement.Select1 => sql"SELECT 1"     // OK
+              case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(warehouse)} RESUME IF SUSPENDED"
 
               case Statement.CreateAlertingTempTable =>   // OK
-                val frTableName = Fragment.const(AlertingTempTableName)
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR )"
               case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(AlertingTempTableName)
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
-                val frTableName = Fragment.const(AlertingTempTableName)
-                val frManifest = Fragment.const(s"${schema}.manifest")
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
+                val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source) =>
-                val frTableName = Fragment.const(AlertingTempTableName)
+                val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 // This is validated on config decoding stage
                 val stageName = monitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
                 val frPath      = Fragment.const0(s"@$schema.$stageName/${source.folderName}")
                 sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = CSV)"
 
-              case Statement.EventsCopy(path, _) =>
-                val frTableName = Fragment.const(EventsTable.MainName)
-                val frPath      = Fragment.const0(s"@$schema.$stage/${path.folderName}/output=good/")
-                sql"COPY INTO $frTableName FROM $frPath FILE_FORMAT = (TYPE = JSON) MATCH_BY_COLUMN_NAME = CASE_INSENSITIVE"
+              case Statement.EventsCopy(path, _, columnsToCopy, _) => {
+                def columnsForCopy: String = columnsToCopy.names.map(_.value).mkString(",") + ",load_tstamp"
+                def columnsForSelect: String = columnsToCopy.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
+
+                val frPath = Fragment.const0(s"@${qualify(stage)}/${path.folderName}/output=good/")
+                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}($columnsForCopy)")
+                val frSelectColumns = Fragment.const0(columnsForSelect)
+                val frOnError = Fragment.const0(s"ON_ERROR = ${onError.asJson.noSpaces}")
+                sql"""|COPY INTO $frCopy
+                      |FROM (
+                      |  SELECT $frSelectColumns FROM $frPath
+                      |)
+                      |$frOnError""".stripMargin
+              }
               case Statement.ShreddedCopy(_, _) =>
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
 
@@ -124,16 +137,14 @@ object Snowflake {
                 throw new IllegalStateException("Snowflake Loader does not support table versioning")
 
               case Statement.RenameTable(from, to) =>
-                Fragment.const0(s"ALTER TABLE $from RENAME TO $to")
-              case Statement.SetSchema =>
-                Fragment.const0(s"USE SCHEMA ${schema}")
+                Fragment.const0(s"ALTER TABLE ${qualify(from)} RENAME TO ${qualify(to)}")
               case Statement.GetColumns(tableName) =>
                 val frSchemaName = Fragment.const0(schema.toUpperCase)
                 val frTableName = Fragment.const0(tableName.toUpperCase)
                 // Querying information_schema can be slow, but I couldn't find a way to select columns in 'show columns' query
                 sql"SELECT column_name FROM information_schema.columns WHERE table_name = '$frTableName' AND table_schema = '$frSchemaName'"
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(s"${schema}.manifest")
+                val tableName = Fragment.const(qualify(Manifest.Name))
                 val types = Fragment.const0(s"parse_json('${message.types.asJson.noSpaces}')")
                 // Redshift JDBC doesn't accept java.time.Instant
                 sql"""INSERT INTO $tableName
@@ -150,12 +161,15 @@ object Snowflake {
                    base, types, shredding_started, shredding_completed,
                    min_collector_tstamp, max_collector_tstamp,
                    compression, processor_artifact, processor_version, count_good
-                   FROM ${Fragment.const0(s"$schema.${Manifest.Name}")} WHERE base = $base"""
+                   FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base"""
+              case Statement.AddLoadTstampColumn =>
+                sql"""ALTER TABLE ${Fragment.const0(EventsTable.withSchema(schema))}
+                      ADD COLUMN load_tstamp TIMESTAMP NULL"""
 
               case Statement.CreateTable(ddl) =>
                 ddl
               case Statement.CommentOn(tableName, comment) =>
-                val table = Fragment.const0(tableName)
+                val table = Fragment.const0(qualify(tableName))
                 val content = Fragment.const0(comment)
                 sql"COMMENT IF EXISTS ON TABLE $table IS '$content'"
               case Statement.DdlFile(ddl) =>
@@ -163,6 +177,9 @@ object Snowflake {
               case Statement.AlterTable(ddl) =>
                 ddl
             }
+            
+          private def qualify(tableName: String): String =
+            s"$schema.$tableName"
         }
 
         Right(result)

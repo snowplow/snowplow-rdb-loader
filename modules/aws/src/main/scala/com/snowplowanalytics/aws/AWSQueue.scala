@@ -34,14 +34,14 @@ object AWSQueue {
   def build[F[_]: Concurrent](queueType: QueueType, queueName: String, region: String): Resource[F, AWSQueue[F]] = {
     queueType match {
       case QueueType.SQS =>
-        SQS.mkClientBuilder(_.region(Region.of(region))).map { client =>
+        SQS.mkClient(Region.of(region)).map { client =>
           new AWSQueue[F] {
             override def sendMessage(groupId: Option[String], message: String): F[Unit] =
               SQS.sendMessage(client)(queueName, groupId, message)
           }
         }
       case QueueType.SNS =>
-        SNS.mkClientBuilder(_.region(Region.of(region))).map { client =>
+        SNS.mkClient(Region.of(region)).map { client =>
           new AWSQueue[F] {
             override def sendMessage(groupId: Option[String], message: String): F[Unit] =
               SNS.sendMessage(client)(queueName, groupId, message)

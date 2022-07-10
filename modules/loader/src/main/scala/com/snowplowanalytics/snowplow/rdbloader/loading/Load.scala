@@ -23,7 +23,7 @@ import cats.effect.{Timer, Clock}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget }
-import com.snowplowanalytics.snowplow.rdbloader.db.{ Migration, Manifest }
+import com.snowplowanalytics.snowplow.rdbloader.db.{ Control, Migration, Manifest }
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, Transaction, Logging, Monitoring, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
@@ -77,6 +77,7 @@ object Load {
    incrementAttempt: F[Unit],
    discovery: DataDiscovery.WithOrigin): F[Either[AlertPayload, Option[Instant]]] =
     for {
+      _           <- TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)
       migrations  <- Migration.build[F, C](discovery.discovery)
       _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
       transaction  = getTransaction[C](setStage, discovery)(migrations.inTransaction)
@@ -104,8 +105,7 @@ object Load {
           val message = s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command"
           val payload = AlertPayload.info("Folder is already loaded", entry.meta.base).asLeft
           setStage(Stage.Cancelling("Already loaded")) *>
-            Logging[F].warning(message) *>
-            DAO[F].rollback.as(payload)   // Haven't done anything, but rollback just in case
+            Logging[F].warning(message).as(payload)
         case None =>
           val setLoading: String => F[Unit] =
             table => setStage(Stage.Loading(table))
@@ -131,10 +131,11 @@ object Load {
                                      discovery: DataDiscovery): F[Unit] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
-      _ <- DAO[F].target.getLoadStatements(discovery).traverse_ { statement =>
+      existingEventTableColumns <- if (DAO[F].target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
+      _ <- DAO[F].target.getLoadStatements(discovery, existingEventTableColumns).traverse_ { statement =>
         Logging[F].info(statement.title) *>
           setLoading(statement.table) *>
-          DAO[F].executeUpdate(statement).void
+          DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
       }
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
     } yield ()
@@ -150,8 +151,9 @@ object Load {
       success  = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
       _       <- Monitoring[F].success(success)
       metrics <- Metrics.getCompletedMetrics[F](loaded)
+      _       <- Monitoring[F].periodicMetrics.setMinAgeOfLoadedData(metrics.collectorLatencyMin.map(_.v).getOrElse(0))
       _       <- Monitoring[F].reportMetrics(metrics)
-      _       <- Logging[F].info(metrics.show)
+      _       <- Logging[F].info((metrics: Metrics.KVMetrics).show)
     } yield ()
   }
 }

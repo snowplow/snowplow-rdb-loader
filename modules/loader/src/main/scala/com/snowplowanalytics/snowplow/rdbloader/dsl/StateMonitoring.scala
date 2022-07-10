@@ -32,13 +32,6 @@ object StateMonitoring {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-
-  /** If we extend for exact SQS VisibilityTimeout it could be too late and SQS returns an error */
-  val ExtendAllowance: FiniteDuration = 30.seconds
-
-  /** If we sleep for the same period - message will be already expired */
-  val SleepAllowance: FiniteDuration = 10.seconds
-
   /** 
    *  Run `loading` and monitoring (`run`) as parallel fibers
    *  If first one succeeds it just returns immediately
@@ -48,11 +41,10 @@ object StateMonitoring {
    */
   def inBackground[F[_]: Concurrent: Timer: Logging](timeouts: Config.Timeouts,
                                                      getState: F[State],
-                                                     busy: Resource[F, Unit],
-                                                     extend: FiniteDuration => F[Unit])
+                                                     busy: Resource[F, Unit])
                                                     (loading: F[Unit]) = {
     val backgroundCheck =
-      StateMonitoring.run(timeouts, getState, extend).background <* busy
+      StateMonitoring.run(timeouts, getState).background <* busy
 
     backgroundCheck.use { join =>
       Concurrent[F].race(loading, join).flatMap { 
@@ -71,15 +63,13 @@ object StateMonitoring {
    * @return None if monitoring completed has stopped because of Idle state
    *         or some error message if it got stale
    */
-  def run[F[_]: Monad: Timer: Logging](timeouts: Config.Timeouts, globalState: F[State], extend: FiniteDuration => F[Unit]): F[Option[String]] = {
+  def run[F[_]: Monad: Timer: Logging](timeouts: Config.Timeouts, globalState: F[State]): F[Option[String]] = {
     val getNow: F[Instant] = Timer[F].clock.instantNow
-    val extendPeriod: FiniteDuration = timeouts.sqsVisibility - ExtendAllowance
-    val sleepPeriod: FiniteDuration = extendPeriod - SleepAllowance
 
-    def go(n: Int, previous: Load.Status): F[Option[String]] =
-      (Timer[F].sleep(sleepPeriod) >> getNow).flatMap { now =>
+    def go(previous: Load.Status): F[Option[String]] =
+      (Timer[F].sleep(timeouts.sqsVisibility) >> getNow).flatMap { now =>
         globalState.flatMap { current =>
-          val again = extend(extendPeriod) >> go(n + 1, current.loading)
+          val again = go(current.loading)
           current.loading match {
             case Load.Status.Idle =>
               Monad[F].pure(None)
@@ -90,25 +80,25 @@ object StateMonitoring {
               val timeoutError = mkError(now, current.loading, current.updated)
               Monad[F].pure(Some(timeoutError))
             case _ if current.loading == previous =>
-              warn[F](extendPeriod, now, current.loading, current.updated) >> again
+              warn[F](now, current.loading, current.updated) >> again
             case _ =>
-              info(extendPeriod, current.loading) >> again
+              info(current.loading) >> again
           }
       }
     }
 
     globalState.flatMap { first =>
-      go(1, first.loading)
+      go(first.loading)
     }
   }
 
-  def info[F[_]: Logging](extendPeriod: FiniteDuration, loading: Load.Status): F[Unit] =
-    Logging[F].info(show"Loading is ongoing, but approached SQS timeout. $loading. Extending processing for $extendPeriod")
+  def info[F[_]: Logging](loading: Load.Status): F[Unit] =
+    Logging[F].info(show"Loading is ongoing. $loading.")
 
 
-  def warn[F[_]: Logging](extendPeriod: FiniteDuration, now: Instant, loading: Load.Status, updated: Instant): F[Unit] = {
+  def warn[F[_]: Logging](now: Instant, loading: Load.Status, updated: Instant): F[Unit] = {
     val duration = Duration.between(updated, now).toMinutes
-    Logging[F].warning(show"Loading is ongoing, but approached SQS timeout. $loading. Spent $duration minutes at this stage. Extending processing for $extendPeriod")
+    Logging[F].warning(show"Loading is ongoing. $loading. Spent $duration minutes at this stage.")
   }
 
   def mkError[F[_]: Logging](now: Instant, loading: Load.Status, updated: Instant): String = {
