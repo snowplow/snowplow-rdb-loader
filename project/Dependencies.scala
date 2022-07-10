@@ -36,7 +36,7 @@ object Dependencies {
     val catsRetry        = "2.1.0"
     val log4cats         = "1.3.0"
     val http4s           = "0.21.33"
-    val scalaTracker     = "1.0.0"
+    val scalaTracker     = "1.0.1"
 
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
