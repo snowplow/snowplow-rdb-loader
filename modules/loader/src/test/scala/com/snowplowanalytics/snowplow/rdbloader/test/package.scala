@@ -46,18 +46,5 @@ package object test {
       st.value.runA(TestState.init).value
     def runS =
       st.value.runS(TestState.init).value
-
-    def toAction: LoaderAction[Pure, A] = {
-      val f = (stt: TestState) => {
-        val (s, value) = st.value.run(stt).value match {
-          case (s, Left(e: LoaderError)) => (s, LoaderAction(Pure.pure(e.asLeft[A])))
-          case (s, Left(e)) => (s, LoaderAction.liftF(Pure.fail[A](e)))
-          case (s, Right(a)) => (s, LoaderAction.liftF(Pure.pure[A](a)))
-        }
-        (s, value)
-      }
-
-      LoaderAction.liftF(Pure(f)).flatMap(identity)
-    }
   }
 }

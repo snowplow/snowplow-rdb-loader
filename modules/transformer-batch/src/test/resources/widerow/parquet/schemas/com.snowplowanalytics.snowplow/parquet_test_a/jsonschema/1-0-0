@@ -1,0 +1,62 @@
+{
+    "$schema": "http://iglucentral.com/schemas/com.snowplowanalytics.self-desc/schema/jsonschema/1-0-0#",
+    "description": "Schema for parquet transformer test",
+    "self": {
+        "vendor": "com.snowplowanalytics.snowplow",
+        "name": "parquet_test_a",
+        "format": "jsonschema",
+        "version": "1-0-0"
+    },
+
+    "type": "object",
+    "properties": {
+      "a_field": {
+        "type": "object",
+        "properties": {
+          "b_field": {
+            "type": "string"
+          },
+          "c_field": {
+            "type": "object",
+            "properties": {
+              "d_field": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "b_field": {
+        "type": "integer"
+      },
+      "d_field": {
+        "type": "number"
+      },
+      "e_field": {
+        "type": ["integer", "boolean"]
+      },
+      "g_field": {
+        "type": ["string", "null"]
+      },
+      "h_field": {
+        "type": "string",
+        "format": "date-time"
+      },
+      "i_field": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "c_field": {
+              "type": "integer"
+            },
+            "d_field": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "required": ["a_field", "b_field"],
+    "additionalProperties": false
+}

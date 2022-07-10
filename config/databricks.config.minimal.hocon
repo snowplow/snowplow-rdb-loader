@@ -1,0 +1,10 @@
+{
+  "messageQueue": "test-queue",
+  "storage" : {
+    "host": "abc.cloud.databricks.com"
+    "password": "Supersecret1"
+    "schema": "atomic",
+    "port": 443,
+    "httpPath": "/databricks/http/path",
+  }
+}

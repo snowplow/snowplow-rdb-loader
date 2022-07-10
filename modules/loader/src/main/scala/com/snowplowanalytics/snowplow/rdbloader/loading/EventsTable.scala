@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 
 
 /** ADT representing possible destination of events table */

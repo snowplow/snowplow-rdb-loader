@@ -1,0 +1,189 @@
+{
+  "input": {
+    # kinesis and file are the only options for transformer-kinesis
+    # Optional, default value kinesis
+    "type": "kinesis",
+
+    # KCL app name - a DynamoDB table will be created with the same name
+    # Optional, default value snowplow-transformer-kinesis
+    "appName": "acme-snowplow-transformer",
+
+    # Kinesis Stream name
+    "streamName": "enriched-events",
+
+    # Kinesis region
+    # This field is optional if it can be resolved with AWS region provider chain.
+    # It checks places like env variables, system properties, AWS profile file.
+    # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
+    "region": "us-east-1",
+
+    # Kinesis position: LATEST or TRIM_HORIZON
+    # Optional, default value LATEST
+    "position": "LATEST"
+
+    # Optional, set the mode for retrieving records.
+    "retrievalMode": {
+      "type": "Polling"
+      # Maximum size of a batch returned by a call to getRecords.
+      "maxRecords": 10000
+    }
+    # "retrievalMode": {
+    #   "type": "FanOut"
+    # }
+
+    # Optional. Size of the internal buffer used when reading messages from Kinesis,
+    # each buffer holding up to maxRecords from above
+    "bufferSize": 3
+
+    # Optional, endpoint url configuration to override aws kinesis endpoints
+    # Can be used to specify local endpoint when using localstack
+    # "customEndpoint": "http://localhost:4566"
+
+    # Optional, endpoint url configuration to override aws dyanomdb endpoint for Kinesis checkpoints lease table
+    # Can be used to specify local endpoint when using localstack
+    # "dynamodbCustomEndpoint": "http://localhost:4569"
+
+    # Optional, endpoint url configuration to override aws cloudwatch endpoint for metrics
+    # Can be used to specify local endpoint when using localstack
+    # "cloudwatchCustomEndpoint": "http://localhost:4582"
+  }
+
+  # Path to transformed archive
+  "output": {
+    # Path to transformer output
+    "path": "s3://bucket/transformed/",
+    # Transformer output compression, GZIP or NONE
+    # Optional, default value GZIP
+    "compression": "GZIP",
+    # Optional if it can be resolved with AWS region provider chain.
+    "region": "eu-central-1"
+  }
+
+  # Frequency to emit loading finished message - 5,10,15,20,30,60 etc minutes
+  # Optional, default value 10 minutes
+  "windowing": "10 minutes"
+
+  # Queue used to communicate with Loader
+  "queue": {
+    # Type of the queue. It can be either sqs or sns
+    "type": "sqs",
+    # Name of the sqs queue
+    "queueName": "test-sqs",
+    # Region of the SQS queue
+    # Optional if it can be resolved with AWS region provider chain
+    "region": "eu-central-1"
+  }
+  # SNS example:
+  #"queue": {
+  #  # Type of the queue. It can be either sqs or sns
+  #  "type": "sns",
+  #  # ARN of SNS topic
+  #  "topicArn": "arn:aws:sns:eu-central-1:123456789:test-sns-topic",
+  #  # Region of the SNS topic
+  #  "region": "eu-central-1"
+  #}
+
+  # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
+  "formats": {
+    # Denotes the type of the transformation (shred or widerow)
+    "transformationType": "widerow",
+    # Format used by default (TSV or JSON)
+    # Optional, default value TSV
+    "default": "TSV",
+    # Schemas to be shredded as JSONs, corresponding JSONPath files must be present. Automigrations will be disabled
+    # Optional, default value []
+    "json": [
+      "iglu:com.acme/json-event/jsonschema/1-0-0",
+      "iglu:com.acme/json-event/jsonschema/2-*-*"
+    ],
+    # Schemas to be shredded as TSVs, presence of the schema on Iglu Server is necessary. Automigartions enabled
+    # Optional, default value []
+    "tsv": [ ],
+    # Schemas that won't be loaded
+    # Optional, default value []
+    "skip": [
+      "iglu:com.acme/skip-event/jsonschema/1-*-*"
+    ]
+  },
+  #"formats": {
+  #  # Denotes the type of the transformation (shred or widerow)
+  #  "transformationType": "widerow",
+  #  # Optional. Denotes output file format when transformationType is 'widerow'.
+  #  # Possible values are 'json' and 'parquet'. Default value 'json'.
+  #  "fileFormat": "json"
+  #}
+
+  # Events will be validated against given criterias and
+  # bad row will be created if validation is not successful
+  "validations": {
+    "minimumTimestamp": "2021-11-18T11:00:00.00Z"
+  }
+
+  # Observability and reporting options
+  "monitoring": {
+    # Optional, for tracking runtime exceptions
+    "sentry": {
+      "dsn": "http://sentry.acme.com"
+    }
+    # Optional. How metrics are reported
+    "metrics": {
+      # Optional. Send metrics to a StatsD server (e.g. on localhost)
+      "statsd": {
+        "hostname": "localhost"
+        "port": 8125
+        "period": "1 minute"
+        # Optional. Any key-value pairs to be tagged on every StatsD metric
+        "tags": {
+          "app": transformer
+        }
+        # Optional. Override the default metric prefix
+        # "prefix": "snowplow.transformer."
+      }
+      # Optional. Log to stdout using Slf4j (logger name: transformer.metrics)
+      "stdout": {
+        "period": "1 minute"
+        # Optional. Override the default metric prefix
+        # "prefix": "snowplow.transformer."
+      }
+      # Optional. Send KCL metrics to Cloudwatch
+      "cloudwatch": true
+    }
+  }
+
+  # Optional. Configure telemetry
+  # All the fields are optional
+  "telemetry": {
+    # Set to true to disable telemetry
+    "disable": false
+    # Interval for the heartbeat event
+    "interval": 15 minutes
+    # HTTP method used to send the heartbeat event
+    "method": "POST"
+    # URI of the collector receiving the heartbeat event
+    "collectorUri": "collector-g.snowplowanalytics.com"
+    # Port of the collector receiving the heartbeat event
+    "collectorPort": 443
+    # Whether to use https or not
+    "secure": true
+    # Identifier intended to tie events together across modules,
+    # infrastructure and apps when used consistently
+    "userProvidedId": "my_pipeline"
+    # ID automatically generated upon running a modules deployment script
+    # Intended to identify each independent module, and the infrastructure it controls
+    "autoGeneratedId": "hfy67e5ydhtrd"
+    # Unique identifier for the VM instance
+    # Unique for each instance of the app running within a module
+    "instanceId": "665bhft5u6udjf"
+    # Name of the terraform module that deployed the app
+    "moduleName": "transformer-kinesis-ce"
+    # Version of the terraform module that deployed the app
+    "moduleVersion": "1.0.0"
+  }
+
+  # Optional. Enable features that are still in beta, or which are here to enable smoother upgrades
+  "featureFlags": {
+    # Read/write in the legacy version 1 shredding complete message format.
+    # This should be enabled during upgrade from older versions of the loader.
+    "legacyMessageFormat": false
+  }
+}
