@@ -33,7 +33,7 @@ object Dependencies {
     val catsRetry        = "2.1.0"
     val log4cats         = "1.3.0"
     val http4s           = "0.21.25"
-    val scalaTracker     = "1.0.1"
+    val scalaTracker     = "1.0.0"
 
     // Scala (Shredder)
     val spark            = "3.1.2"
