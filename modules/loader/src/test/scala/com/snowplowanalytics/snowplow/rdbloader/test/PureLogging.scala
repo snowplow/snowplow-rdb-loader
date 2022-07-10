@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import cats.Show
 import cats.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
@@ -19,11 +20,17 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 object PureLogging {
   def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =
     new Logging[Pure] {
-      def info(message: String): Pure[Unit] =
-        log(message)
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+        log(Show[A].show(a))
 
-      def error(message: String): Pure[Unit] =
-        log(message)
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+        log(Show[A].show(a))
+
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+        log(Show[A].show(a))
+
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+        log(Show[A].show(a))
 
       def error(t: Throwable)(message: String): Pure[Unit] =
         log(s"$message. ${t.getMessage()}")

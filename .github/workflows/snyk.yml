@@ -3,8 +3,6 @@ name: Snyk
 on:
   push:
     branches: [ master ]
-  create:
-    tags: [ rdb* ]
 
 jobs:
   security:

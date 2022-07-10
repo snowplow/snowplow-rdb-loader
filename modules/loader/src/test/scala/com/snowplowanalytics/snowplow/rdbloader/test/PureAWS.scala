@@ -5,7 +5,7 @@ import fs2.{Stream, Pipe}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.S3.{Folder, Key}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.AWS
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 case class PureAWS(listS3: Folder => Stream[Pure, S3.BlobObject], keyExists: Key => Boolean) {
   def withExistingKeys: PureAWS =
@@ -21,13 +21,16 @@ object PureAWS {
     def sinkS3(path: Key, overwrite: Boolean): Pipe[Pure, Byte, Unit] =
       in => in.map(_ => ())
 
+    def readKey(path: Key): Pure[Either[Throwable, String]] =
+      Pure.pure(Left(new NotImplementedError("Not used in tests")))
+
     def keyExists(key: Key): Pure[Boolean] =
       Pure.pure(results.keyExists(key))
 
     def getEc2Property(name: String): Pure[Array[Byte]] =
       Pure.pure(Array.empty[Byte])
 
-    def readSqs(name: String): fs2.Stream[Pure, Message[Pure, String]] =
+    def readSqs(name: String, stop: Stream[Pure, Boolean]): Stream[Pure, String] =
       fs2.Stream.empty
   }
 }

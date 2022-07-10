@@ -1,0 +1,388 @@
+message snowplow {
+  optional binary app_id (STRING);
+  optional binary platform (STRING);
+  optional int64 etl_tstamp (TIMESTAMP(MICROS,true));
+  required int64 collector_tstamp (TIMESTAMP(MICROS,true));
+  optional int64 dvce_created_tstamp (TIMESTAMP(MICROS,true));
+  optional binary event (STRING);
+  required binary event_id (STRING);
+  optional int32 txn_id;
+  optional binary name_tracker (STRING);
+  optional binary v_tracker (STRING);
+  required binary v_collector (STRING);
+  required binary v_etl (STRING);
+  optional binary user_id (STRING);
+  optional binary user_ipaddress (STRING);
+  optional binary user_fingerprint (STRING);
+  optional binary domain_userid (STRING);
+  optional int32 domain_sessionidx;
+  optional binary network_userid (STRING);
+  optional binary geo_country (STRING);
+  optional binary geo_region (STRING);
+  optional binary geo_city (STRING);
+  optional binary geo_zipcode (STRING);
+  optional double geo_latitude;
+  optional double geo_longitude;
+  optional binary geo_region_name (STRING);
+  optional binary ip_isp (STRING);
+  optional binary ip_organization (STRING);
+  optional binary ip_domain (STRING);
+  optional binary ip_netspeed (STRING);
+  optional binary page_url (STRING);
+  optional binary page_title (STRING);
+  optional binary page_referrer (STRING);
+  optional binary page_urlscheme (STRING);
+  optional binary page_urlhost (STRING);
+  optional int32 page_urlport;
+  optional binary page_urlpath (STRING);
+  optional binary page_urlquery (STRING);
+  optional binary page_urlfragment (STRING);
+  optional binary refr_urlscheme (STRING);
+  optional binary refr_urlhost (STRING);
+  optional int32 refr_urlport;
+  optional binary refr_urlpath (STRING);
+  optional binary refr_urlquery (STRING);
+  optional binary refr_urlfragment (STRING);
+  optional binary refr_medium (STRING);
+  optional binary refr_source (STRING);
+  optional binary refr_term (STRING);
+  optional binary mkt_medium (STRING);
+  optional binary mkt_source (STRING);
+  optional binary mkt_term (STRING);
+  optional binary mkt_content (STRING);
+  optional binary mkt_campaign (STRING);
+  optional binary se_category (STRING);
+  optional binary se_action (STRING);
+  optional binary se_label (STRING);
+  optional binary se_property (STRING);
+  optional double se_value;
+  optional binary tr_orderid (STRING);
+  optional binary tr_affiliation (STRING);
+  optional int64 tr_total (DECIMAL(18,2));
+  optional int64 tr_tax (DECIMAL(18,2));
+  optional int64 tr_shipping (DECIMAL(18,2));
+  optional binary tr_city (STRING);
+  optional binary tr_state (STRING);
+  optional binary tr_country (STRING);
+  optional binary ti_orderid (STRING);
+  optional binary ti_sku (STRING);
+  optional binary ti_name (STRING);
+  optional binary ti_category (STRING);
+  optional int64 ti_price (DECIMAL(18,2));
+  optional int32 ti_quantity;
+  optional int32 pp_xoffset_min;
+  optional int32 pp_xoffset_max;
+  optional int32 pp_yoffset_min;
+  optional int32 pp_yoffset_max;
+  optional binary useragent (STRING);
+  optional binary br_name (STRING);
+  optional binary br_family (STRING);
+  optional binary br_version (STRING);
+  optional binary br_type (STRING);
+  optional binary br_renderengine (STRING);
+  optional binary br_lang (STRING);
+  optional boolean br_features_pdf;
+  optional boolean br_features_flash;
+  optional boolean br_features_java;
+  optional boolean br_features_director;
+  optional boolean br_features_quicktime;
+  optional boolean br_features_realplayer;
+  optional boolean br_features_windowsmedia;
+  optional boolean br_features_gears;
+  optional boolean br_features_silverlight;
+  optional boolean br_cookies;
+  optional binary br_colordepth (STRING);
+  optional int32 br_viewwidth;
+  optional int32 br_viewheight;
+  optional binary os_name (STRING);
+  optional binary os_family (STRING);
+  optional binary os_manufacturer (STRING);
+  optional binary os_timezone (STRING);
+  optional binary dvce_type (STRING);
+  optional boolean dvce_ismobile;
+  optional int32 dvce_screenwidth;
+  optional int32 dvce_screenheight;
+  optional binary doc_charset (STRING);
+  optional int32 doc_width;
+  optional int32 doc_height;
+  optional binary tr_currency (STRING);
+  optional int64 tr_total_base (DECIMAL(18,2));
+  optional int64 tr_tax_base (DECIMAL(18,2));
+  optional int64 tr_shipping_base (DECIMAL(18,2));
+  optional binary ti_currency (STRING);
+  optional int64 ti_price_base (DECIMAL(18,2));
+  optional binary base_currency (STRING);
+  optional binary geo_timezone (STRING);
+  optional binary mkt_clickid (STRING);
+  optional binary mkt_network (STRING);
+  optional binary etl_tags (STRING);
+  optional int64 dvce_sent_tstamp (TIMESTAMP(MICROS,true));
+  optional binary refr_domain_userid (STRING);
+  optional int64 refr_dvce_tstamp (TIMESTAMP(MICROS,true));
+  optional binary domain_sessionid (STRING);
+  optional int64 derived_tstamp (TIMESTAMP(MICROS,true));
+  optional binary event_vendor (STRING);
+  optional binary event_name (STRING);
+  optional binary event_format (STRING);
+  optional binary event_version (STRING);
+  optional binary event_fingerprint (STRING);
+  optional int64 true_tstamp (TIMESTAMP(MICROS,true));
+  optional group contexts_com_google_analytics_cookies_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary __utma (STRING);
+        optional binary __utmb (STRING);
+        optional binary __utmc (STRING);
+        optional binary __utmv (STRING);
+        optional binary __utmz (STRING);
+        optional binary _ga (STRING);
+      }
+    }
+  }
+  optional group contexts_com_google_analytics_private_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary gid (STRING);
+        optional int64 r;
+        optional int64 s;
+        optional binary u (STRING);
+        optional binary v (STRING);
+      }
+    }
+  }
+  optional group contexts_com_mparticle_snowplow_pushregistration_event_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary attributes (JSON);
+        required binary name (STRING);
+        optional binary registration_token (STRING);
+      }
+    }
+  }
+  optional group contexts_com_mparticle_snowplow_session_context_1 (LIST) {
+    repeated group list {
+      required group element {
+        required binary id (STRING);
+      }
+    }
+  }
+  optional group contexts_com_optimizely_state_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary experiment_id (STRING);
+        optional boolean is_active;
+        optional binary variation_id (STRING);
+        optional int64 variation_index;
+        optional binary variation_name (STRING);
+      }
+    }
+  }
+  optional group contexts_com_optimizely_variation_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary code (STRING);
+        optional binary id (STRING);
+        optional binary name (STRING);
+      }
+    }
+  }
+  optional group contexts_com_optimizely_visitor_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary browser (STRING);
+        optional binary browser_version (STRING);
+        optional binary device (STRING);
+        optional binary device_type (STRING);
+        optional binary ip (STRING);
+        optional binary location_city (STRING);
+        optional binary location_country (STRING);
+        optional binary location_region (STRING);
+        optional boolean mobile;
+        optional binary mobile_id (STRING);
+        optional binary os (STRING);
+        optional binary platform_id (STRING);
+        optional binary platform_version (STRING);
+        optional binary referrer (STRING);
+      }
+    }
+  }
+  optional group contexts_com_optimizely_optimizelyx_summary_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional int64 experiment_id;
+        optional int64 variation;
+        optional binary variation_name (STRING);
+        optional binary visitor_id (STRING);
+      }
+    }
+  }
+  optional group contexts_com_segment_screen_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary name (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_change_form_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional group element_classes (LIST) {
+          repeated group list {
+            required binary element (STRING);
+          }
+        }
+        required binary element_id (STRING);
+        required binary form_id (STRING);
+        required binary node_name (STRING);
+        optional binary type (STRING);
+        optional binary value (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_client_session_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary first_event_id (STRING);
+        optional binary previous_session_id (STRING);
+        required binary session_id (STRING);
+        required int32 session_index;
+        required binary storage_mechanism (STRING);
+        required binary user_id (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_consent_document_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary description (STRING);
+        required binary id (STRING);
+        optional binary name (STRING);
+        required binary version (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_consent_withdrawn_1 (LIST) {
+    repeated group list {
+      required group element {
+        required boolean all;
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_desktop_context_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary device_manufacturer (STRING);
+        optional binary device_model (STRING);
+        optional double device_processor_count;
+        optional boolean os_is64_bit;
+        optional binary os_service_pack (STRING);
+        required binary os_type (STRING);
+        required binary os_version (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_parquet_test_a_1 (LIST) {
+    repeated group list {
+      required group element {
+        required group a_field {
+          optional binary b_field (STRING);
+          optional group c_field {
+            optional binary d_field (STRING);
+            optional binary e_field (STRING);
+          }
+          optional binary d_field (STRING);
+        }
+        required int64 b_field;
+        optional boolean c_field;
+        optional double d_field;
+        optional binary e_field (JSON);
+        optional binary f_field (JSON);
+        optional binary g_field (STRING);
+        optional int64 h_field (TIMESTAMP(MICROS,true));
+        optional group i_field (LIST) {
+          repeated group list {
+            required group element {
+              optional binary b_field (STRING);
+              optional int64 c_field;
+              optional binary d_field (STRING);
+            }
+          }
+        }
+        optional group j_field {
+          optional binary union (JSON);
+        }
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_parquet_test_a_2 (LIST) {
+    repeated group list {
+      required group element {
+        required binary a_field (STRING);
+        optional group decimals {
+          optional int64 precision18_scale1 (DECIMAL(18,1));
+          optional fixed_len_byte_array(16) precision38_scale0 (DECIMAL(38,0));
+          optional int32 precision9_scale3 (DECIMAL(9,3));
+        }        
+        required binary e_field (STRING);
+        required int64 f_field;
+        optional group lists {
+          optional group optional_list (LIST) {
+            repeated group list {
+              required binary element (STRING);
+            }
+          }
+          required group required_list (LIST) {
+            repeated group list {
+              required binary element (STRING);
+            }
+          }          
+        }
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_ua_parser_context_1 (LIST) {
+    repeated group list {
+      required group element {
+        required binary device_family (STRING);
+        required binary os_family (STRING);
+        optional binary os_major (STRING);
+        optional binary os_minor (STRING);
+        optional binary os_patch (STRING);
+        optional binary os_patch_minor (STRING);
+        optional binary os_version (STRING);
+        required binary useragent_family (STRING);
+        optional binary useragent_major (STRING);
+        optional binary useragent_minor (STRING);
+        optional binary useragent_patch (STRING);
+        optional binary useragent_version (STRING);
+      }
+    }
+  }
+  optional group contexts_org_ietf_http_cookie_1 (LIST) {
+    repeated group list {
+      required group element {
+        required binary name (STRING);
+        optional binary value (STRING);
+      }
+    }
+  }
+  optional group contexts_org_ietf_http_header_1 (LIST) {
+    repeated group list {
+      required group element {
+        required binary name (STRING);
+        required binary value (STRING);
+      }
+    }
+  }
+  optional group unstruct_event_com_snowplowanalytics_snowplow_link_click_1 {
+    optional group element_classes (LIST) {
+      repeated group list {
+        required binary element (STRING);
+      }
+    }
+    optional binary element_content (STRING);
+    optional binary element_id (STRING);
+    optional binary element_target (STRING);
+    required binary target_url (STRING);
+  }
+}

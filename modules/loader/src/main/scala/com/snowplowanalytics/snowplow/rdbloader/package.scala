@@ -25,66 +25,39 @@ import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, Message}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Format, ShreddedType, Count, Timestamps}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Config.Shredder.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
+import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, Config}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
 
 package object rdbloader {
 
   /** Stream of discovered folders. `LoaderMessage` is here for metainformation */
-  type DiscoveryStream[F[_]] = Stream[F, Message[F, DataDiscovery.WithOrigin]]
+  type DiscoveryStream[F[_]] = Stream[F, DataDiscovery.WithOrigin]
+
+  /** List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables */
+  type LoadStatements = NonEmptyList[Statement.Loading]
+
+  /** A function to build a specific `Target` or error in case invalid config is passed */
+  type BuildTarget = Config[StorageTarget] => Either[String, Target]
 
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]
 
   /** Lift value into  */
   object LoaderAction {
-    def unit[F[_]: Applicative]: LoaderAction[F, Unit] =
-      EitherT.liftF(Applicative[F].unit)
-
-    def liftE[F[_]: Applicative, A](either: Either[LoaderError, A]): LoaderAction[F, A] =
-      EitherT.fromEither[F](either)
-
-    def liftF[F[_]: Functor, A](action: F[A]): LoaderAction[F, A] =
-      EitherT.liftF[F, LoaderError, A](action)
-
-    def apply[F[_], A](actionE: ActionE[F, A]): LoaderAction[F, A] =
+    def apply[F[_], A](actionE: F[Either[LoaderError, A]]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)
-
-    def raiseError[F[_]: Applicative, A](error: LoaderError): LoaderAction[F, A] =
-      liftE(error.asLeft)
 
     def pure[F[_]: Applicative, A](a: A): LoaderAction[F, A] =
       EitherT.pure[F, LoaderError](a)
+
+    def liftF[F[_]: Applicative, A](fa: F[A]): LoaderAction[F, A] =
+      EitherT.liftF[F, LoaderError, A](fa)
   }
-
-  implicit class ActionOps[F[_], A](a: F[A]) {
-    def liftA(implicit F: Applicative[F]): LoaderAction[F, A] =
-      LoaderAction.liftF(a)
-  }
-
-  /** Non-short-circuiting version of `TargetLoading` */
-  type ActionE[F[_], A] = F[Either[LoaderError, A]]
-
-  /**
-    * Helper function to traverse multiple validated results inside a single `Action`
-    *
-    * @param f collection of results, e.g. `IO[List[Validated[Result]]]`
-    * @param ff helper function to transform end result, e.g. `ValidatedNel[String, A] => Either[String, A]`
-    * @tparam F outer action, such as `IO`
-    * @tparam G collection, such as `List`
-    * @tparam H inner-effect type, such as `Validation`
-    * @tparam J result effect, without constraints
-    * @tparam A result
-    * @return traversed and transformed action, where `H` replaced with `J` by `ff`
-    */
-  def sequenceInF[F[_]: Functor,
-                  G[_]: Traverse,
-                  H[_]: Applicative,
-                  J[_], A](f: F[G[H[A]]], ff: H[G[A]] => J[G[A]]): F[J[G[A]]] =
-    f.map(x => ff(x.sequence))
 
   /** IO-free result validation */
   type DiscoveryStep[A] = Either[DiscoveryFailure, A]
@@ -98,14 +71,11 @@ package object rdbloader {
   implicit val getFolder: Get[S3.Folder] =
     Get[String].temap(S3.Folder.parse)
 
-  implicit val getFormat: Get[Format] =
-    Get[String].temap(Format.fromString)
-
-  implicit val getListShreddedType: Get[List[ShreddedType]] =
-    Get[String].temap(str => parse(str).flatMap(_.as[List[ShreddedType]]).leftMap(_.show))
-
   implicit val getCompression: Get[Compression] =
     Get[String].temap(str => StringEnum.fromString[Compression](str))
+
+  implicit val getListManifestType: Get[List[ManifestType]] =
+    Get[String].temap(str => parse(str).flatMap(_.as[List[ManifestType]]).leftMap(_.show))
 
   implicit val putKey: Put[S3.Key] =
     Put[String].tcontramap(_.toString)

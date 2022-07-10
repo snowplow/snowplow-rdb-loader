@@ -14,22 +14,22 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
 
-import cats.{Functor, Parallel, Monad}
+import cats.Parallel
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
 import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
 
-import fs2.Stream
-import fs2.concurrent.SignallingRef
+import doobie.ConnectionIO
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
 
-import com.snowplowanalytics.snowplow.rdbloader.State
+import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config}
+import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
@@ -42,69 +42,51 @@ class Environment[F[_]](cache: Cache[F],
                         monitoring: Monitoring[F],
                         iglu: Iglu[F],
                         aws: AWS[F],
-                        jdbc: JDBC[F],
+                        transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
-                        val blocker: Blocker) {
+                        target: Target,
+                        timeouts: Config.Timeouts) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
   implicit val awsF: AWS[F] = aws
-  implicit val jdbcF: JDBC[F] = jdbc
+  implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
-  def control(implicit F: Monad[F]): Environment.Control[F] =
-    Environment.Control(state, makeBusy, isBusy, incrementLoaded)
+  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
+  implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
 
-  private def makeBusy(implicit F: Monad[F]): Resource[F, SignallingRef[F, Boolean]] =
-    Resource.make(busy.flatMap(x => x.set(true).as(x)))(_.set(false))
-
-  private def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
-    Stream.eval[F, SignallingRef[F, Boolean]](busy).flatMap[F, Boolean](_.discrete)
-
-  private def incrementLoaded: F[Unit] =
-    state.update(_.incrementLoaded)
-
-  private def busy(implicit F: Functor[F]): F[SignallingRef[F, Boolean]] =
-    state.get.map(_.busy)
+  def control: Control[F] =
+    Control(state)
 }
 
 object Environment {
 
-  case class Control[F[_]](state: State.Ref[F],
-                           makeBusy: Resource[F, SignallingRef[F, Boolean]],
-                           isBusy: Stream[F, Boolean],
-                           incrementLoaded: F[Unit])
+  private implicit val LoggerName =
+    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig): Resource[F, Environment[F]] = {
-    val init = for {
-      cacheMap <- Ref.of[F, Map[String, Option[S3.Key]]](Map.empty)
-      amazonS3 <- AWS.getClient[F](cli.config.region)
-
-      cache = Cache.cacheInterpreter[F](cacheMap)
-      aws = AWS.s3Interpreter[F](amazonS3)
-      state <- State.mk[F]
-    } yield (cache, aws, state)
-
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
-      implicit0(iglu: Iglu[F]) <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
-      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
+      iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
-      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.flatMap(_.statsd), blocker)
-      stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.flatMap(_.stdout))
-      (cache, awsF, state) <- Resource.eval(init)
-      implicit0(aws: AWS[F]) = awsF
-      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, List(statsdReporter, stdoutReporter), cli.config.monitoring.webhook, httpClient)
+      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
+      stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
+      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[S3.Key]]](Map.empty))
+      amazonS3 <- Resource.eval(AWS.getClient[F](cli.config.region.name))
+      cache = Cache.cacheInterpreter[F](cacheMap)
+      state <- Resource.eval(State.mk[F])
+      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility, cli.config.region.name)
+      reporters = List(statsdReporter, stdoutReporter)
+      periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
+      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
 
-      // TODO: if something can drop SSH while the Loader is working
-      //       we'd need to integrate its lifecycle into Pool or maintain
-      //       it as a background check
       _ <- SSH.resource(cli.config.storage.sshTunnel)
-      jdbc <- JDBC.interpreter[F](cli.config.storage, cli.dryRun, blocker)
-    } yield new Environment(cache, logging, monitoring, iglu, aws, jdbc, state, blocker)
-  }
+      transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
