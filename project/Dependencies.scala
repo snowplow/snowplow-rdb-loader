@@ -54,7 +54,7 @@ object Dependencies {
     val aws              = "1.12.161"
     val aws2             = "2.17.59"
     val jSch             = "0.2.1"
-    val sentry           = "1.7.30"
+    val sentry           = "6.2.1"
     val protobuf         = "3.16.1" // Fix CVE
     val commons          = "2.7"    // Fix CVE
     val kafkaClients     = "2.7.2"  // Fix CVE
