@@ -144,7 +144,6 @@ object StorageTarget {
                              transformedStage: Option[Snowflake.Stage],
                              appName: String,
                              folderMonitoringStage: Option[Snowflake.Stage],
-                             onError: Snowflake.OnError,
                              jdbcHost: Option[String],
                              loadAuthMethod: LoadAuthMethod) extends StorageTarget {
 
@@ -203,13 +202,6 @@ object StorageTarget {
   }
 
   object Snowflake {
-    // https://docs.snowflake.com/en/sql-reference/sql/copy-into-table.html#copy-options-copyoptions
-    // As specified in the above link, CONTINUE and SKIP_FILE have same behavior for semi-structured
-    // data files such as JSON, Parquet, Avro. Therefore, SKIP_FILE isn't specified separately.
-    sealed trait OnError
-    case object Continue extends OnError
-    case object AbortStatement extends OnError
-
     case class Stage(name: String, location: Option[S3.Folder])
   }
 
@@ -348,19 +340,6 @@ object StorageTarget {
 
   implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
-
-  implicit def snowflakeOnErrorDecoder: Decoder[Snowflake.OnError] =
-    Decoder[String].map(_.toLowerCase.replace("_", "")).emap {
-      case "abortstatement" => Snowflake.AbortStatement.asRight
-      case "continue" => Snowflake.Continue.asRight
-      case other => s"$other cannot be used as onError type. Available choices: CONTINUE, ABORT_STATEMENT".asLeft
-    }
-
-  implicit def snowflakeOnErrorEncoder: Encoder[Snowflake.OnError] =
-    Encoder[String].contramap {
-      case Snowflake.Continue => "CONTINUE"
-      case Snowflake.AbortStatement => "ABORT_STATEMENT"
-    }
 
   implicit def loadAuthMethodDecoder: Decoder[LoadAuthMethod] =
     Decoder.instance { cur =>

@@ -118,7 +118,6 @@ object ConfigSpec {
     Some(exampleTransformedStage),
     "Snowplow_OSS",
     None,
-    StorageTarget.Snowflake.Continue,
     None,
     StorageTarget.LoadAuthMethod.NoCreds
   )

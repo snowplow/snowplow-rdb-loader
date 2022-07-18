@@ -30,7 +30,6 @@ class ConfigSpec extends Specification {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.snowflake.password"))))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
-        .copy(onError = StorageTarget.Snowflake.AbortStatement)
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(S3.Folder.coerce("s3://bucket/monitoring/")))))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/")))))
       val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
@@ -58,7 +57,10 @@ class ConfigSpec extends Specification {
         defaultMonitoring,
         exampleQueueName,
         None,
-        exampleSnowflake.copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/"))))),
+        exampleSnowflake
+          .copy(
+            transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/"))))
+          ),
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
@@ -81,7 +83,6 @@ class ConfigSpec extends Specification {
         transformedStage = None,
         appName = "Snowplow_OSS",
         folderMonitoringStage = None,
-        onError = StorageTarget.Snowflake.Continue,
         jdbcHost = None,
         StorageTarget.LoadAuthMethod.NoCreds)
       exampleSnowflake.host must beRight("acme.snowflakecomputing.com")

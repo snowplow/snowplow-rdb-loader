@@ -143,7 +143,7 @@ object Snowflake {
                 val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
-                val frOnError = Fragment.const0(s"ON_ERROR = ${tgt.onError.asJson.noSpaces}")
+                val frOnError = buildErrorFragment(typesInfo)
                 val frFileFormat = buildFileFormatFragment(typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM (
@@ -165,7 +165,7 @@ object Snowflake {
                 val frCopy = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
                 val frPath = Fragment.const0(s.path)
                 val frCredentials = loadAuthMethodFragment(s.tempCreds)
-                val frOnError = Fragment.const0(s"ON_ERROR = ${tgt.onError.asJson.noSpaces}")
+                val frOnError = buildErrorFragment(s.typesInfo)
                 val frFileFormat = buildFileFormatFragment(s.typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM '$frPath' $frCredentials
@@ -263,9 +263,26 @@ object Snowflake {
       case TypesInfo.WideRow(JSON, _) =>
         Fragment.const0("FILE_FORMAT = (TYPE = JSON TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF')")
       case TypesInfo.WideRow(PARQUET, _) =>
-        Fragment.const0("FILE_FORMAT = (TYPE = PARQUET")
+        Fragment.const0("FILE_FORMAT = (TYPE = PARQUET)")
     }
   }
+
+  /**
+   * Build ON_ERROR fragment according to the file format.
+   * If file format is JSON, ON_ERROR will be ABORT_STATEMENT.
+   * If file format is PARQUET, ON_ERROR will be 'CONTINUE'.
+   * This is because loading Parquet transformed file with ABORT_STATEMENT fails
+   * due to empty files in the transformed folder.
+   */
+  private def buildErrorFragment(typesInfo: TypesInfo): Fragment =
+    typesInfo match {
+      case TypesInfo.Shredded(_) =>
+        throw new IllegalStateException("Shredded type is not supported for Snowflake")
+      case TypesInfo.WideRow(JSON, _) =>
+        Fragment.const0(s"ON_ERROR = ABORT_STATEMENT")
+      case TypesInfo.WideRow(PARQUET, _) =>
+        Fragment.const0(s"ON_ERROR = CONTINUE")
+    }
 
   private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod): Fragment =
     loadAuthMethod match {
