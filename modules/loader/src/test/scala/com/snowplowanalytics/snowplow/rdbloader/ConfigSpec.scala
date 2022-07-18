@@ -87,7 +87,7 @@ object ConfigSpec {
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)), 5.minutes),
     Some(Config.Webhook(uri"https://webhook.acme.com", Map("pipeline" -> "production"))),
-    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3))),
+    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3), None)),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
   val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)

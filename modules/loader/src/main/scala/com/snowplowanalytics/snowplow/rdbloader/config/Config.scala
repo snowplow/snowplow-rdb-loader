@@ -71,7 +71,13 @@ object Config {
   final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration, staging: S3.Folder, since: Option[FiniteDuration], transformerOutput: S3.Folder, until: Option[FiniteDuration], failBeforeAlarm: Option[Int])
+  final case class Folders(period: FiniteDuration,
+                           staging: S3.Folder,
+                           since: Option[FiniteDuration],
+                           transformerOutput: S3.Folder,
+                           until: Option[FiniteDuration],
+                           failBeforeAlarm: Option[Int],
+                           appendStagingPath: Option[Boolean])
   final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
   final case class Timeouts(loading: FiniteDuration, nonLoading: FiniteDuration, sqsVisibility: FiniteDuration)
   final case class Retries(strategy: Strategy, attempts: Option[Int], backoff: FiniteDuration, cumulativeBound: Option[FiniteDuration])

@@ -175,7 +175,14 @@ object FolderMonitoring {
       .realTime(TimeUnit.MILLISECONDS)
       .map(Instant.ofEpochMilli)
       .map(LogTimeFormatter.format)
-      .map(time => folders.staging.append("shredded").append(time))
+      .map { time =>
+        val stagingPath =
+          if (folders.appendStagingPath.getOrElse(true))
+            folders.staging.append("shredded")
+          else
+            folders.staging
+        stagingPath.append(time)
+      }
 
     Stream.eval(getKey) ++ Stream.fixedDelay[F](folders.period).evalMap(_ => getKey)
   }
