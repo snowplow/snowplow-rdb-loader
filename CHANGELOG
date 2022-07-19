@@ -1,3 +1,15 @@
+Version 4.2.0 (2022-07-19)
+--------------------------
+Snowflake loader: make on_error continue when type of the incoming data is parquet (#970)
+Loader: make the part appended to folder monitoring staging path configurable (#969)
+Snowflake loader: make the path used with stage adjustable (#968)
+Loader: retry on target initialization (#964)
+Snowflake loader: use STS tokens for copying from S3 (#955)
+Transformer kinesis: Recover from losing lease to a new worker (#962)
+Databricks loader: Generate STS tokens for copying from S3 (#954)
+Snowflake loader: Specify file format in the load statement (#957)
+Loader: Trim alert message payloads to 4096 characters (#956)
+
 Version 4.1.0 (2022-07-04)
 --------------------------
 Databricks loader: Support for generated columns (#951)
