@@ -156,7 +156,7 @@ class FolderMonitoringSpec extends Specification {
          val input = S3.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
          val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
          result must beTrue
-       } 
+       }
      }
 
     "for key without UUID" >> {
@@ -210,7 +210,7 @@ object FolderMonitoringSpec {
   val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleDatabricks: StorageTarget.Databricks = StorageTarget.Databricks(
     "databricks.com",
-    "hive_metastore",
+    None,
     "snowplow",
     443,
     "http/path",
