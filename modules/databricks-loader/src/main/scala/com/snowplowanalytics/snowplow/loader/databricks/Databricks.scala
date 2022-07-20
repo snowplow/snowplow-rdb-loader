@@ -40,7 +40,7 @@ object Databricks {
     config.storage match {
       case tgt: StorageTarget.Databricks =>
         val result = new Target {
-          
+
           override val requiresEventsColumns: Boolean = true
 
           override def updateTable(migration: Migration): Block =
@@ -173,8 +173,10 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyFromTempTable statement")
             }
 
-          private def qualify(tableName: String): String =
-            s"${tgt.catalog}.${tgt.schema}.$tableName"
+          private def qualify(tableName: String): String = tgt.catalog match {
+            case Some(catalog) => s"${catalog}.${tgt.schema}.$tableName"
+            case None => s"${tgt.schema}.$tableName"
+          }
         }
         Right(result)
       case other =>
@@ -185,7 +187,7 @@ object Databricks {
   private def getEntityColumnsPresentInDbOnly(eventTableColumns: EventTableColumns, toCopy: ColumnsToCopy) = {
     eventTableColumns
       .filter(name => name.value.startsWith(UnstructPrefix) || name.value.startsWith(ContextsPrefix))
-      .diff(toCopy.names) 
+      .diff(toCopy.names)
   }
 
   private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod): Fragment =

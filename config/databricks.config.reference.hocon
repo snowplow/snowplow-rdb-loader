@@ -23,7 +23,7 @@
         "parameterName": "snowplow.databricks.password"
       }
     },
-    # Unity catalog name. Optional, default value "hive_metastore"
+    # Optional. Override the Databricks default catalog, e.g. with a Unity catalog name.
     "catalog": "hive_metastore",
     # DB schema
     "schema": "atomic",

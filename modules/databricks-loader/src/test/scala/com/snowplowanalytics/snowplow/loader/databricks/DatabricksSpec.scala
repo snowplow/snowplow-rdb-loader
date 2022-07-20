@@ -127,7 +127,7 @@ object DatabricksSpec {
     None,
     StorageTarget.Databricks(
       "host",
-      "hive_metastore",
+      None,
       "snowplow",
       443,
       "some/path",

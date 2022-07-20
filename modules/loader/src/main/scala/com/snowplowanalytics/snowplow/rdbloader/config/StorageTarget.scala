@@ -101,7 +101,7 @@ object StorageTarget {
 
   final case class Databricks(
                                host: String,
-                               catalog: String,
+                               catalog: Option[String],
                                schema: String,
                                port: Int,
                                httpPath: String,
