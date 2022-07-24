@@ -88,6 +88,7 @@ object Snowflake {
                 // External location is needed for using temp credentials. Therefore, we need to use two-steps copy operation.
                 // Initially, events will be copied to temp table from s3. Then, they will copied from temp table to event table.
                 NonEmptyList.of(
+                  Statement.DropTempEventTable(tempTableName),
                   Statement.CreateTempEventTable(tempTableName),
                   Statement.EventsCopyToTempTable(discovery.base, tempTableName, c, discovery.typesInfo),
                   Statement.EventsCopyFromTempTable(tempTableName, columnsToCopy),
