@@ -164,7 +164,7 @@ object Snowflake {
 
               case s: Statement.EventsCopyToTempTable =>
                 val frCopy = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
-                val frPath = Fragment.const0(s.path)
+                val frPath = Fragment.const0(s.path.append("output=good"))
                 val frCredentials = loadAuthMethodFragment(s.tempCreds)
                 val frOnError = buildErrorFragment(s.typesInfo)
                 val frFileFormat = buildFileFormatFragment(s.typesInfo)
