@@ -1,3 +1,8 @@
+Version 4.2.1 (2022-07-25)
+--------------------------
+Snowflake Loader: fix loading path used with temp creds auth method (#1002)
+Snowflake Loader: drop temp table in the first step of the load operation (#1001)
+
 Version 4.2.0 (2022-07-19)
 --------------------------
 Snowflake loader: make on_error continue when type of the incoming data is parquet (#970)
