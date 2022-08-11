@@ -14,15 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.time.format.DateTimeFormatter
 import java.time.{Instant, ZoneId, ZoneOffset}
-
 import cats.syntax.either._
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
-
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 /**
  * Various common utility functions
@@ -42,8 +39,8 @@ object Common {
   def entityPath(entity: TypesInfo.Shredded.Type) =
     s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
 
-  def entityPathFull(base: S3.Folder, entity: TypesInfo.Shredded.Type): S3.Folder =
-    S3.Folder.append(base, entityPath(entity))
+  def entityPathFull(base: BlobStorage.Folder, entity: TypesInfo.Shredded.Type): BlobStorage.Folder =
+    BlobStorage.Folder.append(base, entityPath(entity))
 
   /**
    * Remove all occurrences of access key id and secret access key from message

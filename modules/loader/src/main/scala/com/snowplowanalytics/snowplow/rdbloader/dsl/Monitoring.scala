@@ -33,9 +33,9 @@ import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.PeriodicMetrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
 
@@ -59,7 +59,7 @@ trait Monitoring[F[_]] { self =>
   def alert(payload: Monitoring.AlertPayload): F[Unit]
 
   /** Helper method specifically for exceptions */
-  def alert(error: Throwable, folder: S3.Folder): F[Unit] = {
+  def alert(error: Throwable, folder: BlobStorage.Folder): F[Unit] = {
     val message = Option(error.getMessage).getOrElse(error.toString)
     // Note tags are added by Monitoring later
     val payload = Monitoring.AlertPayload(Monitoring.Application, Some(folder), Monitoring.AlertPayload.Severity.Error, message, Map.empty)
@@ -81,7 +81,7 @@ object Monitoring {
     s"snowplow-rdb-loader-${BuildInfo.version}"
 
   final case class AlertPayload(application: String,
-                                base: Option[S3.Folder],
+                                base: Option[BlobStorage.Folder],
                                 severity: AlertPayload.Severity,
                                 message: String,
                                 tags: Map[String, String])
@@ -109,13 +109,13 @@ object Monitoring {
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]
 
-    def info(message: String, folder: S3.Folder): AlertPayload =
+    def info(message: String, folder: BlobStorage.Folder): AlertPayload =
       AlertPayload(Application, Some(folder), Severity.Info, message, Map.empty)
 
     def warn(message: String): AlertPayload =
       AlertPayload(Application, None, Severity.Warning, message, Map.empty)
 
-    def warn(message: String, folder: S3.Folder): AlertPayload =
+    def warn(message: String, folder: BlobStorage.Folder): AlertPayload =
       AlertPayload(Application, Some(folder), Severity.Warning, message, Map.empty)
 
     def error(message: String): AlertPayload =

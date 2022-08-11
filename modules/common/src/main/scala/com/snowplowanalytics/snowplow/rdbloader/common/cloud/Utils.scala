@@ -1,12 +1,12 @@
-package com.snowplowanalytics.aws
-
-import java.util.concurrent.{ CancellationException, CompletableFuture, CompletionException }
+package com.snowplowanalytics.snowplow.rdbloader.common.cloud
 
 import cats.effect.{Concurrent, ContextShift, ExitCase}
 import cats.effect.syntax.bracket._
 import cats.syntax.functor._
 
-object Common {
+import java.util.concurrent.{CancellationException, CompletableFuture, CompletionException}
+
+object Utils {
 
   /** Convert a `CompletableFuture` into an effect type.
    *
@@ -19,7 +19,7 @@ object Common {
    *       shifted with the given `ContextShift`.
    * @note taken from https://github.com/http4s/http4s-jdk-http-client/blob/main/core/src/main/scala/org/http4s/client/jdkhttpclient/package.scala
    */
-  def fromCompletableFuture[F[_]: Concurrent: ContextShift, A](fcs: F[CompletableFuture[A]]): F[A] =
+  def fromCompletableFuture[F[_] : Concurrent : ContextShift, A](fcs: F[CompletableFuture[A]]): F[A] =
     Concurrent[F].bracketCase(fcs) { cs =>
       Concurrent[F].async[A] { cb =>
         cs.handle[Unit] { (result, err) =>
@@ -29,7 +29,8 @@ object Common {
             case ex: CompletionException if ex.getCause ne null => cb(Left(ex.getCause))
             case ex => cb(Left(ex))
           }
-        }; ();
+        };
+        ();
       }
     } { (cs, ec) =>
       val finalized = ec match {

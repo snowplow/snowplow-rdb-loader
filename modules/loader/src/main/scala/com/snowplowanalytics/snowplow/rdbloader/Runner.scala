@@ -38,7 +38,7 @@ object Runner {
           import env._
 
           Logging[F]
-            .info(s"RDB Loader ${generated.BuildInfo.version} has started. Listening ${parsed.config.messageQueue}") *>
+            .info(s"RDB Loader ${generated.BuildInfo.version} has started.") *>
             Loader.run[F, ConnectionIO](parsed.config, control).as(ExitCode.Success)
         }
       }

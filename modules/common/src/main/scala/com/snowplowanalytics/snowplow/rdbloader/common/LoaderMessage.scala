@@ -21,6 +21,7 @@ import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
@@ -164,12 +165,12 @@ object LoaderMessage {
     * @param processor shredder application metadata
     */
   final case class ShreddingComplete(
-    base: S3.Folder,
-    typesInfo: TypesInfo,
-    timestamps: Timestamps,
-    compression: Compression,
-    processor: Processor,
-    count: Option[Count]
+                                      base: BlobStorage.Folder,
+                                      typesInfo: TypesInfo,
+                                      timestamps: Timestamps,
+                                      compression: Compression,
+                                      processor: Processor,
+                                      count: Option[Count]
   ) extends LoaderMessage {
     def toManifestItem: ManifestItem =
       LoaderMessage.createManifestItem(this)
@@ -220,12 +221,12 @@ object LoaderMessage {
   final case class ManifestType(schemaKey: SchemaKey, format: String, transformation: Option[String])
 
   final case class ManifestItem(
-    base: S3.Folder,
-    types: List[ManifestType],
-    timestamps: Timestamps,
-    compression: Compression,
-    processor: Processor,
-    count: Option[Count]
+                                 base: BlobStorage.Folder,
+                                 types: List[ManifestType],
+                                 timestamps: Timestamps,
+                                 compression: Compression,
+                                 processor: Processor,
+                                 count: Option[Count]
   )
 
   def createManifestItem(s: ShreddingComplete): ManifestItem = {

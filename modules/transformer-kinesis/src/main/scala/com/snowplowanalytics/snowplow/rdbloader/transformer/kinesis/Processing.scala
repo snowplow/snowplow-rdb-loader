@@ -27,12 +27,10 @@ import blobstore.Store
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event}
 
-import com.snowplowanalytics.aws.AWSQueue
-
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Compression, Formats}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
@@ -90,7 +88,7 @@ object Processing {
           config.output.compression,
           transformer.typesInfo,
           config.output.path,
-          resources.awsQueue,
+          resources.producer,
           config.featureFlags.legacyMessageFormat,
           window,
           state
@@ -122,7 +120,7 @@ object Processing {
     compression: Compression,
     getTypes: Set[Data.ShreddedType] => TypesInfo,
     outputPath: URI,
-    awsQueue: AWSQueue[F],
+    producer: Queue.Producer[F],
     legacyMessageFormat: Boolean,
     window: Window,
     state: State[C]
@@ -133,7 +131,7 @@ object Processing {
       compression,
       getTypes,
       outputPath,
-      awsQueue,
+      producer,
       legacyMessageFormat,
       writeShreddingComplete,
       window,
@@ -154,7 +152,7 @@ object Processing {
         (w: Window) => (_: State[C]) => (k: SinkPath) =>
           file.getSink[F](resources.store, config.compression, w, k)
       case Some("s3" | "s3a" | "s3n") =>
-        val (bucket, prefix) = S3.splitS3Path(S3.Folder.coerce(config.path.toString))
+        val (bucket, prefix) = BlobStorage.splitPath(BlobStorage.Folder.coerce(config.path.toString))
         (w: Window) => (_: State[C]) => (k: SinkPath) =>
           s3.getSink[F](resources.store, bucket, prefix, config.compression, w, k)
       case _ =>
@@ -239,7 +237,7 @@ object Processing {
       case Some("file") =>
         file.writeFile(store, outputPath, filePath, content)
       case Some("s3" | "s3a" | "s3n") =>
-        val (bucket, key) = S3.splitS3Key(S3.Key.coerce(filePath.toString))
+        val (bucket, key) = BlobStorage.splitKey(BlobStorage.Key.coerce(filePath.toString))
         s3.writeFile(store, bucket, key, content)
       case _ =>
         Sync[F].raiseError(new IllegalArgumentException(s"Can't determine writing function for filesystem for $outputPath"))

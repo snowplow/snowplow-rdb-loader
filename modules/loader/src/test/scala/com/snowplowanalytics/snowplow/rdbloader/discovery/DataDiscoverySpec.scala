@@ -18,10 +18,12 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.SchemaVer.Full
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat.{JSON, TSV}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import org.specs2.mutable.Specification
@@ -32,11 +34,11 @@ class DataDiscoverySpec extends Specification {
   "show" should {
     "should DataDiscovery with several shredded types" >> {
       val shreddedTypes = List(
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/event_1.json")),
-        ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), S3.Key.coerce("s3://assets/context_1.json"))
+        ShreddedType.Json(ShreddedType.Info(BlobStorage.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "event", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), BlobStorage.Key.coerce("s3://assets/event_1.json")),
+        ShreddedType.Json(ShreddedType.Info(BlobStorage.Folder.coerce("s3://my-bucket/my-path"), "com.acme", "context", 2, LoaderMessage.SnowplowEntity.SelfDescribingEvent), BlobStorage.Key.coerce("s3://assets/context_1.json"))
       )
 
-      val discovery = DataDiscovery(S3.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip, TypesInfo.Shredded(List.empty))
+      val discovery = DataDiscovery(BlobStorage.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip, TypesInfo.Shredded(List.empty))
       discovery.show must beEqualTo(
         """|my-path with following shredded types:
            |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
@@ -47,12 +49,13 @@ class DataDiscoverySpec extends Specification {
   "fromLoaderMessage" should {
     "not repeat schema criterions if there are different revisions/additions" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
+      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val expected = DataDiscovery(
-        S3.Folder.coerce("s3://bucket/folder/"),
+        BlobStorage.Folder.coerce("s3://bucket/folder/"),
         List(
-          ShreddedType.Tabular(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent)),
+          ShreddedType.Tabular(ShreddedType.Info(BlobStorage.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent)),
         ),
         Compression.None,
         TypesInfo.Shredded(
@@ -63,7 +66,7 @@ class DataDiscoverySpec extends Specification {
         )
       ).asRight
 
-      val result = DataDiscovery.fromLoaderMessage[Pure]("eu-central-1", None, DataDiscoverySpec.shreddingCompleteWithSameModel)
+      val result = DataDiscovery.fromLoaderMessage[Pure](None, DataDiscoverySpec.shreddingCompleteWithSameModel)
         .value
         .runA
 
@@ -72,7 +75,8 @@ class DataDiscoverySpec extends Specification {
 
     "aggregate errors" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
+      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val expected = LoaderError.DiscoveryError(
         NonEmptyList.of(
@@ -81,7 +85,7 @@ class DataDiscoverySpec extends Specification {
         )
       ).asLeft
 
-      val result = DataDiscovery.fromLoaderMessage[Pure]("eu-central-1", None, DataDiscoverySpec.shreddingComplete)
+      val result = DataDiscovery.fromLoaderMessage[Pure](None, DataDiscoverySpec.shreddingComplete)
         .value
         .runA
 
@@ -92,12 +96,13 @@ class DataDiscoverySpec extends Specification {
   "handle" should {
     "return discovery errors if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init)
+      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val message = DataDiscoverySpec.shreddingComplete
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+      val (state, result) = DataDiscovery.handle[Pure](None, message).run
 
       result must beLeft(LoaderError.DiscoveryError(NonEmptyList.of(
         DiscoveryFailure.JsonpathDiscoveryFailure("com.acme/event_a_1.json"),
@@ -108,16 +113,17 @@ class DataDiscoverySpec extends Specification {
 
     "return discovered data if it can be handled" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
+      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val message = DataDiscoverySpec.shreddingComplete
 
       val expected = DataDiscovery(
-        S3.Folder.coerce("s3://bucket/folder/"),
+        BlobStorage.Folder.coerce("s3://bucket/folder/"),
         List(
-          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
-          ShreddedType.Json(ShreddedType.Info(S3.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),S3.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
+          ShreddedType.Json(ShreddedType.Info(BlobStorage.Folder.coerce("s3://bucket/folder/"),"com.acme","event-a",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),BlobStorage.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")),
+          ShreddedType.Json(ShreddedType.Info(BlobStorage.Folder.coerce("s3://bucket/folder/"),"com.acme","event-b",1,LoaderMessage.SnowplowEntity.SelfDescribingEvent),BlobStorage.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json"))
         ),
         Compression.Gzip,
         TypesInfo.Shredded(
@@ -128,7 +134,7 @@ class DataDiscoverySpec extends Specification {
         )
       )
 
-      val (state, result) = DataDiscovery.handle[Pure]("eu-central-1", None, message).run
+      val (state, result) = DataDiscovery.handle[Pure](None, message).run
 
       result.map(_.map(_.discovery)) must beRight(Some(expected))
       state.getLog must beEqualTo(List(
@@ -145,7 +151,7 @@ class DataDiscoverySpec extends Specification {
 object DataDiscoverySpec {
 
   val shreddingComplete = LoaderMessage.ShreddingComplete(
-    S3.Folder.coerce("s3://bucket/folder/"),
+    BlobStorage.Folder.coerce("s3://bucket/folder/"),
     TypesInfo.Shredded(List(
       TypesInfo.Shredded.Type(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
@@ -170,7 +176,7 @@ object DataDiscoverySpec {
   )
 
   val shreddingCompleteWithSameModel = LoaderMessage.ShreddingComplete(
-    S3.Folder.coerce("s3://bucket/folder/"),
+    BlobStorage.Folder.coerce("s3://bucket/folder/"),
     TypesInfo.Shredded(List(
       TypesInfo.Shredded.Type(
         SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),

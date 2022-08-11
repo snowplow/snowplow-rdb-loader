@@ -16,8 +16,9 @@ import java.util.Properties
 
 import cats.data._
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
-import io.circe.{CursorOp, _}
+import io.circe._
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
 
@@ -25,7 +26,6 @@ import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 
 /**
@@ -202,7 +202,7 @@ object StorageTarget {
   }
 
   object Snowflake {
-    case class Stage(name: String, location: Option[S3.Folder])
+    case class Stage(name: String, location: Option[BlobStorage.Folder])
   }
 
   /**
@@ -370,7 +370,7 @@ object StorageTarget {
           val result = for {
             root <- json.asObject.map(_.toMap)
             name <- root.get("name").flatMap(_.as[String].toOption)
-            location = root.get("location").flatMap(_.as[String].toOption).map(S3.Folder.coerce)
+            location = root.get("location").flatMap(_.as[String].toOption).map(BlobStorage.Folder.coerce)
           } yield Snowflake.Stage(name, location)
           result.toRight("Snowflake stage config couldn't be decoded")
       }

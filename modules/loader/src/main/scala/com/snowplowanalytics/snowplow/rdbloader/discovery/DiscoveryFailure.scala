@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 /**
   * Discovery failure. Represents failure of single step.
@@ -36,7 +36,7 @@ object DiscoveryFailure {
   }
 
   /** Invalid path for S3 key */
-  case class ShreddedTypeKeyFailure(path: S3.Key) extends DiscoveryFailure {
+  case class ShreddedTypeKeyFailure(path: BlobStorage.Key) extends DiscoveryFailure {
     def getMessage: String =
       s"Cannot extract contexts or self-describing events from file [$path]. " +
         s"Corrupted shredded/good state or unexpected Snowplow Shred job version"

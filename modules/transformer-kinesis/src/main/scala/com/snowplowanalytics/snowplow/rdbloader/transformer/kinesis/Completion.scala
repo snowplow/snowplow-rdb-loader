@@ -24,15 +24,14 @@ import io.circe.syntax.EncoderOps
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
-
-import com.snowplowanalytics.aws.AWSQueue
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 
 object Completion {
 
@@ -65,7 +64,7 @@ object Completion {
   def seal[F[_]: Clock: Sync, C: Checkpointer[F, *]](compression: Compression,
                                                      getTypes: Set[Data.ShreddedType] => TypesInfo,
                                                      root: URI,
-                                                     awsQueue: AWSQueue[F],
+                                                     producer: Queue.Producer[F],
                                                      legacyMessageFormat: Boolean,
                                                      writeShreddingComplete: (String, String) => F[Unit],
                                                      window: Window,
@@ -76,19 +75,19 @@ object Completion {
       }
       (base, shreddingCompletePath) <- getPaths(root, window)
       count = LoaderMessage.Count(state.total - state.bad)
-      message = LoaderMessage.ShreddingComplete(S3.Folder.coerce(base), getTypes(state.types), timestamps, compression, MessageProcessor, Some(count))
+      message = LoaderMessage.ShreddingComplete(BlobStorage.Folder.coerce(base), getTypes(state.types), timestamps, compression, MessageProcessor, Some(count))
       body = message.selfDescribingData(legacyMessageFormat).asJson.noSpaces
       _ <- writeShreddingComplete(shreddingCompletePath, body)
       _ <- Checkpointer[F, C].checkpoint(state.checkpointer)
-      _ <- awsQueue.sendMessage(Some(MessageGroupId), body)
+      _ <- producer.send(Some(MessageGroupId), body)
     } yield ()
   }
 
-  def getBasePath(bucket: String, prefix: String, window: Window): S3.Folder =
-    S3.Folder.coerce(s"s3://$bucket/$prefix${window.getDir}")
+  def getBasePath(bucket: String, prefix: String, window: Window): BlobStorage.Folder =
+    BlobStorage.Folder.coerce(s"s3://$bucket/$prefix${window.getDir}")
 
-  def getBasePath(folder: S3.Folder, window: Window): S3.Folder = {
-    val (bucket, prefix) = S3.splitS3Path(folder)
+  def getBasePath(folder: BlobStorage.Folder, window: Window): BlobStorage.Folder = {
+    val (bucket, prefix) = BlobStorage.splitPath(folder)
     getBasePath(bucket, prefix, window)
   }
 
@@ -97,7 +96,7 @@ object Completion {
     Option(root.getScheme) match {
       case Some("s3" | "s3a" | "s3n") =>
         for {
-          windowPath <- Sync[F].delay(getBasePath(S3.Folder.coerce(root.toString), window))
+          windowPath <- Sync[F].delay(getBasePath(BlobStorage.Folder.coerce(root.toString), window))
           shreddingCompletePath = windowPath + sealFile
         } yield ((windowPath, shreddingCompletePath))
       case Some("file") =>

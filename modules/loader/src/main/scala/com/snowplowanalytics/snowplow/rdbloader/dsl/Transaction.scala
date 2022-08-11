@@ -15,15 +15,13 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
-
-import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
-
+import cats.effect.{Async, Blocker, ConcurrentEffect, ContextShift, Effect, Resource, Sync, Timer}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
 import doobie._
 import doobie.implicits._
 import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 import doobie.hikari._
-
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 
 
@@ -81,7 +79,7 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: Async: ContextShift: Timer: AWS](
+  def buildPool[F[_]: Async: ContextShift: Timer](
     target: StorageTarget,
     blocker: Blocker
   ): Resource[F, Transactor[F]] =
@@ -91,7 +89,7 @@ object Transaction {
         case StorageTarget.PasswordConfig.PlainText(text) =>
           Resource.pure[F, String](text)
         case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-          Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
+          Resource.eval(AWS.getEc2Property[F](key.parameterName).map(b => new String(b)))
       }
       xa <- HikariTransactor
         .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
@@ -109,7 +107,7 @@ object Transaction {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
+  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
     buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
 
   /**

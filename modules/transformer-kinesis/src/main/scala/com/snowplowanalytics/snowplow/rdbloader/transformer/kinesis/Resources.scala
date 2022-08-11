@@ -31,8 +31,8 @@ import io.circe.Json
 
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
-
-import com.snowplowanalytics.aws.AWSQueue
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
@@ -46,7 +46,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.Bu
 case class Resources[F[_]](
   iglu: Client[F, Json],
   atomicLengths: Map[String, Int],
-  awsQueue: AWSQueue[F],
+  producer: Queue.Producer[F],
   instanceId: String,
   blocker: Blocker,
   store: Store[F],
@@ -71,7 +71,7 @@ object Resources {
   def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer](
     igluConfig: Json,
     config: Config,
-    awsQueue: AWSQueue[F],
+    producer: Queue.Producer[F],
     executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
@@ -86,7 +86,7 @@ object Resources {
       Resources(
         client,
         atomicLengths,
-        awsQueue,
+        producer,
         instanceId.toString,
         blocker,
         store,
@@ -118,10 +118,10 @@ object Resources {
       .evalTap(id => logger.info(s"Instantiated $id shredder instance"))
   }
 
-  private def mkQueueFromConfig[F[_]: Concurrent](queueConfig: QueueConfig): Resource[F, AWSQueue[F]] = {
+  private def mkQueueFromConfig[F[_]: Concurrent](queueConfig: QueueConfig): Resource[F, Queue.Producer[F]] = {
     queueConfig match {
-      case QueueConfig.SQS(queueName, region) => AWSQueue.build(AWSQueue.QueueType.SQS, queueName, region.name)
-      case QueueConfig.SNS(topicArn, region)  => AWSQueue.build(AWSQueue.QueueType.SNS, topicArn, region.name)
+      case QueueConfig.SQS(queueName, region) => AWS.queueProducer(AWS.QueueType.SQS, queueName, region.name)
+      case QueueConfig.SNS(topicArn, region)  => AWS.queueProducer(AWS.QueueType.SNS, topicArn, region.name)
     }
   }
 

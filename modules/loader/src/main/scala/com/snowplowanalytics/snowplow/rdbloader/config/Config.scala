@@ -13,44 +13,67 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.net.URI
-
 import scala.concurrent.duration.{Duration, FiniteDuration}
-
 import cats.effect.Sync
 import cats.data.EitherT
 import cats.syntax.either._
-
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import io.circe._
 import io.circe.generic.semiauto._
-
 import org.http4s.{ParseFailure, Uri}
-
 import cron4s.CronExpr
 import cron4s.circe._
-
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common._
+
 
 /**
  * Main config file parsed from HOCON
  * @tparam D kind of supported warehouse
  */
-final case class Config[+D <: StorageTarget](region: Region,
-                                             jsonpaths: Option[S3.Folder],
-                                             monitoring: Monitoring,
-                                             messageQueue: String,
-                                             retryQueue: Option[RetryQueue],
-                                             storage: D,
-                                             schedules: Schedules,
-                                             timeouts: Timeouts,
-                                             retries: Retries,
-                                             readyCheck: Retries,
-                                             initRetries: Retries,
-                                             featureFlags: FeatureFlags)
+sealed trait Config[+D <: StorageTarget] {
+  def jsonpaths: Option[BlobStorage.Folder]
+  def monitoring: Monitoring
+  def retryQueue: Option[RetryQueue]
+  def storage: D
+  def schedules: Schedules
+  def timeouts: Timeouts
+  def retries: Retries
+  def readyCheck: Retries
+  def initRetries: Retries
+  def featureFlags: FeatureFlags
+}
 
 object Config {
+
+  final case class AWS[+D <: StorageTarget](region: Region,
+                                            jsonpaths: Option[BlobStorage.Folder],
+                                            monitoring: Monitoring,
+                                            messageQueue: String,
+                                            retryQueue: Option[RetryQueue],
+                                            storage: D,
+                                            schedules: Schedules,
+                                            timeouts: Timeouts,
+                                            retries: Retries,
+                                            readyCheck: Retries,
+                                            initRetries: Retries,
+                                            featureFlags: FeatureFlags) extends Config[D]
+
+  final case class GCP[+D <: StorageTarget](monitoring: Monitoring,
+                                            projectId: String,
+                                            subscriptionId: String,
+                                            customPubsubEndpoint: Option[String],
+                                            retryQueue: Option[RetryQueue],
+                                            storage: D,
+                                            schedules: Schedules,
+                                            timeouts: Timeouts,
+                                            retries: Retries,
+                                            readyCheck: Retries,
+                                            initRetries: Retries,
+                                            featureFlags: FeatureFlags) extends Config[D] {
+    override def jsonpaths: Option[Folder] = None
+  }
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
@@ -73,9 +96,9 @@ object Config {
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
   final case class Folders(period: FiniteDuration,
-                           staging: S3.Folder,
+                           staging: BlobStorage.Folder,
                            since: Option[FiniteDuration],
-                           transformerOutput: S3.Folder,
+                           transformerOutput: BlobStorage.Folder,
                            until: Option[FiniteDuration],
                            failBeforeAlarm: Option[Int],
                            appendStagingPath: Option[Boolean])
@@ -168,8 +191,28 @@ object Config {
     implicit val retryQueueDecoder: Decoder[RetryQueue] =
       deriveDecoder[RetryQueue]
 
+    implicit val awsConfigDecoder: Decoder[AWS[StorageTarget]] =
+      deriveDecoder[AWS[StorageTarget]]
+
+    implicit val gcpConfigDecoder: Decoder[GCP[StorageTarget]] =
+      deriveDecoder[GCP[StorageTarget]]
+
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
-      deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
+      Decoder.instance[Config[StorageTarget]] { cur =>
+        val cloudType = cur.downField("cloud")
+        cloudType.as[String].map(_.toLowerCase) match {
+          case Right("aws") =>
+            cur.as[AWS[StorageTarget]]
+          case Right("gcp") =>
+            cur.as[GCP[StorageTarget]]
+          case Right(other) =>
+            Left(DecodingFailure(s"Cloud $other is not supported yet. Supported types: 'aws', 'gcp'", cloudType.history))
+          case Left(DecodingFailure(_, List(CursorOp.DownField("cloud")))) =>
+            Left(DecodingFailure("Cannot find 'cloud' field in the config", cloudType.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }.ensure(validateConfig)
 
     implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
       deriveDecoder[FeatureFlags]

@@ -16,6 +16,7 @@ import cats.{Functor, Monad}
 import cats.implicits._
 
 import cats.effect.{Resource, Clock}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import fs2.Stream
 import fs2.concurrent.Signal
@@ -23,7 +24,6 @@ import fs2.concurrent.Signal
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
 
 /** 
@@ -88,14 +88,14 @@ case class Control[F[_]](private val state: State.Ref[F]) {
    * @return true if the folder has been added or false if folder has been dropped
    *         (too many attempts to load or too many stored failures)
    */
-  def addFailure(config: Option[Config.RetryQueue])(base: S3.Folder)(error: Throwable)(implicit C: Clock[F], F: Monad[F]): F[Boolean] =
+  def addFailure(config: Option[Config.RetryQueue])(base: BlobStorage.Folder)(error: Throwable)(implicit C: Clock[F], F: Monad[F]): F[Boolean] =
     config match {
       case Some(config) => Retries.addFailure[F](config, state)(base, error)
       case None => Monad[F].pure(false)
     }
 
   /** Remove folder from internal RetryQueue */
-  def removeFailure(base: S3.Folder): F[Unit] =
+  def removeFailure(base: BlobStorage.Folder): F[Unit] =
     state.update { original => original.copy(failures = original.failures - base) }
 
   def makePaused(implicit F: Monad[F], C: Clock[F], L: Logging[F]): MakePaused[F] =

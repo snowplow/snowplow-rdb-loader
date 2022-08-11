@@ -12,13 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import io.circe.{Encoder, Json, Decoder}
+import io.circe.{Decoder, Encoder, Json}
 import io.circe.generic.semiauto._
 import io.circe.syntax._
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 
 /** Support for the version 1 of the shredding complete message, which is now legacy.
@@ -56,7 +55,7 @@ object LegacyLoaderMessage {
    * @param timestamps set of auxiliary timestamps known to shredder
    * @param processor shredder application metadata
    */
-  final case class ShreddingComplete(base: S3.Folder,
+  final case class ShreddingComplete(base: BlobStorage.Folder,
                                      types: List[ShreddedType],
                                      timestamps: LoaderMessage.Timestamps,
                                      compression: Compression,

@@ -1,34 +1,34 @@
 /*
- * Copyright (c) 2012-2021 Snowplow Analytics Ltd. All rights reserved.
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
  *
  * This program is licensed to you under the Apache License Version 2.0,
  * and you may not use this file except in compliance with the Apache License Version 2.0.
- * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ * http://www.apache.org/licenses/LICENSE-2.0.
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the Apache License Version 2.0 is distributed on an
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ * See the Apache License Version 2.0 for the specific language governing permissions and
+ * limitations there under.
  */
-package com.snowplowanalytics.aws.sns
+package com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws
 
-import cats.effect.{Sync, Resource}
+import cats.effect.{Resource, Sync}
 import cats.implicits._
-
 import software.amazon.awssdk.regions.Region
-
 import software.amazon.awssdk.services.sns.SnsClient
 import software.amazon.awssdk.services.sns.model.PublishRequest
 
 object SNS {
 
-  def mkClient[F[_]: Sync](region: Region): Resource[F, SnsClient] =
+  def mkClient[F[_] : Sync](region: Region): Resource[F, SnsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SnsClient] {
       SnsClient.builder.region(region).build
     })
 
 
-  def sendMessage[F[_]: Sync](client: SnsClient)(topicArn: String, groupId: Option[String], message: String): F[Unit] = {
+  def sendMessage[F[_] : Sync](client: SnsClient)(topicArn: String, groupId: Option[String], message: String): F[Unit] = {
     def getRequest = {
       val builder = PublishRequest.builder()
         .topicArn(topicArn)
@@ -38,7 +38,7 @@ object SNS {
         .getOrElse(builder)
         .build()
     }
+
     Sync[F].delay(client.publish(getRequest)).void
   }
 }
-

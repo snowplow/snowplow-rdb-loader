@@ -16,7 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.processing
 
 import cats.effect.concurrent.Ref
 import cats.effect.{Clock, ContextShift, IO, Sync, Timer}
-import com.snowplowanalytics.aws.AWSQueue
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.ParsedC
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.{CliConfig, Processing, Resources}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sources.Checkpointer
@@ -55,8 +55,8 @@ object TestApplication {
     } yield res
 
 
-  private def queueFromRef(ref: Ref[IO, Vector[String]]): AWSQueue[IO] = new AWSQueue[IO] {
-    override def sendMessage(groupId: Option[String], message: String): IO[Unit] =
+  private def queueFromRef(ref: Ref[IO, Vector[String]]): Queue.Producer[IO] = new Queue.Producer[IO] {
+    override def send(groupId: Option[String], message: String): IO[Unit] =
       ref.update(_ :+ message)
   }
 

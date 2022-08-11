@@ -24,10 +24,10 @@ import com.amazonaws.services.sqs.{AmazonSQSClientBuilder, AmazonSQS}
 import com.amazonaws.services.sqs.model.SendMessageRequest
 import com.amazonaws.services.sns.{AmazonSNSClientBuilder, AmazonSNS}
 import com.amazonaws.services.sns.model.PublishRequest
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import BlobStorage.Folder
 
 object Cloud {
 
@@ -45,8 +45,8 @@ object Cloud {
       true
     )
 
-  def list(client: AmazonS3, str: S3.Folder): List[S3ObjectSummary] = {
-    val (bucket, prefix) = S3.splitS3Path(str)
+  def list(client: AmazonS3, str: BlobStorage.Folder): List[S3ObjectSummary] = {
+    val (bucket, prefix) = BlobStorage.splitPath(str)
 
     val req = new ListObjectsV2Request()
       .withBucketName(bucket)
@@ -66,8 +66,8 @@ object Cloud {
     keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList
   }
 
-  def listDirs(client: AmazonS3, f: Folder): List[S3.Folder] = {
-    val (bucket, prefix) = S3.splitS3Path(f)
+  def listDirs(client: AmazonS3, f: Folder): List[BlobStorage.Folder] = {
+    val (bucket, prefix) = BlobStorage.splitPath(f)
 
     val req = new ListObjectsV2Request()
       .withBucketName(bucket)
@@ -84,11 +84,11 @@ object Cloud {
       }
     }
 
-    keyUnfold(client.listObjectsV2(req)).map(dir => S3.Folder.coerce(s"s3://$bucket/$dir")).toList
+    keyUnfold(client.listObjectsV2(req)).map(dir => BlobStorage.Folder.coerce(s"s3://$bucket/$dir")).toList
   }
 
-  def keyExists(client: AmazonS3, key: S3.Key): Boolean = {
-    val (bucket, s3Key) = S3.splitS3Key(key)
+  def keyExists(client: AmazonS3, key: BlobStorage.Key): Boolean = {
+    val (bucket, s3Key) = BlobStorage.splitKey(key)
     client.doesObjectExist(bucket, s3Key)
   }
 

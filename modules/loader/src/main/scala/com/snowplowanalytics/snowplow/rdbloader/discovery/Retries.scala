@@ -13,21 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
-
 import scala.concurrent.duration.FiniteDuration
-
-import cats.{MonadThrow, Monad}
+import cats.{Monad, MonadThrow}
 import cats.implicits._
-
-import cats.effect.{Timer, Concurrent, Clock}
-
-import fs2.{ Stream, Pipe }
+import cats.effect.{Clock, Concurrent, Timer}
+import fs2.{Pipe, Stream}
 import fs2.concurrent.InspectableQueue
-
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, AWS, Cache, FolderMonitoring}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, FolderMonitoring, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
 
@@ -55,11 +52,11 @@ object Retries {
    * to avoid infinite loading, where a problematic folders gets back
    * into queue again and again
    */
-  type Failures = Map[S3.Folder, LoadFailure]
+  type Failures = Map[BlobStorage.Folder, LoadFailure]
 
-  type RetryQueue[F[_]] = InspectableQueue[F, S3.Folder]
+  type RetryQueue[F[_]] = InspectableQueue[F, BlobStorage.Folder]
 
-  implicit val folderOrdering: Ordering[S3.Folder] =
+  implicit val folderOrdering: Ordering[BlobStorage.Folder] =
     Ordering[String].on(_.toString)
 
   /**
@@ -98,38 +95,36 @@ object Retries {
    * they can be re-sent into SQS as well as re-pulled by retry stream.
    * It's expected that DB manifest handles such duplicates
    */
-  def run[F[_]: AWS: Cache: Logging: Timer: Concurrent](region: String, assets: Option[S3.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
+  def run[F[_]: BlobStorage: Cache: Logging: Timer: Concurrent: JsonPathDiscovery](assets: Option[BlobStorage.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
     config match {
       case Some(config) =>
         Stream
-          .eval(InspectableQueue.bounded[F, S3.Folder](config.size))
-          .flatMap(get[F](region, assets, config, failures))
+          .eval(InspectableQueue.bounded[F, BlobStorage.Folder](config.size))
+          .flatMap(get[F](assets, config, failures))
       case None =>
         Stream.empty
     }
 
-  def get[F[_]: AWS: Cache: Logging: Timer: MonadThrow](region: String,
-                                                        assets: Option[S3.Folder],
-                                                        config: Config.RetryQueue,
-                                                        failures: F[Failures])
-                                                       (queue: RetryQueue[F]): DiscoveryStream[F] = {
+  def get[F[_]: BlobStorage: Cache: Logging: Timer: MonadThrow: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
+                                                                                   config: Config.RetryQueue,
+                                                                                   failures: F[Failures])
+                                                                                  (queue: RetryQueue[F]): DiscoveryStream[F] = {
     Stream
       .awakeDelay[F](config.period)
       .evalTap { _ => pullFailures[F](config.size, queue, failures) }
-      .flatMap { _ => periodicDequeue[F, S3.Folder](queue, config.interval) }
-      .through(readMessages[F](region, assets))
+      .flatMap { _ => periodicDequeue[F, BlobStorage.Folder](queue, config.interval) }
+      .through(readMessages[F](assets))
   }
 
   /** Confert S3 paths to respective discoveries */
-  def readMessages[F[_]: AWS: Cache: Logging: MonadThrow](region: String,
-                                                          assets: Option[S3.Folder]): Pipe[F, S3.Folder, DataDiscovery.WithOrigin] =
+  def readMessages[F[_]: BlobStorage: Cache: Logging: MonadThrow: JsonPathDiscovery](assets: Option[BlobStorage.Folder]): Pipe[F, BlobStorage.Folder, DataDiscovery.WithOrigin] =
     folders => folders
       .evalMap(readShreddingComplete[F])
-      .evalMapFilter(fromLoaderMessage[F](region, assets))
+      .evalMapFilter(fromLoaderMessage[F](assets))
 
-  def fromLoaderMessage[F[_]: Monad: AWS: Cache: Logging](region: String, assets: Option[S3.Folder])
-                                                         (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
-    DataDiscovery.fromLoaderMessage[F](region, assets, message).value.flatMap {
+  def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: JsonPathDiscovery](assets: Option[BlobStorage.Folder])
+                                                           (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
+    DataDiscovery.fromLoaderMessage[F](assets, message).value.flatMap {
       case _ if DataDiscovery.isEmpty(message) =>
         Logging[F].warning(s"Empty folder ${message.base} re-discovered in failure manifest. It might signal about corrupted S3").as(none)
       case Right(discovery) =>
@@ -172,7 +167,7 @@ object Retries {
    * @return true if the folder has been added or false if folder has been dropped
    *         (too many attempts to load or too many stored failures)
    */
-  def addFailure[F[_]: Clock: Monad](config: Config.RetryQueue, state: State.Ref[F])(base: S3.Folder, error: Throwable): F[Boolean] =
+  def addFailure[F[_]: Clock: Monad](config: Config.RetryQueue, state: State.Ref[F])(base: BlobStorage.Folder, error: Throwable): F[Boolean] =
     Clock[F].instantNow.flatMap { now =>
       state.modify { original =>
         if (original.failures.size >= config.size) (original, false)
@@ -192,9 +187,9 @@ object Retries {
       }
     }
 
-  def readShreddingComplete[F[_]: AWS: MonadThrow](folder: S3.Folder): F[LoaderMessage.ShreddingComplete] = {
+  def readShreddingComplete[F[_]: BlobStorage: MonadThrow](folder: BlobStorage.Folder): F[LoaderMessage.ShreddingComplete] = {
     val fullPath = folder.withKey(FolderMonitoring.ShreddingComplete)
-    AWS[F]
+    BlobStorage[F]
       .readKey(fullPath)
       .flatMap {
         case Right(content) =>

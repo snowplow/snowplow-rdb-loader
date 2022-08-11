@@ -13,25 +13,24 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
-
 import cats.Parallel
 import cats.implicits._
-
 import cats.effect.concurrent.Ref
-import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
-
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import doobie.ConnectionIO
-
 import org.http4s.client.blaze.BlazeClientBuilder
-
-import io.sentry.{SentryClient, Sentry, SentryOptions}
-
+import io.sentry.{Sentry, SentryClient, SentryOptions}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config}
+import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.GCP
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 
 /** Container for most of interepreters to be used in Main
@@ -41,7 +40,10 @@ class Environment[F[_]](cache: Cache[F],
                         logging: Logging[F],
                         monitoring: Monitoring[F],
                         iglu: Iglu[F],
-                        aws: AWS[F],
+                        blobStorage: BlobStorage[F],
+                        queueConsumer: Queue.Consumer[F],
+                        loadAuthService: LoadAuthService[F],
+                        jsonPathDiscovery: JsonPathDiscovery[F],
                         transaction: Transaction[F, ConnectionIO],
                         state: State.Ref[F],
                         target: Target,
@@ -50,7 +52,10 @@ class Environment[F[_]](cache: Cache[F],
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
-  implicit val awsF: AWS[F] = aws
+  implicit val blobStorageF: BlobStorage[F] = blobStorage
+  implicit val queueConsumerF: Queue.Consumer[F] = queueConsumer
+  implicit val loadAuthServiceF: LoadAuthService[F] = loadAuthService
+  implicit val jsonPathDiscoveryF: JsonPathDiscovery[F] = jsonPathDiscovery
   implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
@@ -65,9 +70,15 @@ object Environment {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
+  case class CloudServices[F[_]](blobStorage: BlobStorage[F],
+                                 queueConsumer: Queue.Consumer[F],
+                                 loadAuthService: LoadAuthService[F],
+                                 jsonPathDiscovery: JsonPathDiscovery[F])
+
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
+      implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
@@ -75,18 +86,29 @@ object Environment {
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
-      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[S3.Key]]](Map.empty))
-      amazonS3 <- Resource.eval(AWS.getClient[F](cli.config.region.name))
-      cache = Cache.cacheInterpreter[F](cacheMap)
+      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
+      implicit0(cache: Cache[F]) = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility, cli.config.region.name)
+      cloudServices <- createCloudServices(cli.config, blocker)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
-
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
+    } yield new Environment[F](
+      cache,
+      logging,
+      monitoring,
+      iglu,
+      cloudServices.blobStorage,
+      cloudServices.queueConsumer,
+      cloudServices.loadAuthService,
+      cloudServices.jsonPathDiscovery,
+      transaction,
+      state,
+      statementer,
+      cli.config.timeouts
+    )
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
@@ -102,4 +124,25 @@ object Environment {
       case None =>
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
+
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker): Resource[F, CloudServices[F]] =
+    config match {
+      case c: Config.AWS[StorageTarget] =>
+        for {
+          s3Client <- Resource.eval(AWS.getS3Client[F](c.region.name))
+          implicit0(blobStorage: BlobStorage[F]) = AWS.blobStorage[F](s3Client)
+          queueConsumer = AWS.queueConsumer[F](c.messageQueue, c.timeouts.sqsVisibility, c.region.name)
+          loadAuthService <- LoadAuthService.aws[F](c.storage.loadAuthMethod, c.region.name, c.timeouts.loading)
+          jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
+      case c: Config.GCP[StorageTarget] =>
+        for {
+          loadAuthService <- LoadAuthService.noop[F]
+          jsonPathDiscovery = JsonPathDiscovery.noop[F]
+          gcsClient = GCP.getGcsClient(blocker)
+          implicit0(blobStorage: BlobStorage[F]) = GCP.blobStorage(gcsClient)
+          queueConsumer <- GCP.queueConsumer[F](blocker, c.projectId, c.subscriptionId, c.customPubsubEndpoint)
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
+    }
+
 }

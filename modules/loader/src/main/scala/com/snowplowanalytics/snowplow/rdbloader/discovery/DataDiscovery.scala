@@ -14,12 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats._
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
@@ -31,7 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.state.State
   * @param base transformed run folder full path
   * @param shreddedTypes list of shredded types in this directory
   */
-case class DataDiscovery(base: S3.Folder,
+case class DataDiscovery(base: BlobStorage.Folder,
                          shreddedTypes: List[ShreddedType],
                          compression: Compression,
                          typesInfo: TypesInfo) {
@@ -72,13 +74,13 @@ object DataDiscovery {
    *
    * @param config generic storage target configuration
    */
-  def discover[F[_]: MonadThrow: AWS: Cache: Logging](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
-    AWS[F]
-      .readSqs(config.messageQueue, stop)
+  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
+    Queue.Consumer[F]
+      .read(stop)
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle[F](config.region.name, config.jsonpaths, parsed)
+            handle[F](config.jsonpaths, parsed)
           case Left(error) =>
             logAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError)
         }
@@ -97,10 +99,9 @@ object DataDiscovery {
    * @param message payload coming from transformer
    * @tparam F effect type to perform AWS interactions
    */
-  def handle[F[_]: MonadThrow: AWS: Cache: Logging](region: String,
-                                                    assets: Option[S3.Folder],
-                                                    message: LoaderMessage.ShreddingComplete): F[Option[WithOrigin]] =
-    fromLoaderMessage[F](region, assets, message)
+  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
+                                                                               message: LoaderMessage.ShreddingComplete): F[Option[WithOrigin]] =
+    fromLoaderMessage[F](assets, message)
       .value
       .flatMap[Option[WithOrigin]] {
         case Right(_) if isEmpty(message) =>
@@ -116,16 +117,14 @@ object DataDiscovery {
   /**
    * Convert `ShreddingComplete` message coming from shredder into
    * actionable `DataDiscovery`
-   * @param region AWS region to discover JSONPaths
    * @param assets optional bucket with custo mJSONPaths
    * @param message payload coming from shredder
    * @tparam F effect type to perform AWS interactions
    */
-  def fromLoaderMessage[F[_]: Monad: Cache: AWS](region: String,
-                                                 assets: Option[S3.Folder],
-                                                 message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
+  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
+                                                                            message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
     val types = ShreddedType
-      .fromCommon[F](message.base, region, assets, message.typesInfo)
+      .fromCommon[F](message.base, assets, message.typesInfo)
       .map { steps =>
         LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
       }

@@ -12,28 +12,22 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{ZoneId, Instant, ZoneOffset}
-import java.time.format.{ DateTimeFormatter, DateTimeParseException }
+import java.time.{Instant, ZoneId, ZoneOffset}
+import java.time.format.{DateTimeFormatter, DateTimeParseException}
 import java.util.concurrent.TimeUnit
-
 import scala.concurrent.duration._
-
-import cats.{Functor, Applicative, Monad, MonadThrow}
+import cats.{Applicative, Functor, Monad, MonadThrow}
 import cats.implicits._
-
-import cats.effect.{Timer, Sync, Concurrent, ContextShift}
-import cats.effect.concurrent.{ Ref, Semaphore }
-
+import cats.effect.{Concurrent, ContextShift, Sync, Timer}
+import cats.effect.concurrent.{Ref, Semaphore}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import doobie.util.Get
-
 import fs2.Stream
 import fs2.text.utf8Encode
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 
@@ -53,8 +47,8 @@ object FolderMonitoring {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  implicit val s3FolderGet: Get[S3.Folder] =
-    Get[String].temap(S3.Folder.parse)
+  implicit val s3FolderGet: Get[BlobStorage.Folder] =
+    Get[String].temap(BlobStorage.Folder.parse)
 
   private val TimePattern: String =
     "yyyy-MM-dd-HH-mm-ss"
@@ -78,7 +72,7 @@ object FolderMonitoring {
    *            (no trailing slash); keys of a wrong format won't be filtered out
    * @return false if folder is old enough, true otherwise
    */
-  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: S3.Folder): Boolean = {
+  def isRecent(since: Option[FiniteDuration], until: Option[FiniteDuration], now: Instant)(folder: BlobStorage.Folder): Boolean = {
     val noRunPrefix = folder.folderName.stripPrefix("run=")
     val dateOnly = noRunPrefix.take(TimePattern.length)
     
@@ -111,16 +105,16 @@ object FolderMonitoring {
    * @param output temp staging path to store the list
    * @return whether the list was non-empty (true) or empty (false)
    */
-  def sinkFolders[F[_]: Sync: Timer: Logging: AWS](since: Option[FiniteDuration], until: Option[FiniteDuration], input: S3.Folder, output: S3.Folder): F[Boolean] =
+  def sinkFolders[F[_]: Sync: Timer: Logging: BlobStorage](since: Option[FiniteDuration], until: Option[FiniteDuration], input: BlobStorage.Folder, output: BlobStorage.Folder): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
       Stream.eval(Timer[F].clock.instantNow).flatMap { now =>
-        AWS[F].listS3(input, recursive = false)
-          .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) S3.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
+        BlobStorage[F].listBlob(input, recursive = false)
+          .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) BlobStorage.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
           .filter(isRecent(since, until, now))
           .evalTap(_ => ref.update(size => size + 1))
           .intersperse("\n")
           .through(utf8Encode[F])
-          .through(AWS[F].sinkS3(output.withKey("keys"), true))
+          .through(BlobStorage[F].sinkBlob(output.withKey("keys"), true))
           .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
       }.compile.drain *> ref.get.map(size => size != 0)
     }
@@ -136,8 +130,8 @@ object FolderMonitoring {
    * @return same list of folders with attached `true` if the folder has `shredding_complete.json`
    *         thus processed, but unloaded and `false` if shredder hasn't been fully processed
    */
-  def checkShreddingComplete[F[_]: Applicative: AWS](folders: List[S3.Folder]): F[List[(S3.Folder, Boolean)]] =
-    folders.traverse(folder => AWS[F].keyExists(folder.withKey(ShreddingComplete)).tupleLeft(folder))
+  def checkShreddingComplete[F[_]: Applicative: BlobStorage](folders: List[BlobStorage.Folder]): F[List[(BlobStorage.Folder, Boolean)]] =
+    folders.traverse(folder => BlobStorage[F].keyExists(folder.withKey(ShreddingComplete)).tupleLeft(folder))
 
   /**
    * List all folders in `loadFrom`, load the list into temporary Redshift table and check
@@ -146,8 +140,8 @@ object FolderMonitoring {
    * @param loadFrom list shredded folders
    * @return potentially empty list of alerts
    */
-  def check[F[_]: MonadThrow: AWS: Transaction[*[_], C]: Timer: Logging,
-            C[_]: DAO: Monad](loadFrom: S3.Folder,
+  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging,
+            C[_]: DAO: Monad](loadFrom: BlobStorage.Folder,
                               readyCheck: Config.Retries,
                               storageTarget: StorageTarget,
                               loadAuthMethod: LoadAuthMethod): F[List[AlertPayload]] = {
@@ -155,7 +149,7 @@ object FolderMonitoring {
       _                 <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
       _                 <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
       _                 <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod), DAO.Purpose.NonLoading)
-      onlyS3Batches     <- DAO[C].executeQueryList[S3.Folder](FoldersMinusManifest)
+      onlyS3Batches     <- DAO[C].executeQueryList[BlobStorage.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 
     for {
@@ -169,7 +163,7 @@ object FolderMonitoring {
   }
 
   /** Get stream of S3 folders emitted with configured interval */
-  def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, S3.Folder] = {
+  def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, BlobStorage.Folder] = {
     val getKey = Timer[F]
       .clock
       .realTime(TimeUnit.MILLISECONDS)
@@ -193,16 +187,14 @@ object FolderMonitoring {
    * If some configurations are not provided - just prints a warning.
    * Resulting stream has to be running in background.
    */
-  def run[F[_]: Concurrent: Timer: AWS: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
+  def run[F[_]: Concurrent: Timer: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
           C[_]: DAO: Monad](foldersCheck: Option[Config.Folders],
                             readyCheck: Config.Retries,
                             storageTarget: StorageTarget,
-                            timeouts: Config.Timeouts,
-                            region: String,
                             isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C](folders, readyCheck, storageTarget, timeouts, region, isBusy)
+        stream[F, C](folders, readyCheck, storageTarget, isBusy)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -215,12 +207,10 @@ object FolderMonitoring {
    * @param readyCheck configuration for target ready check
    * @param isBusy discrete stream signalling when folders monitoring should not work
    */
-  def stream[F[_]: Transaction[*[_], C]: Concurrent: Timer: AWS: Logging: Monitoring: MonadThrow: ContextShift,
+  def stream[F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
              C[_]: DAO: Monad](folders: Config.Folders,
                                readyCheck: Config.Retries,
                                storageTarget: StorageTarget,
-                               timeouts: Config.Timeouts,
-                               region: String,
                                isBusy: Stream[F, Boolean]): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
@@ -232,7 +222,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                       for {
-                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.loadAuthMethod, region, timeouts.loading)
+                        loadAuth <- LoadAuthService[F].getLoadAuthMethod
                         alerts   <- check[F, C](outputFolder, readyCheck, storageTarget, loadAuth)
                         _        <- alerts.traverse_ { payload =>
                           val warn = payload.base match {
