@@ -1,4 +1,6 @@
 {
+  # Specifies the cloud provider that application will be deployed into
+  "cloud": "aws"
   # Data Lake (S3) region
   # This field is optional if it can be resolved with AWS region provider chain.
   # It checks places like env variables, system properties, AWS profile file.

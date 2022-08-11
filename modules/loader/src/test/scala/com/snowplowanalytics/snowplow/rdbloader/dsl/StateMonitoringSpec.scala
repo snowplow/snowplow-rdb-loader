@@ -19,13 +19,12 @@ import cats.implicits._
 
 import cats.effect.{ContextShift, Timer, IO, Resource }
 import cats.effect.concurrent.Ref
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 import cats.effect.laws.util.TestContext
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import org.specs2.mutable.Specification
 
@@ -45,7 +44,7 @@ class StateMonitoringSpec extends Specification {
 
     "return an error message if state remains MigrationIn" in {
       val setMigrationIn: State => State =
-        state => state.copy(loading = Load.Status.Loading(S3.Folder.coerce("s3://folder"), Stage.MigrationIn))
+        state => state.copy(loading = Load.Status.Loading(BlobStorage.Folder.coerce("s3://folder"), Stage.MigrationIn))
       val (error, _) = StateMonitoringSpec.checkRun(setMigrationIn)
 
       error must beSome("Loader is stuck. Ongoing processing of s3://folder/ at in-transaction migrations. Spent 15 minutes at this stage")
@@ -56,7 +55,7 @@ class StateMonitoringSpec extends Specification {
     "abort long-running process if stuck in MigrationBuild" in {
       val (error, _, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
-          state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
+          state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
             timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 3)
       } 
 
@@ -67,7 +66,7 @@ class StateMonitoringSpec extends Specification {
     "not abort a process if it exits on its own before timeout" in {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
-          state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
+          state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
             timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
       }
 
@@ -82,7 +81,7 @@ class StateMonitoringSpec extends Specification {
     "not abort a process if it changes the state" in {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
-          state.update(_.start(S3.Folder.coerce("s3://folder"))) *>
+          state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
             timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2) *>
             state.update(StateMonitoringSpec.setStage(Stage.MigrationPre)) *>
             timer.clock.instantNow.flatMap(now => state.update(_.copy(updated = now))) *>

@@ -26,8 +26,7 @@ import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 
 import com.snowplowanalytics.iglu.client.Client
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
@@ -41,7 +40,7 @@ class MonitoringSpec extends Specification {
 
       val payload = AlertPayload(
         BuildInfo.version,
-        Some(S3.Folder.coerce("s3://acme/folder/")),
+        Some(BlobStorage.Folder.coerce("s3://acme/folder/")),
         AlertPayload.Severity.Warning,
         "Some error",
         Map("pipeline" -> "dev1")

@@ -25,7 +25,8 @@ import org.http4s.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
-import com.snowplowanalytics.snowplow.rdbloader.common.{RegionSpec, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 
 import cron4s.Cron
@@ -81,13 +82,13 @@ class ConfigSpec extends Specification {
 
 object ConfigSpec {
   val exampleRegion = Region("us-east-1")
-  val exampleJsonPaths = Some(S3.Folder.coerce("s3://bucket/jsonpaths/"))
+  val exampleJsonPaths = Some(BlobStorage.Folder.coerce("s3://bucket/jsonpaths/"))
   val exampleMonitoring = Config.Monitoring(
     Some(Config.SnowplowMonitoring("redshift-loader","snplow.acme.com")),
     Some(Config.Sentry(URI.create("http://sentry.acme.com"))),
     Config.Metrics(Some(Config.StatsD("localhost", 8125, Map("app" -> "rdb-loader"), None)), Some(Config.Stdout(None)), 5.minutes),
     Some(Config.Webhook(uri"https://webhook.acme.com", Map("pipeline" -> "production"))),
-    Some(Config.Folders(1.hour, S3.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), S3.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3), None)),
+    Some(Config.Folders(1.hour, BlobStorage.Folder.coerce("s3://acme-snowplow/loader/logs/"), Some(14.days), BlobStorage.Folder.coerce("s3://acme-snowplow/loader/transformed/"), Some(7.days), Some(3), None)),
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
   val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
@@ -134,7 +135,7 @@ object ConfigSpec {
   val exampleTempCreds =  StorageTarget.LoadAuthMethod.TempCreds("test_role_arn", "test_role_session_name")
   val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn =  true)
-  val exampleConfig = Config(
+  val exampleConfig = Config.AWS(
     exampleRegion,
     None,
     exampleMonitoring,

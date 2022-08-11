@@ -21,13 +21,13 @@ import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.S3._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import BlobStorage._
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
@@ -300,7 +300,7 @@ object Snowflake {
         Fragment.const0(s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')")
     }
 
-  private def findPathAfterStage(stage: StorageTarget.Snowflake.Stage, pathToLoad: S3.Folder): String =
+  private def findPathAfterStage(stage: StorageTarget.Snowflake.Stage, pathToLoad: BlobStorage.Folder): String =
     stage.location match {
       case Some(loc) => pathToLoad.diff(loc) match {
         case Some(diff) => diff

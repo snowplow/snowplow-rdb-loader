@@ -21,8 +21,8 @@ import cats.effect.laws.util.TestContext
 import cats.implicits._
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, TransformerConfig}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.{PeriodicMetrics, KVMetric}
 
 class MetricsSpec extends Specification {
@@ -46,7 +46,7 @@ class MetricsSpec extends Specification {
       val shredderEndLatency = 10L
 
       val loaded = ShreddingComplete(
-        S3.Folder.coerce("s3://shredded/run_id/"),
+        BlobStorage.Folder.coerce("s3://shredded/run_id/"),
         TypesInfo.Shredded(Nil),
         Timestamps(
           jobStarted = now.minusSeconds(shredderStartLatency),

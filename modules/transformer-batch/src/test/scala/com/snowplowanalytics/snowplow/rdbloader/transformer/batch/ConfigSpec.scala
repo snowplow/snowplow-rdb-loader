@@ -104,17 +104,17 @@ class ConfigSpec extends Specification {
 object TransformerConfigSpec {
   val exampleBatchInput = URI.create("s3://bucket/input/")
   val exampleWindowPeriod = 10.minutes
-  val exampleOutput = TransformerConfig.Output(
+  val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
     Region("eu-central-1")
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
-  val exampleSQSConfig = TransformerConfig.QueueConfig.SQS(
+  val exampleSQSConfig = Config.QueueConfig.SQS(
     "test-sqs",
     Region("eu-central-1")
   )
-  val exampleSNSConfig = TransformerConfig.QueueConfig.SNS(
+  val exampleSNSConfig = Config.QueueConfig.SNS(
     "arn:aws:sns:eu-central-1:123456789:test-sns-topic",
     RegionSpec.DefaultTestRegion
   )

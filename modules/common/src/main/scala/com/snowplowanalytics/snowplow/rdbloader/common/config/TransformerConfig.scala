@@ -29,9 +29,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 
 object TransformerConfig {
 
-
-  final case class Output(path: URI, compression: Compression, region: Region)
-
   sealed trait Compression extends StringEnum
   object Compression {
     final case object None extends Compression { val asString = "NONE" }
@@ -42,13 +39,6 @@ object TransformerConfig {
 
     implicit val compressionConfigEncoder: Encoder[Compression] =
       Encoder.instance(_.toString.toUpperCase.asJson)
-  }
-
-
-  sealed trait QueueConfig extends Product with Serializable
-  object QueueConfig {
-    final case class SNS(topicArn: String, region: Region) extends QueueConfig
-    final case class SQS(queueName: String, region: Region) extends QueueConfig
   }
 
   sealed trait Formats extends Product with Serializable
@@ -170,35 +160,7 @@ object TransformerConfig {
    * All config implicits are put into trait because we want to make region decoder
    * replaceable to write unit tests for config parsing.
    */
-  trait Decoders extends RegionDecodable {
-
-    implicit val outputConfigDecoder: Decoder[Output] =
-      deriveDecoder[Output]
-
-    implicit val queueConfigDecoder: Decoder[QueueConfig] =
-      Decoder.instance { cur =>
-        val typeCur = cur.downField("type")
-        typeCur.as[String].map(_.toLowerCase) match {
-          case Right("sns") =>
-            cur.as[QueueConfig.SNS]
-          case Right("sqs") =>
-            cur.as[QueueConfig.SQS]
-          case Right(other) =>
-            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS' and 'SQS'", typeCur.history))
-          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
-            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
-          case Left(other) =>
-            Left(other)
-        }
-      }
-
-    implicit val snsConfigDecoder: Decoder[QueueConfig.SNS] =
-      deriveDecoder[QueueConfig.SNS]
-
-    implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
-      deriveDecoder[QueueConfig.SQS]
-
-  }
+  trait Decoders extends RegionDecodable
 
   def formatsCheck(formats: Formats): Either[String, Formats] =
     formats match {

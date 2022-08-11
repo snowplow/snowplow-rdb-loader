@@ -12,24 +12,23 @@
 
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3._
-
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import org.specs2.mutable.{Specification, Tables}
 
 class S3Spec extends Specification with Tables {
   "S3.Folder.parse()" should {
     "support s3:// prefix" >> {
       val folder = "s3://foo/"
-      S3.Folder.parse(folder) must beRight
+      BlobStorage.Folder.parse(folder) must beRight
     }
     "support s3a:// prefix" >> {
       val folder = "s3a://foo/"
-      S3.Folder.parse(folder) must beRight
+      BlobStorage.Folder.parse(folder) must beRight
     }
     "support s3n:// prefix" >> {
       val folder = "s3n://foo/"
-      S3.Folder.parse(folder) must beRight
+      BlobStorage.Folder.parse(folder) must beRight
     }
   }
 
@@ -44,7 +43,7 @@ class S3Spec extends Specification with Tables {
       "s3://path1/path2/path3/runs/run_id/path4" !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
       "s3://path1/path2/path4"                   !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
       { (parent, sub, diff) =>
-        S3.Folder.coerce(sub).diff(S3.Folder.coerce(parent)) must beEqualTo(diff)
+        BlobStorage.Folder.coerce(sub).diff(BlobStorage.Folder.coerce(parent)) must beEqualTo(diff)
       }
     }
   }

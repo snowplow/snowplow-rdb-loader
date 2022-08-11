@@ -13,18 +13,15 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import java.time.Instant
-
 import io.circe.Json
 import io.circe.literal._
 import io.circe.syntax._
 import io.circe.parser.parse
-
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
-
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import org.specs2.mutable.Specification
 
 class LoaderMessageSpec extends Specification {
@@ -139,7 +136,7 @@ object LoaderMessageSpec {
     }
   }"""
 
-  val base = S3.Folder.coerce("s3://bucket/folder/")
+  val base = BlobStorage.Folder.coerce("s3://bucket/folder/")
   val timestamps = LoaderMessage.Timestamps(
     Instant.ofEpochMilli(1600342341145L),
     Instant.ofEpochMilli(1600342341145L),

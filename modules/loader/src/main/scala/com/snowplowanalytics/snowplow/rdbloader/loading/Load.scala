@@ -21,10 +21,10 @@ import cats.effect.{Timer, Clock}
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget }
 import com.snowplowanalytics.snowplow.rdbloader.db.{ Control, Migration, Manifest }
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Iglu, Transaction, Logging, Monitoring, DAO}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
@@ -45,9 +45,9 @@ object Load {
     /** Loader is artificially paused, e.g. by no-op schedule */
     final case class Paused(owner: String) extends Status
     /** Loader is already loading a folder */
-    final case class Loading(folder: S3.Folder, stage: Stage) extends Status
+    final case class Loading(folder: BlobStorage.Folder, stage: Stage) extends Status
 
-    def start(folder: S3.Folder): Status =
+    def start(folder: BlobStorage.Folder): Status =
       Status.Loading(folder, Stage.MigrationBuild)
 
     implicit val stateShow: Show[Status] =
