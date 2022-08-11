@@ -17,10 +17,9 @@ import java.time.Instant
 import cats.implicits._
 
 import cats.effect.{Concurrent, Clock}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import fs2.concurrent.SignallingRef
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.InstantOps
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Idle
@@ -51,7 +50,7 @@ case class State(loading: Load.Status,
                  messages: Int) {
 
   /** Start loading a folder */
-  def start(folder: S3.Folder): State = {
+  def start(folder: BlobStorage.Folder): State = {
     val attempts = failures.get(folder).map(_.attempts).getOrElse(0)
     this.copy(loading = Load.Status.start(folder), attempts = attempts)
   }

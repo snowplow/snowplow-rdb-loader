@@ -24,9 +24,8 @@ import doobie.implicits.javasql._
 import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
 import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, Config}
@@ -65,11 +64,11 @@ package object rdbloader {
   /** Single discovery step */
   type DiscoveryAction[F[_], A] = F[DiscoveryStep[A]]
 
-  implicit val putFolder: Put[S3.Folder] =
+  implicit val putFolder: Put[BlobStorage.Folder] =
     Put[String].tcontramap(_.toString)
 
-  implicit val getFolder: Get[S3.Folder] =
-    Get[String].temap(S3.Folder.parse)
+  implicit val getFolder: Get[BlobStorage.Folder] =
+    Get[String].temap(BlobStorage.Folder.parse)
 
   implicit val getCompression: Get[Compression] =
     Get[String].temap(str => StringEnum.fromString[Compression](str))
@@ -77,7 +76,7 @@ package object rdbloader {
   implicit val getListManifestType: Get[List[ManifestType]] =
     Get[String].temap(str => parse(str).flatMap(_.as[List[ManifestType]]).leftMap(_.show))
 
-  implicit val putKey: Put[S3.Key] =
+  implicit val putKey: Put[BlobStorage.Key] =
     Put[String].tcontramap(_.toString)
 
   implicit val putCompression: Put[Compression] =

@@ -13,11 +13,10 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.effect.Resource
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 package object state {
-  type MakeBusy[F[_]] = S3.Folder => Resource[F, Unit]
+  type MakeBusy[F[_]] = BlobStorage.Folder => Resource[F, Unit]
 
   type MakePaused[F[_]] = String => Resource[F, Unit]
 }

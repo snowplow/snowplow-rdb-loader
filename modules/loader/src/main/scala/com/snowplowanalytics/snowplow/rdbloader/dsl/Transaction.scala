@@ -26,8 +26,8 @@ import doobie.util.transactor.Strategy
 import doobie.hikari._
 
 import java.sql.SQLException
-
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
 
 /**
@@ -91,7 +91,7 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: Async: ContextShift: Timer: AWS](
+  def buildPool[F[_]: Async: ContextShift: Timer: SecretStore](
     target: StorageTarget,
     blocker: Blocker
   ): Resource[F, Transactor[F]] =
@@ -100,8 +100,8 @@ object Transaction {
       password <- target.password match {
         case StorageTarget.PasswordConfig.PlainText(text) =>
           Resource.pure[F, String](text)
-        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-          Resource.eval(AWS[F].getEc2Property(key.parameterName).map(b => new String(b)))
+        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
+          Resource.eval(SecretStore[F].getValue(parameterName))
       }
       xa <- HikariTransactor
         .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
@@ -119,7 +119,7 @@ object Transaction {
    * which guarantees to close a JDBC connection.
    * If connection could not be acquired, it will retry several times according to `retryPolicy`
    */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: AWS](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
+  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: SecretStore](target: StorageTarget, blocker: Blocker): Resource[F, Transaction[F, ConnectionIO]] =
     buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
 
   /**

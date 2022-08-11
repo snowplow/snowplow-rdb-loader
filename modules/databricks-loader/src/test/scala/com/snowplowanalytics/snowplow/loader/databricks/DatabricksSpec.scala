@@ -14,15 +14,15 @@ package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.data.NonEmptyList
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.PARQUET
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 
 import scala.concurrent.duration.DurationInt
 import org.specs2.mutable.Specification
@@ -116,15 +116,10 @@ class DatabricksSpec extends Specification {
 
 object DatabricksSpec {
 
-  val baseFolder: S3.Folder =
-    S3.Folder.coerce("s3://somewhere/path")
+  val baseFolder: BlobStorage.Folder =
+    BlobStorage.Folder.coerce("s3://somewhere/path")
 
   val target: Target = Databricks.build(Config(
-    Region("eu-central-1"),
-    None,
-    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
-    "my-queue.fifo",
-    None,
     StorageTarget.Databricks(
       "host",
       None,
@@ -136,6 +131,13 @@ object DatabricksSpec {
       "useragent",
       StorageTarget.LoadAuthMethod.NoCreds
     ),
+    Config.Cloud.AWS(
+      Region("eu-central-1"),
+      Config.Cloud.AWS.SQS("my-queue.fifo"),
+    ),
+    None,
+    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
+    None,
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),

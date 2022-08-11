@@ -1,0 +1,22 @@
+{
+  "messageQueue": {
+    "type": "pubsub"
+    "subscription": "projects/project-id/subscriptions/subscription-id"
+  },
+  "storage" : {
+    "type": "snowflake",
+
+    "snowflakeRegion": "us-west-2",
+    "username": "admin",
+    "password": "Supersecret1",
+    "account": "acme",
+    "warehouse": "wh",
+    "schema": "atomic",
+    "database": "snowplow",
+
+    "transformedStage": {
+      "name": "snowplow_stage"
+      "location": "gs://bucket/transformed/"
+    }
+  }
+}

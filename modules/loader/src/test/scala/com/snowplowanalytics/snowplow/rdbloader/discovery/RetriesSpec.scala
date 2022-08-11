@@ -15,12 +15,12 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import scala.concurrent.duration._
 
 import cats.effect.{ IO, Clock, ContextShift }
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import fs2.concurrent.InspectableQueue
 
 import com.snowplowanalytics.snowplow.rdbloader.state.{ State, Control }
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
@@ -37,7 +37,7 @@ class RetriesSpec extends Specification {
   "addFailure" should {
     "create a new failure in global failures store" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
-      val folder = S3.Folder.coerce("s3://bucket/1/")
+      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom")
 
       val result = for {
@@ -61,7 +61,7 @@ class RetriesSpec extends Specification {
 
     "update an existing failure" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
-      val folder = S3.Folder.coerce("s3://bucket/1/")
+      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom two")
 
       val result = for {
@@ -88,7 +88,7 @@ class RetriesSpec extends Specification {
 
     "drop a failure if it reached max attempts" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
-      val folder = S3.Folder.coerce("s3://bucket/1/")
+      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom final")
 
       val result = for {
@@ -110,7 +110,7 @@ class RetriesSpec extends Specification {
 
     "not interfere with addFailure" in {    // It's been a case in previous RCs
       val config = Config.RetryQueue(NotImportantDuration, 10, 20, NotImportantDuration)
-      val folder = S3.Folder.coerce("s3://bucket/1/")
+      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
       val error = new RuntimeException("boom final")
       val Attempts = 10
 
@@ -137,8 +137,8 @@ class RetriesSpec extends Specification {
 
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
       val Size = 10
-      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
+      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
 
       implicit val T = IO.timer(concurrent.ExecutionContext.global)
@@ -149,7 +149,7 @@ class RetriesSpec extends Specification {
       ))
 
       val result = for {
-        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+        q          <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
 
         _          <- q.enqueue1(FolderTwo)
         _          <- Retries.pullFailures[IO](Size, q, getFailures)
@@ -168,8 +168,8 @@ class RetriesSpec extends Specification {
     "pull all items" in {
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
       val Size = 10
-      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
+      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
       implicit val T = IO.timer(concurrent.ExecutionContext.global)
       implicit val L = Logging.noOp[IO]
@@ -180,7 +180,7 @@ class RetriesSpec extends Specification {
       ))
 
       val result = for {
-        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+        q          <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
 
         _          <- Retries.pullFailures[IO](Size, q, getFailures)
         sizeBefore <- q.getSize
@@ -198,10 +198,10 @@ class RetriesSpec extends Specification {
     "not block if max is the same as of queue capacity" in {
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
       val Size = 3
-      val FolderOne = S3.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = S3.Folder.coerce("s3://bucket/2/")
-      val FolderThree = S3.Folder.coerce("s3://bucket/3/")
-      val FolderFour = S3.Folder.coerce("s3://bucket/4/")
+      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
+      val FolderThree = BlobStorage.Folder.coerce("s3://bucket/3/")
+      val FolderFour = BlobStorage.Folder.coerce("s3://bucket/4/")
 
       implicit val T = IO.timer(concurrent.ExecutionContext.global)
       implicit val L = Logging.noOp[IO]
@@ -214,7 +214,7 @@ class RetriesSpec extends Specification {
       ))
 
       val result = for {
-        q          <- InspectableQueue.bounded[IO, S3.Folder](Size)
+        q          <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
 
         exception  <- Retries.pullFailures[IO](Size, q, getFailures).timeout(100.millis).attempt
         sizeBefore <- q.getSize

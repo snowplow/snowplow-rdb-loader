@@ -12,18 +12,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
-import scala.util.matching.Regex
-
 import cats.Monad
 import cats.implicits._
-
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryAction, DiscoveryStep}
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache}
+import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStep
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Cache
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 /**
  * Generally same as `LoaderMessage.ShreddedType`, but for JSON types
@@ -63,7 +61,7 @@ object ShreddedType {
     *
     * @param jsonPaths existing JSONPaths file
     */
-  final case class Json(info: Info, jsonPaths: S3.Key) extends ShreddedType {
+  final case class Json(info: Info, jsonPaths: BlobStorage.Key) extends ShreddedType {
     def getLoadPath: String =
       s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
 
@@ -100,7 +98,7 @@ object ShreddedType {
    * @param model self-describing type's SchemaVer model
    * @param entity what kind of Snowplow entity it is (context or event)
    */
-  final case class Info(base: S3.Folder, vendor: String, name: String, model: Int, entity: LoaderMessage.SnowplowEntity) {
+  final case class Info(base: BlobStorage.Folder, vendor: String, name: String, model: Int, entity: LoaderMessage.SnowplowEntity) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
 
     /** Build valid table name for the shredded type */
@@ -117,10 +115,9 @@ object ShreddedType {
    * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail,
    * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
    */
-  def fromCommon[F[_]: Monad: Cache: AWS](base: S3.Folder,
-                                          region: String,
-                                          jsonpathAssets: Option[S3.Folder],
-                                          typesInfo: TypesInfo): F[List[DiscoveryStep[ShreddedType]]] =
+  def fromCommon[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](base: BlobStorage.Folder,
+                                                                     jsonpathAssets: Option[BlobStorage.Folder],
+                                                                     typesInfo: TypesInfo): F[List[DiscoveryStep[ShreddedType]]] =
     typesInfo match {
       case t: TypesInfo.Shredded =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
@@ -129,7 +126,7 @@ object ShreddedType {
             (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
           case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
             val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
-            Monad[F].map(discoverJsonPath[F](region, jsonpathAssets, info))(_.map(Json(info, _)))
+            Monad[F].map(JsonPathDiscovery[F].discoverJsonPath(jsonpathAssets, info))(_.map(Json(info, _)))
         }
       case t: TypesInfo.WideRow =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
@@ -137,117 +134,5 @@ object ShreddedType {
             val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
             (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
         }
-    }
-
-  /**
-   * Basis for Snowplow hosted assets bucket.
-   * Can be modified to match specific region
-   */
-  val SnowplowHostedAssetsRoot = "s3://snowplow-hosted-assets"
-
-  /**
-   * Default JSONPaths path
-   */
-  val JsonpathsPath = "4-storage/redshift-storage/jsonpaths/"
-
-  /** Regex to extract `SchemaKey` from `shredded/good` */
-  val ShreddedSubpathPattern: Regex =
-    ("""vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
-     """/name=(?<name>[a-zA-Z0-9-_]+)""" +
-     """/format=json""" +
-     """/model=(?<model>[1-9][0-9]*)$""").r
-
-  /** Regex to extract `SchemaKey` from `shredded/good` */
-  val ShreddedSubpathPatternTabular: Regex =
-    ("""vendor=(?<vendor>[a-zA-Z0-9-_.]+)""" +
-     """/name=(?<name>[a-zA-Z0-9-_]+)""" +
-     """/format=tsv""" +
-     """/model=(?<model>[1-9][0-9]*)$""").r
-
-  /**
-   * Check where JSONPaths file for particular shredded type exists:
-   * in cache, in custom `s3.buckets.jsonpath_assets` S3 path or in Snowplow hosted assets bucket
-   * and return full JSONPaths S3 path
-   *
-   * @param shreddedType some shredded type (self-describing event or context)
-   * @return full valid s3 path (with `s3://` prefix)
-   */
-  def discoverJsonPath[F[_]: Monad: Cache: AWS](region: String, jsonpathAssets: Option[S3.Folder], shreddedType: Info): DiscoveryAction[F, S3.Key] = {
-    val filename = s"""${toSnakeCase(shreddedType.name)}_${shreddedType.model}.json"""
-    val key = s"${shreddedType.vendor}/$filename"
-
-    Cache[F].getCache(key).flatMap {
-      case Some(Some(jsonPath)) =>
-        Monad[F].pure(jsonPath.asRight)
-      case Some(None) =>
-        Monad[F].pure(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft)
-      case None =>
-        jsonpathAssets match {
-          case Some(assets) =>
-            val path = S3.Folder.append(assets, shreddedType.vendor)
-            val s3Key = S3.Key.coerce(path + filename)
-            AWS[F].keyExists(s3Key).flatMap {
-              case true =>
-                Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight)
-              case false =>
-                getSnowplowJsonPath[F](region, key)
-            }
-          case None =>
-            getSnowplowJsonPath[F](region, key)
-        }
-    }
-  }
-
-  /**
-   * Check that JSONPaths file exists in Snowplow hosted assets bucket
-   *
-   * @param s3Region hosted assets region
-   * @param key vendor dir and filename, e.g. `com.acme/event_1`
-   * @return full S3 key if file exists, discovery error otherwise
-   */
-  def getSnowplowJsonPath[F[_]: Monad: AWS: Cache](s3Region: String,
-                                                   key: String): DiscoveryAction[F, S3.Key] = {
-    val fullDir = S3.Folder.append(getHostedAssetsBucket(s3Region), JsonpathsPath)
-    val s3Key = S3.Key.coerce(fullDir + key)
-    AWS[F].keyExists(s3Key).ifM(
-      Cache[F].putCache(key, Some(s3Key)).as(s3Key.asRight[DiscoveryFailure]),
-      Cache[F].putCache(key, None).as(DiscoveryFailure.JsonpathDiscoveryFailure(key).asLeft[S3.Key])
-    )
-  }
-
-  /**
-   * Get Snowplow hosted assets S3 bucket for specific region
-   *
-   * @param region valid AWS region
-   * @return AWS S3 path such as `s3://snowplow-hosted-assets-us-west-2/`
-   */
-  def getHostedAssetsBucket(region: String): S3.Folder = {
-    val suffix = if (region == "eu-west-1") "" else s"-$region"
-    S3.Folder.coerce(s"$SnowplowHostedAssetsRoot$suffix")
-  }
-
-  /**
-   * Extract `SchemaKey` from subpath, which can be
-   * json-style (post-0.12.0) vendor=com.acme/name=schema-name/format=jsonschema/version=1-0-0
-   * tsv-style (post-0.16.0) vendor=com.acme/name=schema-name/format=jsonschema/version=1
-   * This function transforms any of above valid paths to `SchemaKey`
-   *
-   * @param subpath S3 subpath of four `SchemaKey` elements
-   * @return valid schema key if found
-   */
-  def extractSchemaKey(subpath: String): Option[(String, String, Int, TypesInfo.Shredded.ShreddedFormat)] =
-    subpath match {
-      case ShreddedSubpathPattern(vendor, name, model) =>
-        scala.util.Try(model.toInt).toOption match {
-          case Some(m) => Some((vendor, name, m, TypesInfo.Shredded.ShreddedFormat.JSON))
-          case None => None
-        }
-      case ShreddedSubpathPatternTabular(vendor, name, model) =>
-        scala.util.Try(model.toInt).toOption match {
-          case Some(m) => Some((vendor, name, m, TypesInfo.Shredded.ShreddedFormat.TSV))
-          case None => None
-        }
-      case _ =>
-        None
     }
 }

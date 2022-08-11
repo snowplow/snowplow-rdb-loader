@@ -395,8 +395,8 @@ object ShredJobSpec {
     }
     Config(
       input,
-      TransformerConfig.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1")),
-      TransformerConfig.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
+      Config.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1")),
+      Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
       Config.Monitoring(None),
       Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1)),

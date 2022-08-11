@@ -31,6 +31,8 @@ object Dependencies {
     val fs2Aws           = "3.0.11"
     val fs2Blobstore     = "0.7.3"
     val fs2Cron          = "0.5.0"
+    val fs2PubSub        = "0.18.1"
+    val secretManager    = "2.3.9"
     val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
@@ -92,8 +94,11 @@ object Dependencies {
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
   val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
   val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
-  val fs2Blobstore      = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
+  val fs2BlobstoreS3    = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
+  val fs2BlobstoreGCS   = "com.github.fs2-blobstore"   %% "gcs"                               % V.fs2Blobstore
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
+  val fs2PubSub         = "com.permutive"              %% "fs2-google-pubsub-grpc"            % V.fs2PubSub
+  val secretManager     = "com.google.cloud"           % "google-cloud-secretmanager"         % V.secretManager
   val doobie            = "org.tpolecat"               %% "doobie-core"                       % V.doobie
   val doobieHikari      = "org.tpolecat"               %% "doobie-hikari"                     % V.doobie
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
@@ -150,11 +155,13 @@ object Dependencies {
   val kafkaClients      = "org.apache.kafka"       % "kafka-clients"            % V.kafkaClients
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
-  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
-  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
+  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2       % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck   % Test
+  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting  % Test
+  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect   % Test
+  val fs2BlobstoreCore  = "com.github.fs2-blobstore"   %% "core"                       % V.fs2Blobstore % Test
+
 
   // compiler plugins
   val betterMonadicFor = "com.olegpy" %% "better-monadic-for" % V.betterMonadicFor
@@ -163,8 +170,15 @@ object Dependencies {
     aws2s3,
     aws2sqs,
     aws2sns,
-    fs2,
-    catsRetry,
+    aws2kinesis,
+    fs2BlobstoreS3,
+    fs2Aws,
+  )
+
+  val gcpDependencies = Seq(
+    fs2BlobstoreGCS,
+    fs2PubSub,
+    secretManager
   )
 
   val commonDependencies = Seq(
@@ -185,6 +199,11 @@ object Dependencies {
     specs2,
     monocle,
     monocleMacro,
+    catsRetry,
+    fs2,
+    ssm,
+    log4cats,
+    fs2BlobstoreCore
   )
 
   val loaderDependencies = Seq(
@@ -196,7 +215,6 @@ object Dependencies {
     sentry,
     scalaTracker,
     scalaTrackerEmit,
-    fs2Blobstore,
     fs2Cron,
     http4sCirce,
     http4sClient,
@@ -240,18 +258,13 @@ object Dependencies {
     scalaCheck
   )
 
-  val transformerKinesisDependencies = Seq(
+  val commonStreamTransformerDependencies = Seq(
     dynamodb,
     slf4j,
     protobuf,
     commons,
     kafkaClients,
     log4cats,
-    fs2Blobstore,
-    fs2Io,
-    fs2Aws,
-    fs2AwsSqs,
-    aws2kinesis,
     http4sClient,
     catsEffectLaws,
     circeOptics,
@@ -271,7 +284,7 @@ object Dependencies {
     ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")
   )
 
-  val transformerKinesisExclusions = {
+  val commonStreamTransformerExclusions = {
     exclusions ++ Seq(
       ExclusionRule(organization = "ch.qos.logback"),
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),

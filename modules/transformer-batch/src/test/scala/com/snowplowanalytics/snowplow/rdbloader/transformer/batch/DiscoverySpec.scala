@@ -14,14 +14,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 import scala.concurrent.Await
 import scala.concurrent.duration._
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.RunInterval
 
 import org.specs2.mutable.Specification
@@ -342,14 +341,14 @@ class DiscoverySpec extends Specification {
   }
 
     def getState(enrichedFolder: Folder,
-               shreddedFolder: Folder,
-               listDirs: Folder => List[Folder],
-               runInterval: RunInterval = RunInterval(None, None, None),
-               ke: S3.Key => Boolean = keyExists,
-               now: Instant = Instant.now): (List[Folder], List[Folder]) = {
+                 shreddedFolder: Folder,
+                 listDirs: Folder => List[Folder],
+                 runInterval: RunInterval = RunInterval(None, None, None),
+                 ke: BlobStorage.Key => Boolean = keyExists,
+                 now: Instant = Instant.now): (List[Folder], List[Folder]) = {
     val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, runInterval, now, listDirs, ke)
     (Await.result(incomplete, 2.seconds), unshredded)
   }
 
-  def keyExists(k: S3.Key): Boolean = !(k.contains("incomplete") || k.contains("2021-08-05"))
+  def keyExists(k: BlobStorage.Key): Boolean = !(k.contains("incomplete") || k.contains("2021-08-05"))
 }

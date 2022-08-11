@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec
 class CliConfigSpec extends Specification {
   val configB64 = new String(
     Base64.getEncoder.encode(
-      ConfigSpec.readResource("/redshift.config.reference.hocon").getBytes
+      ConfigSpec.readResource("/loader/aws/redshift.config.reference.hocon").getBytes
     )
   )
 

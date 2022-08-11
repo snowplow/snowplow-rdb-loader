@@ -67,6 +67,7 @@ jobs:
           - snowflakeLoader
           - databricksLoader
           - transformerKinesis
+          - transformerPubsub
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
@@ -171,26 +172,17 @@ jobs:
         curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.25/DatabricksJDBC42-2.6.25.1044.zip --output DatabricksJDBC42.jar.zip
         unzip DatabricksJDBC42.jar.zip
         cp DatabricksJDBC42-2.6.25.1044/DatabricksJDBC42.jar DatabricksJDBC42.jar
-    - name: Build redshift-loader jar
+    - name: Build jar files
       env:
         SKIP_TEST: true
-      run: sbt 'project redshiftLoader' assembly
-    - name: Build snowflake-loader jar
-      env:
-        SKIP_TEST: true
-      run: sbt 'project snowflakeLoader' assembly
-    - name: Build databricks-loader jar
-      env:
-        SKIP_TEST: true
-      run: sbt 'project databricksLoader' assembly
-    - name: Build transformer-batch jar
-      env:
-        SKIP_TEST: true
-      run: sbt 'project transformerBatch' assembly
-    - name: Build transformer-kinesis jar
-      env:
-        SKIP_TEST: true
-      run: sbt 'project transformerKinesis' assembly
+      run: |
+        sbt \
+        'project redshiftLoader; assembly' \
+        'project snowflakeLoader; assembly' \
+        'project databricksLoader; assembly' \
+        'project transformerBatch; assembly' \
+        'project transformerKinesis; assembly' \
+        'project transformerPubsub; assembly'
     - name: Get current version
       id: ver
       run: echo "::set-output name=project_version::${GITHUB_REF#refs/tags/}"
@@ -207,5 +199,6 @@ jobs:
           modules/databricks-loader/target/scala-2.12/snowplow-databricks-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-kinesis/target/scala-2.12/snowplow-transformer-kinesis-${{ steps.ver.outputs.project_version }}.jar
+          modules/transformer-pubsub/target/scala-2.12/snowplow-transformer-pubsub-${{ steps.ver.outputs.project_version }}.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

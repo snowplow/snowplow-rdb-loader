@@ -6,12 +6,12 @@ import cats.implicits._
 import cats.effect.{MonadThrow, Timer}
 import doobie.Read
 import doobie.implicits.javasql._
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.{Databricks, Redshift}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, DAO, Logging, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
 
 object Manifest {
 
@@ -29,7 +29,7 @@ object Manifest {
     "shredded_cardinality"
   ).map(ColumnName)
 
-  def initialize[F[_]: MonadThrow: Logging: Timer: AWS, C[_]: DAO: Monad](
+  def initialize[F[_]: MonadThrow: Logging: Timer, C[_]: DAO: Monad](
     target: StorageTarget
   )(implicit F: Transaction[F, C]): F[Unit] =
     F.transact(setup[C](target.schema, target)).attempt.flatMap {
@@ -76,7 +76,7 @@ object Manifest {
   def add[F[_]: DAO: Functor](item: LoaderMessage.ManifestItem): F[Unit] =
     DAO[F].executeUpdate(Statement.ManifestAdd(item), DAO.Purpose.NonLoading).void
 
-  def get[F[_]: DAO](base: S3.Folder): F[Option[Entry]] =
+  def get[F[_]: DAO](base: BlobStorage.Folder): F[Option[Entry]] =
     DAO[F].executeQueryOption[Entry](Statement.ManifestGet(base))(Entry.entryRead)
 
   /** Create manifest table */
