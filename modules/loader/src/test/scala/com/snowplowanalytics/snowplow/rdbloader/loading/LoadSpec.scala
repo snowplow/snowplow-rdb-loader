@@ -18,16 +18,17 @@ import cats.syntax.option._
 import cats.effect.Timer
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
@@ -160,14 +161,14 @@ class LoadSpec extends Specification {
 
 object LoadSpec {
   val dataDiscovery = DataDiscovery(
-    S3.Folder.coerce("s3://shredded/base/"),
+    BlobStorage.Folder.coerce("s3://shredded/base/"),
     List(
       ShreddedType.Json(
         ShreddedType.Info(
-          S3.Folder.coerce("s3://shredded/base/"),
+          BlobStorage.Folder.coerce("s3://shredded/base/"),
           "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent
         ),
-        S3.Key.coerce("s3://assets/com.acme/json_context_1.json"),
+        BlobStorage.Key.coerce("s3://assets/com.acme/json_context_1.json"),
       )
     ),
     Compression.Gzip,

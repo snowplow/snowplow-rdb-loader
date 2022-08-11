@@ -18,8 +18,9 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.global
 
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage, Common}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
@@ -49,7 +50,7 @@ object Discovery {
                runInterval: RunInterval,
                now: Instant,
                listDirs: Folder => List[Folder],
-               keyExists: S3.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
+               keyExists: BlobStorage.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
     val since = getConcrete(runInterval, now)
     val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
     val shreddedDirs = listDirs(shreddedFolder)
@@ -113,7 +114,7 @@ object Discovery {
            sendToQueue: (String, String) => Either[Throwable, Unit],
            putToS3: (String,String, String) => Either[Throwable, Unit],
            legacyMessageFormat: Boolean): Unit = {
-    val (bucket, key) = S3.splitS3Key(message.base.withKey(FinalKeyName))
+    val (bucket, key) = BlobStorage.splitKey(message.base.withKey(FinalKeyName))
     val asString = message.selfDescribingData(legacyMessageFormat).asString
 
     sendToQueue("shredding", asString) match {

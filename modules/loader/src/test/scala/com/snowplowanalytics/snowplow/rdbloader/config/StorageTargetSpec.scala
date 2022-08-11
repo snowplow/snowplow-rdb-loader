@@ -93,7 +93,7 @@ class StorageTargetSpec extends Specification {
         "localPort": 15151
       }"""
 
-      val key = StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.key"))
+      val key = StorageTarget.EncryptedConfig("snowplow.rdbloader.redshift.key")
       val bastion = StorageTarget.BastionConfig("bastion.acme.com", 22, "snowplow-loader", None, Some(key))
       val destination = StorageTarget.DestinationConfig("10.0.0.11", 5439)
       val expected = StorageTarget.TunnelConfig(bastion, 15151, destination)
@@ -110,11 +110,19 @@ class StorageTargetSpec extends Specification {
         }
       }"""
 
+      val password2 =
+        json"""{
+        "secretStore": {
+          "parameterName": "snowplow.rdbloader.redshift.password"
+        }
+      }"""
+
       val expected = StorageTarget.PasswordConfig.EncryptedKey(
-        StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.rdbloader.redshift.password"))
+        StorageTarget.EncryptedConfig("snowplow.rdbloader.redshift.password")
       )
 
       password.as[StorageTarget.PasswordConfig] must beRight(expected)
+      password2.as[StorageTarget.PasswordConfig] must beRight(expected)
     }
   }
 

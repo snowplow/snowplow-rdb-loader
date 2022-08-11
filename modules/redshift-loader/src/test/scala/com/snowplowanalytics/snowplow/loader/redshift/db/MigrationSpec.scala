@@ -23,9 +23,8 @@ import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{ObjectPropert
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Migration}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Iglu}
@@ -46,21 +45,21 @@ class MigrationSpec extends Specification {
       val types =
         List(
           ShreddedType.Tabular(ShreddedType.Info(
-            S3.Folder.coerce("s3://shredded/archive"),
+            BlobStorage.Folder.coerce("s3://shredded/archive"),
             "com.acme",
             "some_context",
             2,
             SnowplowEntity.Context
           )),
           ShreddedType.Json(ShreddedType.Info(
-            S3.Folder.coerce("s3://shredded/archive"),
+            BlobStorage.Folder.coerce("s3://shredded/archive"),
             "com.acme",
             "some_event",
             1,
             SnowplowEntity.Context
-          ), S3.Key.coerce("s3://shredded/jsonpaths"))
+          ), BlobStorage.Key.coerce("s3://shredded/jsonpaths"))
         )
-      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
+      val input = DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
 
       val create = CreateTable(
         "public.com_acme_some_context_2",
@@ -110,21 +109,21 @@ class MigrationSpec extends Specification {
       val types =
         List(
           ShreddedType.Tabular(ShreddedType.Info(
-            S3.Folder.coerce("s3://shredded/archive"),
+            BlobStorage.Folder.coerce("s3://shredded/archive"),
             "com.snowplowanalytics.snowplow",
             "atomic",
             1,
             SnowplowEntity.Context
           )),
           ShreddedType.Tabular(ShreddedType.Info(
-            S3.Folder.coerce("s3://shredded/archive"),
+            BlobStorage.Folder.coerce("s3://shredded/archive"),
             "com.acme",
             "some_event",
             1,
             SnowplowEntity.Context
           ))
         )
-      val input = DataDiscovery(S3.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
+      val input = DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
 
       val create = CreateTable(
         "public.com_acme_some_event_1",

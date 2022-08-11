@@ -18,17 +18,24 @@ import cats.Parallel
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
-import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
 
 import doobie.ConnectionIO
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import io.sentry.{SentryClient, Sentry, SentryOptions}
+import io.sentry.{Sentry, SentryClient, SentryOptions}
 
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
+import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config}
+import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
@@ -41,23 +48,27 @@ class Environment[F[_]](cache: Cache[F],
                         logging: Logging[F],
                         monitoring: Monitoring[F],
                         iglu: Iglu[F],
-                        aws: AWS[F],
+                        blobStorage: BlobStorage[F],
+                        queueConsumer: Queue.Consumer[F],
+                        loadAuthService: LoadAuthService[F],
+                        jsonPathDiscovery: JsonPathDiscovery[F],
                         transaction: Transaction[F, ConnectionIO],
-                        state: State.Ref[F],
                         target: Target,
-                        timeouts: Config.Timeouts) {
+                        timeouts: Config.Timeouts,
+                        control: Control[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
   implicit val igluF: Iglu[F] = iglu
-  implicit val awsF: AWS[F] = aws
+  implicit val blobStorageF: BlobStorage[F] = blobStorage
+  implicit val queueConsumerF: Queue.Consumer[F] = queueConsumer
+  implicit val loadAuthServiceF: LoadAuthService[F] = loadAuthService
+  implicit val jsonPathDiscoveryF: JsonPathDiscovery[F] = jsonPathDiscovery
   implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
-
-  def control: Control[F] =
-    Control(state)
+  val controlF: Control[F] = control
 }
 
 object Environment {
@@ -65,9 +76,16 @@ object Environment {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
+  case class CloudServices[F[_]](blobStorage: BlobStorage[F],
+                                 queueConsumer: Queue.Consumer[F],
+                                 loadAuthService: LoadAuthService[F],
+                                 jsonPathDiscovery: JsonPathDiscovery[F],
+                                 secretStore: SecretStore[F])
+
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
+      implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
@@ -75,18 +93,31 @@ object Environment {
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
-      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[S3.Key]]](Map.empty))
-      amazonS3 <- Resource.eval(AWS.getClient[F](cli.config.region.name))
-      cache = Cache.cacheInterpreter[F](cacheMap)
+      cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
+      implicit0(cache: Cache[F]) = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      implicit0(aws: AWS[F]) = AWS.awsInterpreter[F](amazonS3, cli.config.timeouts.sqsVisibility, cli.config.region.name)
+      control = Control(state)
+      cloudServices <- createCloudServices(cli.config, blocker, control)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
-
+      implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
-    } yield new Environment[F](cache, logging, monitoring, iglu, aws, transaction, state, statementer, cli.config.timeouts)
+    } yield new Environment[F](
+      cache,
+      logging,
+      monitoring,
+      iglu,
+      cloudServices.blobStorage,
+      cloudServices.queueConsumer,
+      cloudServices.loadAuthService,
+      cloudServices.jsonPathDiscovery,
+      transaction,
+      statementer,
+      cli.config.timeouts,
+      control
+    )
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
     dsn match {
@@ -101,5 +132,36 @@ object Environment {
 
       case None =>
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
+    }
+
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
+    config.cloud match {
+      case c: Cloud.AWS =>
+        for {          
+          implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](c.region.name)
+          postProcess = Queue.Consumer.postProcess[F]
+          queueConsumer <- SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+          loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
+          jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
+          secretStore <- EC2ParameterStore.secretStore[F]
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
+      case c: Cloud.GCP =>
+        for {
+          loadAuthService <- LoadAuthService.noop[F]
+          jsonPathDiscovery = JsonPathDiscovery.noop[F]
+          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(blocker)
+          postProcess = Queue.Consumer.postProcess[F]
+          queueConsumer <- Pubsub.consumer[F](
+            blocker = blocker,
+            projectId = c.messageQueue.projectId,
+            subscription = c.messageQueue.subscriptionId,
+            parallelPullCount = c.messageQueue.parallelPullCount,
+            bufferSize = c.messageQueue.bufferSize,
+            maxAckExtensionPeriod = config.timeouts.loading,
+            customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
+            postProcess = Some(postProcess)
+          )
+          secretStore <- SecretManager.secretManager[F]
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
 }

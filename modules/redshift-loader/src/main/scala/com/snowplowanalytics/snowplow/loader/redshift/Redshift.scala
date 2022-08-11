@@ -12,12 +12,23 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift
 
+import java.sql.Timestamp
+
 import cats.data.NonEmptyList
+
+import doobie.Fragment
+import doobie.implicits._
+import doobie.implicits.javasql._
+
+import io.circe.syntax._
+
 import com.snowplowanalytics.iglu.core.SchemaKey
+
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGenerator, MigrationGenerator}
+
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -25,15 +36,9 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import doobie.Fragment
-import doobie.implicits._
-import doobie.implicits.javasql._
-import io.circe.syntax._
-
-import java.sql.Timestamp
 
 object Redshift {
 
@@ -42,8 +47,12 @@ object Redshift {
   val AlertingTempTableName = "rdb_folder_monitoring"
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
-    config.storage match {
-      case StorageTarget.Redshift(_, _, _, _, roleArn, schema, _, _, maxError, _) =>
+    (config.cloud, config.storage) match {
+      case (c: Config.Cloud.AWS, storage: StorageTarget.Redshift) =>
+        val region = c.region
+        val roleArn = storage.roleArn
+        val schema = storage.schema
+        val maxError = storage.maxError
         val result = new Target {
 
           override val requiresEventsColumns: Boolean = false
@@ -115,7 +124,7 @@ object Redshift {
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
-                val frRegion = Fragment.const0(config.region.name)
+                val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
                 val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
@@ -136,7 +145,7 @@ object Redshift {
                 val frTableName = Fragment.const0(qualify(shreddedType.info.getName))
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
-                val frRegion = Fragment.const0(config.region.name)
+                val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
 
@@ -239,7 +248,7 @@ object Redshift {
 
         Right(result)
       case other =>
-        Left(s"Invalid State: trying to build Redshift interpreter with unrecognized config (${other.driver} driver)")
+        Left(s"Invalid State: trying to build Redshift interpreter with unrecognized config (${other._2.driver} driver)")
     }
   }
 

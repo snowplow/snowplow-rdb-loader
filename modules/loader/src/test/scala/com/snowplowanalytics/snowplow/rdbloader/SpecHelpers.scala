@@ -12,14 +12,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import scala.io.Source.fromInputStream
 
 import doobie.util.fragment.Fragment
 import doobie.util.update.Update0
 
 import io.circe.jawn.parse
-
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 
@@ -31,12 +30,11 @@ object SpecHelpers {
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validConfig: Config[StorageTarget.Redshift] = Config(
-    ConfigSpec.exampleRegion,
+    ConfigSpec.exampleRedshift,
+    ConfigSpec.exampleCloud,
     ConfigSpec.exampleJsonPaths,
     ConfigSpec.exampleMonitoring,
-    ConfigSpec.exampleQueueName,
     ConfigSpec.exampleRetryQueue,
-    ConfigSpec.exampleRedshift,
     ConfigSpec.exampleSchedules,
     ConfigSpec.exampleTimeouts,
     ConfigSpec.exampleRetries,
@@ -109,7 +107,7 @@ object SpecHelpers {
 
   implicit class AsSql(s: String) {
     def sql: Update0 = Fragment.const0(s).update
-    def dir: S3.Folder = S3.Folder.coerce(s)
-    def key: S3.Key = S3.Key.coerce(s)
+    def dir: BlobStorage.Folder = BlobStorage.Folder.coerce(s)
+    def key: BlobStorage.Key = BlobStorage.Key.coerce(s)
   }
 }

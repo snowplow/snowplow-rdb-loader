@@ -16,6 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
@@ -38,10 +39,9 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
-import com.snowplowanalytics.snowplow.rdbloader.common.S3.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Discovery.MessageProcessor
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.TypesAccumulator
@@ -69,8 +69,8 @@ class ShredJob[T](@transient val spark: SparkSession,
   def run(folderName: String,
           eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
     val jobStarted: Instant = Instant.now()
-    val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
-    val outFolder: S3.Folder = S3.Folder.coerce(config.output.path.toString).append(folderName)
+    val inputFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.input.toString).append(folderName)
+    val outFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
     transformer.register(sc)
     // Enriched TSV lines along with their shredded components
     val common = sc.textFile(inputFolder)
@@ -156,7 +156,7 @@ class TypeAccumJob(@transient val spark: SparkSession,
   @transient private val sc: SparkContext = spark.sparkContext
 
   def run(folderName: String): List[TypesInfo.WideRow.Type] = {
-    val inputFolder: S3.Folder = S3.Folder.coerce(config.input.toString).append(folderName)
+    val inputFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.input.toString).append(folderName)
     val types = sc.textFile(inputFolder)
       .map { line =>
         for {
@@ -208,10 +208,10 @@ object ShredJob {
     }
 
     val sendToQueue = config.queue match {
-        case q: QueueConfig.SQS =>
+        case q: Config.QueueConfig.SQS =>
           val sqsClient = Cloud.createSqsClient(q.region)
           Cloud.sendToSqs(sqsClient, q.queueName, _, _)
-        case q: QueueConfig.SNS =>
+        case q: Config.QueueConfig.SNS =>
           val snsClient = Cloud.creteSnsClient(q.region)
           Cloud.sendToSns(snsClient, q.topicArn, _, _)
       }

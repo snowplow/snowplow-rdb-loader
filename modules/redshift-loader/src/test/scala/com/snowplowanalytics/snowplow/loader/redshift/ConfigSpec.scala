@@ -26,14 +26,13 @@ class ConfigSpec extends Specification {
 
   "fromString" should {
     "be able to parse extended Redshift config" in {
-      val result = getConfig("/redshift.config.reference.hocon", Config.fromString[IO])
+      val result = getConfig("/loader/aws/redshift.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
-        exampleRegion,
+        exampleRedshift,
+        exampleCloud,
         exampleJsonPaths,
         exampleMonitoring,
-        exampleQueueName,
         exampleRetryQueue,
-        exampleRedshift,
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
@@ -45,14 +44,13 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal config" in {
-      val result = getConfig("/redshift.config.minimal.hocon", testParseConfig)
+      val result = getConfig("/loader/aws/redshift.config.minimal.hocon", testParseConfig)
       val expected = Config(
-        RegionSpec.DefaultTestRegion,
+        exampleRedshift,
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue),
         None,
         defaultMonitoring,
-        exampleQueueName,
         None,
-        exampleRedshift,
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),

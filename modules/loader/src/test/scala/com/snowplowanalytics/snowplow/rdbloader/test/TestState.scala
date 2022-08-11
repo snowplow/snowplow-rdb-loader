@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
 import com.snowplowanalytics.snowplow.rdbloader.LoaderAction
-import com.snowplowanalytics.snowplow.rdbloader.common.S3
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState._
@@ -12,7 +12,7 @@ import com.snowplowanalytics.snowplow.rdbloader.test.TestState._
  * @param genericLog list of strings that every effect can add
  * @param cache JSONPaths cache
  */
-case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Option[S3.Key]]) {
+case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Option[BlobStorage.Key]]) {
 
   def getLog: List[LogEntry] = getLogUntrimmed.map {
     case LogEntry.Message(message) => LogEntry.Message(trim(message))
@@ -29,13 +29,13 @@ case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Op
   def time: Long =
     (genericLog.length + cache.size).toLong
 
-  def cachePut(key: String, value: Option[S3.Key]): TestState =
+  def cachePut(key: String, value: Option[BlobStorage.Key]): TestState =
     TestState(genericLog, cache ++ Map(key -> value))
 }
 
 object TestState {
   val init: TestState =
-    TestState(List.empty[LogEntry], Map.empty[String, Option[S3.Key]])
+    TestState(List.empty[LogEntry], Map.empty[String, Option[BlobStorage.Key]])
 
   def run[A](action: LoaderAction[Pure, A]) =
     action.value.value.run(init).value

@@ -13,16 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-import cats.{Apply, Monad, Applicative}
+import cats.{Applicative, Apply, Monad}
 import cats.implicits._
-import cats.effect.{Clock, Concurrent, MonadThrow, Timer, ContextShift}
+import cats.effect.{Clock, Concurrent, ContextShift, MonadThrow, Timer}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import retry._
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
-import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl, AuthService}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck, Retry}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
@@ -51,10 +53,10 @@ object Loader {
    *           Unlike `F` it cannot pull `A` out of DB (perform a transaction), but just
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
-  def run[F[_]: Transaction[*[_], C]: Concurrent: AWS: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift,
+  def run[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
           C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, config.timeouts, config.region.name, control.isBusy)
+      FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
     val healthCheck =
@@ -100,12 +102,12 @@ object Loader {
    * A primary loading processing, pulling information from discovery streams
    * (SQS and retry queue) and performing the load operation itself
    */
-  private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: AWS: Iglu: Cache: Logging: Timer: Monitoring: ContextShift,
+  private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
                          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
+      DataDiscovery.discover[F](config, control.incrementMessages)
     val retryDiscovery: DiscoveryStream[F] =
-      Retries.run[F](config.region.name, config.jsonpaths, config.retryQueue, control.getFailures)
+      Retries.run[F](config.jsonpaths, config.retryQueue, control.getFailures)
     val discovery = sqsDiscovery.merge(retryDiscovery)
 
     discovery
@@ -118,7 +120,7 @@ object Loader {
    * over to `Load`. A primary function handling the global state - everything
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
-  private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift,
+  private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift: LoadAuthService,
                                C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
                                                               (discovery: DataDiscovery.WithOrigin): F[Unit] = {
     val folder = discovery.origin.base
@@ -134,7 +136,7 @@ object Loader {
     val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
-        loadAuth <- AuthService.getLoadAuthMethod[F](config.storage.eventsLoadAuthMethod, config.region.name, config.timeouts.loading)
+        loadAuth <- LoadAuthService[F].getLoadAuthMethod(config.storage.eventsLoadAuthMethod)
         result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery, loadAuth)
         attempts <- control.getAndResetAttempts
         _        <- result match {

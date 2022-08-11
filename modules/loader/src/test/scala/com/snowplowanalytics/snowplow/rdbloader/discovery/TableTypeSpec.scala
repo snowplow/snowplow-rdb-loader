@@ -14,50 +14,29 @@ package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
 import cats.implicits._
-
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import org.scalacheck.Gen
 import org.specs2.ScalaCheck
 import org.specs2.mutable.Specification
 
 // This project
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{ Cache, AWS }
-import com.snowplowanalytics.snowplow.rdbloader.common.{S3, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Cache
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import com.snowplowanalytics.snowplow.rdbloader.test.{ Pure, PureCache, PureAWS, TestState }
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 
 class TableTypeSpec extends Specification with ScalaCheck {
 
-  "extractSchemaKey" should {
-    "parse a path for tabular output" >> {
-      val input = "vendor=com.snowplow/name=event/format=tsv/model=1"
-      ShreddedType.extractSchemaKey(input) must beSome(("com.snowplow", "event", 1, TypesInfo.Shredded.ShreddedFormat.TSV))
-    }
-  }
-
-  "getSnowplowJsonPath" should {
-    "put a result into cache only once" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
-
-      val discoveryAction = ShreddedType.getSnowplowJsonPath[Pure]("eu-central-1", "foo_1.json")
-
-      val (state, _) = discoveryAction.value.run(TestState.init).value
-
-      state.getLog must beEqualTo(List(
-        LogEntry.Message("PUT foo_1.json: Some(s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/foo_1.json)"),
-      ))
-    }
-  }
-
   "discoverJsonPath" should {
     "respect the cache" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: AWS[Pure] = PureAWS.interpreter(PureAWS.init.withExistingKeys)
+      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
+      val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-west-1")
 
-      val info = ShreddedType.Info(S3.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
-      val discoveryAction = ShreddedType.discoverJsonPath[Pure]("eu-west-1", None, info)
+      val info = ShreddedType.Info(BlobStorage.Folder.coerce("s3://some-bucket/"), "com.acme", "entity", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+      val discoveryAction = jsonPathDiscovery.discoverJsonPath(None, info)
 
       val (state, _) = (discoveryAction.flatMap(_ => discoveryAction)).value.run(TestState.init).value
 

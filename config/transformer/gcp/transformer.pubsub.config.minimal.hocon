@@ -1,0 +1,11 @@
+{
+  "input": {
+    "subscription": "projects/project-id/subscriptions/subscription-id"
+  }
+  "output": {
+    "path": "gs://bucket/transformed/"
+  }
+  "queue": {
+    "topic": "projects/project-id/topics/topic-id"
+  }
+}

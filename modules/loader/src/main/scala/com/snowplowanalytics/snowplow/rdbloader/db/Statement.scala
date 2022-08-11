@@ -14,10 +14,11 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import doobie.Fragment
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
-import com.snowplowanalytics.snowplow.rdbloader.db.AuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
@@ -52,10 +53,10 @@ object Statement {
   case object CreateAlertingTempTable extends Statement
   case object DropAlertingTempTable extends Statement
   case object FoldersMinusManifest extends Statement
-  case class FoldersCopy(source: S3.Folder, loadAuthMethod: LoadAuthMethod) extends Statement
+  case class FoldersCopy(source: BlobStorage.Folder, loadAuthMethod: LoadAuthMethod) extends Statement
 
   // Loading
-  case class EventsCopy(path: S3.Folder,
+  case class EventsCopy(path: BlobStorage.Folder,
                         compression: Compression,
                         columnsToCopy: ColumnsToCopy,
                         columnsToSkip: ColumnsToSkip,
@@ -75,7 +76,7 @@ object Statement {
   case class DropTempEventTable(table: String) extends Loading {
     def title: String = s"DROP TEMP TABLE $table"
   }
-  case class EventsCopyToTempTable(path: S3.Folder,
+  case class EventsCopyToTempTable(path: BlobStorage.Folder,
                                    table: String,
                                    tempCreds: LoadAuthMethod.TempCreds,
                                    typesInfo: TypesInfo) extends Loading {
@@ -99,7 +100,7 @@ object Statement {
 
   // Manifest
   case class ManifestAdd(message: LoaderMessage.ManifestItem) extends Statement
-  case class ManifestGet(base: S3.Folder) extends Statement
+  case class ManifestGet(base: BlobStorage.Folder) extends Statement
 
   // Arbitrary-string DDL statements
   case class CreateTable(ddl: Fragment) extends Statement
