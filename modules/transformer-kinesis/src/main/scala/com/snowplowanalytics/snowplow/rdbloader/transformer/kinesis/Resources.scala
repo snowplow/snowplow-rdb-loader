@@ -12,40 +12,26 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 
-import java.util.UUID
-import java.net.URI
-
-import scala.concurrent.ExecutionContext
-
-import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import io.circe.Json
-
-import cats.implicits._
-
-import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-
 import blobstore.Store
-
-import io.circe.Json
-
-import com.snowplowanalytics.lrumap.CreateLruMap
-
-import com.snowplowanalytics.iglu.core.SchemaKey
+import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import cats.implicits._
+import com.snowplowanalytics.aws.AWSQueue
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
-import com.snowplowanalytics.iglu.schemaddl.Properties 
-
-import com.snowplowanalytics.aws.AWSQueue
-
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, LookupProperties}
+import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
-
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, LookupProperties, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{file, s3}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.telemetry.Telemetry
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{file, s3}
+import io.circe.Json
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
+import java.net.URI
+import java.util.UUID
+import scala.concurrent.ExecutionContext
 
 case class Resources[F[_]](
   iglu: Client[F, Json],
@@ -81,7 +67,7 @@ object Resources {
   ): Resource[F, Resources[F]] =
     for {
       client        <- mkClient(igluConfig)
-      lookup        <- Resource.eval(CreateLruMap[F, SchemaKey, Properties].create(100))
+      lookup        <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(100))
       atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
       instanceId    <- mkTransformerInstanceId
       blocker       <- Blocker[F]
