@@ -16,21 +16,17 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 
 import cats.Id
 import cats.syntax.either._
-import cats.syntax.show._
 import cats.syntax.option._
-
-import io.circe.Json
-
+import cats.syntax.show._
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.snowplowanalytics.iglu.client.Client
-
+import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
-import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.iglu.schemaddl.Properties 
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.LookupProperties
-import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
+import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsManifest, EventsManifestConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{LookupProperties, PropertiesKey}
+import io.circe.Json
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -106,7 +102,7 @@ object singleton {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = CreateLruMap[Id, SchemaKey, Properties].create(100)
+            instance = CreateLruMap[Id, PropertiesKey, Properties].create(100)
           }
         }
       }

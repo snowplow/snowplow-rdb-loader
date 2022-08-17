@@ -30,14 +30,14 @@ import com.snowplowanalytics.iglu.core._
 import com.snowplowanalytics.iglu.client.{Resolver, Client, ClientError}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatData, FlatSchema}
+import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{ParsingError, Event}
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Failure, Payload, FailureDetails}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import Flattening.{NullCharacter, getOrdered}
+import Flattening.NullCharacter
 import com.snowplowanalytics.iglu.schemaddl.Properties
 
 object EventUtils {
@@ -139,22 +139,11 @@ object EventUtils {
     * @param instance self-describing JSON that needs to be transformed
     * @return list of columns or flattening error
     */
-  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], lookup: LookupProperties[F], instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] = {
-    val properties = EitherT.right(lookup.get(instance.schema)).flatMap {
-      case Some(existingProps) =>
-        EitherT.pure[F, FailureDetails.LoaderIgluError](existingProps) 
-      case None =>
-        fetchProperties(resolver, lookup, instance)
-    }
-    properties.map(mapProperties(_, instance))
-  }
-
-  private def fetchProperties[F[_] : Monad : RegistryLookup : Clock](resolver: Resolver[F], lookup: LookupProperties[F], instance: SelfDescribingData[Json]) = {
-    getOrdered(resolver, instance.schema)
-      .map(FlatSchema.extractProperties)
-      .flatTap { props =>
-        EitherT.right(lookup.put(instance.schema, props))
-      }
+  def flatten[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
+                                                  lookup: LookupProperties[F],
+                                                  instance: SelfDescribingData[Json]): EitherT[F, FailureDetails.LoaderIgluError, List[String]] = {
+    Flattening.getDdlProperties(resolver, lookup, instance.schema)
+      .map(props => mapProperties(props, instance))
   }
 
   private def mapProperties(props: Properties, instance: SelfDescribingData[Json]) = {

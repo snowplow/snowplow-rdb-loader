@@ -27,18 +27,15 @@ import cats.effect.{Blocker, Clock, Concurrent, ConcurrentEffect, ContextShift, 
 
 import blobstore.Store
 
-import io.circe.Json
-
 import com.snowplowanalytics.lrumap.CreateLruMap
 
-import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
-import com.snowplowanalytics.iglu.schemaddl.Properties 
+import com.snowplowanalytics.iglu.schemaddl.Properties
 
 import com.snowplowanalytics.aws.AWSQueue
 
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, LookupProperties}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, LookupProperties, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.metrics.Metrics
@@ -81,7 +78,7 @@ object Resources {
   ): Resource[F, Resources[F]] =
     for {
       client        <- mkClient(igluConfig)
-      lookup        <- Resource.eval(CreateLruMap[F, SchemaKey, Properties].create(100))
+      lookup        <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(100))
       atomicLengths <- mkAtomicFieldLengthLimit(client.resolver)
       instanceId    <- mkTransformerInstanceId
       blocker       <- Blocker[F]

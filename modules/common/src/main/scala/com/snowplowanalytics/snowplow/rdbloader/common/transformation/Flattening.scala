@@ -16,20 +16,16 @@ import io.circe.Json
 import cats.Monad
 import cats.data.EitherT
 import cats.syntax.either._
-
 import cats.effect.Clock
-
+import com.snowplowanalytics.iglu.client.resolver.Resolver.{Cached, ListSchemasKey, NotCached}
 import com.snowplowanalytics.iglu.core._
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.client.{Resolver, ClientError}
-
-import com.snowplowanalytics.iglu.schemaddl.IgluSchema
-import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList => DdlSchemaList}
+import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
+import com.snowplowanalytics.iglu.schemaddl.{IgluSchema, Properties}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList => DdlSchemaList}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
-
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
 object Flattening {
@@ -49,6 +45,41 @@ object Flattening {
       schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
       ordered <- DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
     } yield ordered
+  }
+
+  def getDdlProperties[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
+                                                           lookup: LookupProperties[F],
+                                                           schemaKey: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
+    val criterion = SchemaCriterion(schemaKey.vendor, schemaKey.name, "jsonschema", Some(schemaKey.version.model), None, None)
+
+    EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model))
+      .leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
+      .flatMap {
+        case cached: Cached[ListSchemasKey, SchemaList] =>
+          lookupInCache(resolver, lookup, cached)
+        case NotCached(schemaList) =>
+          evaluateProperties(schemaList, resolver)
+      }
+  }
+
+  private def lookupInCache[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
+                                                                lookup: LookupProperties[F],
+                                                                resolvedSchemaList: Cached[ListSchemasKey, SchemaList]) = {
+    val propertiesKey = (resolvedSchemaList.key, resolvedSchemaList.timestamp)
+    
+    EitherT.liftF(lookup.get(propertiesKey)).flatMap {
+      case Some(properties) =>
+        EitherT.pure[F, FailureDetails.LoaderIgluError](properties)
+      case None =>
+        evaluateProperties(resolvedSchemaList.value, resolver)
+          .semiflatTap(props => lookup.put(propertiesKey, props))
+    }
+  }
+
+  private def evaluateProperties[F[_]: Monad: RegistryLookup: Clock](schemaList: SchemaList,
+                                                                     resolver: Resolver[F]) = {
+    DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
+      .map(FlatSchema.extractProperties)
   }
 
   def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, IgluSchema] =
