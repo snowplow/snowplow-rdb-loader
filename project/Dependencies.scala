@@ -49,7 +49,7 @@ object Dependencies {
 
     val slf4j            = "1.7.32"
     val redshiftJdbc     = "1.2.55.1083"
-    val snowflakeJdbc    = "3.13.9"
+    val snowflakeJdbc    = "3.13.22"
     val enumeratum       = "1.7.0"
     val aws              = "1.12.161"
     val aws2             = "2.17.59"
