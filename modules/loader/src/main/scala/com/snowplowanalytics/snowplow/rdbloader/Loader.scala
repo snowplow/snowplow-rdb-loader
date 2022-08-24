@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+
 import scala.concurrent.duration._
 
 import cats.{Applicative, Apply, Monad}
@@ -28,7 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction, VacuumScheduling}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck, Retry}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
@@ -42,7 +43,7 @@ object Loader {
 
   /** How often Loader should print its internal state */
   private val StateLoggingFrequency: FiniteDuration = 5.minutes
-  
+
   /** Restrict the length of an alert message to be compliant with alert iglu schema */
   private val MaxAlertPayloadLength = 4096
 
@@ -64,6 +65,9 @@ object Loader {
       FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
+
+    val vacuumScheduling: Stream[F, Unit] =
+      VacuumScheduling.run[F, C](config.storage, config.schedules)
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
@@ -96,6 +100,7 @@ object Loader {
         .merge(stateLogging)
         .merge(periodicMetrics)
         .merge(telemetry.report)
+        .merge(vacuumScheduling)
     }
 
     process

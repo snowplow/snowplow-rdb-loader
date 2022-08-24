@@ -212,6 +212,7 @@ object FolderMonitoringSpec {
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     None,
     "snowplow-rdbloader-oss",
-    StorageTarget.LoadAuthMethod.NoCreds
+    StorageTarget.LoadAuthMethod.NoCreds,
+    2.days
   )
 }

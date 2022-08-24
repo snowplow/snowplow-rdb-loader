@@ -16,7 +16,6 @@ import java.util.Properties
 
 import cats.data._
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import io.circe._
 import io.circe.Decoder._
@@ -26,7 +25,9 @@ import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 /**
   * Common configuration for JDBC target, such as Redshift
@@ -110,8 +111,9 @@ object StorageTarget {
                                password: PasswordConfig,
                                sshTunnel: Option[TunnelConfig],
                                userAgent: String,
-                               loadAuthMethod: LoadAuthMethod
-                             ) extends StorageTarget {
+                               loadAuthMethod: LoadAuthMethod,
+                               eventsOptimizePeriod: FiniteDuration
+  ) extends StorageTarget {
 
     override def username: String = "token"
 
@@ -324,6 +326,17 @@ object StorageTarget {
 
   implicit def redshiftConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]
+
+  implicit val durationDecoder: Decoder[FiniteDuration] =
+    Decoder[String].emap { str =>
+      Either
+        .catchOnly[NumberFormatException](Duration.create(str))
+        .leftMap(_.toString)
+        .flatMap { duration =>
+          if (duration.isFinite) Right(duration.asInstanceOf[FiniteDuration])
+          else Left(s"Cannot convert Duration $duration to FiniteDuration")
+        }
+    }
 
   implicit def databricksConfigDecoder: Decoder[Databricks] =
     deriveDecoder[Databricks]
