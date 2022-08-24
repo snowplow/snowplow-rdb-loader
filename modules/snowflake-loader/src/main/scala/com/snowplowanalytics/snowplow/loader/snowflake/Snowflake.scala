@@ -242,6 +242,10 @@ object Snowflake {
                 ddl
               case Statement.AlterTable(ddl) =>
                 ddl
+              case Statement.VacuumEvents =>
+                throw new IllegalStateException("Snowflake Loader does not use vacuum events table statement")
+              case Statement.VacuumManifest =>
+                throw new IllegalStateException("Snowflake Loader does not use vacuum manifest statement")
             }
             
           private def qualify(tableName: String): String =

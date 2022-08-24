@@ -240,6 +240,10 @@ object Redshift {
                 throw new IllegalStateException("Redshift Loader does not use EventsCopyToTempTable statement")
               case _: Statement.EventsCopyFromTempTable =>
                 throw new IllegalStateException("Redshift Loader does not use EventsCopyFromTempTable statement")
+              case Statement.VacuumEvents =>
+                throw new IllegalStateException("Redshift Loader does not use vacuum events table statement")
+              case Statement.VacuumManifest =>
+                throw new IllegalStateException("Redshift Loader does not use vacuum manifest statement")
             }
 
           private def qualify(tableName: String): String =
