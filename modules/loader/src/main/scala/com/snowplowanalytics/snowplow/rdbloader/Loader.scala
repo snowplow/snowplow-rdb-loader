@@ -13,17 +13,17 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-import cats.{Apply, Monad, Applicative}
+import cats.{Applicative, Apply, Monad}
 import cats.implicits._
-import cats.effect.{Clock, Concurrent, MonadThrow, Timer, ContextShift}
+import cats.effect.{Clock, Concurrent, ContextShift, MonadThrow, Timer}
 import retry._
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
-import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl, AuthService}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, AuthService, HealthCheck, Manifest, Statement, Control => DbControl}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
-import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck, Retry}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{AWS, Cache, VacuumScheduling, DAO, FolderMonitoring, Iglu, Logging, Monitoring, StateMonitoring, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Retry, Stage, TargetCheck}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
@@ -36,7 +36,7 @@ object Loader {
 
   /** How often Loader should print its internal state */
   private val StateLoggingFrequency: FiniteDuration = 5.minutes
-  
+
   /** Restrict the length of an alert message to be compliant with alert iglu schema */
   private val MaxAlertPayloadLength = 4096
 
@@ -58,6 +58,9 @@ object Loader {
       FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, config.timeouts, config.region.name, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
+
+    val vacuumScheduling: Stream[F, Unit] =
+      VacuumScheduling.run[F, C](config.storage)
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
@@ -83,6 +86,7 @@ object Loader {
         .merge(healthCheck)
         .merge(stateLogging)
         .merge(periodicMetrics)
+        .merge(vacuumScheduling)
     }
 
     process

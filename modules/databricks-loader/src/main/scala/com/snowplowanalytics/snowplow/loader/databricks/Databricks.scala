@@ -171,6 +171,8 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyToTempTable statement")
               case _: Statement.EventsCopyFromTempTable =>
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyFromTempTable statement")
+              case Statement.VacuumEvents => sql"OPTIMIZE ${Fragment.const0(qualify(EventsTable.MainName))} ZORDER BY collector_tstamp"
+              case Statement.VacuumManifest => sql"OPTIMIZE ${Fragment.const0(qualify(Manifest.Name))} ZORDER BY base"
             }
 
           private def qualify(tableName: String): String = tgt.catalog match {

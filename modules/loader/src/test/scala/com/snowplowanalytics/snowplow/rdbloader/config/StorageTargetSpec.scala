@@ -11,9 +11,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.config
 
-import io.circe.{DecodingFailure, CursorOp}
+import cron4s.Cron
+import io.circe.{CursorOp, DecodingFailure}
 import io.circe.literal._
-
+import cats.syntax.all._
 import org.specs2.mutable.Specification
 
 class StorageTargetSpec extends Specification {
@@ -115,6 +116,41 @@ class StorageTargetSpec extends Specification {
       )
 
       password.as[StorageTarget.PasswordConfig] must beRight(expected)
+    }
+  }
+
+  "Databricks " should {
+    "parse full config correctly" in {
+        val input = json"""{
+      "host": "databricks.com",
+      "schema": "snowplow",
+      "port": 443,
+      "httpPath": "http/path",
+      "password": "Supersecret1",
+      "userAgent": "snowplow-rdbloader-oss",
+      "loadAuthMethod": {
+            "type": "NoCreds",
+
+            "roleSessionName": "rdb_loader"
+        },
+      "analyzeEventsSchedule": "",
+      "analyzeManifestSchedule": "*/3 * * ? * *"
+    }"""
+
+      val expected: StorageTarget.Databricks = StorageTarget.Databricks(
+        host = "databricks.com",
+        catalog = None,
+        schema = "snowplow",
+        port = 443,
+        httpPath = "http/path",
+        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        sshTunnel = None,
+        userAgent = "snowplow-rdbloader-oss",
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        analyzeManifestSchedule = Cron.unsafeParse("*/3 * * ? * *").some
+      )
+
+        input.as[StorageTarget.Databricks] must beRight(expected)
     }
   }
 
