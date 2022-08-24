@@ -52,7 +52,7 @@ class ConfigSpec extends Specification {
         None,
         defaultMonitoring,
         None,
-        emptySchedules,
+        defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),

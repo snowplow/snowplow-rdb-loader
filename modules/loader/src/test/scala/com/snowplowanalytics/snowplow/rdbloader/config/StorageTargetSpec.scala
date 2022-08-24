@@ -11,10 +11,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.config
 
-import io.circe.{DecodingFailure, CursorOp}
+import cron4s.Cron
+import io.circe.{CursorOp, DecodingFailure}
 import io.circe.literal._
-
+import cats.syntax.all._
 import org.specs2.mutable.Specification
+
+import scala.concurrent.duration.DurationInt
 
 class StorageTargetSpec extends Specification {
   "StorageTarget" should {
@@ -72,6 +75,26 @@ class StorageTargetSpec extends Specification {
     }
   }
 
+  "Schedules config" should {
+    "be parsed from valid JSON" in {
+      val input = json"""{
+      "noOperation": [],
+      "optimizeEvents": "",
+      "optimizeManifest": "*/3 * * ? * *"
+    }"""
+      val impl =  Config.implicits()
+      import impl._
+
+      val expected: Config.Schedules = Config.Schedules(
+        noOperation = List.empty[Config.Schedule],
+        optimizeEvents = None,
+        optimizeManifest = Cron.unsafeParse("*/3 * * ? * *").some
+      )
+
+      input.as[Config.Schedules] must beRight(expected)
+    }
+  }
+
   "TunnelConfig" should {
     "be parsed from valid JSON" in {
       val sshTunnel = json"""{
@@ -123,6 +146,39 @@ class StorageTargetSpec extends Specification {
 
       password.as[StorageTarget.PasswordConfig] must beRight(expected)
       password2.as[StorageTarget.PasswordConfig] must beRight(expected)
+    }
+  }
+
+  "Databricks " should {
+    "parse full config correctly" in {
+        val input = json"""{
+      "host": "databricks.com",
+      "schema": "snowplow",
+      "port": 443,
+      "httpPath": "http/path",
+      "password": "Supersecret1",
+      "userAgent": "snowplow-rdbloader-oss",
+      "eventsOptimizePeriod": "2 days",
+      "loadAuthMethod": {
+            "type": "NoCreds",
+            "roleSessionName": "rdb_loader"
+        }
+    }"""
+
+      val expected: StorageTarget.Databricks = StorageTarget.Databricks(
+        host = "databricks.com",
+        catalog = None,
+        schema = "snowplow",
+        port = 443,
+        httpPath = "http/path",
+        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        sshTunnel = None,
+        userAgent = "snowplow-rdbloader-oss",
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        eventsOptimizePeriod = 2.days
+      )
+
+        input.as[StorageTarget.Databricks] must beRight(expected)
     }
   }
 
