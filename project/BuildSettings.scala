@@ -256,6 +256,7 @@ object BuildSettings {
       Docker / packageName := "snowplow/transformer-kinesis",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated",
       buildInfoKeys := List(name, version, description),
+      Test / testForkedParallel := true
     ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
