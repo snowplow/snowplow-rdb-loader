@@ -18,8 +18,10 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Run flaky tests separetly
+        run: sbt 'testOnly *WiderowParquetProcessingSpec'
       - name: Run tests
-        run: sbt coverage test coverageReport
+        run: sbt coverage 'testOnly * -- -l WiderowParquetProcessingSpec' coverageReport
       - name: Aggregate coverage data
         if: ${{ always() }}
         run: sbt coverageAggregate
