@@ -39,7 +39,7 @@ object Runner {
 
           Logging[F]
             .info(s"RDB Loader ${generated.BuildInfo.version} has started.") *>
-            Loader.run[F, ConnectionIO](parsed.config, control).as(ExitCode.Success)
+            Loader.run[F, ConnectionIO](parsed.config, env.controlF).as(ExitCode.Success)
         }
       }
       exitCode <- EitherT.liftF[F, String, ExitCode](application)

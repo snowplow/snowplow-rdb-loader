@@ -16,17 +16,43 @@ package com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws
 
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
-
-import cats.effect.{Concurrent, Resource, Sync, Timer}
+import cats.effect._
 import cats.implicits._
 import fs2.Stream
+import org.typelevel.log4cats.Logger
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model._
-
-import scala.concurrent.duration.FiniteDuration
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SQS {
+
+  case class SQSMessage[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
+
+  def consumer[F[_] : ConcurrentEffect : Timer : Logger](queueName: String,
+                                                            sqsVisibility: FiniteDuration,
+                                                            region: String,
+                                                            stop: Stream[F, Boolean],
+                                                            postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Queue.Consumer[F] = new Queue.Consumer[F] {
+    override def read: Stream[F, Queue.Consumer.Message[F]] = {
+      val stream = readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
+        .map { case (msg, ack, extend) => (SQSMessage(msg.body(), ack), extend) }
+      postProcess match {
+        case None => stream.map(_._1)
+        case Some(p) => stream.flatMap { case (msg, extend) =>
+          p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
+        }
+      }
+    }
+  }
+
+  def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+    SQS.mkClient(Region.of(region)).map { client =>
+      new Queue.Producer[F] {
+        override def send(groupId: Option[String], message: String): F[Unit] =
+          SQS.sendMessage(client)(queueName, groupId, message)
+      }
+    }
 
   def mkClient[F[_] : Concurrent](region: Region): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient] {

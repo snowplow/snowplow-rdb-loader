@@ -14,13 +14,22 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws
 
-import cats.effect.{Resource, Sync}
+import cats.effect._
 import cats.implicits._
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sns.SnsClient
 import software.amazon.awssdk.services.sns.model.PublishRequest
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SNS {
+
+  def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+    SNS.mkClient(Region.of(region)).map { client =>
+      new Queue.Producer[F] {
+        override def send(groupId: Option[String], message: String): F[Unit] =
+          SNS.sendMessage(client)(queueName, groupId, message)
+      }
+    }
 
   def mkClient[F[_] : Sync](region: Region): Resource[F, SnsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SnsClient] {

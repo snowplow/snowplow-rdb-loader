@@ -49,6 +49,7 @@ object TransformerConfig {
   object QueueConfig {
     final case class SNS(topicArn: String, region: Region) extends QueueConfig
     final case class SQS(queueName: String, region: Region) extends QueueConfig
+    final case class Pubsub(projectId: String, topicId: String) extends QueueConfig
   }
 
   sealed trait Formats extends Product with Serializable
@@ -183,6 +184,8 @@ object TransformerConfig {
             cur.as[QueueConfig.SNS]
           case Right("sqs") =>
             cur.as[QueueConfig.SQS]
+          case Right("pubsub") =>
+            cur.as[QueueConfig.Pubsub]
           case Right(other) =>
             Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS' and 'SQS'", typeCur.history))
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
@@ -197,6 +200,9 @@ object TransformerConfig {
 
     implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
       deriveDecoder[QueueConfig.SQS]
+
+    implicit val pubsubConfigDecoder: Decoder[QueueConfig.Pubsub] =
+      deriveDecoder[QueueConfig.Pubsub]
 
   }
 

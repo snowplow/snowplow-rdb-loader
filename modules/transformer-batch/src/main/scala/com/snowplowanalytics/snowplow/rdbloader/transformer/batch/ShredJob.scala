@@ -215,6 +215,8 @@ object ShredJob {
         case q: QueueConfig.SNS =>
           val snsClient = Cloud.creteSnsClient(q.region)
           Cloud.sendToSns(snsClient, q.topicArn, _, _)
+        case _ =>
+          throw new IllegalStateException("Unknown queue type")
       }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 

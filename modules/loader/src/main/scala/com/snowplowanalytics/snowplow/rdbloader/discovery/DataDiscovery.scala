@@ -16,7 +16,6 @@ import cats._
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -74,11 +73,11 @@ object DataDiscovery {
    *
    * @param config generic storage target configuration
    */
-  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_], incrementMessages: F[State], stop: Stream[F, Boolean]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
     Queue.Consumer[F]
-      .read(stop)
+      .read
       .evalMapFilter { message =>
-        val action = LoaderMessage.fromString(message) match {
+        val action = LoaderMessage.fromString(message.content) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
             handle[F](config.jsonpaths, parsed)
           case Left(error) =>
@@ -86,7 +85,7 @@ object DataDiscovery {
         }
 
         Logging[F].info("Received a new message") *>
-          Logging[F].debug(message) *>
+          Logging[F].debug(message.content) *>
           incrementMessages.flatMap(state => Logging[F].info(state.show)) *> 
           action
       }

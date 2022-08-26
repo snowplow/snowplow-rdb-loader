@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
+import scala.concurrent.duration._
 import cats.Parallel
 import cats.implicits._
 import cats.effect.concurrent.Ref
@@ -26,8 +27,8 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, Stora
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.GCP
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{SQS, S3}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.{GCS, Pubsub}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -45,9 +46,9 @@ class Environment[F[_]](cache: Cache[F],
                         loadAuthService: LoadAuthService[F],
                         jsonPathDiscovery: JsonPathDiscovery[F],
                         transaction: Transaction[F, ConnectionIO],
-                        state: State.Ref[F],
                         target: Target,
-                        timeouts: Config.Timeouts) {
+                        timeouts: Config.Timeouts,
+                        control: Control[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -60,9 +61,7 @@ class Environment[F[_]](cache: Cache[F],
 
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
-
-  def control: Control[F] =
-    Control(state)
+  val controlF: Control[F] = control
 }
 
 object Environment {
@@ -89,7 +88,8 @@ object Environment {
       cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
       implicit0(cache: Cache[F]) = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      cloudServices <- createCloudServices(cli.config, blocker)
+      control = Control(state)
+      cloudServices <- createCloudServices(cli.config, blocker, control)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
@@ -105,9 +105,9 @@ object Environment {
       cloudServices.loadAuthService,
       cloudServices.jsonPathDiscovery,
       transaction,
-      state,
       statementer,
-      cli.config.timeouts
+      cli.config.timeouts,
+      control
     )
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
@@ -125,13 +125,14 @@ object Environment {
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 
-  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker): Resource[F, CloudServices[F]] =
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
     config match {
       case c: Config.AWS[StorageTarget] =>
         for {
-          s3Client <- Resource.eval(AWS.getS3Client[F](c.region.name))
-          implicit0(blobStorage: BlobStorage[F]) = AWS.blobStorage[F](s3Client)
-          queueConsumer = AWS.queueConsumer[F](c.messageQueue, c.timeouts.sqsVisibility, c.region.name)
+          s3Client <- Resource.eval(S3.getClient[F](c.region.name))
+          implicit0(blobStorage: BlobStorage[F]) = S3.blobStorage[F](s3Client)
+          postProcess = Queue.Consumer.postProcess[F]
+          queueConsumer = SQS.consumer[F](c.messageQueue, c.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.storage.loadAuthMethod, c.region.name, c.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
@@ -139,9 +140,19 @@ object Environment {
         for {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
-          gcsClient = GCP.getGcsClient(blocker)
-          implicit0(blobStorage: BlobStorage[F]) = GCP.blobStorage(gcsClient)
-          queueConsumer <- GCP.queueConsumer[F](blocker, c.projectId, c.subscriptionId, c.customPubsubEndpoint)
+          gcsClient = GCS.getClient(blocker)
+          implicit0(blobStorage: BlobStorage[F]) = GCS.blobStorage(gcsClient)
+          postProcess = Queue.Consumer.postProcess[F]
+          queueConsumer <- Pubsub.consumer[F](
+            blocker = blocker,
+            projectId = c.projectId,
+            subscription = c.subscriptionId,
+            parallelPullCount = 1,
+            maxQueueSize = 10,
+            maxAckExtensionPeriod = 2.hours,
+            customPubsubEndpoint = c.customPubsubEndpoint,
+            postProcess = Some(postProcess)
+          )
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
     }
 

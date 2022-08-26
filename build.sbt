@@ -12,13 +12,33 @@
  */
 
 lazy val root = project.in(file("."))
-  .aggregate(common, loader, databricksLoader, redshiftLoader, snowflakeLoader, transformerBatch, transformerKinesis)
+  .aggregate(
+    common,
+    commonTransformerStream,
+    loader,
+    databricksLoader,
+    redshiftLoader,
+    snowflakeLoader,
+    transformerBatch,
+    transformerKinesis,
+    transformerPubsub,
+    transformerFile
+  )
 
 lazy val common: Project = project
   .in(file("modules/common"))
   .settings(BuildSettings.commonBuildSettings)
   .settings(libraryDependencies ++= Dependencies.commonDependencies)
   .settings(excludeDependencies ++= Dependencies.exclusions)
+  .enablePlugins(BuildInfoPlugin)
+
+lazy val commonTransformerStream = project
+  .in(file("modules/common-transformer-stream"))
+  .settings(BuildSettings.commonStreamTransformerBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.commonStreamTransformerDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
+  .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 
 lazy val loader = project
@@ -91,9 +111,7 @@ lazy val transformerKinesis = project
   .in(file("modules/transformer-kinesis"))
   .settings(BuildSettings.transformerKinesisBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
-  .settings(excludeDependencies ++= Dependencies.transformerKinesisExclusions)
-  .dependsOn(common % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesisDistroless = project
@@ -101,7 +119,27 @@ lazy val transformerKinesisDistroless = project
   .settings(sourceDirectory := (transformerKinesis / sourceDirectory).value)
   .settings(BuildSettings.transformerKinesisDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
-  .settings(excludeDependencies ++= Dependencies.transformerKinesisExclusions)
-  .dependsOn(common)
+  .dependsOn(commonTransformerStream)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
+
+lazy val transformerPubsub = project
+  .in(file("modules/transformer-pubsub"))
+  .settings(BuildSettings.transformerPubsubBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .dependsOn(commonTransformerStream % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
+
+lazy val transformerPubsubDistroless = project
+  .in(file("modules/distroless/transformer-pubsub"))
+  .settings(sourceDirectory := (transformerPubsub / sourceDirectory).value)
+  .settings(BuildSettings.transformerPubsubDistrolessBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .dependsOn(commonTransformerStream)
+  .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
+
+lazy val transformerFile = project
+  .in(file("modules/transformer-fs"))
+  .settings(BuildSettings.transformerFileBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .dependsOn(commonTransformerStream % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, BuildInfoPlugin)

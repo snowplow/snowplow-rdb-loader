@@ -107,7 +107,7 @@ object Loader {
   private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
                          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery.discover[F](config, control.incrementMessages, control.isBusy)
+      DataDiscovery.discover[F](config, control.incrementMessages)
     val retryDiscovery: DiscoveryStream[F] =
       Retries.run[F](config.jsonpaths, config.retryQueue, control.getFailures)
     val discovery = sqsDiscovery.merge(retryDiscovery)

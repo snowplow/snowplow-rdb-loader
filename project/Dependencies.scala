@@ -183,11 +183,13 @@ object Dependencies {
     aws2s3,
     aws2sqs,
     aws2sns,
+    aws2kinesis,
     catsRetry,
     fs2,
     fs2BlobstoreS3,
     fs2BlobstoreGCS,
     fs2PubSub,
+    fs2Aws,
     ssm,
     log4cats
   )
@@ -244,17 +246,13 @@ object Dependencies {
     scalaCheck
   )
 
-  val transformerKinesisDependencies = Seq(
+  val commonStreamTransformerDependencies = Seq(
     dynamodb,
     slf4j,
     protobuf,
     commons,
     kafkaClients,
     log4cats,
-    fs2Io,
-    fs2Aws,
-    fs2AwsSqs,
-    aws2kinesis,
     http4sClient,
     catsEffectLaws,
     circeOptics,
@@ -274,7 +272,7 @@ object Dependencies {
     ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")
   )
 
-  val transformerKinesisExclusions = {
+  val commonStreamTransformerExclusions = {
     exclusions ++ Seq(
       ExclusionRule(organization = "ch.qos.logback"),
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),
