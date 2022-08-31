@@ -52,7 +52,7 @@ class ConfigSpec extends Specification {
         exampleQueueName,
         None,
         exampleRedshift,
-        emptySchedules,
+        defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),

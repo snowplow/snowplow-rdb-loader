@@ -123,11 +123,16 @@ object ConfigSpec {
   )
   val exampleSchedules: Config.Schedules = Config.Schedules(List(
     Config.Schedule("Maintenance window", Cron.unsafeParse("0 0 12 * * ?"), 1.hour)
-  ))
+  ),
+    Some(Cron.unsafeParse("0 0 0 ? * *")),
+    Some(Cron.unsafeParse("0 0 5 ? * *"))
+  )
   val exampleRetryQueue: Option[Config.RetryQueue] = Some(Config.RetryQueue(
     30.minutes, 64, 3, 5.seconds
   ))
-  val emptySchedules: Config.Schedules = Config.Schedules(Nil)
+  val defaultSchedules: Config.Schedules = Config.Schedules(Nil,
+    Some(Cron.unsafeParse("0 0 0 ? * *")),
+    Some(Cron.unsafeParse("0 0 5 ? * *")))
   val exampleTimeouts: Config.Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
   val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleReadyCheck: Config.Retries = Config.Retries(Config.Strategy.Constant, None, 15.seconds, None)

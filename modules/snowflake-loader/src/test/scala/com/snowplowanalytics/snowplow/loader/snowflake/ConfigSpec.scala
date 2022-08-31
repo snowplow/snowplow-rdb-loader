@@ -61,7 +61,7 @@ class ConfigSpec extends Specification {
           .copy(
             transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(S3.Folder.coerce("s3://bucket/transformed/"))))
           ),
-        emptySchedules,
+        defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),

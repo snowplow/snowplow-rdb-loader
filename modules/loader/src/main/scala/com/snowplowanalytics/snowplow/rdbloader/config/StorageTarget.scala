@@ -22,8 +22,6 @@ import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 import com.snowplowanalytics.snowplow.rdbloader.common.S3
-import cron4s.CronExpr
-import cron4s.circe._
 
 /**
   * Common configuration for JDBC target, such as Redshift
@@ -105,9 +103,7 @@ object StorageTarget {
                                password: PasswordConfig,
                                sshTunnel: Option[TunnelConfig],
                                userAgent: String,
-                               loadAuthMethod: LoadAuthMethod,
-                               analyzeEventsSchedule: Option[CronExpr] = None,
-                               analyzeManifestSchedule: Option[CronExpr] = None,
+                               loadAuthMethod: LoadAuthMethod
   ) extends StorageTarget {
 
     override def username: String = "token"
@@ -339,16 +335,6 @@ object StorageTarget {
 
   implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
     deriveDecoder[ParameterStoreConfig]
-
-  implicit def nullableCronExprDecoder: Decoder[Option[CronExpr]] =   Decoder.instance { cur =>
-    cur.as[String] match {
-      case Left(other) =>  Left(other)
-      case Right(cred) => cred match {
-        case "" => Right(None)
-        case _ => cur.as[CronExpr].map(_.some)
-      }
-    }
-  }
 
   implicit def loadAuthMethodDecoder: Decoder[LoadAuthMethod] =
     Decoder.instance { cur =>
