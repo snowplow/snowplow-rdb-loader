@@ -73,6 +73,26 @@ class StorageTargetSpec extends Specification {
     }
   }
 
+  "Schedules config" should {
+    "be parsed from valid JSON" in {
+      val input = json"""{
+      "noOperation": [],
+      "optimizeEventsSchedule": "",
+      "optimizeManifestSchedule": "*/3 * * ? * *"
+    }"""
+      val impl =  Config.implicits()
+      import impl._
+
+      val expected: Config.Schedules = Config.Schedules(
+        noOperation = List.empty[Config.Schedule],
+        optimizeEventsSchedule = None,
+        optimizeManifestSchedule = Cron.unsafeParse("*/3 * * ? * *").some
+      )
+
+      input.as[Config.Schedules] must beRight(expected)
+    }
+  }
+
   "TunnelConfig" should {
     "be parsed from valid JSON" in {
       val sshTunnel = json"""{
@@ -132,9 +152,7 @@ class StorageTargetSpec extends Specification {
             "type": "NoCreds",
 
             "roleSessionName": "rdb_loader"
-        },
-      "analyzeEventsSchedule": "",
-      "analyzeManifestSchedule": "*/3 * * ? * *"
+        }
     }"""
 
       val expected: StorageTarget.Databricks = StorageTarget.Databricks(
@@ -146,8 +164,7 @@ class StorageTargetSpec extends Specification {
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
         sshTunnel = None,
         userAgent = "snowplow-rdbloader-oss",
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
-        analyzeManifestSchedule = Cron.unsafeParse("*/3 * * ? * *").some
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
       )
 
         input.as[StorageTarget.Databricks] must beRight(expected)
