@@ -19,6 +19,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 import cats.effect.Sync
 import cats.data.EitherT
 import cats.syntax.either._
+import cats.syntax.option._
 
 import io.circe._
 import io.circe.generic.semiauto._
@@ -62,7 +63,9 @@ object Config {
   }
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
-  final case class Schedules(noOperation: List[Schedule])
+  final case class Schedules(noOperation: List[Schedule],
+                             optimizeEventsSchedule: Option[CronExpr] = None,
+                             optimizeManifestSchedule: Option[CronExpr] = None)
   final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Metrics, webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
@@ -97,6 +100,16 @@ object Config {
   final case class implicits(regionConfigDecoder: Decoder[Region] = Region.regionConfigDecoder) {
     implicit val implRegionConfigDecoder: Decoder[Region] =
       regionConfigDecoder
+
+    implicit val nullableCronExprDecoder: Decoder[Option[CronExpr]] =  Decoder.instance { cur =>
+      cur.as[String] match {
+        case Left(other) => Left(other)
+        case Right(cred) => cred match {
+          case "" => Right(None)
+          case _ => cur.as[CronExpr].map(_.some)
+        }
+      }
+    }
 
     implicit val snowplowMonitoringDecoder: Decoder[SnowplowMonitoring] =
       deriveDecoder[SnowplowMonitoring]

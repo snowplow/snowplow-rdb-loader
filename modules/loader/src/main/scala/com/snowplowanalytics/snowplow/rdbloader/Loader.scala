@@ -60,7 +60,7 @@ object Loader {
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
     val vacuumScheduling: Stream[F, Unit] =
-      VacuumScheduling.run[F, C](config.storage)
+      VacuumScheduling.run[F, C](config.storage, config.schedules)
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
