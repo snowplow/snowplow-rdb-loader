@@ -77,16 +77,16 @@ class StorageTargetSpec extends Specification {
     "be parsed from valid JSON" in {
       val input = json"""{
       "noOperation": [],
-      "optimizeEventsSchedule": "",
-      "optimizeManifestSchedule": "*/3 * * ? * *"
+      "optimizeEvents": "",
+      "optimizeManifest": "*/3 * * ? * *"
     }"""
       val impl =  Config.implicits()
       import impl._
 
       val expected: Config.Schedules = Config.Schedules(
         noOperation = List.empty[Config.Schedule],
-        optimizeEventsSchedule = None,
-        optimizeManifestSchedule = Cron.unsafeParse("*/3 * * ? * *").some
+        optimizeEvents = None,
+        optimizeManifest = Cron.unsafeParse("*/3 * * ? * *").some
       )
 
       input.as[Config.Schedules] must beRight(expected)
@@ -148,9 +148,10 @@ class StorageTargetSpec extends Specification {
       "httpPath": "http/path",
       "password": "Supersecret1",
       "userAgent": "snowplow-rdbloader-oss",
+      "eventsOptimizePeriodDays": 2,
+      "manifestOptimizePeriodDays": 999,
       "loadAuthMethod": {
             "type": "NoCreds",
-
             "roleSessionName": "rdb_loader"
         }
     }"""
@@ -164,7 +165,9 @@ class StorageTargetSpec extends Specification {
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
         sshTunnel = None,
         userAgent = "snowplow-rdbloader-oss",
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        eventsOptimizePeriodDays = 2,
+        manifestOptimizePeriodDays = 999
       )
 
         input.as[StorageTarget.Databricks] must beRight(expected)

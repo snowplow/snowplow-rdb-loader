@@ -134,7 +134,9 @@ object DatabricksSpec {
       StorageTarget.PasswordConfig.PlainText("xxx"),
       None,
       "useragent",
-      StorageTarget.LoadAuthMethod.NoCreds
+      StorageTarget.LoadAuthMethod.NoCreds,
+      2,
+      999
     ),
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),
