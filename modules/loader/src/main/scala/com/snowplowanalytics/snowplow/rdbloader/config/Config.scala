@@ -64,8 +64,8 @@ object Config {
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
   final case class Schedules(noOperation: List[Schedule],
-                             optimizeEventsSchedule: Option[CronExpr] = None,
-                             optimizeManifestSchedule: Option[CronExpr] = None)
+                             optimizeEvents: Option[CronExpr] = None,
+                             optimizeManifest: Option[CronExpr] = None)
   final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Metrics, webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)

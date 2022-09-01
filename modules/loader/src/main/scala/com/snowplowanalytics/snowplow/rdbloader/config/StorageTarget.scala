@@ -103,7 +103,9 @@ object StorageTarget {
                                password: PasswordConfig,
                                sshTunnel: Option[TunnelConfig],
                                userAgent: String,
-                               loadAuthMethod: LoadAuthMethod
+                               loadAuthMethod: LoadAuthMethod,
+                               eventsOptimizePeriodDays: Int,
+                               manifestOptimizePeriodDays: Int
   ) extends StorageTarget {
 
     override def username: String = "token"
