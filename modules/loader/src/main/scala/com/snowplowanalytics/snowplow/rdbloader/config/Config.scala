@@ -47,7 +47,8 @@ final case class Config[+D <: StorageTarget](region: Region,
                                              timeouts: Timeouts,
                                              retries: Retries,
                                              readyCheck: Retries,
-                                             initRetries: Retries)
+                                             initRetries: Retries,
+                                             featureFlags: FeatureFlags)
 
 object Config {
 
@@ -81,6 +82,7 @@ object Config {
   final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
   final case class Timeouts(loading: FiniteDuration, nonLoading: FiniteDuration, sqsVisibility: FiniteDuration)
   final case class Retries(strategy: Strategy, attempts: Option[Int], backoff: FiniteDuration, cumulativeBound: Option[FiniteDuration])
+  final case class FeatureFlags(addLoadTstampColumn: Boolean)
 
   sealed trait Strategy
   object Strategy {
@@ -168,6 +170,9 @@ object Config {
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
+
+    implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
+      deriveDecoder[FeatureFlags]
   }
 
   /** Post-decoding validation, making sure different parts are consistent */

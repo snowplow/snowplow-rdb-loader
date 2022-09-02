@@ -244,11 +244,21 @@ object Snowflake {
           private def qualify(tableName: String): String =
             s"$schema.$tableName"
 
-          private def columnsForCopy(columns: ColumnsToCopy): String =
-            columns.names.map(_.value).mkString(",") + ",load_tstamp"
+          private def columnsForCopy(columns: ColumnsToCopy): String = {
+            val columnNames = columns.names.map(_.value).mkString(",")
+            if (config.featureFlags.addLoadTstampColumn)
+              columnNames + ",load_tstamp"
+            else
+              columnNames
+          }
 
-          private def columnsForSelect(columns: ColumnsToCopy): String =
-            columns.names.map(c => s"$$1:${c.value}").mkString(",") + ",current_timestamp()"
+          private def columnsForSelect(columns: ColumnsToCopy): String = {
+            val columnNames = columns.names.map(c => s"$$1:${c.value}").mkString(",")
+            if (config.featureFlags.addLoadTstampColumn)
+              columnNames + ",current_timestamp()"
+            else
+              columnNames
+          }
         }
 
         Right(result)
