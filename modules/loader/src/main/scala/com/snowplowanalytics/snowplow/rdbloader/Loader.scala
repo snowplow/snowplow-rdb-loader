@@ -76,7 +76,7 @@ object Loader {
       Logging[F].info("No operation prepare step is completed")
     val manifestInit = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(Manifest.initialize[F, C](config.storage)) *>
       Logging[F].info("Manifest initialization is completed")
-    val addLoadTstamp = addLoadTstampColumn[F, C](config.storage) *>
+    val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
       Logging[F].info("Adding load_tstamp column is completed")
 
     val init: F[Unit] = blockUntilReady *> noOperationPrepare *> manifestInit *> addLoadTstamp
@@ -157,25 +157,28 @@ object Loader {
   }
 
   private def addLoadTstampColumn[F[_]: Transaction[*[_], C]: Monitoring: Logging: MonadThrow,
-                                  C[_]: DAO: Monad: Logging](targetConfig: StorageTarget): F[Unit] = {
-    val f = targetConfig match {
-      // Adding load_tstamp column explicitly is not needed due to merge schema
-      // feature of Databricks. It will create missing column itself.
-      case _: StorageTarget.Databricks => Monad[C].unit
-      case _ =>
-        for {
-          allColumns <- DbControl.getColumns[C](EventsTable.MainName)
-          _ <- if (loadTstampColumnExist(allColumns))
-            Logging[C].info("load_tstamp column already exists")
-          else
-            DAO[C].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
-              Logging[C].info("load_tstamp column is added successfully")
-        } yield ()
-    }
-    Transaction[F, C].transact(f).recoverWith {
-      case e: Throwable =>
-        val err = s"Error while adding load_tstamp column: $e"
-        Logging[F].error(err) *> Monitoring[F].alert(AlertPayload.error(err))
+                                  C[_]: DAO: Monad: Logging](shouldAdd: Boolean, targetConfig: StorageTarget): F[Unit] = {
+    if (!shouldAdd) Logging[F].info("Adding load_stamp is skipped")
+    else {
+      val f = targetConfig match {
+        // Adding load_tstamp column explicitly is not needed due to merge schema
+        // feature of Databricks. It will create missing column itself.
+        case _: StorageTarget.Databricks => Monad[C].unit
+        case _ =>
+          for {
+            allColumns <- DbControl.getColumns[C](EventsTable.MainName)
+            _ <- if (loadTstampColumnExist(allColumns))
+              Logging[C].info("load_tstamp column already exists")
+            else
+              DAO[C].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
+                Logging[C].info("load_tstamp column is added successfully")
+          } yield ()
+      }
+      Transaction[F, C].transact(f).recoverWith {
+        case e: Throwable =>
+          val err = s"Error while adding load_tstamp column: $e"
+          Logging[F].error(err) *> Monitoring[F].alert(AlertPayload.error(err))
+      }
     }
   }
 
