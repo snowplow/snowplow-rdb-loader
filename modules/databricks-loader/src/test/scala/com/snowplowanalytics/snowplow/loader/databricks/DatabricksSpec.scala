@@ -135,8 +135,8 @@ object DatabricksSpec {
       None,
       "useragent",
       StorageTarget.LoadAuthMethod.NoCreds,
-      2,
-      999
+      2.days,
+      999.days
     ),
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),

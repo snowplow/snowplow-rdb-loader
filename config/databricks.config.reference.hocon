@@ -34,6 +34,10 @@
     # User agent name for Databricks connection. Optional, default value "snowplow-rdbloader-oss"
     "userAgent": "snowplow-rdbloader-oss"
 
+    # Optimize period per table, that will be used as predicate for the OPTIMIZE command.
+    "eventsOptimizePeriod": "2 days",
+    "manifestOptimizePeriod": "999 days",
+
     # Optional, default method is 'NoCreds'
     # Specifies the auth method to use with 'COPY INTO' statement.
     "loadAuthMethod": {
@@ -71,7 +75,10 @@
         # For how long the loader should be paused
         "duration": "1 hour"
       }
-    ]
+    ],
+    # Loader runs periodic OPTIMIZE statements to prevent growing number of files behind delta tables.
+    "optimizeEvents": "0 0 0 ? * *",
+    "optimizeManifest": "0 0 5 ? * *"
   }
 
   # Observability and reporting options

@@ -42,7 +42,7 @@ object VacuumScheduling {
             .evalMap { _ =>
               Transaction[F, C].transact(
                 Logging[C].info("initiating events vacuum") *> DAO[C].executeQuery(Statement.VacuumEvents) *> Logging[C].info("vacuum events complete")
-              ).retryingOnAllErrors(retryPolicy[F], logError[F])
+              ).retryingOnAllErrors(retryPolicy[F], logError[F]).orElse(().pure[F])
             }
         case _ => Stream.empty[F]
       }
@@ -57,7 +57,7 @@ object VacuumScheduling {
               .evalMap { _ =>
                 Transaction[F, C].transact(
                   Logging[C].info("initiating manifest vacuum") *> DAO[C].executeQuery(Statement.VacuumManifest) *> Logging[C].info("vacuum manifest complete")
-                ).retryingOnAllErrors(retryPolicy[F], logError[F])
+                ).retryingOnAllErrors(retryPolicy[F], logError[F]).orElse(().pure[F])
         }
            case _ => Stream.empty[F]
         }

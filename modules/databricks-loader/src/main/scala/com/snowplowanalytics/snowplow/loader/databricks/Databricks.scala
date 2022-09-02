@@ -173,11 +173,11 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyFromTempTable statement")
               case Statement.VacuumEvents => sql"""
                   OPTIMIZE ${Fragment.const0(qualify(EventsTable.MainName))}
-                  WHERE collector_tstamp_date >= current_timestamp() - INTERVAL ${tgt.eventsOptimizePeriodDays} day
+                  WHERE collector_tstamp_date >= current_timestamp() - INTERVAL ${tgt.eventsOptimizePeriod.toSeconds} second
                   ZORDER BY collector_tstamp"""
               case Statement.VacuumManifest => sql"""
                   OPTIMIZE ${Fragment.const0(qualify(EventsTable.MainName))}
-                  WHERE collector_tstamp_date >= current_timestamp() - INTERVAL ${tgt.manifestOptimizePeriodDays} day
+                  WHERE collector_tstamp_date >= current_timestamp() - INTERVAL ${tgt.manifestOptimizePeriod.toSeconds} second
                   ZORDER BY collector_tstamp"""
             }
 

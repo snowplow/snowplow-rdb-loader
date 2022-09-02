@@ -17,6 +17,8 @@ import io.circe.literal._
 import cats.syntax.all._
 import org.specs2.mutable.Specification
 
+import scala.concurrent.duration.DurationInt
+
 class StorageTargetSpec extends Specification {
   "StorageTarget" should {
     "be parsed from valid JSON" in {
@@ -148,8 +150,8 @@ class StorageTargetSpec extends Specification {
       "httpPath": "http/path",
       "password": "Supersecret1",
       "userAgent": "snowplow-rdbloader-oss",
-      "eventsOptimizePeriodDays": 2,
-      "manifestOptimizePeriodDays": 999,
+      "eventsOptimizePeriod": "2 days",
+      "manifestOptimizePeriod": "999 days",
       "loadAuthMethod": {
             "type": "NoCreds",
             "roleSessionName": "rdb_loader"
@@ -166,8 +168,8 @@ class StorageTargetSpec extends Specification {
         sshTunnel = None,
         userAgent = "snowplow-rdbloader-oss",
         loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
-        eventsOptimizePeriodDays = 2,
-        manifestOptimizePeriodDays = 999
+        eventsOptimizePeriod = 2.days,
+        manifestOptimizePeriod = 999.days
       )
 
         input.as[StorageTarget.Databricks] must beRight(expected)
