@@ -40,7 +40,7 @@ object Manifest {
           s"The new manifest table has been created, legacy 0.1.0 manifest can be found at $LegacyName and can be deleted manually"
         )
       case Right(InitStatus.NoChanges) =>
-        Monad[F].unit
+        Logging[F].info("No changes needed on the manifest table")
       case Left(error) =>
         Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
           MonadError[F, Throwable].raiseError(new IllegalStateException(error.toString))

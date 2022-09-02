@@ -69,14 +69,18 @@ object Loader {
     val periodicMetrics: Stream[F, Unit] =
       Monitoring[F].periodicMetrics.report
 
-    val init: F[Unit] = TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage) *>
-      NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
-      Manifest.initialize[F, C](config.storage) *>
-      Transaction[F, C].transact(addLoadTstampColumn[C](config.storage))
+    val blockUntilReady = TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage) *>
+      Logging[F].info("Target check is completed")
+    val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
+      Logging[F].info("No operation prepare step is completed")
+    val manifestInit = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(Manifest.initialize[F, C](config.storage)) *>
+      Logging[F].info("Manifest initialization is completed")
+    val addLoadTstamp = Transaction[F, C].transact(addLoadTstampColumn[C](config.storage)) *>
+      Logging[F].info("Adding load_tstamp column is completed")
 
-    val initWithRetry: F[Unit] = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(init)
+    val init: F[Unit] = blockUntilReady *> noOperationPrepare *> manifestInit *> addLoadTstamp
 
-    val process = Stream.eval(initWithRetry).flatMap { _ =>
+    val process = Stream.eval(init).flatMap { _ =>
       loading
         .merge(folderMonitoring)
         .merge(noOpScheduling)
