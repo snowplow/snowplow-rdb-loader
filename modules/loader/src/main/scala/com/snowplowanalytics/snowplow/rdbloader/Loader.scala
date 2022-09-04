@@ -28,8 +28,6 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stag
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
-import java.sql.SQLException
-
 object Loader {
 
   private implicit val LoggerName: Logging.LoggerName =
@@ -229,8 +227,5 @@ object Loader {
   }
 
   private def getErrorMessage(error: Throwable): String =
-    error match {
-      case e: SQLException => s"${error.getMessage} - SqlState: ${e.getSQLState}"
-      case _ => Option(error.getMessage).getOrElse(error.toString)
-    }
+    Option(error.getMessage).getOrElse(error.toString)
 }

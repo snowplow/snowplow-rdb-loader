@@ -17,12 +17,15 @@ import cats.arrow.FunctionK
 import cats.implicits._
 
 import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
+import cats.effect.implicits._
 
 import doobie._
 import doobie.implicits._
 import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 import doobie.hikari._
+
+import java.sql.SQLException
 
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 
@@ -76,6 +79,8 @@ trait Transaction[F[_], C[_]] {
 
 object Transaction {
 
+  final class TransactionException(message: String, cause: Throwable) extends Exception(message, cause)
+
   /** Should be enough for all monitoring and loading */
   val PoolSize = 4
 
@@ -120,7 +125,7 @@ object Transaction {
     Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: Effect](target: StorageTarget, conn: Transactor[F]): Transaction[F, ConnectionIO] = {
+  def jdbcRealInterpreter[F[_]: ConcurrentEffect: ContextShift](target: StorageTarget, conn: Transactor[F]): Transaction[F, ConnectionIO] = {
 
     val NoCommitTransactor: Transactor[F] =
       conn.copy(strategy0 = target.doobieNoCommitStrategy)
@@ -132,8 +137,16 @@ object Transaction {
       def transact[A](io: ConnectionIO[A]): F[A] =
         DefaultTransactor.trans.apply(io)
 
+      // The start/join is a trick to fix stack traces in exceptions raised by the transaction
+      // See https://github.com/snowplow/snowplow-rdb-loader/issues/1045
       def run[A](io: ConnectionIO[A]): F[A] =
         NoCommitTransactor.trans.apply(io)
+          .start
+          .bracket(_.join)(_.cancel)
+          .adaptError {
+            case e: SQLException => new TransactionException(s"${e.getMessage} - SqlState: ${e.getSQLState}", e)
+            case e => new TransactionException(e.getMessage, e)
+          }
 
       def arrowBack: F ~> ConnectionIO =
         new FunctionK[F, ConnectionIO] {
