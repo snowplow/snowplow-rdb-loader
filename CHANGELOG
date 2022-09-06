@@ -1,3 +1,10 @@
+Version 4.2.2 (2022-09-06)
+--------------------------
+Loader: feature flag to disable adding load_tstamp column (#1041)
+Loader: catch and ignore errors when adding load_tstamp column (#1039)
+Loader: improvements to initialization logs and monitoring (#1040)
+Databricks loader: make catalog prepended to queries optional (#992)
+
 Version 4.2.1 (2022-07-25)
 --------------------------
 Snowflake Loader: fix loading path used with temp creds auth method (#1002)
