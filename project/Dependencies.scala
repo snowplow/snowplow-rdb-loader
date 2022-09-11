@@ -57,7 +57,7 @@ object Dependencies {
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
     val commons          = "2.7"    // Fix CVE
-    val kafkaClients     = "2.7.2"  // Fix CVE
+    val kafkaClients     = "2.8.2"  // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.10.5"
