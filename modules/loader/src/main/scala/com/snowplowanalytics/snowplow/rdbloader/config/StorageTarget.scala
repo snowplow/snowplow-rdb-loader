@@ -49,7 +49,8 @@ sealed trait StorageTarget extends Product with Serializable {
   def withAutoCommit: Boolean = false
   def connectionUrl: String
   def properties: Properties
-  def loadAuthMethod: StorageTarget.LoadAuthMethod
+  def eventsLoadAuthMethod: StorageTarget.LoadAuthMethod
+  def foldersLoadAuthMethod: StorageTarget.LoadAuthMethod
 }
 
 object StorageTarget {
@@ -81,11 +82,11 @@ object StorageTarget {
                             password: PasswordConfig,
                             maxError: Int,
                             sshTunnel: Option[TunnelConfig]) extends StorageTarget {
-    def driver: String = "com.amazon.redshift.jdbc42.Driver"
+    override def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
-    def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
+    override def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
 
-    def properties: Properties = {
+    override def properties: Properties = {
       val props = new Properties()
       jdbc.validation match {
         case Right(updaters) =>
@@ -96,7 +97,8 @@ object StorageTarget {
       props
     }
 
-    def loadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
+    override def eventsLoadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
+    override def foldersLoadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
   }
 
   final case class Databricks(
@@ -131,6 +133,9 @@ object StorageTarget {
       props.put("UserAgentEntry", userAgent)
       props
     }
+
+    override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+    override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
   }
 
   final case class Snowflake(snowflakeRegion: Option[String],
@@ -147,7 +152,7 @@ object StorageTarget {
                              jdbcHost: Option[String],
                              loadAuthMethod: LoadAuthMethod) extends StorageTarget {
 
-    def connectionUrl: String =
+    override def connectionUrl: String =
       host match {
         case Right(h) =>
           s"jdbc:snowflake://$h"
@@ -156,9 +161,9 @@ object StorageTarget {
           throw new IllegalStateException(s"Error deriving host: $e")
       }
 
-    def sshTunnel: Option[TunnelConfig] = None
+    override def sshTunnel: Option[TunnelConfig] = None
 
-    def properties: Properties = {
+    override def properties: Properties = {
       val props: Properties = new Properties()
       props.put("warehouse", warehouse)
       props.put("db", database)
@@ -167,7 +172,7 @@ object StorageTarget {
       props
     }
 
-    def driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
+    override def driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
 
     def host: Either[String, String] = {
       // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
@@ -199,6 +204,11 @@ object StorageTarget {
           "Snowflake config requires either jdbcHost or both account and region".asLeft
       }
     }
+
+    override def eventsLoadAuthMethod: LoadAuthMethod =
+      transformedStage.fold(loadAuthMethod)(_ => LoadAuthMethod.NoCreds)
+    override def foldersLoadAuthMethod: LoadAuthMethod =
+      folderMonitoringStage.fold(loadAuthMethod)(_ => LoadAuthMethod.NoCreds)
   }
 
   object Snowflake {
