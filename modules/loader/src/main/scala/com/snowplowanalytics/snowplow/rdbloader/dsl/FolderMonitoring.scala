@@ -232,7 +232,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                       for {
-                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.loadAuthMethod, region, timeouts.loading)
+                        loadAuth <- AuthService.getLoadAuthMethod[F](storageTarget.foldersLoadAuthMethod, region, timeouts.loading)
                         alerts   <- check[F, C](outputFolder, readyCheck, storageTarget, loadAuth)
                         _        <- alerts.traverse_ { payload =>
                           val warn = payload.base match {

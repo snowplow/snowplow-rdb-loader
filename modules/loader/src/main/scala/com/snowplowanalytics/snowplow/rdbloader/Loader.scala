@@ -134,7 +134,7 @@ object Loader {
     val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
-        loadAuth <- AuthService.getLoadAuthMethod[F](config.storage.loadAuthMethod, config.region.name, config.timeouts.loading)
+        loadAuth <- AuthService.getLoadAuthMethod[F](config.storage.eventsLoadAuthMethod, config.region.name, config.timeouts.loading)
         result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery, loadAuth)
         attempts <- control.getAndResetAttempts
         _        <- result match {
