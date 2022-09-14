@@ -96,7 +96,7 @@ class MigrationSpec extends Specification {
       state.getLog must beEqualTo(expected)
       value must beRight.like {
         case Migration(preTransaction, inTransaction) =>
-          preTransaction.runS.getLog must beEmpty
+          preTransaction mustEqual Nil
           inTransaction.runS.getLog must beEqualTo(expectedMigration)
       }
     }
@@ -159,7 +159,7 @@ class MigrationSpec extends Specification {
       state.getLog must beEqualTo(expected)
       value must beRight.like {
         case Migration(preTransaction, inTransaction) =>
-          preTransaction.runS.getLog must beEmpty
+          preTransaction must beEmpty
           inTransaction.runS.getLog must beEqualTo(expectedMigration)
       }
     }
