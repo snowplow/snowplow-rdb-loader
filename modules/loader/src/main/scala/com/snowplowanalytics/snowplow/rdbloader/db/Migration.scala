@@ -148,7 +148,9 @@ object Migration {
     val transaction: C[Migration[C]] =
       Transaction[F, C].arrowBack(descriptions.value).flatMap {
         case Right(schemaList) =>
-          schemaList
+          // Duplicate schemas cause migration vector to double failing the second migration. Therefore deduplication
+          // with toSet.toList
+          schemaList.toSet.toList
             .traverseFilter(buildBlock[C])
             .flatMap(blocks => Migration.fromBlocks[C](blocks))
         case Left(error) =>
