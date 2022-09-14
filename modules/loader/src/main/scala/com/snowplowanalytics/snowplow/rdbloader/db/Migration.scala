@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import cats.data.EitherT
 import cats.implicits._
-import cats.{Applicative, Monad, MonadThrow, ~>}
+import cats.{Applicative, Monad, MonadThrow}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, Migration => SchemaMigration}
@@ -41,14 +41,11 @@ import doobie.Fragment
  * @param preTransaction actions (including logging) that have to run before the main transaction block
  * @param inTransaction actions (including logging) that have to run inside the main transaction block
  */
-final case class Migration[F[_]](preTransaction: F[Unit], inTransaction: F[Unit]) {
-  def addPreTransaction(statement: F[Unit])(implicit F: Monad[F]): Migration[F] =
-    Migration[F](preTransaction *> statement, inTransaction)
+final case class Migration[F[_]](preTransaction: List[F[Unit]], inTransaction: F[Unit]) {
+  def addPreTransaction(statement: F[Unit]): Migration[F] =
+    Migration[F](preTransaction :+ statement, inTransaction)
   def addInTransaction(statement: F[Unit])(implicit F: Monad[F]): Migration[F] =
     Migration[F](preTransaction, inTransaction *> statement)
-
-  def mapK[G[_]](arrow: F ~> G): Migration[G] =
-    Migration(arrow(preTransaction), arrow(inTransaction))
 }
 
 
@@ -163,7 +160,7 @@ object Migration {
 
   /** Migration with no actions */
   def empty[F[_] : Applicative]: Migration[F] =
-    Migration[F](Applicative[F].unit, Applicative[F].unit)
+    Migration[F](Nil, Applicative[F].unit)
 
   def buildBlock[F[_] : MonadThrow : DAO](description: Description): F[Option[Block]] = {
     val target = DAO[F].target

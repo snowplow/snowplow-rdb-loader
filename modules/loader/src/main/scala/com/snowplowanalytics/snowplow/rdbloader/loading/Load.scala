@@ -81,7 +81,8 @@ object Load {
     for {
       _           <- TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)
       migrations  <- Migration.build[F, C](discovery.discovery)
-      _           <- Transaction[F, C].run(setStage(Stage.MigrationPre) *> migrations.preTransaction)
+      _           <- Transaction[F, C].run(setStage(Stage.MigrationPre))
+      _           <- migrations.preTransaction.traverse_(Transaction[F, C].run_)
       transaction  = getTransaction[C](setStage, discovery, loadAuthMethod)(migrations.inTransaction)
       result      <- Retry.retryLoad(config.retries, incrementAttempt, Transaction[F, C].transact(transaction))
     } yield result

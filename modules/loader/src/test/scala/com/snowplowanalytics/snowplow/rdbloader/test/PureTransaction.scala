@@ -49,6 +49,8 @@ object PureTransaction {
         Pure.modify(_.log(NoTransaction)) *>
           io
 
+      override def run_(io: Pure[Unit]): Pure[Unit] = run[Unit](io)
+
       def arrowBack: Pure ~> Pure = new FunctionK[Pure, Pure] {
         def apply[A](fa: Pure[A]): Pure[A] =
           fa
