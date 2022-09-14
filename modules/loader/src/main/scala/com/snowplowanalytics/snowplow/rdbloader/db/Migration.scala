@@ -313,7 +313,6 @@ object Migration {
                 }
             }
       }
-      .getOrElse(Monad[F].pure(_ => false))
-
-
+      // Non wideraw migration entities, i.e. Entity.Table should be allowed to go though.
+      .getOrElse(Monad[F].pure(_ => true))
 }
