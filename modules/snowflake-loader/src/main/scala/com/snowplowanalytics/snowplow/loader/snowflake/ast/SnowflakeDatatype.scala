@@ -33,7 +33,7 @@ object SnowflakeDatatype {
   }
 
   final case object Timestamp extends SnowflakeDatatype {
-    def toDdl: Fragment = fr0"TIMESTAMP"
+    def toDdl: Fragment = fr0"TIMESTAMP_NTZ"
   }
 
   final case class Char(size: Int) extends SnowflakeDatatype {

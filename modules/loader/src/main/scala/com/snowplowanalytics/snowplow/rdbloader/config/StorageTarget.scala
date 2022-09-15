@@ -168,6 +168,7 @@ object StorageTarget {
       props.put("warehouse", warehouse)
       props.put("db", database)
       props.put("application", appName)
+      props.put("timezone", "UTC")
       role.foreach(r => props.put("role", r))
       props
     }

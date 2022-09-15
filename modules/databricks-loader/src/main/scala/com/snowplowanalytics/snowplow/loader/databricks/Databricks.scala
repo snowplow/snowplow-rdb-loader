@@ -25,10 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, Shredd
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import doobie.Fragment
 import doobie.implicits._
-import doobie.implicits.javasql._
 import io.circe.syntax._
-
-import java.sql.Timestamp
 
 object Databricks {
 
@@ -133,19 +130,16 @@ object Databricks {
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
                 val types     = message.types.asJson.noSpaces
+                val jobStarted: String = message.timestamps.jobStarted.toString
+                val jobCompleted: String = message.timestamps.jobCompleted.toString
+                val minTstamp: String = message.timestamps.min.map(_.toString).getOrElse("")
+                val maxTstamp: String = message.timestamps.max.map(_.toString).getOrElse("")
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
                       compression, processor_artifact, processor_version, count_good)
-                      VALUES (${message.base}, $types,
-                      ${Timestamp.from(message.timestamps.jobStarted)}, ${Timestamp.from(
-                  message.timestamps.jobCompleted
-                )},
-                      ${message.timestamps.min.map(Timestamp.from)}, ${message.timestamps.max.map(Timestamp.from)},
-                      current_timestamp(),
-                      ${message.compression.asString}, ${message.processor.artifact}, ${message
-                  .processor
-                  .version}, ${message.count})"""
+                      VALUES (${message.base}, $types, $jobStarted, $jobCompleted, $minTstamp, $maxTstamp, current_timestamp(),
+                      ${message.compression.asString}, ${message.processor.artifact}, ${message.processor.version}, ${message.count})"""
               case Statement.ManifestGet(base) =>
                 sql"""SELECT ingestion_tstamp,
                       base, types, shredding_started, shredding_completed,
