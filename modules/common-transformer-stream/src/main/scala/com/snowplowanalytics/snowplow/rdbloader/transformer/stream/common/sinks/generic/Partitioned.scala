@@ -23,8 +23,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 object Partitioned {
 
-  val BufferSize = 4096
-
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   /**
@@ -45,7 +43,7 @@ object Partitioned {
    *                which usually means a new file of key on blob store
    *                Can be taken from `sinks.s3` or `sinks.file`
    */
-  def write[F[_]: Concurrent, W: Order: Show, K: Show, V, D: Monoid](getSink: W => D => K => Pipe[F, V, Unit]): Pipe[F, Record[W, List[(K, V)], D], (W, D)] = {
+  def write[F[_]: Concurrent, W: Order: Show, K: Show, V, D: Monoid](getSink: W => D => K => Pipe[F, V, Unit], bufferSize: Int): Pipe[F, Record[W, List[(K, V)], D], (W, D)] = {
     def go(s: Partitioned[F, W, K, V, D],
            stateOpt: Option[SinkState[W, K, V, D]]): Pull[F, (W, D), Unit] = {
       s.pull.uncons1.flatMap {
@@ -57,7 +55,7 @@ object Partitioned {
             state <- items.foldM(state.addData(d)) { case (state, (k, v)) =>
                        Pull.eval(state.enqueueKV(k, v))
                      }
-            state <- maybeEmit[F, W, K, V, D](getSink, state)
+            state <- maybeEmit[F, W, K, V, D](getSink, state, bufferSize)
             _     <- go(t, Some(state))
           } yield ()
 
@@ -122,8 +120,9 @@ object Partitioned {
    * @param state   existing [[SinkState]], it will also be returned in the `Pull`
    */
   private def maybeEmit[F[_]: Concurrent, W, K: Show, V, D](getSink: W => D => K => Pipe[F, V, Unit],
-                                                            state: SinkState[W, K, V, D]): Pull[F, (W, D), SinkState[W, K, V, D]] = {
-    if (state.processed > BufferSize) {
+                                                            state: SinkState[W, K, V, D],
+                                                            bufferSize: Int): Pull[F, (W, D), SinkState[W, K, V, D]] = {
+    if (state.processed > bufferSize) {
       emit(getSink, state)
     } else {
       Pull.pure(state)

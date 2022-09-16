@@ -40,7 +40,7 @@ class PartitionedSpec extends Specification {
       val action = for {
         ref       <- Ref.of[IO, WindowedKV](Nil)
         sinkFun    = PartitionedSpec.getSink(ref) _
-        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun)
+        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
         result    <- wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord)
                       .through(writePipe)
                       .compile
@@ -83,7 +83,7 @@ class PartitionedSpec extends Specification {
       val action = for {
         ref       <- Ref.of[IO, WindowedKV](Nil)
         sinkFun    = PartitionedSpec.getSink(ref) _
-        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun)
+        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
         result    <- stream
                       .through(writePipe)
                       .compile
@@ -109,6 +109,8 @@ class PartitionedSpec extends Specification {
 }
 
 object PartitionedSpec {
+
+  val BufferSize = 4096
 
   type Window = String
   type Key = String

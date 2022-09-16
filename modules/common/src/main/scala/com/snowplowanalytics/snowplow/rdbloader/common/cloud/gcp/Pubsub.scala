@@ -20,9 +20,10 @@ import cats.implicits._
 import com.google.api.gax.core.NoCredentialsProvider
 import com.google.api.gax.grpc.GrpcTransportChannel
 import com.google.api.gax.rpc.{FixedTransportChannelProvider, TransportChannelProvider}
+import com.google.cloud.pubsub.v1.Subscriber
 import com.google.pubsub.v1.PubsubMessage
-import com.permutive.pubsub.consumer.decoder.MessageDecoder
 import com.permutive.pubsub.consumer.grpc.{PubsubGoogleConsumer, PubsubGoogleConsumerConfig}
+import com.permutive.pubsub.consumer.decoder.MessageDecoder
 import com.permutive.pubsub.consumer.Model.{Subscription, ProjectId => ConsumerProjectId}
 import com.permutive.pubsub.producer.Model.{Topic, ProjectId => ProducerProjectId}
 import com.permutive.pubsub.producer.encoder.MessageEncoder
@@ -69,9 +70,10 @@ object Pubsub {
                                                                         projectId: String,
                                                                         subscription: String,
                                                                         parallelPullCount: Int,
-                                                                        maxQueueSize: Int,
+                                                                        bufferSize: Int,
                                                                         maxAckExtensionPeriod: FiniteDuration,
-                                                                        customPubsubEndpoint: Option[String],
+                                                                        customPubsubEndpoint: Option[String] = None,
+                                                                        customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
                                                                         postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Resource[F, Queue.Consumer[F]] =
     for {
       channelProvider <- customPubsubEndpoint.map(createPubsubChannelProvider[F]).sequence
@@ -83,10 +85,15 @@ object Pubsub {
             PubsubGoogleConsumerConfig(
               onFailedTerminate = onFailedTerminate,
               parallelPullCount = parallelPullCount,
-              maxQueueSize = maxQueueSize,
+              maxQueueSize = bufferSize,
               maxAckExtensionPeriod = maxAckExtensionPeriod,
-              customizeSubscriber = channelProvider.map { c =>
-                b => b.setChannelProvider(c).setCredentialsProvider(NoCredentialsProvider.create())
+              customizeSubscriber = {
+                val customChannel: Subscriber.Builder => Subscriber.Builder = channelProvider
+                  .map { c => { b: Subscriber.Builder =>
+                    b.setChannelProvider(c)
+                     .setCredentialsProvider(NoCredentialsProvider.create())
+                  }}.getOrElse(identity)
+                customizeSubscriber.andThen(customChannel).some
               }
             )
           val errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit] = // Should be useless

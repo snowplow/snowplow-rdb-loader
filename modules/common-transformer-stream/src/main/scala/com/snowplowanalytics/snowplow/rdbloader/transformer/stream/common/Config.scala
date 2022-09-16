@@ -66,20 +66,27 @@ object Config {
 
     final case class File(dir: String) extends StreamInput
 
-    final case class Pubsub(projectId: String, subscriptionId: String, customPubsubEndpoint: Option[String]) extends StreamInput
+    final case class Pubsub(projectId: String,
+                            subscriptionId: String,
+                            customPubsubEndpoint: Option[String],
+                            parallelPullCount: Int,
+                            bufferSize: Int,
+                            maxAckExtensionPeriod: FiniteDuration,
+                            maxOutstandingMessagesSize: Int) extends StreamInput
   }
 
   sealed trait Output {
     def path: URI
     def compression: Compression
+    def bufferSize: Int
   }
 
   object Output {
-    final case class S3(path: URI, compression: Compression, region: Region) extends Output
+    final case class S3(path: URI, compression: Compression, bufferSize: Int, region: Region) extends Output
 
-    final case class GCS(path: URI, compression: Compression) extends Output
+    final case class GCS(path: URI, compression: Compression, bufferSize: Int) extends Output
 
-    final case class File(path: URI, compression: Compression) extends Output
+    final case class File(path: URI, compression: Compression, bufferSize: Int) extends Output
   }
 
   sealed trait QueueConfig extends Product with Serializable

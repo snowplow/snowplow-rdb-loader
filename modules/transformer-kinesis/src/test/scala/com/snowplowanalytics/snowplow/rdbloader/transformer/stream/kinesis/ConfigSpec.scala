@@ -86,6 +86,7 @@ object ConfigSpec {
   val exampleOutput = Config.Output.S3(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
+    4096,
     Region("eu-central-1")
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)

@@ -15,10 +15,10 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub
 
 import blobstore.gcs.GcsStore
-import scala.concurrent.duration._
 import cats.effect._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
+import com.google.api.gax.batching.FlowControlSettings
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
@@ -50,10 +50,23 @@ object Main extends IOApp {
           blocker,
           conf.projectId,
           conf.subscriptionId,
-          parallelPullCount = 1,
-          maxQueueSize = 100000,
-          maxAckExtensionPeriod = 2.hours,
-          customPubsubEndpoint = None
+          parallelPullCount = conf.parallelPullCount,
+          bufferSize = conf.bufferSize,
+          maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
+          customPubsubEndpoint = conf.customPubsubEndpoint,
+          customizeSubscriber = s =>
+            s.setFlowControlSettings(
+              FlowControlSettings.newBuilder()
+                // In here, we are only setting request bytes because it is safer choice
+                // in term of memory safety.
+                // Also, buffer size set above doesn't have to be inline with flow control settings.
+                // Even if more items than given buffer size arrives, it wouldn't create problem because
+                // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
+                // memory problem again.
+                .setMaxOutstandingRequestBytes(conf.maxOutstandingMessagesSize * 1000000)
+                .setMaxOutstandingElementCount(null)
+                .build()
+            )
         )
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))

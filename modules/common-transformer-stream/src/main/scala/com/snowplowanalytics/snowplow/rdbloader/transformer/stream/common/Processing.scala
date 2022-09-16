@@ -135,7 +135,7 @@ object Processing {
       case _ => nonParquetSink
     }
 
-    Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink)
+    Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink, config.bufferSize)
   }
 
   def getBlobStorageSink[F[_] : ConcurrentEffect: BlobStorage](

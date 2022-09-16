@@ -148,7 +148,7 @@ object Environment {
             projectId = c.projectId,
             subscription = c.subscriptionId,
             parallelPullCount = 1,
-            maxQueueSize = 10,
+            bufferSize = 10,
             maxAckExtensionPeriod = 2.hours,
             customPubsubEndpoint = c.customPubsubEndpoint,
             postProcess = Some(postProcess)
