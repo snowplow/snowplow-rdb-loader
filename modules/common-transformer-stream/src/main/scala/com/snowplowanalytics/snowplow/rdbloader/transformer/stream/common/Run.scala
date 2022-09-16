@@ -9,8 +9,6 @@ import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCach
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{StreamInput, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 
 object Run {
@@ -27,8 +25,8 @@ object Run {
     buildDescription: String,
     ec: ExecutionContext,
     mkSource: (Blocker, StreamInput, Monitoring) => Resource[F, Queue.Consumer[F]],
-    mkSink: (Blocker, TransformerConfig.Output) => Resource[F, BlobStorage[F]],
-    mkQueue: QueueConfig => Resource[F, Queue.Producer[F]],
+    mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
+    mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): F[ExitCode] =
     for {

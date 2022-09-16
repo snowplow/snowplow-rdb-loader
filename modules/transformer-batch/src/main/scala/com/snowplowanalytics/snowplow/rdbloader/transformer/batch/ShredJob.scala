@@ -42,7 +42,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredderValidations}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Discovery.MessageProcessor
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.TypesAccumulator
@@ -209,14 +208,12 @@ object ShredJob {
     }
 
     val sendToQueue = config.queue match {
-        case q: QueueConfig.SQS =>
+        case q: Config.QueueConfig.SQS =>
           val sqsClient = Cloud.createSqsClient(q.region)
           Cloud.sendToSqs(sqsClient, q.queueName, _, _)
-        case q: QueueConfig.SNS =>
+        case q: Config.QueueConfig.SNS =>
           val snsClient = Cloud.creteSnsClient(q.region)
           Cloud.sendToSns(snsClient, q.topicArn, _, _)
-        case _ =>
-          throw new IllegalStateException("Unknown queue type")
       }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 

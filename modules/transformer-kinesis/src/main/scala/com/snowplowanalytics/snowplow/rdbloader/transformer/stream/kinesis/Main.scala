@@ -20,7 +20,6 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.gener
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{Kinesis, S3, SQS, SNS}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 object Main extends IOApp {
 
@@ -59,22 +58,22 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Kinesis")))
     }
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer](output: TransformerConfig.Output): Resource[F, BlobStorage[F]] =
-    Option(output.path.getScheme) match {
-      case Some("s3" | "s3a" | "s3n") =>
+  private def mkSink[F[_]: ConcurrentEffect: Timer](output: Config.Output): Resource[F, BlobStorage[F]] =
+    output match {
+      case s3Output: Config.Output.S3 =>
         for {
-          client <- Resource.eval(S3.getClient[F](output.region.name))
+          client <- Resource.eval(S3.getClient[F](s3Output.region.name))
           blobStorage = S3.blobStorage[F](client)
         } yield blobStorage
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not S3")))
     }
 
-  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: TransformerConfig.QueueConfig): Resource[F, Queue.Producer[F]] =
+  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
-      case TransformerConfig.QueueConfig.SQS(queueName, region) =>
+      case Config.QueueConfig.SQS(queueName, region) =>
         SQS.producer(queueName, region.name)
-      case TransformerConfig.QueueConfig.SNS(topicArn, region) =>
+      case Config.QueueConfig.SNS(topicArn, region) =>
         SNS.producer(topicArn, region.name)
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not SQS or SNS")))

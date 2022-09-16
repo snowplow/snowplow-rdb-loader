@@ -24,12 +24,13 @@ import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 
-
 final case class Config(input: URI,
-                        output: TransformerConfig.Output,
-                        queue: TransformerConfig.QueueConfig,
+                        output: Config.Output,
+                        queue: Config.QueueConfig,
                         formats: TransformerConfig.Formats,
                         monitoring: Config.Monitoring,
                         deduplication: Config.Deduplication,
@@ -47,6 +48,16 @@ object Config {
       config <- ConfigUtils.fromString[Config](conf)
       _      <- TransformerConfig.formatsCheck(config.formats)
     } yield config
+  }
+
+  final case class Output(path: URI, compression: Compression, region: Region)
+
+  sealed trait QueueConfig extends Product with Serializable
+
+  object QueueConfig {
+    final case class SNS(topicArn: String, region: Region) extends QueueConfig
+
+    final case class SQS(queueName: String, region: Region) extends QueueConfig
   }
 
   final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
@@ -107,8 +118,35 @@ object Config {
   }
 
   trait Decoders extends TransformerConfig.Decoders {
+    implicit val outputConfigDecoder: Decoder[Output] =
+      deriveDecoder[Output]
+
+    implicit val queueConfigDecoder: Decoder[QueueConfig] =
+      Decoder.instance { cur =>
+        val typeCur = cur.downField("type")
+        typeCur.as[String].map(_.toLowerCase) match {
+          case Right("sns") =>
+            cur.as[QueueConfig.SNS]
+          case Right("sqs") =>
+            cur.as[QueueConfig.SQS]
+          case Right(other) =>
+            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS' and 'SQS'", typeCur.history))
+          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }
+
+    implicit val snsConfigDecoder: Decoder[QueueConfig.SNS] =
+      deriveDecoder[QueueConfig.SNS]
+
+    implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
+      deriveDecoder[QueueConfig.SQS]
+
     implicit val configDecoder: Decoder[Config] =
       deriveDecoder[Config]
+
   }
 
   def impureDecoders: Decoders = new Decoders with TransformerConfig.ImpureRegionDecodable

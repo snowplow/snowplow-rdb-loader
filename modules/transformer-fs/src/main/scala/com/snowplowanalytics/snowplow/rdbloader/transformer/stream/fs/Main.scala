@@ -31,7 +31,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.Pubsub
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{SQS, SNS}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 object Main extends IOApp {
@@ -76,9 +75,9 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not File")))
     }
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: TransformerConfig.Output): Resource[F, BlobStorage[F]] =
-    Option(output.path.getScheme) match {
-      case Some("file") =>
+  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
+    output match {
+      case _: Config.Output.File =>
         for {
           client <- Resource.pure[F, FileStore[F]](FileStore[F](Paths.get(output.path), blocker))
           blobStorage <- Resource.pure[F, BlobStorage[F]](
@@ -105,13 +104,13 @@ object Main extends IOApp {
     }
 
   // TODO: Create queue producer for file
-  private def mkQueue[F[_] : ConcurrentEffect](queueConfig: TransformerConfig.QueueConfig): Resource[F, Queue.Producer[F]] =
+  private def mkQueue[F[_] : ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
-      case TransformerConfig.QueueConfig.SQS(queueName, region) =>
+      case Config.QueueConfig.SQS(queueName, region) =>
         SQS.producer(queueName, region.name)
-      case TransformerConfig.QueueConfig.SNS(topicArn, region) =>
+      case Config.QueueConfig.SNS(topicArn, region) =>
         SNS.producer(topicArn, region.name)
-      case TransformerConfig.QueueConfig.Pubsub(projectId, topicId) =>
+      case Config.QueueConfig.Pubsub(projectId, topicId) =>
         Pubsub.producer(projectId, topicId)
     }
 }

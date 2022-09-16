@@ -116,7 +116,7 @@ object Processing {
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
   def getSink[F[_]: ConcurrentEffect: ContextShift: Timer: BlobStorage, C: Monoid](
     resources: Resources[F, C],
-    config: TransformerConfig.Output,
+    config: Config.Output,
     formats: Formats
   ): Grouping[F, C] = {
     

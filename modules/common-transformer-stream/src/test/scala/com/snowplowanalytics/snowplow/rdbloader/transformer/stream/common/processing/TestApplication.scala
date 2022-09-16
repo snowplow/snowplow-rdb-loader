@@ -25,10 +25,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.ParsedC
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Processing, Resources}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Processing, Resources, Config}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import fs2.{Stream, Pipe}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -93,9 +92,9 @@ object TestApplication {
       }
     )
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: TransformerConfig.Output): Resource[F, BlobStorage[F]] =
-    Option(output.path.getScheme) match {
-      case Some("file") =>
+  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
+    output match {
+      case _: Config.Output.File =>
         for {
           client <- Resource.pure[F, FileStore[F]](FileStore[F](Paths.get(output.path), blocker))
           blobStorage <- Resource.pure[F, BlobStorage[F]](

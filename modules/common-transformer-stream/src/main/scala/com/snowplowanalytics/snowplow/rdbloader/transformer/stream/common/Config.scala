@@ -25,13 +25,14 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
 final case class Config(input: Config.StreamInput,
                         windowing: Duration,
-                        output: TransformerConfig.Output,
-                        queue: TransformerConfig.QueueConfig,
+                        output: Config.Output,
+                        queue: Config.QueueConfig,
                         formats: TransformerConfig.Formats,
                         monitoring: Config.Monitoring,
                         telemetry: Config.Telemetry,
@@ -66,6 +67,29 @@ object Config {
     final case class File(dir: String) extends StreamInput
 
     final case class Pubsub(projectId: String, subscriptionId: String, customPubsubEndpoint: Option[String]) extends StreamInput
+  }
+
+  sealed trait Output {
+    def path: URI
+    def compression: Compression
+  }
+
+  object Output {
+    final case class S3(path: URI, compression: Compression, region: Region) extends Output
+
+    final case class GCS(path: URI, compression: Compression) extends Output
+
+    final case class File(path: URI, compression: Compression) extends Output
+  }
+
+  sealed trait QueueConfig extends Product with Serializable
+
+  object QueueConfig {
+    final case class SNS(topicArn: String, region: Region) extends QueueConfig
+
+    final case class SQS(queueName: String, region: Region) extends QueueConfig
+
+    final case class Pubsub(projectId: String, topicId: String) extends QueueConfig
   }
 
   final case class Monitoring(sentry: Option[TransformerConfig.Sentry], metrics: MetricsReporters)
@@ -156,6 +180,62 @@ object Config {
 
     implicit val streamInputPubsubConfigDecoder: Decoder[StreamInput.Pubsub] =
       deriveDecoder[StreamInput.Pubsub]
+
+    implicit val outputConfigDecoder: Decoder[Output] =
+      Decoder.instance { cur =>
+        val pathCur = cur.downField("path")
+        pathCur.as[URI].map(_.getScheme) match {
+          case Right("s3" | "s3a" | "s3n") =>
+            cur.as[Output.S3]
+          case Right("gs") =>
+            cur.as[Output.GCS]
+          case Right("file") =>
+            cur.as[Output.File]
+          case Right(other) =>
+            Left(DecodingFailure(s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', and 'gs'", pathCur.history))
+          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+            Left(DecodingFailure("Cannot find 'path' string in output configuration", pathCur.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }
+
+    implicit val outputS3ConfigDecoder: Decoder[Output.S3] =
+      deriveDecoder[Output.S3]
+
+    implicit val outputGCSConfigDecoder: Decoder[Output.GCS] =
+      deriveDecoder[Output.GCS]
+
+    implicit val outputFileConfigDecoder: Decoder[Output.File] =
+      deriveDecoder[Output.File]
+
+    implicit val queueConfigDecoder: Decoder[QueueConfig] =
+      Decoder.instance { cur =>
+        val typeCur = cur.downField("type")
+        typeCur.as[String].map(_.toLowerCase) match {
+          case Right("sns") =>
+            cur.as[QueueConfig.SNS]
+          case Right("sqs") =>
+            cur.as[QueueConfig.SQS]
+          case Right("pubsub") =>
+            cur.as[QueueConfig.Pubsub]
+          case Right(other) =>
+            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS', 'SQS' and 'pubsub'", typeCur.history))
+          case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+            Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }
+
+    implicit val snsConfigDecoder: Decoder[QueueConfig.SNS] =
+      deriveDecoder[QueueConfig.SNS]
+
+    implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
+      deriveDecoder[QueueConfig.SQS]
+
+    implicit val pubsubConfigDecoder: Decoder[QueueConfig.Pubsub] =
+      deriveDecoder[QueueConfig.Pubsub]
 
     implicit val configDecoder: Decoder[Config] =
       deriveDecoder[Config]

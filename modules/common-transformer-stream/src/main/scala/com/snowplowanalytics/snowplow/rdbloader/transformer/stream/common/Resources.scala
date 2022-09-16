@@ -23,8 +23,6 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.QueueConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
@@ -56,8 +54,8 @@ object Resources {
     buildVersion: String,
     executionContext: ExecutionContext,
     mkSource: (Blocker, Config.StreamInput, Config.Monitoring) => Resource[F, Queue.Consumer[F]],
-    mkSink: (Blocker, TransformerConfig.Output) => Resource[F, BlobStorage[F]],
-    mkQueue: QueueConfig => Resource[F, Queue.Producer[F]],
+    mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
+    mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): Resource[F, Resources[F, C]] =
     for {

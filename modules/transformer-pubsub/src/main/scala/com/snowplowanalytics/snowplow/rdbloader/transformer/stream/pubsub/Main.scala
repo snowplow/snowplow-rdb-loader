@@ -24,7 +24,6 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.genera
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.{GCS, Pubsub}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 object Main extends IOApp {
 
@@ -60,9 +59,9 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))
     }
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: TransformerConfig.Output): Resource[F, BlobStorage[F]] =
-    Option(output.path.getScheme) match {
-      case Some("gs") =>
+  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
+    output match {
+      case _: Config.Output.GCS =>
         for {
           client <- Resource.pure[F, GcsStore[F]](GCS.getClient[F](blocker))
           blobStorage = GCS.blobStorage[F](client)
@@ -71,9 +70,9 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
     }
 
-  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: TransformerConfig.QueueConfig): Resource[F, Queue.Producer[F]] =
+  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
-      case TransformerConfig.QueueConfig.Pubsub(projectId, topicId) =>
+      case Config.QueueConfig.Pubsub(projectId, topicId) =>
         Pubsub.producer(projectId, topicId)
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
