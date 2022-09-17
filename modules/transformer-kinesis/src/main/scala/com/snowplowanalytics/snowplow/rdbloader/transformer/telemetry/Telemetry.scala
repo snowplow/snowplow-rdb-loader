@@ -27,7 +27,7 @@ import cats.effect.{ConcurrentEffect, Resource, Sync, Timer}
 import fs2.Stream
 
 import org.http4s.client.{Client => HttpClient}
-import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.blaze.client.BlazeClientBuilder
 
 import io.circe.Json
 import io.circe.Encoder

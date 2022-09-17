@@ -22,7 +22,7 @@ import cats.effect.{ContextShift, Blocker, Clock, Resource, Timer, ConcurrentEff
 
 import doobie.ConnectionIO
 
-import org.http4s.client.blaze.BlazeClientBuilder
+import org.http4s.blaze.client.BlazeClientBuilder
 
 import io.sentry.{SentryClient, Sentry, SentryOptions}
 
