@@ -67,6 +67,7 @@ jobs:
           - snowflakeLoader
           - databricksLoader
           - transformerKinesis
+          - transformerPubsub
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
@@ -191,6 +192,10 @@ jobs:
       env:
         SKIP_TEST: true
       run: sbt 'project transformerKinesis' assembly
+    - name: Build transformer-pubsub jar
+      env:
+        SKIP_TEST: true
+      run: sbt 'project transformerPubsub' assembly
     - name: Get current version
       id: ver
       run: echo "::set-output name=project_version::${GITHUB_REF#refs/tags/}"
@@ -207,5 +212,6 @@ jobs:
           modules/databricks-loader/target/scala-2.12/snowplow-databricks-loader-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-kinesis/target/scala-2.12/snowplow-transformer-kinesis-${{ steps.ver.outputs.project_version }}.jar
+          modules/transformer-pubsub/target/scala-2.12/snowplow-transformer-pubsub-${{ steps.ver.outputs.project_version }}.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
