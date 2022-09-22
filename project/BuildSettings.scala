@@ -66,6 +66,7 @@ object BuildSettings {
       case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
       case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
       case PathList("META-INF", "io.netty.versions.properties") => MergeStrategy.discard
+      case PathList("META-INF", "native-image", _ @ _*) => MergeStrategy.discard
       // case PathList("META-INF", _ @ _*) => MergeStrategy.discard    // Replaced with above for Stream Shredder
       case PathList("reference.conf", _ @ _*) => MergeStrategy.concat
       case PathList("codegen-resources", _ @ _*) => MergeStrategy.first // Part of AWS SDK v2
@@ -117,6 +118,9 @@ object BuildSettings {
       case PathList("com", "google", "common", _) => MergeStrategy.first
       case PathList("org", "apache", "spark", "unused", _) => MergeStrategy.first
       case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
+      case PathList("org", "apache", "commons", "logging", _ @ _*) => MergeStrategy.first
+      case PathList("org", "slf4j", "impl", _) => MergeStrategy.first
+      case "AUTHORS" => MergeStrategy.discard
       case PathList("com", "snowplowanalytics", "snowplow", "rdbloader", "generated", "ProjectMetadata.class" | "ProjectMetadata$.class") => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
