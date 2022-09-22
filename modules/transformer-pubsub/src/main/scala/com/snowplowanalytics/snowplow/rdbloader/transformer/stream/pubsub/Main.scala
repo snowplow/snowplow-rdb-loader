@@ -19,6 +19,10 @@ import cats.effect._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
 import com.google.api.gax.batching.FlowControlSettings
+import com.google.api.gax.core.ExecutorProvider
+import com.google.common.util.concurrent.{ForwardingListeningExecutorService, MoreExecutors}
+import java.lang.Runnable
+import java.util.concurrent.{Callable, ScheduledExecutorService, ScheduledFuture, ScheduledThreadPoolExecutor, TimeUnit}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
@@ -54,7 +58,7 @@ object Main extends IOApp {
           bufferSize = conf.bufferSize,
           maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
           customPubsubEndpoint = conf.customPubsubEndpoint,
-          customizeSubscriber = s =>
+          customizeSubscriber = { s =>
             s.setFlowControlSettings(
               FlowControlSettings.newBuilder()
                 // In here, we are only setting request bytes because it is safer choice
@@ -67,10 +71,30 @@ object Main extends IOApp {
                 .setMaxOutstandingElementCount(null)
                 .build()
             )
+            s.setExecutorProvider {
+              new ExecutorProvider {
+                def shouldAutoClose: Boolean = false
+                def getExecutor: ScheduledExecutorService = scheduledExecutorService
+              }
+            }
+          }
         )
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))
     }
+
+  def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
+    val delegate = MoreExecutors.newDirectExecutorService
+    lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
+    override def schedule[V](callable: Callable[V], delay: Long, unit: TimeUnit): ScheduledFuture[V] =
+      scheduler.schedule(callable, delay, unit)
+    override def schedule(runnable: Runnable, delay: Long, unit: TimeUnit): ScheduledFuture[_] =
+      scheduler.schedule(runnable, delay, unit)
+    override def scheduleAtFixedRate(runnable: Runnable, initialDelay: Long, period: Long, unit: TimeUnit): ScheduledFuture[_] =
+      scheduler.scheduleAtFixedRate(runnable, initialDelay, period, unit)
+    override def scheduleWithFixedDelay(runnable: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture[_] =
+      scheduler.scheduleWithFixedDelay(runnable, initialDelay, delay, unit)
+  }
 
   private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
