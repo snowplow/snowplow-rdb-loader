@@ -1,3 +1,12 @@
+Version 4.3.0 (2022-09-23)
+--------------------------
+Loader: fix inserting timestamps with wrong timezone to manifest table (#1069)
+Snowflake Loader: prioritize transformedStage over loadAuthMethod in config (#1061)
+Redshift loader: Pre-transaction migrations did not run (#1051)
+Redshift Loader: Failed migration for event batches with multiple version of the same upgraded schema (#1058)
+Redshift Loader: Column resizing committed for the failed migrations. Causing errors during retries. (#1057)
+Improve stacktraces on JDBC exceptions (#1045)
+
 Version 4.2.2 (2022-09-06)
 --------------------------
 Loader: feature flag to disable adding load_tstamp column (#1041)
@@ -34,8 +43,8 @@ Add UUID to streaming transformer directory structure (#945)
 
 Version 4.0.4 (2022-06-20)
 --------------------------
-Transformer kinesis: make Kinesis consumer more configurable (close #865)
-Transformer: split batch and streaming configs (close #937)
+Transformer kinesis: make Kinesis consumer more configurable (#865)
+Transformer: split batch and streaming configs (#937)
 
 Version 4.0.3 (2022-06-16)
 --------------------------
