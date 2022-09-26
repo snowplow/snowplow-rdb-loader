@@ -33,7 +33,8 @@ class StorageTargetSpec extends Specification {
         "schema": "atomic",
         "maxError": 1,
         "compRows": 20000,
-        "purpose": "ENRICHED_EVENTS"
+        "purpose": "ENRICHED_EVENTS",
+        "experimental": {"enableWideRow": true}
       }"""
 
       val expected = StorageTarget.Redshift(
@@ -46,7 +47,8 @@ class StorageTargetSpec extends Specification {
         "ADD HERE",
         StorageTarget.PasswordConfig.PlainText("ADD HERE"),
         1,
-        None)
+        None,
+        StorageTarget.RedshiftExperimentalFeatures(true))
 
       config.as[StorageTarget] must beRight(expected)
     }

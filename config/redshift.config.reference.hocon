@@ -32,7 +32,11 @@
     # Custom JDBC configuration. Optional, default value { "ssl": true }
     "jdbc": { "ssl": true },
     # MAXERROR, amount of acceptable loading errors. Optional, default value 10
-    "maxError": 10
+    "maxError": 10,
+    # unlock experimental features
+    "experimental": {
+      "enableWideRow": false
+    }
   },
 
   "schedules": {
