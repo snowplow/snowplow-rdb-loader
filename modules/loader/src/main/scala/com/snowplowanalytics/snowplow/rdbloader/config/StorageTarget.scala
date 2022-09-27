@@ -81,7 +81,8 @@ object StorageTarget {
                             username: String,
                             password: PasswordConfig,
                             maxError: Int,
-                            sshTunnel: Option[TunnelConfig]) extends StorageTarget {
+                            sshTunnel: Option[TunnelConfig],
+                            experimental: RedshiftExperimentalFeatures) extends StorageTarget {
     override def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
     override def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
@@ -275,6 +276,8 @@ object StorageTarget {
           j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
   }
 
+  final case class RedshiftExperimentalFeatures(enableWideRow: Boolean)
+
   /** Reference to encrypted entity inside EC2 Parameter Store */
   final case class ParameterStoreConfig(parameterName: String)
 
@@ -327,6 +330,9 @@ object StorageTarget {
     * @param destination end-socket of SSH tunnel (host/port pair to access DB)
     */
   final case class TunnelConfig(bastion: BastionConfig, localPort: Int, destination: DestinationConfig)
+
+  implicit def redshiftExperimentalFeaturesDecoder: Decoder[RedshiftExperimentalFeatures] =
+    deriveDecoder[RedshiftExperimentalFeatures]
 
   implicit def redshiftConfigDecoder: Decoder[Redshift] =
     deriveDecoder[Redshift]

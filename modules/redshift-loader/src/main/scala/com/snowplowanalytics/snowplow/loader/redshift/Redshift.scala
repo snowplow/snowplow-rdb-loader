@@ -21,6 +21,8 @@ import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGen
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
@@ -43,7 +45,7 @@ object Redshift {
 
   def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
-      case StorageTarget.Redshift(_, _, _, _, roleArn, schema, _, _, maxError, _) =>
+      case StorageTarget.Redshift(_, _, _, _, roleArn, schema, _, _, maxError, _, experimentalFeatures) =>
         val result = new Target {
 
           override val requiresEventsColumns: Boolean = false
@@ -67,18 +69,38 @@ object Redshift {
             Block(preTransaction.reverse, inTransaction.reverse, Entity.Table(schema, target))
           }
 
-          override def extendTable(info: ShreddedType.Info): Option[Block] =
-            throw new IllegalStateException("Redshift Loader does not support loading wide row")
-
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
-            val shreddedStatements = discovery
-              .shreddedTypes
-              .filterNot(_.isAtomic)
-              .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
-            
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none, discovery.typesInfo, loadAuthMethod)
-            NonEmptyList(atomic, shreddedStatements)
+          override def extendTable(info: ShreddedType.Info): Option[Block] = {
+            val frColumnName = Fragment.const(info.getNameFull)
+            val frTableName = Fragment.const(EventsTable.withSchema(schema))
+            val addColumnSql = sql"ALTER TABLE $frTableName ADD COLUMN $frColumnName SUPER"
+            Some(Block(List(Item.AddColumn(addColumnSql, Nil)), Nil, Entity.Column(info)))
           }
+
+          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements =
+            discovery.typesInfo match {
+              case TypesInfo.Shredded(_) =>
+                val shreddedStatements = discovery
+                  .shreddedTypes
+                  .filterNot(_.isAtomic)
+                  .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
+                
+                val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none, discovery.typesInfo, loadAuthMethod)
+                NonEmptyList(atomic, shreddedStatements)
+              case TypesInfo.WideRow(_, _) if !experimentalFeatures.enableWideRow =>
+                throw new IllegalStateException("Experimental widerow loading for Redshift is not enabled")
+              case TypesInfo.WideRow(_, _) =>
+                val columnsToCopy = ColumnsToCopy.fromDiscoveredData(discovery)
+                NonEmptyList.one(
+                  Statement.EventsCopy(
+                    discovery.base,
+                    discovery.compression,
+                    columnsToCopy,
+                    ColumnsToSkip.none,
+                    discovery.typesInfo,
+                    loadAuthMethod
+                  )
+                )
+            }
 
           override def createTable(schemas: SchemaList): Block = {
             val subschemas = FlatSchema.extractProperties(schemas)
@@ -110,7 +132,7 @@ object Redshift {
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, typesInfo, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
@@ -119,13 +141,18 @@ object Redshift {
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
                 val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
+                val frFileFormat = typesInfo match {
+                  case TypesInfo.Shredded(_) => "CSV DELIMITER '$EventsFieldSeparator'"
+                  case TypesInfo.WideRow(JSON, _) => "JSON 'auto'"
+                  case TypesInfo.WideRow(PARQUET, _) => "PARQUET"
+                }
 
                 sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                      | CREDENTIALS '$frRoleArn'
+                     | FORMAT $frFileFormat
                      | REGION '$frRegion'
                      | MAXERROR $frMaxError
                      | TIMEFORMAT 'auto'
-                     | DELIMITER '$EventFieldSeparator'
                      | EMPTYASNULL
                      | FILLRECORD
                      | TRUNCATECOLUMNS
@@ -163,7 +190,7 @@ object Redshift {
                          | ACCEPTINVCHARS
                          | $frCompression""".stripMargin
                   case ShreddedType.Widerow(_) =>
-                    throw new IllegalStateException("Widerow loading is not yet supported for Redshift")
+                    throw new IllegalStateException("Cannot perform a shredded copy from widerow files")
                 }
               case Statement.CreateTransient =>
                 Fragment.const0(s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )")

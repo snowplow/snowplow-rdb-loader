@@ -104,7 +104,8 @@ object ConfigSpec {
     "admin",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     10,
-    None
+    None,
+    StorageTarget.RedshiftExperimentalFeatures(false)
   )
   val exampleSnowflake = StorageTarget.Snowflake(
     Some("us-west-2"),
