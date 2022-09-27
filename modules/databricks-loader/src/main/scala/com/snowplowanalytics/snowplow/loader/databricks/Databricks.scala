@@ -111,6 +111,7 @@ object Databricks {
                         SELECT $frSelectColumns from '$frPath' $frAuth
                       )
                       FILEFORMAT = PARQUET
+                      FORMAT_OPTIONS('MERGESCHEMA' = 'TRUE')
                       COPY_OPTIONS('MERGESCHEMA' = 'TRUE')""";
               case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Databricks Loader does not support migrations")
