@@ -72,7 +72,7 @@ object Config {
                             parallelPullCount: Int,
                             bufferSize: Int,
                             maxAckExtensionPeriod: FiniteDuration,
-                            maxOutstandingMessagesSize: Int) extends StreamInput
+                            maxOutstandingMessagesSize: Option[Long]) extends StreamInput
   }
 
   sealed trait Output {

@@ -59,18 +59,19 @@ object Main extends IOApp {
           maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
           customPubsubEndpoint = conf.customPubsubEndpoint,
           customizeSubscriber = { s =>
-            s.setFlowControlSettings(
-              FlowControlSettings.newBuilder()
+            s.setFlowControlSettings({
+              val builder = FlowControlSettings.newBuilder()
                 // In here, we are only setting request bytes because it is safer choice
                 // in term of memory safety.
                 // Also, buffer size set above doesn't have to be inline with flow control settings.
                 // Even if more items than given buffer size arrives, it wouldn't create problem because
                 // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
                 // memory problem again.
-                .setMaxOutstandingRequestBytes(conf.maxOutstandingMessagesSize * 1000000)
-                .setMaxOutstandingElementCount(null)
-                .build()
-            )
+              (conf.maxOutstandingMessagesSize match {
+                case Some(v) => builder.setMaxOutstandingRequestBytes(v * 1000000)
+                case None => builder.setMaxOutstandingRequestBytes(null)
+              }).build()
+            })
             s.setExecutorProvider {
               new ExecutorProvider {
                 def shouldAutoClose: Boolean = true
