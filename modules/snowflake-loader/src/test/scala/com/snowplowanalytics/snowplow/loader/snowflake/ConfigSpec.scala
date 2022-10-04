@@ -34,13 +34,12 @@ class ConfigSpec extends Specification {
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("s3://bucket/monitoring/")))))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/")))))
       val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
-      val expected = Config.AWS(
-        exampleRegion,
+      val expected = Config(
+        storage,
+        exampleCloud,
         exampleJsonPaths,
         exampleMonitoring,
-        exampleQueueName,
         exampleRetryQueue,
-        storage,
         exampleSchedules,
         exampleTimeouts,
         exampleRetries,
@@ -53,16 +52,15 @@ class ConfigSpec extends Specification {
 
     "be able to parse minimal Snowflake config" in {
       val result = getConfig("/snowflake.config.minimal.hocon", testParseConfig)
-      val expected = Config.AWS(
-        RegionSpec.DefaultTestRegion,
-        None,
-        defaultMonitoring,
-        exampleQueueName,
-        None,
+      val expected = Config(
         exampleSnowflake
           .copy(
             transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/"))))
           ),
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleQueueName),
+        None,
+        defaultMonitoring,
+        None,
         emptySchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = None),

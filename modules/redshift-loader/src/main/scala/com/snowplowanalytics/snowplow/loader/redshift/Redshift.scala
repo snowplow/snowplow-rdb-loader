@@ -41,9 +41,9 @@ object Redshift {
 
   val AlertingTempTableName = "rdb_folder_monitoring"
 
-  def build(config: Config[StorageTarget]): Either[String, Target] = {
-    (config, config.storage) match {
-      case (c: Config.AWS[StorageTarget], storage: StorageTarget.Redshift) =>
+  def build(config: Config[StorageTarget, Config.Cloud]): Either[String, Target] = {
+    (config.cloud, config.storage) match {
+      case (c: Config.Cloud.AWS, storage: StorageTarget.Redshift) =>
         val region = c.region
         val roleArn = storage.roleArn
         val schema = storage.schema

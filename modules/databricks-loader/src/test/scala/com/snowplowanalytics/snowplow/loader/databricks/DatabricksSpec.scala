@@ -119,12 +119,7 @@ object DatabricksSpec {
   val baseFolder: BlobStorage.Folder =
     BlobStorage.Folder.coerce("s3://somewhere/path")
 
-  val target: Target = Databricks.build(Config.AWS(
-    Region("eu-central-1"),
-    None,
-    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
-    "my-queue.fifo",
-    None,
+  val target: Target = Databricks.build(Config(
     StorageTarget.Databricks(
       "host",
       None,
@@ -136,6 +131,13 @@ object DatabricksSpec {
       "useragent",
       StorageTarget.LoadAuthMethod.NoCreds
     ),
+    Config.Cloud.AWS(
+      Region("eu-central-1"),
+      "my-queue.fifo",
+    ),
+    None,
+    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
+    None,
     Config.Schedules(Nil),
     Config.Timeouts(1.minute, 1.minute, 1.minute),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),

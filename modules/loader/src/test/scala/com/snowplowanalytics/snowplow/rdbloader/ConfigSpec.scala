@@ -135,13 +135,13 @@ object ConfigSpec {
   val exampleTempCreds =  StorageTarget.LoadAuthMethod.TempCreds("test_role_arn", "test_role_session_name")
   val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn =  true)
-  val exampleConfig = Config.AWS(
-    exampleRegion,
+  val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleQueueName)
+  val exampleConfig = Config(
+    exampleSnowflake,
+    exampleCloud,
     None,
     exampleMonitoring,
-    exampleQueueName,
     None,
-    exampleSnowflake,
     exampleSchedules,
     exampleTimeouts,
     exampleRetries,
@@ -158,6 +158,6 @@ object ConfigSpec {
     Files.readString(configExamplePath)
   }
 
-  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget]] =
+  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget, Config.Cloud]] =
     Config.fromString[IO](conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
 }

@@ -25,6 +25,7 @@ import org.http4s.client.blaze.BlazeClientBuilder
 import io.sentry.{Sentry, SentryClient, SentryOptions}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
@@ -125,18 +126,18 @@ object Environment {
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 
-  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
-    config match {
-      case c: Config.AWS[StorageTarget] =>
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget, Cloud], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
+    config.cloud match {
+      case c: Cloud.AWS =>
         for {
           s3Client <- Resource.eval(S3.getClient[F](c.region.name))
           implicit0(blobStorage: BlobStorage[F]) = S3.blobStorage[F](s3Client)
           postProcess = Queue.Consumer.postProcess[F]
-          queueConsumer = SQS.consumer[F](c.messageQueue, c.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
-          loadAuthService <- LoadAuthService.aws[F](c.region.name, c.timeouts.loading)
+          queueConsumer = SQS.consumer[F](c.messageQueue, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+          loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
-      case c: Config.GCP[StorageTarget] =>
+      case c: Cloud.GCP =>
         for {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]

@@ -41,7 +41,7 @@ object Snowflake {
   val AlertingTempTableName = "rdb_folder_monitoring"
   val TempTableColumn = "enriched_data"
 
-  def build(config: Config[StorageTarget]): Either[String, Target] = {
+  def build(config: Config[StorageTarget, _]): Either[String, Target] = {
     config.storage match {
       case tgt: StorageTarget.Snowflake =>
         val schema = tgt.schema
