@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis
 import cats.Monad
 import cats.data.{EitherT, NonEmptyList}
 import cats.effect._
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.resolver.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event}
@@ -28,7 +28,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider, ParquetTransformer}
-import io.circe.Json
 
 /**
  * Includes common operations needed during event transformation
@@ -40,7 +39,7 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 }
 
 object Transformer {
-  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](iglu: Client[F, Json],
+  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](igluResolver: Resolver[F],
                                                               propertiesCache: PropertiesCache[F],
                                                               formats: Formats.Shred,
                                                               atomicLengths: Map[String, Int]) extends Transformer[F] {
@@ -54,7 +53,7 @@ object Transformer {
     }
 
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
-      Transformed.shredEvent[F](iglu, propertiesCache, isTabular, atomicLengths, Processing.Application)(event)
+      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, atomicLengths, Processing.Application)(event)
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
@@ -71,8 +70,8 @@ object Transformer {
     }
   }
 
-  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](iglu: Client[F, Json],
-                                                                   format: Formats.WideRow) extends Transformer[F] {
+  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](igluResolver: Resolver[F],
+                                                                    format: Formats.WideRow) extends Transformer[F] {
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] = {
       val result = format match {
         case WideRow.JSON =>
@@ -104,7 +103,7 @@ object Transformer {
       val allTypesFromEvent = event.inventory.map(TypesInfo.WideRow.Type.from)
 
       NonAtomicFieldsProvider
-        .build(iglu.resolver, allTypesFromEvent.toList)
+        .build(igluResolver, allTypesFromEvent.toList)
         .leftMap { error => igluBadRow(event, error) }
         .flatMap {
           nonAtomicFields =>

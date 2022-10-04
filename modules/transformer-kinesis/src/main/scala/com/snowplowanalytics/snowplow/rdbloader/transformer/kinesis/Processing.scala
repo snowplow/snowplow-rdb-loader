@@ -75,9 +75,9 @@ object Processing {
 
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.iglu, resources.propertiesCache, f, resources.atomicLengths)
+        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(resources.iglu, f)
+        Transformer.WideRowTransformer(resources.igluResolver, f)
     }
 
     def windowing[A]: Pipe[F, (List[A], State[C]), Windowed[List[A], State[C]]] =

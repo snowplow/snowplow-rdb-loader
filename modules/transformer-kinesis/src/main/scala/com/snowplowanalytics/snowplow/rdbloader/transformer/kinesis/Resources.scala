@@ -29,8 +29,8 @@ import blobstore.Store
 
 import com.snowplowanalytics.lrumap.CreateLruMap
 
-import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
 
 import com.snowplowanalytics.aws.AWSQueue
@@ -45,7 +45,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.sinks.{file,
 import com.snowplowanalytics.snowplow.rdbloader.transformer.kinesis.generated.BuildInfo
 
 case class Resources[F[_]](
-  iglu: Client[F, Json],
+  igluResolver: Resolver[F],
   propertiesCache: PropertiesCache[F],
   atomicLengths: Map[String, Int],
   awsQueue: AWSQueue[F],
@@ -77,9 +77,10 @@ object Resources {
     executionContext: ExecutionContext
   ): Resource[F, Resources[F]] =
     for {
-      client          <- mkClient(igluConfig)
-      propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(100))
-      atomicLengths   <- mkAtomicFieldLengthLimit(client.resolver)
+      resolverConfig  <- mkResolverConfig(igluConfig)
+      resolver        <- mkResolver(resolverConfig)
+      propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
+      atomicLengths   <- mkAtomicFieldLengthLimit(resolver)
       instanceId      <- mkTransformerInstanceId
       blocker         <- Blocker[F]
       store           <- Resource.eval(mkStore[F](blocker, config.output.path))
@@ -87,7 +88,7 @@ object Resources {
       telemetry       <- Telemetry.build[F](config, BuildInfo.name, BuildInfo.version, executionContext)
     } yield
       Resources(
-        client,
+        resolver,
         propertiesCache,
         atomicLengths,
         awsQueue,
@@ -98,14 +99,20 @@ object Resources {
         telemetry
       )
 
-  private def mkClient[F[_]: Sync: InitSchemaCache: InitListCache](igluConfig: Json): Resource[F, Client[F, Json]] = Resource.eval {
-    Client
-      .parseDefault[F](igluConfig)
-      .leftMap(e => new RuntimeException(s"Error while parsing Iglu config: ${e.getMessage()}"))
+  private def mkResolverConfig[F[_]: Sync](igluConfig: Json): Resource[F, ResolverConfig] = Resource.eval {
+    Resolver.parseConfig(igluConfig) match {
+      case Right(resolverConfig) => Sync[F].pure(resolverConfig)
+      case Left(error) => Sync[F].raiseError[ResolverConfig](new RuntimeException(s"Error while parsing Iglu resolver config: ${error.getMessage()}"))
+    }
+  }
+  
+  private def mkResolver[F[_]: Sync: InitSchemaCache: InitListCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] = Resource.eval {
+    Resolver.fromConfig[F](resolverConfig)
+      .leftMap(e => new RuntimeException(s"Error while parsing Iglu resolver config: ${e.getMessage()}"))
       .value
       .flatMap {
         case Right(init) => Sync[F].pure(init)
-        case Left(error) => Sync[F].raiseError[Client[F, Json]](error)
+        case Left(error) => Sync[F].raiseError[Resolver[F]](error)
       }
   }
 
