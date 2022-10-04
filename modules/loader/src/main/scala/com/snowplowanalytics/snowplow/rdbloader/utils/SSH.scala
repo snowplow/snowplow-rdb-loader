@@ -17,7 +17,7 @@ import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.syntax.all._
 import cats.effect.syntax.all._
 import com.jcraft.jsch.{JSch, Session, Logger => JLogger}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
+import com.snowplowanalytics.snowplow.rdbloader.aws.AWS
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger

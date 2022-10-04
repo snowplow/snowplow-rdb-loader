@@ -23,14 +23,14 @@ import fs2.{Stream, Pipe}
 import fs2.text.{lines, utf8Decode}
 import blobstore.fs.FileStore
 import blobstore.Path
+import com.snowplowanalytics.snowplow.rdbloader.aws.{SNS, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.fs.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.Pubsub
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{SQS, SNS}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.Pubsub
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 object Main extends IOApp {

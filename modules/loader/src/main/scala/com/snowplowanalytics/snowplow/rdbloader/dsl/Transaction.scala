@@ -18,6 +18,7 @@ import cats.implicits._
 
 import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
 import cats.effect.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.aws.AWS
 
 import doobie._
 import doobie.implicits._
@@ -26,8 +27,6 @@ import doobie.util.transactor.Strategy
 import doobie.hikari._
 
 import java.sql.SQLException
-
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.AWS
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 
 

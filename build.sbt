@@ -13,6 +13,8 @@
 
 lazy val root = project.in(file("."))
   .aggregate(
+    aws,
+    gcp,
     common,
     commonTransformerStream,
     loader,
@@ -32,6 +34,22 @@ lazy val common: Project = project
   .settings(excludeDependencies ++= Dependencies.exclusions)
   .enablePlugins(BuildInfoPlugin)
 
+lazy val aws: Project = project
+  .in(file("modules/aws"))
+  .settings(BuildSettings.awsBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.awsDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
+  .dependsOn(common % "compile->compile;test->test")
+  .enablePlugins(BuildInfoPlugin)
+
+lazy val gcp: Project = project
+  .in(file("modules/gcp"))
+  .settings(BuildSettings.gcpBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+  .settings(excludeDependencies ++= Dependencies.exclusions)
+  .dependsOn(common % "compile->compile;test->test")
+  .enablePlugins(BuildInfoPlugin)
+
 lazy val commonTransformerStream = project
   .in(file("modules/common-transformer-stream"))
   .settings(BuildSettings.commonStreamTransformerBuildSettings)
@@ -47,7 +65,7 @@ lazy val loader = project
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.loaderDependencies)
   .settings(excludeDependencies ++= Dependencies.exclusions)
-  .dependsOn(common % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test", aws % "compile->compile;test->test", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoader = project
@@ -111,7 +129,7 @@ lazy val transformerKinesis = project
   .in(file("modules/transformer-kinesis"))
   .settings(BuildSettings.transformerKinesisBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test", aws % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesisDistroless = project
@@ -119,14 +137,14 @@ lazy val transformerKinesisDistroless = project
   .settings(sourceDirectory := (transformerKinesis / sourceDirectory).value)
   .settings(BuildSettings.transformerKinesisDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream)
+  .dependsOn(commonTransformerStream, aws)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerPubsub = project
   .in(file("modules/transformer-pubsub"))
   .settings(BuildSettings.transformerPubsubBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerPubsubDistroless = project
@@ -134,12 +152,12 @@ lazy val transformerPubsubDistroless = project
   .settings(sourceDirectory := (transformerPubsub / sourceDirectory).value)
   .settings(BuildSettings.transformerPubsubDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream)
+  .dependsOn(commonTransformerStream, gcp)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerFile = project
   .in(file("modules/transformer-fs"))
   .settings(BuildSettings.transformerFileBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test", aws % "compile->compile;test->test", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, BuildInfoPlugin)

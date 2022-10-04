@@ -18,6 +18,7 @@ import cats.Parallel
 import cats.implicits._
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import com.snowplowanalytics.snowplow.rdbloader.aws.{S3, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import doobie.ConnectionIO
 import org.http4s.client.blaze.BlazeClientBuilder
@@ -27,9 +28,8 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, Stora
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{SQS, S3}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.{GCS, Pubsub}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 

@@ -15,11 +15,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 
 import cats.effect._
+import com.snowplowanalytics.snowplow.rdbloader.aws.{Kinesis, S3, SNS, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{Kinesis, S3, SQS, SNS}
 
 object Main extends IOApp {
 

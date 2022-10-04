@@ -194,6 +194,10 @@ object BuildSettings {
     buildSettings
   }
 
+  lazy val gcpBuildSettings = {
+    buildSettings
+  }
+
   lazy val commonBuildSettings = {
     Seq(
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.generated"

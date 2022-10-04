@@ -26,7 +26,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{Kinesis => AWSKinesis}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
 final case class Config(input: Config.StreamInput,

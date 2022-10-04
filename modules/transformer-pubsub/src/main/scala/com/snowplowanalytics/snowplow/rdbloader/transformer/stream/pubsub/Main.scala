@@ -27,7 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.gcp.{GCS, Pubsub}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 
 object Main extends IOApp {
 

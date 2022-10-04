@@ -17,11 +17,11 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 import cats.Applicative
 import cats.implicits._
 import cats.effect._
+import com.snowplowanalytics.snowplow.rdbloader.aws.Kinesis
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import software.amazon.kinesis.exceptions.ShutdownException
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 case class KinesisCheckpointer[F[_]](byShard: Map[String, F[Unit]])
@@ -32,11 +32,11 @@ object KinesisCheckpointer {
 
   def checkpointer[F[_] : Sync](message: Queue.Consumer.Message[F]): KinesisCheckpointer[F] =
     message match {
-      case m: aws.Kinesis.Message[F] => KinesisCheckpointer[F](Map(m.shardId -> safelyCheckpoint(m)))
+      case m: Kinesis.Message[F] => KinesisCheckpointer[F](Map(m.shardId -> safelyCheckpoint(m)))
       case _ => Checkpointer[F, KinesisCheckpointer[F]].empty
     }
 
-  private def safelyCheckpoint[F[_] : Sync](message: aws.Kinesis.Message[F]): F[Unit] =
+  private def safelyCheckpoint[F[_] : Sync](message: Kinesis.Message[F]): F[Unit] =
     message.ack.recoverWith {
       // The ShardRecordProcessor instance has been shutdown. This just means another KCL worker
       // has stolen our lease. It is expected during autoscaling of instances, and is safe to

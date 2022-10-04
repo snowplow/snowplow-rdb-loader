@@ -18,10 +18,10 @@ import cats.effect.IO
 import scala.concurrent.duration._
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, RegionSpec}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.aws.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ConfigUtils._
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo

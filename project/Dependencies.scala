@@ -153,14 +153,30 @@ object Dependencies {
   val kafkaClients      = "org.apache.kafka"       % "kafka-clients"            % V.kafkaClients
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2      % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2      % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck  % Test
-  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting % Test
-  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect  % Test
+  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2       % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck   % Test
+  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting  % Test
+  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect   % Test
+  val fs2BlobstoreCore  = "com.github.fs2-blobstore"   %% "core"                       % V.fs2Blobstore % Test
+
 
   // compiler plugins
   val betterMonadicFor = "com.olegpy" %% "better-monadic-for" % V.betterMonadicFor
+
+  val awsDependencies = Seq(
+    aws2s3,
+    aws2sqs,
+    aws2sns,
+    aws2kinesis,
+    fs2BlobstoreS3,
+    fs2Aws,
+  )
+
+  val gcpDependencies = Seq(
+    fs2BlobstoreGCS,
+    fs2PubSub,
+  )
 
   val commonDependencies = Seq(
     decline,
@@ -180,18 +196,11 @@ object Dependencies {
     specs2,
     monocle,
     monocleMacro,
-    aws2s3,
-    aws2sqs,
-    aws2sns,
-    aws2kinesis,
     catsRetry,
     fs2,
-    fs2BlobstoreS3,
-    fs2BlobstoreGCS,
-    fs2PubSub,
-    fs2Aws,
     ssm,
-    log4cats
+    log4cats,
+    fs2BlobstoreCore
   )
 
   val loaderDependencies = Seq(
