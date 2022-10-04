@@ -21,12 +21,12 @@ import cats.syntax.show._
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
 import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
 import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
-import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsManifest, EventsManifestConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
-import io.circe.Json
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -34,18 +34,18 @@ object singleton {
   /** Singleton for Iglu's Resolver to maintain one Resolver per node. */
   object IgluSingleton {
 
-    @volatile private var instance: Client[Id, Json] = _
+    @volatile private var instance: Resolver[Id] = _
 
     /**
       * Retrieve or build an instance of Iglu's Resolver.
       *
       * @param igluConfig JSON representing the Iglu configuration
       */
-    def get(igluConfig: Json): Client[Id, Json] = {
+    def get(resolverConfig: ResolverConfig): Resolver[Id] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = getIgluClient(igluConfig)
+            instance = getIgluResolver(resolverConfig) 
               .valueOr(e => throw new IllegalArgumentException(e))
           }
         }
@@ -59,8 +59,8 @@ object singleton {
       * @param igluConfig JSON representing the Iglu resolver
       * @return A Resolver or one or more error messages boxed in a Scalaz ValidationNel
       */
-    private[spark] def getIgluClient(igluConfig: Json): Either[String, Client[Id, Json]] =
-      Client.parseDefault[Id](igluConfig).leftMap(_.show).value
+    private def getIgluResolver(resolverConfig: ResolverConfig): Either[String, Resolver[Id]] =
+      Resolver.fromConfig[Id](resolverConfig).leftMap(_.show).value
   }
 
   /** Singleton for DuplicateStorage to maintain one per node. */
@@ -98,11 +98,11 @@ object singleton {
   object PropertiesCacheSingleton {
     @volatile private var instance: PropertiesCache[Id] = _
 
-    def get: PropertiesCache[Id] = {
+    def get(resolverConfig: ResolverConfig): PropertiesCache[Id] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = CreateLruMap[Id, PropertiesKey, Properties].create(100)
+            instance = CreateLruMap[Id, PropertiesKey, Properties].create(resolverConfig.cacheSize)
           }
         }
       }

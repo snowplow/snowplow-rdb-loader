@@ -15,6 +15,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
+import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
@@ -442,18 +443,20 @@ trait ShredJobSpec extends SparkSpec {
 
     CliConfig.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
+        val resolverConfig = Resolver.parseConfig(cli.igluConfig).valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
+
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(cli.igluConfig, f, Map.empty)
+          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
-            val resolver = IgluSingleton.get(cli.igluConfig).resolver
+            val resolver = IgluSingleton.get(resolverConfig)
             val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
 
             val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).value.right.get
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
             
-            Transformer.WideRowParquetTransformer(cli.igluConfig, Map.empty, allFields, schema)
+            Transformer.WideRowParquetTransformer(allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
