@@ -33,7 +33,7 @@ object Databricks {
   val UnstructPrefix = "unstruct_event_"
   val ContextsPrefix = "contexts_"
 
-  def build(config: Config[StorageTarget, _]): Either[String, Target] = {
+  def build(config: Config[StorageTarget]): Either[String, Target] = {
     config.storage match {
       case tgt: StorageTarget.Databricks =>
         val result = new Target {

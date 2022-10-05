@@ -133,7 +133,7 @@ object DatabricksSpec {
     ),
     Config.Cloud.AWS(
       Region("eu-central-1"),
-      "my-queue.fifo",
+      Config.Cloud.AWS.SQS("my-queue.fifo"),
     ),
     None,
     Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),

@@ -41,7 +41,7 @@ package object rdbloader {
   type LoadStatements = NonEmptyList[Statement.Loading]
 
   /** A function to build a specific `Target` or error in case invalid config is passed */
-  type BuildTarget = Config[StorageTarget, Config.Cloud] => Either[String, Target]
+  type BuildTarget = Config[StorageTarget] => Either[String, Target]
 
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]

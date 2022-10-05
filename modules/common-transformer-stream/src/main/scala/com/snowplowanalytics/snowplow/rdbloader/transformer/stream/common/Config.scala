@@ -66,13 +66,20 @@ object Config {
 
     final case class File(dir: String) extends StreamInput
 
-    final case class Pubsub(projectId: String,
-                            subscriptionId: String,
+    final case class Pubsub(subscription: String,
                             customPubsubEndpoint: Option[String],
                             parallelPullCount: Int,
                             bufferSize: Int,
                             maxAckExtensionPeriod: FiniteDuration,
-                            maxOutstandingMessagesSize: Option[Long]) extends StreamInput
+                            maxOutstandingMessagesSize: Option[Long]) extends StreamInput {
+      val (projectId, subscriptionId) =
+        subscription.split("/").toList match {
+          case List("projects", project, "subscriptions", name) =>
+            (project, name)
+          case _ =>
+            throw new IllegalArgumentException(s"Subscription format $subscription invalid")
+        }
+    }
   }
 
   sealed trait Output {

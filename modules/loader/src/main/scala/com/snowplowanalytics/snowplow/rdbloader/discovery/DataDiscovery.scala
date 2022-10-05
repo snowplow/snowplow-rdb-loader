@@ -73,7 +73,7 @@ object DataDiscovery {
    *
    * @param config generic storage target configuration
    */
-  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_, _], incrementMessages: F[State]): DiscoveryStream[F] =
+  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
     Queue.Consumer[F]
       .read
       .evalMapFilter { message =>

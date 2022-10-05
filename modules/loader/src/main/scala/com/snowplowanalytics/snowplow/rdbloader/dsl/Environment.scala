@@ -13,7 +13,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
-import scala.concurrent.duration._
 import cats.Parallel
 import cats.implicits._
 import cats.effect.concurrent.Ref
@@ -129,14 +128,14 @@ object Environment {
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 
-  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget, Cloud], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
     config.cloud match {
       case c: Cloud.AWS =>
         for {
           s3Client <- Resource.eval(S3.getClient[F](c.region.name))
           implicit0(blobStorage: BlobStorage[F]) = S3.blobStorage[F](s3Client)
           postProcess = Queue.Consumer.postProcess[F]
-          queueConsumer = SQS.consumer[F](c.messageQueue, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+          queueConsumer = SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore = EC2ParameterStore.secretStore[F]
@@ -150,12 +149,12 @@ object Environment {
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
             blocker = blocker,
-            projectId = c.projectId,
-            subscription = c.subscriptionId,
-            parallelPullCount = 1,
-            bufferSize = 10,
-            maxAckExtensionPeriod = 2.hours,
-            customPubsubEndpoint = c.customPubsubEndpoint,
+            projectId = c.messageQueue.projectId,
+            subscription = c.messageQueue.subscriptionId,
+            parallelPullCount = c.messageQueue.parallelPullCount,
+            bufferSize = c.messageQueue.bufferSize,
+            maxAckExtensionPeriod = config.timeouts.loading,
+            customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
             postProcess = Some(postProcess)
           )
           secretStore = SecretStore.noop[F]

@@ -73,7 +73,7 @@ object Load {
    */
   def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C],
            C[_]: MonadThrow: Logging: DAO]
-  (config: Config[StorageTarget, _],
+  (config: Config[StorageTarget],
    setStage: Stage => C[Unit],
    incrementAttempt: F[Unit],
    discovery: DataDiscovery.WithOrigin,
