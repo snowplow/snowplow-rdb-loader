@@ -16,8 +16,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import org.specs2.mutable.{Specification, Tables}
 
-class S3Spec extends Specification with Tables {
-  "S3.Folder.parse()" should {
+class BlobStorageSpec extends Specification with Tables {
+  "BlobStorage.Folder.parse()" should {
     "support s3:// prefix" >> {
       val folder = "s3://foo/"
       BlobStorage.Folder.parse(folder) must beRight
@@ -30,9 +30,13 @@ class S3Spec extends Specification with Tables {
       val folder = "s3n://foo/"
       BlobStorage.Folder.parse(folder) must beRight
     }
+    "support gs:// prefix" >> {
+      val folder = "gs://foo/"
+      BlobStorage.Folder.parse(folder) must beRight
+    }
   }
 
-  "S3.Key.diff" should {
+  "BlobStorage.Key.diff" should {
     "return path diff correctly" >> {
                         "parent"                 |                   "sub"                     |                "diff"             |>
       "s3://path1"                               !  "s3://path1/path2/path3/runs/run_id"       !  Some("path2/path3/runs/run_id")  |

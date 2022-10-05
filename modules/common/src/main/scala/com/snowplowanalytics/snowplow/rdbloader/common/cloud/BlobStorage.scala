@@ -43,7 +43,7 @@ object BlobStorage {
   def apply[F[_]](implicit ev: BlobStorage[F]): BlobStorage[F] = ev
 
   /**
-   * Refined type for AWS blob storage bucket, allowing only valid blob storage paths
+   * Refined type for blob storage bucket, allowing only valid blob storage paths
    * (with `xx://` prefix and trailing shash)
    */
   type Folder = String @@ BlobStorageFolderTag
