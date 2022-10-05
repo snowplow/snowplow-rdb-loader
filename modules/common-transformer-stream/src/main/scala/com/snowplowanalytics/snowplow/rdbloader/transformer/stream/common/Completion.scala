@@ -48,9 +48,9 @@ object Completion {
    * @param compression a compression type used in the batch
    * @param getTypes a function converts set of event inventory items to TypesInfo
    * @param root S3 batch root (with output=good and output=bad)
-   * @param awsQueue AWSQueue instance to send the message to
+   * @param producer Producer instance to send the message with
    * @param legacyMessageFormat Feature flag to use legacy shredding complete version 1
-   * @param writeSheddingComplete Function that writes shredding_complete.json on disk
+   * @param processor Processor info to include to shredding complete message
    * @param window run id (when batch has been started)
    * @param state all metadata shredder extracted from a batch
    */
@@ -83,7 +83,7 @@ object Completion {
     key: BlobStorage.Key,
     content: String
   ): F[Unit] = {
-    val pipe = BlobStorage[F].sinkBlob(key, false)
+    val pipe = BlobStorage[F].put(key, false)
     val bytes = Stream.emits[F, Byte](content.getBytes)
     bytes.through(pipe).compile.drain
   }

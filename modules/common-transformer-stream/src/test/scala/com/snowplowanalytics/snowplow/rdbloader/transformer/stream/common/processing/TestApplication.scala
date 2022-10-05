@@ -100,15 +100,15 @@ object TestApplication {
           blobStorage <- Resource.pure[F, BlobStorage[F]](
             new BlobStorage[F] {
 
-              override def listBlob(bucket: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] =
+              override def list(bucket: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] =
                 Stream.empty
 
-              override def sinkBlob(path: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
+              override def put(path: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
                 val relativePath = Path(NioPath.of(client.absRoot).relativize(NioPath.of(URI.create(path))).toString)
                 client.put(relativePath, false)
               }
 
-              override def readKey(path: Key): F[Either[Throwable, String]] =
+              override def get(path: Key): F[Either[Throwable, String]] =
                 Concurrent[F].raiseError(new Exception("readKey isn't implemented for blob storage file type"))
 
               override def keyExists(key: Key): F[Boolean] =

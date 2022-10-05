@@ -16,7 +16,7 @@ object GCS {
 
   def blobStorage[F[_] : ConcurrentEffect](client: GcsStore[F]): BlobStorage[F] = new BlobStorage[F] {
 
-    override def listBlob(folder: Folder, recursive: Boolean): fs2.Stream[F, BlobStorage.BlobObject] = {
+    override def list(folder: Folder, recursive: Boolean): fs2.Stream[F, BlobStorage.BlobObject] = {
       val (bucket, path) = BlobStorage.splitPath(folder)
       client.list(GcsPath(BlobInfo.newBuilder(bucket, path).build()), recursive)
         .map { gcsPath =>
@@ -28,12 +28,12 @@ object GCS {
         }
     }
 
-    override def sinkBlob(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
+    override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
       val (bucket, path) = BlobStorage.splitKey(key)
       client.put(GcsPath(BlobInfo.newBuilder(bucket, path).build()), overwrite)
     }
 
-    override def readKey(key: Key): F[Either[Throwable, String]] = {
+    override def get(key: Key): F[Either[Throwable, String]] = {
       val (bucket, path) = BlobStorage.splitKey(key)
       client
         .get(GcsPath(BlobInfo.newBuilder(bucket, path).build()), 1024)

@@ -156,7 +156,7 @@ object Processing {
           .intersperse("\n")
           .through(utf8Encode[F])
           .through(finalPipe)
-          .through(BlobStorage[F].sinkBlob(fileOutputPath, false))
+          .through(BlobStorage[F].put(fileOutputPath, false))
       }
   }
 

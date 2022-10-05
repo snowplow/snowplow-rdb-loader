@@ -108,13 +108,13 @@ object FolderMonitoring {
   def sinkFolders[F[_]: Sync: Timer: Logging: BlobStorage](since: Option[FiniteDuration], until: Option[FiniteDuration], input: BlobStorage.Folder, output: BlobStorage.Folder): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
       Stream.eval(Timer[F].clock.instantNow).flatMap { now =>
-        BlobStorage[F].listBlob(input, recursive = false)
+        BlobStorage[F].list(input, recursive = false)
           .mapFilter(blob => if (blob.key.endsWith("/") && blob.key != input) BlobStorage.Folder.parse(blob.key).toOption else None)     // listS3 returns the root dir as well
           .filter(isRecent(since, until, now))
           .evalTap(_ => ref.update(size => size + 1))
           .intersperse("\n")
           .through(utf8Encode[F])
-          .through(BlobStorage[F].sinkBlob(output.withKey("keys"), true))
+          .through(BlobStorage[F].put(output.withKey("keys"), true))
           .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
       }.compile.drain *> ref.get.map(size => size != 0)
     }

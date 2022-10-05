@@ -26,11 +26,11 @@ trait BlobStorage[F[_]] {
   /**
    * List blob storage folder
    */
-  def listBlob(bucket: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject]
+  def list(bucket: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject]
 
-  def sinkBlob(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
+  def put(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit]
 
-  def readKey(path: BlobStorage.Key): F[Either[Throwable, String]]
+  def get(path: BlobStorage.Key): F[Either[Throwable, String]]
 
   /** Check if blob storage key exist */
   def keyExists(key: BlobStorage.Key): F[Boolean]
@@ -203,13 +203,13 @@ object BlobStorage {
 
   def noop[F[_]: MonadThrow]: BlobStorage[F] = new BlobStorage[F] {
 
-    override def listBlob(bucket: Folder, recursive: Boolean): Stream[F, BlobObject] =
+    override def list(bucket: Folder, recursive: Boolean): Stream[F, BlobObject] =
       Stream.empty
 
-    override def sinkBlob(path: Key, overwrite: Boolean): Pipe[F, Byte, Unit] =
+    override def put(path: Key, overwrite: Boolean): Pipe[F, Byte, Unit] =
       _.map(_ => ())
 
-    override def readKey(path: Key): F[Either[Throwable, String]] =
+    override def get(path: Key): F[Either[Throwable, String]] =
       MonadThrow[F].raiseError(new IllegalArgumentException("noop blobstorage interpreter"))
 
     override def keyExists(key: Key): F[Boolean] =

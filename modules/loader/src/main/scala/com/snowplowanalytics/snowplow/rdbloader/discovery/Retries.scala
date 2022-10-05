@@ -190,7 +190,7 @@ object Retries {
   def readShreddingComplete[F[_]: BlobStorage: MonadThrow](folder: BlobStorage.Folder): F[LoaderMessage.ShreddingComplete] = {
     val fullPath = folder.withKey(FolderMonitoring.ShreddingComplete)
     BlobStorage[F]
-      .readKey(fullPath)
+      .get(fullPath)
       .flatMap {
         case Right(content) =>
           LoaderMessage.fromString(content) match {

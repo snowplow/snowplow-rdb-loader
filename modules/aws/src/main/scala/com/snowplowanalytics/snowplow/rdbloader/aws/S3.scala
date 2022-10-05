@@ -29,7 +29,7 @@ object S3 {
       BlobStorage.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
     }
 
-    def readKey(path: Key): F[Either[Throwable, String]] = {
+    def get(path: Key): F[Either[Throwable, String]] = {
       val (bucket, s3Key) = BlobStorage.splitKey(path)
       client
         .get(S3Path(bucket, s3Key, None), 1024)
@@ -39,12 +39,12 @@ object S3 {
         .attempt
     }
 
-    def listBlob(folder: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
+    def list(folder: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
       val (bucket, s3Key) = BlobStorage.splitPath(folder)
       client.list(S3Path(bucket, s3Key, None), recursive).map(getKey)
     }
 
-    def sinkBlob(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
+    def put(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
       val (bucket, s3Key) = BlobStorage.splitKey(path)
       client.put(S3Path(bucket, s3Key, None), overwrite)
     }
