@@ -18,7 +18,7 @@ import cats.Parallel
 import cats.implicits._
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.aws.{S3, SQS}
+import com.snowplowanalytics.snowplow.rdbloader.aws.{S3, SQS, EC2ParameterStore}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import doobie.ConnectionIO
 import org.http4s.client.blaze.BlazeClientBuilder
@@ -31,6 +31,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
@@ -73,7 +74,8 @@ object Environment {
   case class CloudServices[F[_]](blobStorage: BlobStorage[F],
                                  queueConsumer: Queue.Consumer[F],
                                  loadAuthService: LoadAuthService[F],
-                                 jsonPathDiscovery: JsonPathDiscovery[F])
+                                 jsonPathDiscovery: JsonPathDiscovery[F],
+                                 secretStore: SecretStore[F])
 
   def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
     for {
@@ -94,6 +96,7 @@ object Environment {
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
+      implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
     } yield new Environment[F](
@@ -136,7 +139,8 @@ object Environment {
           queueConsumer = SQS.consumer[F](c.messageQueue, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
-        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
+          secretStore = EC2ParameterStore.secretStore[F]
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
       case c: Cloud.GCP =>
         for {
           loadAuthService <- LoadAuthService.noop[F]
@@ -154,7 +158,8 @@ object Environment {
             customPubsubEndpoint = c.customPubsubEndpoint,
             postProcess = Some(postProcess)
           )
-        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery)
+          secretStore = SecretStore.noop[F]
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
 
 }

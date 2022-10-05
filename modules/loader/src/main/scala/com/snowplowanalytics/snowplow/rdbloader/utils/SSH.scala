@@ -17,10 +17,10 @@ import cats.effect.{ConcurrentEffect, Resource, Sync}
 import cats.syntax.all._
 import cats.effect.syntax.all._
 import com.jcraft.jsch.{JSch, Session, Logger => JLogger}
-import com.snowplowanalytics.snowplow.rdbloader.aws.AWS
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
 object SSH {
 
@@ -30,7 +30,7 @@ object SSH {
   case class Identity(passphrase: Option[Array[Byte]], key: Option[Array[Byte]])
 
   /** Open SSH tunnel, which will be guaranteed to be closed when application exits */
-  def resource[F[_]:ConcurrentEffect: Sync](tunnelConfig: Option[TunnelConfig]): Resource[F, Unit] =
+  def resource[F[_]:ConcurrentEffect: Sync: SecretStore](tunnelConfig: Option[TunnelConfig]): Resource[F, Unit] =
     tunnelConfig match {
       case Some(tunnel) =>
         Resource.eval{
@@ -53,12 +53,12 @@ object SSH {
     }
 
   /** Convert pure tunnel configuration to configuration with actual key and passphrase */
-  def getIdentity[F[_]: Monad: Sync](tunnelConfig: TunnelConfig): F[Identity] =
+  def getIdentity[F[_]: Monad: Sync: SecretStore](tunnelConfig: TunnelConfig): F[Identity] =
     tunnelConfig
       .bastion
       .key
-      .map(_.ec2ParameterStore.parameterName).traverse(AWS.getEc2Property[F])
-      .map { key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key) }
+      .map(_.ec2ParameterStore.parameterName).traverse(SecretStore[F].getValue)
+      .map { key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)) }
 
   /**
    * Create a SSH tunnel to bastion host and set port forwarding to target DB
