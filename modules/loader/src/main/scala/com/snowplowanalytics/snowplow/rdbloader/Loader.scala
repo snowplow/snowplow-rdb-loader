@@ -54,7 +54,7 @@ object Loader {
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
   def run[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget, _], control: Control[F]): F[Unit] = {
+          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
@@ -103,7 +103,7 @@ object Loader {
    * (SQS and retry queue) and performing the load operation itself
    */
   private def loadStream[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-                         C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget, _], control: Control[F]): Stream[F, Unit] = {
+                         C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages)
     val retryDiscovery: DiscoveryStream[F] =
@@ -121,7 +121,7 @@ object Loader {
    * downstream has access only to `F` actions, instead of whole `Control` object
    */
   private def processDiscovery[F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift: LoadAuthService,
-                               C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget, _], control: Control[F])
+                               C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F])
                                                               (discovery: DataDiscovery.WithOrigin): F[Unit] = {
     val folder = discovery.origin.base
     val busy = (control.makeBusy: MakeBusy[F]).apply(folder)

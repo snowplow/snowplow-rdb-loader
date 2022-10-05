@@ -92,7 +92,7 @@ object ConfigSpec {
     Some(Config.HealthCheck(20.minutes, 15.seconds)),
   )
   val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
-  val exampleQueueName = "test-queue"
+  val exampleMessageQueue = Config.Cloud.AWS.SQS("test-queue")
   val exampleFolderMonitoringStage = StorageTarget.Snowflake.Stage("test_folder_monitoring_stage", None)
   val exampleTransformedStage = StorageTarget.Snowflake.Stage("test_transformed_stage", None)
   val exampleRedshift = StorageTarget.Redshift(
@@ -135,7 +135,7 @@ object ConfigSpec {
   val exampleTempCreds =  StorageTarget.LoadAuthMethod.TempCreds("test_role_arn", "test_role_session_name")
   val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn =  true)
-  val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleQueueName)
+  val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleMessageQueue)
   val exampleConfig = Config(
     exampleSnowflake,
     exampleCloud,
@@ -158,6 +158,6 @@ object ConfigSpec {
     Files.readString(configExamplePath)
   }
 
-  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget, Config.Cloud]] =
+  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget]] =
     Config.fromString[IO](conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
 }

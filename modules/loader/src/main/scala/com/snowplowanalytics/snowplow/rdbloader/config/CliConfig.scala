@@ -23,7 +23,6 @@ import com.monovore.decline.{Command, Opts}
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.ConfigUtils
-import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 
 /**
  * Validated and parsed result application config
@@ -33,7 +32,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
  * @param resolverConfig proven to be valid resolver configuration
   *                       (to not hold side-effecting object)
  */
-case class CliConfig(config: Config[StorageTarget, Cloud], dryRun: Boolean, resolverConfig: Json)
+case class CliConfig(config: Config[StorageTarget], dryRun: Boolean, resolverConfig: Json)
 
 object CliConfig {
 

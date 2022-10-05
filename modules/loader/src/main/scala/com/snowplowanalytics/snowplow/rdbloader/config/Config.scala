@@ -31,9 +31,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Regi
  * Main config file parsed from HOCON
  * @tparam D kind of supported warehouse
  */
-case class Config[+D <: StorageTarget, +C <: Cloud](
+case class Config[+D <: StorageTarget](
   storage: D,
-  cloud: C,
+  cloud: Cloud,
   jsonpaths: Option[BlobStorage.Folder],
   monitoring: Monitoring,
   retryQueue: Option[RetryQueue],
@@ -49,12 +49,12 @@ object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget, Cloud]] =
+  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
     fromString(s, implicits().configDecoder)
 
-  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget, Cloud]]): EitherT[F, String, Config[StorageTarget, Cloud]] =  {
-    implicit val implConfigDecoder: Decoder[Config[StorageTarget, Cloud]] = configDecoder
-    ConfigUtils.fromStringF[F, Config[StorageTarget, Cloud]](s)
+  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] =  {
+    implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
+    ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
   }
 
   final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
@@ -92,11 +92,28 @@ object Config {
   object Cloud {
 
     final case class AWS(region: Region,
-                         messageQueue: String) extends Cloud
+                         messageQueue: AWS.SQS) extends Cloud
 
-    final case class GCP(projectId: String,
-                         subscriptionId: String,
-                         customPubsubEndpoint: Option[String]) extends Cloud
+    object AWS {
+      final case class SQS(queueName: String)
+    }
+
+    final case class GCP(messageQueue: GCP.Pubsub) extends Cloud
+
+    object GCP {
+      final case class Pubsub(subscription: String,
+                              customPubsubEndpoint: Option[String],
+                              parallelPullCount: Int,
+                              bufferSize: Int) {
+        val (projectId, subscriptionId) =
+          subscription.split("/").toList match {
+            case List("projects", project, "subscriptions", name) =>
+              (project, name)
+            case _ =>
+              throw new IllegalArgumentException(s"Subscription format $subscription invalid")
+          }
+      }
+    }
   }
 
   /**
@@ -175,37 +192,76 @@ object Config {
     implicit val retryQueueDecoder: Decoder[RetryQueue] =
       deriveDecoder[RetryQueue]
 
-    implicit val configDecoder: Decoder[Config[StorageTarget, Cloud]] =
-      deriveDecoder[Config[StorageTarget, Cloud]].ensure(validateConfig)
+    implicit val configDecoder: Decoder[Config[StorageTarget]] =
+      deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
 
     implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
       deriveDecoder[FeatureFlags]
 
+    // This decoder a bit complex since we've tried to make it backward compatible
+    // after adding Pubsub as new message queue type. Also, config case classes are
+    // split according to the cloud type since there is some additional cloud dependent
+    // resources such as blob storage client, parameter store, region etc.
+    // However, we didn't want to introduce new config field for cloud type but instead it should
+    // be chosen according to message queue type. This added some additional complexity
+    // to decoder.
     implicit val cloudConfigDecoder: Decoder[Cloud] =
       Decoder.instance[Cloud] { cur =>
-        cur.as[String].map(_.toLowerCase) match {
-          case Right("aws") =>
-            cur.up.as[Cloud.AWS]
-          case Right("gcp") =>
-            cur.as[Cloud.GCP]
-          case Right(other) =>
-            Left(DecodingFailure(s"Cloud $other is not supported yet. Supported types: 'aws', 'gcp'", cur.history))
-          case Left(DecodingFailure(_, List(CursorOp.DownField("cloud")))) =>
-            Left(DecodingFailure("Cannot find 'cloud' field in the config", cur.history))
-          case Left(other) =>
-            Left(other)
+        // We are going up one level to find out 'messageQueue' field because
+        // currently we are on dummy 'cloud' field.
+        val messageQueueCursor = cur.up.downField("messageQueue")
+        messageQueueCursor.as[String] match {
+          case Right(q) =>
+            // If type of the 'messageQueue' field is string, it means that this config is for version <5.x.
+            // Therefore, it should be decoded as SQS.
+            cur.up.downField("region").as[Region].map(r => Cloud.AWS(r, Cloud.AWS.SQS(q)))
+          case _ =>
+            messageQueueCursor.downField("type").as[String].map(_.toLowerCase) match {
+              case Right("sqs") =>
+                cur.up.as[Cloud.AWS]
+              case Right("pubsub") =>
+                cur.up.as[Cloud.GCP]
+              case Right(other) =>
+                Left(DecodingFailure(s"Message queue type $other is not supported yet. Supported types: 'sqs', 'pubsub'", cur.history))
+              case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+                Left(DecodingFailure("Cannot find 'type' field in the config", cur.history))
+              case Left(other) =>
+                Left(other)
+            }
         }
       }
 
     implicit val awsDecoder: Decoder[Cloud.AWS] =
       deriveDecoder[Cloud.AWS]
 
+    implicit val sqsDecoder: Decoder[Cloud.AWS.SQS] =
+      deriveDecoder[Cloud.AWS.SQS]
+
     implicit val gcpDecoder: Decoder[Cloud.GCP] =
       deriveDecoder[Cloud.GCP]
+
+    implicit val pubsubDecoder: Decoder[Cloud.GCP.Pubsub] =
+      deriveDecoder[Cloud.GCP.Pubsub]
   }
 
   /** Post-decoding validation, making sure different parts are consistent */
-  def validateConfig(config: Config[StorageTarget, Cloud]): List[String] =
+  def validateConfig(config: Config[StorageTarget]): List[String] =
+    List(
+      authMethodValidation(config),
+      targetSnowflakeValidation(config)
+    ).flatten
+
+  private def authMethodValidation(config: Config[StorageTarget]): List[String] =
+    config.cloud match {
+      case _: Config.Cloud.GCP =>
+        (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
+          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
+          case _ => List("Only 'NoCreds' load auth method is supported with GCP")
+        }
+      case _ => Nil
+    }
+
+  def targetSnowflakeValidation(config: Config[StorageTarget]): List[String] =
     config.storage match {
       case storage: StorageTarget.Snowflake =>
         val monitoringError = config.monitoring.folders match {
@@ -232,6 +288,7 @@ object Config {
             }
         }
         List(monitoringError, hostError, authMethodConsistencyCheck).flatten
+
       case _ => Nil
     }
 }
