@@ -29,7 +29,7 @@ class ConfigSpec extends Specification {
   "fromString" should {
     "be able to parse extended Snowflake config" in {
       val storage = exampleSnowflake
-        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(StorageTarget.ParameterStoreConfig("snowplow.snowflake.password"))))
+        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("s3://bucket/monitoring/")))))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/")))))

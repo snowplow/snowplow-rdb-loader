@@ -275,11 +275,8 @@ object StorageTarget {
           j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
   }
 
-  /** Reference to encrypted entity inside EC2 Parameter Store */
-  final case class ParameterStoreConfig(parameterName: String)
-
-  /** Reference to encrypted key (EC2 Parameter Store only so far) */
-  final case class EncryptedConfig(ec2ParameterStore: ParameterStoreConfig)
+  /** Reference to encrypted key (EC2 Parameter Store & GCP Secret Manager) */
+  final case class EncryptedConfig(parameterName: String)
 
   /** Bastion host access configuration for SSH tunnel */
   final case class BastionConfig(host: String, port: Int, user: String, passphrase: Option[String], key: Option[EncryptedConfig])
@@ -287,11 +284,11 @@ object StorageTarget {
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
   final case class DestinationConfig(host: String, port: Int)
 
-  /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
+  /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store or GCP Secret Manager */
   sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
       case PasswordConfig.PlainText(plain) => plain
-      case PasswordConfig.EncryptedKey(EncryptedConfig(key)) => key.parameterName
+      case PasswordConfig.EncryptedKey(EncryptedConfig(parameterName)) => parameterName
     }
   }
   object PasswordConfig {
@@ -302,10 +299,7 @@ object StorageTarget {
       def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] = {
         hCursor.value.asString match {
           case Some(s) => Right(PasswordConfig.PlainText(s))
-          case None => hCursor.value.asObject match {
-            case Some(_) => hCursor.value.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
-            case None => Left(DecodingFailure("password should be either plain text or reference to encrypted key", hCursor.history))
-          }
+          case None => hCursor.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
         }
       }
     }
@@ -338,7 +332,11 @@ object StorageTarget {
     deriveDecoder[Snowflake]
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
-    deriveDecoder[EncryptedConfig]
+    Decoder.instance[EncryptedConfig] { cur =>
+      cur.downField("ec2ParameterStore").get[String]("parameterName")
+        .orElse(cur.downField("secretStore").get[String]("parameterName"))
+        .map(c => EncryptedConfig(c))
+    }
 
   implicit def tunnelConfigDecoder: Decoder[TunnelConfig] =
     deriveDecoder[TunnelConfig]
@@ -348,9 +346,6 @@ object StorageTarget {
 
   implicit def destinationConfigDecoder: Decoder[DestinationConfig] =
     deriveDecoder[DestinationConfig]
-
-  implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
-    deriveDecoder[ParameterStoreConfig]
 
   implicit def loadAuthMethodDecoder: Decoder[LoadAuthMethod] =
     Decoder.instance { cur =>

@@ -17,9 +17,8 @@
     "host": "abc.cloud.databricks.com",
     # DB password
     "password": {
-      # A password can be placed in EC2 parameter store or be a plain text
-      "ec2ParameterStore": {
-        # EC2 parameter name
+      # A password can be placed in EC2 parameter store, GCP Secret Manager or be a plain text
+      "secretStore": {
         "parameterName": "snowplow.databricks.password"
       }
     },
