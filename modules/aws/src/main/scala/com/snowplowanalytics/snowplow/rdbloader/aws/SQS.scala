@@ -19,18 +19,21 @@ object SQS {
                                                          sqsVisibility: FiniteDuration,
                                                          region: String,
                                                          stop: Stream[F, Boolean],
-                                                         postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Queue.Consumer[F] = new Queue.Consumer[F] {
-    override def read: Stream[F, Queue.Consumer.Message[F]] = {
-      val stream = readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
-        .map { case (msg, ack, extend) => (SQSMessage(msg.body(), ack), extend) }
-      postProcess match {
-        case None => stream.map(_._1)
-        case Some(p) => stream.flatMap { case (msg, extend) =>
-          p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
+                                                         postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Resource[F, Queue.Consumer[F]] =
+    Resource.pure[F, Queue.Consumer[F]](
+      new Queue.Consumer[F] {
+        override def read: Stream[F, Queue.Consumer.Message[F]] = {
+          val stream = readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
+            .map { case (msg, ack, extend) => (SQSMessage(msg.body(), ack), extend) }
+          postProcess match {
+            case None => stream.map(_._1)
+            case Some(p) => stream.flatMap { case (msg, extend) =>
+              p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
+            }
+          }
         }
       }
-    }
-  }
+    )
 
   def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
     SQS.mkClient(Region.of(region)).map { client =>

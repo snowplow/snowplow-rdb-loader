@@ -131,22 +131,22 @@ object Environment {
   def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
     config.cloud match {
       case c: Cloud.AWS =>
-        for {
-          s3Client <- Resource.eval(S3.getClient[F](c.region.name))
-          implicit0(blobStorage: BlobStorage[F]) = S3.blobStorage[F](s3Client)
-          postProcess = Queue.Consumer.postProcess[F]
-          queueConsumer = SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+        for {          
+          s3Client <- S3.getClient[F](c.region.name)
+          implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](s3Client)
+          postProcess <- Queue.Consumer.postProcess[F]
+          queueConsumer <- SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
-          secretStore = EC2ParameterStore.secretStore[F]
+          secretStore <- EC2ParameterStore.secretStore[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
       case c: Cloud.GCP =>
         for {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
-          gcsClient = GCS.getClient(blocker)
-          implicit0(blobStorage: BlobStorage[F]) = GCS.blobStorage(gcsClient)
-          postProcess = Queue.Consumer.postProcess[F]
+          gcsClient <- GCS.getClient(blocker)
+          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(gcsClient)
+          postProcess <- Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
             blocker = blocker,
             projectId = c.messageQueue.projectId,
@@ -157,8 +157,7 @@ object Environment {
             customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
             postProcess = Some(postProcess)
           )
-          secretStore = SecretManager.secretManager[F]
+          secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
-
 }
