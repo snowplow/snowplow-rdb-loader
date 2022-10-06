@@ -57,7 +57,7 @@ object SSH {
     tunnelConfig
       .bastion
       .key
-      .map(_.ec2ParameterStore.parameterName).traverse(SecretStore[F].getValue)
+      .map(_.parameterName).traverse(SecretStore[F].getValue)
       .map { key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)) }
 
   /**

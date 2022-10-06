@@ -275,11 +275,8 @@ object StorageTarget {
           j.sslRootCert, j.tcpKeepAlive, j.tcpKeepAliveMinutes))
   }
 
-  /** Reference to encrypted entity inside EC2 Parameter Store */
-  final case class ParameterStoreConfig(parameterName: String)
-
-  /** Reference to encrypted key (EC2 Parameter Store only so far) */
-  final case class EncryptedConfig(ec2ParameterStore: ParameterStoreConfig)
+  /** Reference to encrypted key (EC2 Parameter Store & GCP Secret Manager) */
+  final case class EncryptedConfig(parameterName: String)
 
   /** Bastion host access configuration for SSH tunnel */
   final case class BastionConfig(host: String, port: Int, user: String, passphrase: Option[String], key: Option[EncryptedConfig])
@@ -287,11 +284,11 @@ object StorageTarget {
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
   final case class DestinationConfig(host: String, port: Int)
 
-  /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store */
+  /** ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter Store or GCP Secret Manager */
   sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
       case PasswordConfig.PlainText(plain) => plain
-      case PasswordConfig.EncryptedKey(EncryptedConfig(key)) => key.parameterName
+      case PasswordConfig.EncryptedKey(EncryptedConfig(parameterName)) => parameterName
     }
   }
   object PasswordConfig {
@@ -348,9 +345,6 @@ object StorageTarget {
 
   implicit def destinationConfigDecoder: Decoder[DestinationConfig] =
     deriveDecoder[DestinationConfig]
-
-  implicit def parameterStoreConfigDecoder: Decoder[ParameterStoreConfig] =
-    deriveDecoder[ParameterStoreConfig]
 
   implicit def loadAuthMethodDecoder: Decoder[LoadAuthMethod] =
     Decoder.instance { cur =>

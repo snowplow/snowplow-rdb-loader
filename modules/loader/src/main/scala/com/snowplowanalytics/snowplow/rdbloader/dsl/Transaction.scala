@@ -100,8 +100,8 @@ object Transaction {
       password <- target.password match {
         case StorageTarget.PasswordConfig.PlainText(text) =>
           Resource.pure[F, String](text)
-        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(key)) =>
-          Resource.eval(SecretStore[F].getValue(key.parameterName))
+        case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
+          Resource.eval(SecretStore[F].getValue(parameterName))
       }
       xa <- HikariTransactor
         .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
