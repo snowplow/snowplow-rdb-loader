@@ -62,8 +62,8 @@ object Main extends IOApp {
     output match {
       case s3Output: Config.Output.S3 =>
         for {
-          client <- Resource.eval(S3.getClient[F](s3Output.region.name))
-          blobStorage = S3.blobStorage[F](client)
+          client <- S3.getClient[F](s3Output.region.name)
+          blobStorage <- S3.blobStorage[F](client)
         } yield blobStorage
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not S3")))

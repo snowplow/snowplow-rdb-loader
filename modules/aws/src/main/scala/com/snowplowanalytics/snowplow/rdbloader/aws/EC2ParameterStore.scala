@@ -14,18 +14,21 @@ object EC2ParameterStore {
    * @param name systems manager parameter's name with SSH key
    * @return decrypted string with key
    */
-  def secretStore[F[_]: Sync]: SecretStore[F] = new SecretStore[F] {
-    override def getValue(key: String): F[String] = {
-      val result = for {
-        client <- Sync[F].delay(AWSSimpleSystemsManagementClientBuilder.defaultClient())
-        req: GetParameterRequest = new GetParameterRequest().withName(key).withWithDecryption(true)
-        par <- Sync[F].delay(client.getParameter(req))
-      } yield par.getParameter.getValue
+  def secretStore[F[_]: Sync]: Resource[F, SecretStore[F]] =
+    Resource.pure[F, SecretStore[F]](
+      new SecretStore[F] {
+        override def getValue(key: String): F[String] = {
+          val result = for {
+            client <- Sync[F].delay(AWSSimpleSystemsManagementClientBuilder.defaultClient())
+            req: GetParameterRequest = new GetParameterRequest().withName(key).withWithDecryption(true)
+            par <- Sync[F].delay(client.getParameter(req))
+          } yield par.getParameter.getValue
 
-      result.recoverWith {
-        case e: AWSSimpleSystemsManagementException =>
-          Sync[F].raiseError(new RuntimeException(s"Cannot get $key EC2 property: ${e.getMessage}"))
+          result.recoverWith {
+            case e: AWSSimpleSystemsManagementException =>
+              Sync[F].raiseError(new RuntimeException(s"Cannot get $key EC2 property: ${e.getMessage}"))
+          }
       }
     }
-  }
+  )
 }

@@ -14,7 +14,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub
 
-import blobstore.gcs.GcsStore
 import cats.effect._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
@@ -105,8 +104,8 @@ object Main extends IOApp {
     output match {
       case _: Config.Output.GCS =>
         for {
-          client <- Resource.pure[F, GcsStore[F]](GCS.getClient[F](blocker))
-          blobStorage = GCS.blobStorage[F](client)
+          client <- GCS.getClient[F](blocker)
+          blobStorage <- GCS.blobStorage[F](client)
         } yield blobStorage
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
