@@ -14,6 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub
 
+import scala.concurrent.duration._
 import cats.effect._
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
@@ -113,8 +114,14 @@ object Main extends IOApp {
 
   private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
-      case Config.QueueConfig.Pubsub(projectId, topicId) =>
-        Pubsub.producer(projectId, topicId)
+      case p: Config.QueueConfig.Pubsub =>
+        Pubsub.producer(
+          p.projectId,
+          p.topicId,
+          batchSize = p.batchSize,
+          requestByteThreshold = p.requestByteThreshold,
+          delayThreshold = p.delayThreshold
+        )
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
     }

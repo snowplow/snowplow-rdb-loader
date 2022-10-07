@@ -103,7 +103,18 @@ object Config {
 
     final case class SQS(queueName: String, region: Region) extends QueueConfig
 
-    final case class Pubsub(projectId: String, topicId: String) extends QueueConfig
+    final case class Pubsub(topic: String,
+                            batchSize: Long,
+                            requestByteThreshold: Option[Long],
+                            delayThreshold: FiniteDuration) extends QueueConfig {
+      val (projectId, topicId) =
+        topic.split("/").toList match {
+          case List("projects", project, "topics", name) =>
+            (project, name)
+          case _ =>
+            throw new IllegalArgumentException(s"Subscription format $topic invalid")
+        }
+    }
   }
 
   final case class Monitoring(sentry: Option[TransformerConfig.Sentry], metrics: MetricsReporters)

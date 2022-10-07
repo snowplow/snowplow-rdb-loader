@@ -34,11 +34,15 @@ object Pubsub {
 
   case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
 
-  def producer[F[_] : Concurrent : Logger](projectId: String, topic: String): Resource[F, Queue.Producer[F]] = {
+  def producer[F[_] : Concurrent : Logger](projectId: String,
+                                           topic: String,
+                                           batchSize: Long,
+                                           requestByteThreshold: Option[Long],
+                                           delayThreshold: FiniteDuration): Resource[F, Queue.Producer[F]] = {
     val config = PubsubProducerConfig[F](
-      batchSize = 100,
-      requestByteThreshold = Some(1000),
-      delayThreshold = 200.milliseconds,
+      batchSize = batchSize,
+      requestByteThreshold = requestByteThreshold,
+      delayThreshold = delayThreshold,
       onFailedTerminate = err => Logger[F].error(err)("PubSub sink termination error")
     )
 

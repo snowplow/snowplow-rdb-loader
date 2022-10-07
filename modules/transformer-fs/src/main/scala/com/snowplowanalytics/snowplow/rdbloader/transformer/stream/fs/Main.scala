@@ -110,7 +110,13 @@ object Main extends IOApp {
         SQS.producer(queueName, region.name)
       case Config.QueueConfig.SNS(topicArn, region) =>
         SNS.producer(topicArn, region.name)
-      case Config.QueueConfig.Pubsub(projectId, topicId) =>
-        Pubsub.producer(projectId, topicId)
+      case p: Config.QueueConfig.Pubsub =>
+        Pubsub.producer(
+          p.projectId,
+          p.topicId,
+          batchSize = p.batchSize,
+          requestByteThreshold = p.requestByteThreshold,
+          delayThreshold = p.delayThreshold
+        )
     }
 }
