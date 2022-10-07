@@ -284,12 +284,4 @@ object BuildSettings {
 
   lazy val transformerPubsubDistrolessBuildSettings = transformerPubsubBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
-  lazy val transformerFileBuildSettings = {
-    Seq(
-      name := "snowplow-transformer-fs",
-      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.fs.generated",
-      buildInfoKeys := List(name, version, description),
-    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
-  }
-
 }

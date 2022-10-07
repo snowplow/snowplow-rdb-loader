@@ -24,7 +24,6 @@ lazy val root = project.in(file("."))
     transformerBatch,
     transformerKinesis,
     transformerPubsub,
-    transformerFile
   )
 
 lazy val common: Project = project
@@ -154,10 +153,3 @@ lazy val transformerPubsubDistroless = project
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .dependsOn(commonTransformerStream, gcp)
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
-
-lazy val transformerFile = project
-  .in(file("modules/transformer-fs"))
-  .settings(BuildSettings.transformerFileBuildSettings)
-  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(commonTransformerStream % "compile->compile;test->test", aws % "compile->compile;test->test", gcp % "compile->compile;test->test")
-  .enablePlugins(JavaAppPackaging, BuildInfoPlugin)
