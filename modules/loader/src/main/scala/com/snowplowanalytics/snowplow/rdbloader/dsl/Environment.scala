@@ -13,26 +13,32 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.net.URI
+
 import cats.Parallel
 import cats.implicits._
+
 import cats.effect.concurrent.Ref
 import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
+
 import doobie.ConnectionIO
+
 import org.http4s.client.blaze.BlazeClientBuilder
+
 import io.sentry.{Sentry, SentryClient, SentryOptions}
+
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
+import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
-import org.typelevel.log4cats.Logger
-import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 
 /** Container for most of interepreters to be used in Main
@@ -132,9 +138,8 @@ object Environment {
     config.cloud match {
       case c: Cloud.AWS =>
         for {          
-          s3Client <- S3.getClient[F](c.region.name)
-          implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](s3Client)
-          postProcess <- Queue.Consumer.postProcess[F]
+          implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](c.region.name)
+          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
@@ -144,9 +149,8 @@ object Environment {
         for {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
-          gcsClient <- GCS.getClient(blocker)
-          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(gcsClient)
-          postProcess <- Queue.Consumer.postProcess[F]
+          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(blocker)
+          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
             blocker = blocker,
             projectId = c.messageQueue.projectId,

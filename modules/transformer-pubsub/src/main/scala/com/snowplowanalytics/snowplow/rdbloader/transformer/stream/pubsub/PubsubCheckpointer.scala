@@ -16,6 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub
 
 import cats.Applicative
 import cats.implicits._
+
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 

@@ -13,16 +13,23 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import java.util.UUID
+
 import scala.concurrent.ExecutionContext
+
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
+
 import io.circe.Json
+
 import cats.implicits._
 import cats.effect._
+
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
+
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
+
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer

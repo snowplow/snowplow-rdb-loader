@@ -88,6 +88,11 @@ object LoadAuthService {
 
   def noop[F[_]: Concurrent]: Resource[F, LoadAuthService[F]] =
     Resource.pure[F, LoadAuthService[F]](new LoadAuthService[F] {
-      override def getLoadAuthMethod(m: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] = Concurrent[F].pure(LoadAuthMethod.NoCreds)
+      override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] = {
+        authMethodConfig match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
+          case _ => Concurrent[F].raiseError(new Exception("No auth service is given to resolve credentials."))
+        }
+      }
     })
 }

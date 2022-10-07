@@ -13,16 +13,25 @@
 package com.snowplowanalytics.snowplow.loader.snowflake
 
 import cats.data.NonEmptyList
+
+import doobie.Fragment
+import doobie.implicits._
+
+import io.circe.syntax._
+
 import com.snowplowanalytics.iglu.core.SchemaKey
+
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
-import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
+
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import BlobStorage._
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage._
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
@@ -30,9 +39,6 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import doobie.Fragment
-import doobie.implicits._
-import io.circe.syntax._
 
 object Snowflake {
 

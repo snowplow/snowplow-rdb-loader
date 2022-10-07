@@ -16,8 +16,11 @@ package com.snowplowanalytics.snowplow.rdbloader.common.cloud
 
 import cats.MonadThrow
 import cats.syntax.either._
+
 import fs2.{Pipe, Stream}
+
 import io.circe.{Decoder, Encoder, Json}
+
 import shapeless.tag
 import shapeless.tag._
 

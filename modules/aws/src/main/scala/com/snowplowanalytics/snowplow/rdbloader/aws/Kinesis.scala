@@ -1,15 +1,34 @@
+/*
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ * http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and
+ * limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.aws
 
 import java.util.{Date, UUID}
 import java.net.{InetAddress, URI}
+
 import cats.Applicative
 import cats.implicits._
 import cats.effect._
+
 import eu.timepit.refined._
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.numeric._
+
 import fs2.Stream
+
 import fs2.aws.kinesis.{CommittableRecord, KinesisConsumerSettings, Kinesis => Fs2Kinesis}
+
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
 import software.amazon.kinesis.coordinator.Scheduler
@@ -20,6 +39,7 @@ import software.amazon.kinesis.retrieval.fanout.FanOutConfig
 import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient
 import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient
 import software.amazon.awssdk.services.kinesis.KinesisAsyncClient
+
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Kinesis._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer

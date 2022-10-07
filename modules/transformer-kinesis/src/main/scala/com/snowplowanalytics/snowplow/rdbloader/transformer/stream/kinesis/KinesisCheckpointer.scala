@@ -17,10 +17,13 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 import cats.Applicative
 import cats.implicits._
 import cats.effect._
-import com.snowplowanalytics.snowplow.rdbloader.aws.Kinesis
+
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+
 import software.amazon.kinesis.exceptions.ShutdownException
+
+import com.snowplowanalytics.snowplow.rdbloader.aws.Kinesis
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 

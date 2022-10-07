@@ -15,11 +15,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 
 import cats.effect._
+
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{Kinesis, S3, SNS, SQS}
+
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
 
 object Main extends IOApp {
 
@@ -61,10 +63,7 @@ object Main extends IOApp {
   private def mkSink[F[_]: ConcurrentEffect: Timer](output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
       case s3Output: Config.Output.S3 =>
-        for {
-          client <- S3.getClient[F](s3Output.region.name)
-          blobStorage <- S3.blobStorage[F](client)
-        } yield blobStorage
+        S3.blobStorage[F](s3Output.region.name)
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not S3")))
     }

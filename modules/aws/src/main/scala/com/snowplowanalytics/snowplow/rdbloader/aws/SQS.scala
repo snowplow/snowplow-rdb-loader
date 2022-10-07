@@ -1,14 +1,33 @@
+/*
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ * http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and
+ * limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.aws
 
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
+
 import cats.effect._
 import cats.implicits._
+
 import fs2.Stream
+
 import org.typelevel.log4cats.Logger
+
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sqs.SqsClient
 import software.amazon.awssdk.services.sqs.model._
+
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SQS {
@@ -36,19 +55,19 @@ object SQS {
     )
 
   def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
-    SQS.mkClient(Region.of(region)).map { client =>
+    mkClient(Region.of(region)).map { client =>
       new Queue.Producer[F] {
         override def send(groupId: Option[String], message: String): F[Unit] =
           SQS.sendMessage(client)(queueName, groupId, message)
       }
     }
 
-  def mkClient[F[_] : Concurrent](region: Region): Resource[F, SqsClient] =
+  private def mkClient[F[_] : Concurrent](region: Region): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient] {
       SqsClient.builder.region(region).build
     })
 
-  def readQueue[F[_] : Timer : Concurrent](queueName: String, visibilityTimeout: Int, region: Region, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  private def readQueue[F[_] : Timer : Concurrent](queueName: String, visibilityTimeout: Int, region: Region, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest
@@ -79,7 +98,7 @@ object SQS {
     }
   }
 
-  def buildDelete(queueUrl: String, receiptHandle: String): DeleteMessageRequest = {
+  private def buildDelete(queueUrl: String, receiptHandle: String): DeleteMessageRequest = {
     DeleteMessageRequest
       .builder()
       .queueUrl(queueUrl)
@@ -87,7 +106,7 @@ object SQS {
       .build()
   }
 
-  def buildExtend(queueUrl: String, receiptHandle: String, timeout: FiniteDuration): ChangeMessageVisibilityRequest =
+  private def buildExtend(queueUrl: String, receiptHandle: String, timeout: FiniteDuration): ChangeMessageVisibilityRequest =
     ChangeMessageVisibilityRequest
       .builder()
       .queueUrl(queueUrl)
@@ -96,7 +115,7 @@ object SQS {
       .build()
 
 
-  def sendMessage[F[_] : Sync](sqsClient: SqsClient)
+  private def sendMessage[F[_] : Sync](sqsClient: SqsClient)
                               (queueName: String, groupId: Option[String], body: String): F[Unit] = {
     def getRequestBuilder(queueUrl: String) =
       SendMessageRequest

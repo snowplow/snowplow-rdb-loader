@@ -14,20 +14,23 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub
 
-import scala.concurrent.duration._
 import cats.effect._
+
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
+
 import com.google.api.gax.batching.FlowControlSettings
 import com.google.api.gax.core.ExecutorProvider
 import com.google.common.util.concurrent.{ForwardingListeningExecutorService, MoreExecutors}
-import java.lang.Runnable
+
 import java.util.concurrent.{Callable, ScheduledExecutorService, ScheduledFuture, ScheduledThreadPoolExecutor, TimeUnit}
+
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
+
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 
 object Main extends IOApp {
 
@@ -104,10 +107,7 @@ object Main extends IOApp {
   private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
       case _: Config.Output.GCS =>
-        for {
-          client <- GCS.getClient[F](blocker)
-          blobStorage <- GCS.blobStorage[F](client)
-        } yield blobStorage
+        GCS.blobStorage[F](blocker)
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
     }

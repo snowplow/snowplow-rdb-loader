@@ -12,12 +12,23 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift
 
+import java.sql.Timestamp
+
 import cats.data.NonEmptyList
+
+import doobie.Fragment
+import doobie.implicits._
+import doobie.implicits.javasql._
+
+import io.circe.syntax._
+
 import com.snowplowanalytics.iglu.core.SchemaKey
+
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGenerator, MigrationGenerator}
+
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -28,12 +39,6 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Sta
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
-import doobie.Fragment
-import doobie.implicits._
-import doobie.implicits.javasql._
-import io.circe.syntax._
-
-import java.sql.Timestamp
 
 object Redshift {
 

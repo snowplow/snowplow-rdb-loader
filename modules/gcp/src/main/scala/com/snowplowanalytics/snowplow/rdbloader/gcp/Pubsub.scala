@@ -1,22 +1,45 @@
+/*
+ * Copyright (c) 2012-2022 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at
+ * http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and
+ * limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.gcp
 
 import scala.concurrent.duration._
-import cats.effect._
+
 import cats.implicits._
+import cats.effect._
+
 import com.google.api.gax.core.NoCredentialsProvider
 import com.google.api.gax.grpc.GrpcTransportChannel
 import com.google.api.gax.rpc.{FixedTransportChannelProvider, TransportChannelProvider}
+
 import com.google.cloud.pubsub.v1.Subscriber
+
 import com.google.pubsub.v1.PubsubMessage
+
 import com.permutive.pubsub.consumer.grpc.{PubsubGoogleConsumer, PubsubGoogleConsumerConfig}
 import com.permutive.pubsub.consumer.decoder.MessageDecoder
 import com.permutive.pubsub.consumer.Model.{Subscription, ProjectId => ConsumerProjectId}
-import com.permutive.pubsub.producer.Model.{Topic, ProjectId => ProducerProjectId}
-import com.permutive.pubsub.producer.encoder.MessageEncoder
+
 import com.permutive.pubsub.producer.grpc.{GooglePubsubProducer, PubsubProducerConfig}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
+import com.permutive.pubsub.producer.encoder.MessageEncoder
+import com.permutive.pubsub.producer.Model.{Topic, ProjectId => ProducerProjectId}
+
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder
+
 import org.typelevel.log4cats.Logger
+
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object Pubsub {
 
