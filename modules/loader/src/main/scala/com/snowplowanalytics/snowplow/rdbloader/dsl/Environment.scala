@@ -29,6 +29,7 @@ import io.sentry.{Sentry, SentryClient, SentryOptions}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
@@ -55,7 +56,8 @@ class Environment[F[_]](cache: Cache[F],
                         transaction: Transaction[F, ConnectionIO],
                         target: Target,
                         timeouts: Config.Timeouts,
-                        control: Control[F]) {
+                        control: Control[F],
+                        telemetry: Telemetry[F]) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -69,6 +71,7 @@ class Environment[F[_]](cache: Cache[F],
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
   val controlF: Control[F] = control
+  val telemetryF: Telemetry[F] = telemetry
 }
 
 object Environment {
@@ -76,13 +79,18 @@ object Environment {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
+  val appId = java.util.UUID.randomUUID.toString
+
   case class CloudServices[F[_]](blobStorage: BlobStorage[F],
                                  queueConsumer: Queue.Consumer[F],
                                  loadAuthService: LoadAuthService[F],
                                  jsonPathDiscovery: JsonPathDiscovery[F],
                                  secretStore: SecretStore[F])
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig, statementer: Target): Resource[F, Environment[F]] =
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig,
+                                                                               statementer: Target,
+                                                                               appName: String,
+                                                                               appVersion: String): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
       implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
@@ -104,6 +112,15 @@ object Environment {
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+      telemetry <- Telemetry.build[F](
+        cli.config.telemetry,
+        appName,
+        appVersion,
+        httpClient,
+        appId,
+        getRegionForTelemetry(cli.config),
+        getCloudForTelemetry(cli.config)
+      )
     } yield new Environment[F](
       cache,
       logging,
@@ -116,7 +133,8 @@ object Environment {
       transaction,
       statementer,
       cli.config.timeouts,
-      control
+      control,
+      telemetry
     )
 
   def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
@@ -164,4 +182,17 @@ object Environment {
           secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
+
+  def getCloudForTelemetry(config: Config[_]): Option[Telemetry.Cloud] =
+    config.cloud match {
+      case _: Cloud.AWS => Telemetry.Cloud.Aws.some
+      case _: Cloud.GCP => Telemetry.Cloud.Gcp.some
+    }
+
+  def getRegionForTelemetry(config: Config[_]): Option[String] =
+    config.cloud match {
+      case c: Cloud.AWS => c.region.name.some
+      case _ => None
+    }
+
 }

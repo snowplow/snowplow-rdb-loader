@@ -38,7 +38,8 @@ class ConfigSpec extends Specification {
         exampleRetries,
         exampleReadyCheck,
         exampleInitRetries,
-        exampleFeatureFlags
+        exampleFeatureFlags,
+        exampleTelemetry
       )
       result must beRight(expected)
     }
@@ -56,7 +57,8 @@ class ConfigSpec extends Specification {
         exampleRetries.copy(cumulativeBound = None),
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
         exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
-        exampleFeatureFlags
+        exampleFeatureFlags,
+        defaultTelemetry
       )
       result must beRight(expected)
     }

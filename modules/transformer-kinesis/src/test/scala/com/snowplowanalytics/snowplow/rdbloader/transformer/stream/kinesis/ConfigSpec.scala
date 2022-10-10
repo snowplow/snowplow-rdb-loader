@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.badrows.Processor
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, TransformerConfig}
@@ -127,7 +128,7 @@ object ConfigSpec {
     Config.MetricsReporters(None, Some(Config.MetricsReporters.Stdout(1.minutes, None)), true)
   )
   val exampleTelemetry =
-    Config.Telemetry(
+    Telemetry.Config(
       false,
       15.minutes,
       "POST",
@@ -141,7 +142,7 @@ object ConfigSpec {
       Some("1.0.0")
     )
   val defaultTelemetry =
-    Config.Telemetry(
+    Telemetry.Config(
       false,
       15.minutes,
       "POST",

@@ -13,18 +13,25 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.net.URI
+
 import scala.concurrent.duration.{Duration, FiniteDuration}
+
 import cats.effect.Sync
 import cats.data.EitherT
 import cats.syntax.either._
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+
 import io.circe._
 import io.circe.generic.semiauto._
+
 import org.http4s.{ParseFailure, Uri}
+
 import cron4s.CronExpr
 import cron4s.circe._
-import com.snowplowanalytics.snowplow.rdbloader.config.Config._
+
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 
 
 /**
@@ -42,7 +49,8 @@ case class Config[+D <: StorageTarget](
   retries: Retries,
   readyCheck: Retries,
   initRetries: Retries,
-  featureFlags: FeatureFlags
+  featureFlags: FeatureFlags,
+  telemetry: Telemetry.Config
 )
 
 object Config {
