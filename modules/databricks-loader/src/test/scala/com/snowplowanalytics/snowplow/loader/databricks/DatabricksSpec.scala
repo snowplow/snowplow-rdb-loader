@@ -23,6 +23,8 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec._
+
 
 import scala.concurrent.duration.DurationInt
 import org.specs2.mutable.Specification
@@ -143,7 +145,8 @@ object DatabricksSpec {
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.FeatureFlags(addLoadTstampColumn = true)
+    Config.FeatureFlags(addLoadTstampColumn = true),
+    exampleTelemetry
   )).right.get
 
 }

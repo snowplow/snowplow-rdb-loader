@@ -12,9 +12,9 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.telemetry
+package com.snowplowanalytics.snowplow.rdbloader.common.telemetry
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.duration._
 
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -27,10 +27,9 @@ import cats.effect.{ConcurrentEffect, Resource, Sync, Timer}
 import fs2.Stream
 
 import org.http4s.client.{Client => HttpClient}
-import org.http4s.client.blaze.BlazeClientBuilder
 
-import io.circe.Json
-import io.circe.Encoder
+import io.circe._
+import io.circe.generic.semiauto._
 import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
@@ -40,9 +39,7 @@ import com.snowplowanalytics.snowplow.scalatracker.Emitter._
 import com.snowplowanalytics.snowplow.scalatracker.Emitter.{Result => TrackerResult}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{Telemetry => TelemetryConfig}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.StreamInput
+import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 
 trait Telemetry[F[_]] {
   def report: Stream[F, Unit]
@@ -54,37 +51,40 @@ object Telemetry {
     Slf4jLogger.getLogger[F]
 
   def build[F[_]: ConcurrentEffect: Timer](
-    config: Config,
+    telemetryConfig: Config,
     appName: String,
     appVersion: String,
-    executionContext: ExecutionContext
+    httpClient: HttpClient[F],
+    appGeneratedId: String,
+    region: Option[String],
+    cloud: Option[Cloud]
   ): Resource[F, Telemetry[F]] =
-    for {
-      httpClient <- BlazeClientBuilder[F](executionContext).resource
-      tracker <- initTracker(config.telemetry, appName, httpClient)
-    } yield new Telemetry[F] {
-      def report: Stream[F, Unit] =
-        if (config.telemetry.disable) {
-          Stream.empty.covary[F]
-        } else {
-          val sdj = makeHeartbeatEvent(
-            config.telemetry,
-            getRegionFromConfig(config),
-            getCloudFromConfig(config),
-            appName,
-            appVersion
-          )
-          Stream
-            .fixedDelay[F](config.telemetry.interval)
-            .evalMap { _ =>
-              tracker.trackSelfDescribingEvent(unstructEvent = sdj) >>
-                tracker.flushEmitters()
-            }
-        }
+    initTracker(telemetryConfig, appName, httpClient).map { tracker =>
+      new Telemetry[F] {
+        def report: Stream[F, Unit] =
+          if (telemetryConfig.disable) {
+            Stream.empty.covary[F]
+          } else {
+            val sdj = makeHeartbeatEvent(
+              telemetryConfig,
+              appGeneratedId,
+              region,
+              cloud,
+              appName,
+              appVersion
+            )
+            Stream
+              .fixedDelay[F](telemetryConfig.interval)
+              .evalMap { _ =>
+                tracker.trackSelfDescribingEvent(unstructEvent = sdj) >>
+                  tracker.flushEmitters()
+              }
+          }
+      }
     }
 
   private def initTracker[F[_]: ConcurrentEffect: Timer](
-    config: TelemetryConfig,
+    config: Config,
     appName: String,
     client: HttpClient[F]
   ): Resource[F, Tracker[F]] =
@@ -106,17 +106,18 @@ object Telemetry {
       case TrackerResult.Success(_) =>
         Logger[F].debug(s"Telemetry heartbeat successfully sent to ${params.getGetUri}")
       case TrackerResult.Failure(code) =>
-        Logger[F].warn(s"Sending telemetry hearbeat got unexpected HTTP code $code from ${params.getUri}")
+        Logger[F].warn(s"Sending telemetry heartbeat got unexpected HTTP code $code from ${params.getUri}")
       case TrackerResult.TrackerFailure(exception) =>
         Logger[F].warn(
-          s"Telemetry hearbeat failed to reach ${params.getUri} with following exception $exception after ${req.attempt} attempts"
+          s"Telemetry heartbeat failed to reach ${params.getUri} with following exception $exception after ${req.attempt} attempts"
         )
       case TrackerResult.RetriesExceeded(failure) =>
         Logger[F].error(s"Stopped trying to send telemetry heartbeat after following failure: $failure")
     }
 
   private def makeHeartbeatEvent(
-    teleCfg: TelemetryConfig,
+    teleCfg: Config,
+    appGeneratedId: String,
     region: Option[String],
     cloud: Option[Cloud],
     appName: String,
@@ -130,7 +131,7 @@ object Telemetry {
         "moduleName" -> teleCfg.moduleName.asJson,
         "moduleVersion" -> teleCfg.moduleVersion.asJson,
         "instanceId" -> teleCfg.instanceId.asJson,
-        "appGeneratedId" -> com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId.appId.asJson,
+        "appGeneratedId" -> appGeneratedId.asJson,
         "cloud" -> cloud.asJson,
         "region" -> region.asJson,
         "applicationName" -> appName.asJson,
@@ -138,25 +139,29 @@ object Telemetry {
       )
     )
 
-  private def getRegionFromConfig(config: Config): Option[String] =
-    config.input match {
-      case c: StreamInput.Kinesis => Some(c.region.name)
-      case _ => None
-    }
-
-  private def getCloudFromConfig(config: Config): Option[Cloud] =
-    config.input match {
-      case _: StreamInput.Kinesis => Some(Cloud.Aws)
-      case _: StreamInput.Pubsub => Some(Cloud.Pubsub)
-      case _ => None
-    }
-
   sealed trait Cloud
   object Cloud {
     case object Aws extends Cloud
-    case object Pubsub extends Cloud
+    case object Gcp extends Cloud
 
     implicit val encoder: Encoder[Cloud] = Encoder.encodeString.contramap[Cloud](_.toString.toUpperCase)
   }
+
+  case class Config(
+    disable: Boolean,
+    interval: FiniteDuration,
+    method: String,
+    collectorUri: String,
+    collectorPort: Int,
+    secure: Boolean,
+    userProvidedId: Option[String],
+    autoGeneratedId: Option[String],
+    instanceId: Option[String],
+    moduleName: Option[String],
+    moduleVersion: Option[String]
+  )
+
+  implicit val telemetryDecoder: Decoder[Config] =
+    deriveDecoder[Config]
 }
 

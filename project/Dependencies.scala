@@ -203,7 +203,10 @@ object Dependencies {
     fs2,
     ssm,
     log4cats,
-    fs2BlobstoreCore
+    fs2BlobstoreCore,
+    scalaTracker,
+    scalaTrackerEmit,
+    http4sClient
   )
 
   val loaderDependencies = Seq(
@@ -265,15 +268,12 @@ object Dependencies {
     commons,
     kafkaClients,
     log4cats,
-    http4sClient,
     catsEffectLaws,
     circeOptics,
     parquet4s,
     hadoop,
     hadoopAws,
     parquetHadoop,
-    scalaTracker,
-    scalaTrackerEmit,
     specs2,
     specs2ScalaCheck,
     scalaCheck

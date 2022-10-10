@@ -40,7 +40,8 @@ object SpecHelpers {
     ConfigSpec.exampleRetries,
     ConfigSpec.exampleReadyCheck,
     ConfigSpec.exampleInitRetries,
-    ConfigSpec.exampleFeatureFlags
+    ConfigSpec.exampleFeatureFlags,
+    ConfigSpec.exampleTelemetry
   )
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
