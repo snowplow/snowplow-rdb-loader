@@ -24,14 +24,16 @@ import io.circe.Json
 import cats.implicits._
 import cats.effect._
 
+import org.http4s.client.blaze.BlazeClientBuilder
+
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 case class Resources[F[_], C](
@@ -72,7 +74,16 @@ object Resources {
       instanceId    <- mkTransformerInstanceId
       blocker       <- Blocker[F]
       metrics       <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
-      telemetry     <- Telemetry.build[F](config, buildName, buildVersion, executionContext)
+      httpClient    <- BlazeClientBuilder[F](executionContext).resource
+      telemetry     <- Telemetry.build[F](
+        config.telemetry,
+        buildName,
+        buildVersion,
+        httpClient,
+        AppId.appId,
+        getRegionFromConfig(config),
+        getCloudFromConfig(config)
+      )
       inputStream   <- mkSource(blocker, config.input, config.monitoring)
       blobStorage   <- mkSink(blocker, config.output)
     } yield
@@ -112,4 +123,17 @@ object Resources {
       .eval(Sync[F].delay(UUID.randomUUID()))
       .evalTap(id => logger.info(s"Instantiated $id shredder instance"))
   }
+
+  private def getRegionFromConfig(config: Config): Option[String] =
+    config.input match {
+      case c: Config.StreamInput.Kinesis => Some(c.region.name)
+      case _ => None
+    }
+
+  private def getCloudFromConfig(config: Config): Option[Telemetry.Cloud] =
+    config.input match {
+      case _: Config.StreamInput.Kinesis => Some(Telemetry.Cloud.Aws)
+      case _: Config.StreamInput.Pubsub => Some(Telemetry.Cloud.Gcp)
+      case _ => None
+    }
 }

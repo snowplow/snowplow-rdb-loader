@@ -13,13 +13,17 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
+
 import cats.{Applicative, Apply, Monad}
 import cats.implicits._
 import cats.effect.{Clock, Concurrent, ContextShift, MonadThrow, Timer}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+
 import retry._
+
 import fs2.Stream
+
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, HealthCheck, Manifest, Statement, Control => DbControl}
@@ -28,6 +32,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, DAO, FolderMonitorin
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage, TargetCheck, Retry}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
+import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
 object Loader {
@@ -54,7 +59,7 @@ object Loader {
    *           claim `A` is needed and `C[A]` later can be materialized into `F[A]`
    */
   def run[F[_]: Transaction[*[_], C]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F]): F[Unit] = {
+          C[_]: DAO: MonadThrow: Logging](config: Config[StorageTarget], control: Control[F], telemetry: Telemetry[F]): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] =
       FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
     val noOpScheduling: Stream[F, Unit] =
@@ -90,6 +95,7 @@ object Loader {
         .merge(healthCheck)
         .merge(stateLogging)
         .merge(periodicMetrics)
+        .merge(telemetry.report)
     }
 
     process

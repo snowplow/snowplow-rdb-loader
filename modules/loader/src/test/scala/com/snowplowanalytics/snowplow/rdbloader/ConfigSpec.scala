@@ -23,8 +23,8 @@ import cats.effect.IO
 
 import org.http4s.implicits._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
-
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
@@ -136,6 +136,34 @@ object ConfigSpec {
   val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn =  true)
   val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleMessageQueue)
+  val exampleTelemetry =
+    Telemetry.Config(
+      false,
+      15.minutes,
+      "POST",
+      "collector-g.snowplowanalytics.com",
+      443,
+      true,
+      Some("my_pipeline"),
+      Some("hfy67e5ydhtrd"),
+      Some("665bhft5u6udjf"),
+      Some("rdb-loader-ce"),
+      Some("1.0.0")
+    )
+  val defaultTelemetry =
+    Telemetry.Config(
+      false,
+      15.minutes,
+      "POST",
+      "collector-g.snowplowanalytics.com",
+      443,
+      true,
+      None,
+      None,
+      None,
+      None,
+      None
+    )
   val exampleConfig = Config(
     exampleSnowflake,
     exampleCloud,
@@ -147,7 +175,8 @@ object ConfigSpec {
     exampleRetries,
     exampleReadyCheck,
     exampleInitRetries,
-    exampleFeatureFlags
+    exampleFeatureFlags,
+    exampleTelemetry
   )
 
   def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
