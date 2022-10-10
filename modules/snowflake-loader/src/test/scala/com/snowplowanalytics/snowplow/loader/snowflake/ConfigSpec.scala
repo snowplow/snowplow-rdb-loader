@@ -27,13 +27,13 @@ class ConfigSpec extends Specification {
   import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec._
 
   "fromString" should {
-    "be able to parse extended Snowflake config" in {
+    "be able to parse extended AWS Snowflake Loader config" in {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("s3://bucket/monitoring/")))))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/")))))
-      val result = getConfig("/snowflake.config.reference.hocon", Config.fromString[IO])
+      val result = getConfig("/loader/aws/snowflake.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
         storage,
         exampleCloud,
@@ -50,14 +50,83 @@ class ConfigSpec extends Specification {
       result must beRight(expected)
     }
 
-    "be able to parse minimal Snowflake config" in {
-      val result = getConfig("/snowflake.config.minimal.hocon", testParseConfig)
+    "be able to parse extended GCP Snowflake Loader config" in {
+      val storage = exampleSnowflake
+        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
+        .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
+        .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("gs://bucket/monitoring/")))))
+        .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("gs://bucket/transformed/")))))
+      val result = getConfig("/loader/gcp/snowflake.config.reference.hocon", Config.fromString[IO])
+      val gcpCloud = Config.Cloud.GCP(
+        Config.Cloud.GCP.Pubsub(
+          subscription = "projects/project-id/subscriptions/subscription-id",
+          customPubsubEndpoint = None,
+          parallelPullCount = 1,
+          bufferSize = 10
+        )
+      )
+      val monitoring = exampleMonitoring.copy(
+        snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "snowflake-loader")),
+        folders = exampleMonitoring.folders.map(
+          _.copy(
+            staging = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/logs/"),
+            transformerOutput = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/transformed/")
+          )
+        )
+      )
+      val expected = Config(
+        storage,
+        gcpCloud,
+        None,
+        monitoring,
+        exampleRetryQueue,
+        exampleSchedules,
+        exampleTimeouts,
+        exampleRetries,
+        exampleReadyCheck,
+        exampleInitRetries,
+        exampleFeatureFlags
+      )
+      result must beRight(expected)
+    }
+
+    "be able to parse minimal AWS Snowflake Loader config" in {
+      val result = getConfig("/loader/aws/snowflake.config.minimal.hocon", testParseConfig)
       val expected = Config(
         exampleSnowflake
           .copy(
             transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/"))))
           ),
         Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue),
+        None,
+        defaultMonitoring,
+        None,
+        emptySchedules,
+        exampleTimeouts,
+        exampleRetries.copy(cumulativeBound = None),
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleFeatureFlags
+      )
+      result must beRight(expected)
+    }
+
+    "be able to parse minimal GCP Snowflake Loader config" in {
+      val result = getConfig("/loader/gcp/snowflake.config.minimal.hocon", testParseConfig)
+      val gcpCloud = Config.Cloud.GCP(
+        Config.Cloud.GCP.Pubsub(
+          subscription = "projects/project-id/subscriptions/subscription-id",
+          customPubsubEndpoint = None,
+          parallelPullCount = 1,
+          bufferSize = 10
+        )
+      )
+      val expected = Config(
+        exampleSnowflake
+          .copy(
+            transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("gs://bucket/transformed/"))))
+          ),
+        gcpCloud,
         None,
         defaultMonitoring,
         None,

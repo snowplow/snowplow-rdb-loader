@@ -31,7 +31,7 @@ class ConfigSpec extends Specification {
 
   "config fromString" should {
     "be able to parse extended batch transformer config" in {
-      val result = getConfig("/transformer.batch.config.reference.hocon", Config.fromString)
+      val result = getConfig("/transformer/aws/transformer.batch.config.reference.hocon", Config.fromString)
       val expected = Config(
         exampleBatchInput,
         exampleOutput,
@@ -47,7 +47,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal batch transformer config" in {
-      val result = getConfig("/transformer.batch.config.minimal.hocon", testParseBatchConfig)
+      val result = getConfig("/transformer/aws/transformer.batch.config.minimal.hocon", testParseBatchConfig)
       val expected = Config(
         exampleBatchInput,
         exampleDefaultOutput,

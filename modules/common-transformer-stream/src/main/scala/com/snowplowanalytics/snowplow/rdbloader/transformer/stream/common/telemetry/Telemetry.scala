@@ -42,7 +42,7 @@ import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{Telemetry => TelemetryConfig}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.StreamInput.Kinesis
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.StreamInput
 
 trait Telemetry[F[_]] {
   def report: Stream[F, Unit]
@@ -140,19 +140,21 @@ object Telemetry {
 
   private def getRegionFromConfig(config: Config): Option[String] =
     config.input match {
-      case c: Kinesis => Some(c.region.name)
+      case c: StreamInput.Kinesis => Some(c.region.name)
       case _ => None
     }
 
   private def getCloudFromConfig(config: Config): Option[Cloud] =
     config.input match {
-      case _: Kinesis => Some(Cloud.Aws)
+      case _: StreamInput.Kinesis => Some(Cloud.Aws)
+      case _: StreamInput.Pubsub => Some(Cloud.Pubsub)
       case _ => None
     }
 
   sealed trait Cloud
   object Cloud {
     case object Aws extends Cloud
+    case object Pubsub extends Cloud
 
     implicit val encoder: Encoder[Cloud] = Encoder.encodeString.contramap[Cloud](_.toString.toUpperCase)
   }
