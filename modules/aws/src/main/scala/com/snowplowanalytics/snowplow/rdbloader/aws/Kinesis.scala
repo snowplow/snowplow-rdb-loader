@@ -47,7 +47,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
 object Kinesis {
 
-  case class Message[F[_]](content: String, ack: F[Unit], shardId: String) extends Queue.Consumer.Message[F]
+  case class Message[F[_]: Sync](record: CommittableRecord) extends Queue.Consumer.Message[F] {
+    override def content: String = getContent(record)
+    override def ack: F[Unit] = record.checkpoint
+  }
 
   def consumer[F[_] : ConcurrentEffect : ContextShift : Timer : Applicative](blocker: Blocker,
                                                                              appName: String,
@@ -91,7 +94,7 @@ object Kinesis {
       consumer = new Queue.Consumer[F] {
         override def read: Stream[F, Consumer.Message[F]] =
           kinesis.readFromKinesisStream(consumerSettings)
-            .map(r => Message(getContent(r), r.checkpoint, r.shardId))
+            .map(r => Message(r))
       }
     } yield consumer
 
