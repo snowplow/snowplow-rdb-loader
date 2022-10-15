@@ -16,7 +16,7 @@ import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{ContextShift, Blocker, Async, Resource, Timer, ConcurrentEffect, Sync, Effect}
+import cats.effect.{ContextShift, Blocker, Resource, Timer, ConcurrentEffect, Sync, Effect}
 import cats.effect.implicits._
 
 import doobie._
@@ -27,6 +27,7 @@ import doobie.hikari._
 
 import java.sql.SQLException
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
 
@@ -91,7 +92,7 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: Async: ContextShift: Timer: SecretStore](
+  def buildPool[F[_]: ConcurrentEffect: ContextShift: Timer: SecretStore](
     target: StorageTarget,
     blocker: Blocker
   ): Resource[F, Transactor[F]] =
@@ -112,6 +113,7 @@ object Transaction {
           ds.setDataSourceProperties(target.properties)
         }
       })
+      xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, blocker, xa))
     } yield xa
 
   /**

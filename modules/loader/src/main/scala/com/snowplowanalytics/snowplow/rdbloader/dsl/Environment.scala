@@ -39,7 +39,6 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, Stora
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
-import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 
 
 /** Container for most of interepreters to be used in Main
@@ -110,7 +109,6 @@ object Environment {
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
-      _ <- SSH.resource(cli.config.storage.sshTunnel)
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
       telemetry <- Telemetry.build[F](
         cli.config.telemetry,
