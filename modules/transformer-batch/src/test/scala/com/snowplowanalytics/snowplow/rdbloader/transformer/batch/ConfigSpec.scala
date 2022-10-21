@@ -132,7 +132,7 @@ object TransformerConfigSpec {
     Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com")))
   )
   val exampleDefaultMonitoringBatch = Config.Monitoring(None)
-  val exampleDeduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1))
+  val exampleDeduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
 
   val emptyRunInterval = Config.RunInterval(None, None, None)
   val exampleRunInterval = Config.RunInterval(

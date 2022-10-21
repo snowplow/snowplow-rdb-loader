@@ -78,7 +78,7 @@ object Config {
       deriveDecoder[Monitoring]
   }
 
-  final case class Deduplication(synthetic: Deduplication.Synthetic)
+  final case class Deduplication(synthetic: Deduplication.Synthetic, natural: Boolean)
 
   object Deduplication {
 

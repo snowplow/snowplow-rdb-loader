@@ -21,12 +21,9 @@ import cats.syntax.option._
 
 import io.circe.Json
 
-import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
 import com.snowplowanalytics.iglu.client.Client
 
-import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
+import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest}
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -78,13 +75,8 @@ object singleton {
         synchronized {
           if (instance == null) {
             instance = dupStorageConfig match {
-              case Some(EventsManifestConfig.DynamoDb(None, "local", None, region, table)) =>
-                val client = AmazonDynamoDBClientBuilder
-                  .standard()
-                  .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", region))
-                  .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("local", "local")))
-                  .build()
-                Some(new DynamoDbManifest(client, table))
+              case Some(EventsManifestConfig.DynamoDb(_, "local", _, _, _)) =>
+                Some(new InMemoryEventManifest)
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw new IllegalArgumentException(e), _.some)
               case None => None
             }

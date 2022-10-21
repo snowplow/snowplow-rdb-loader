@@ -31,7 +31,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 
 // Snowplow
-import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.badrows.{Processor, BadRow}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
@@ -82,6 +82,11 @@ class ShredJob[T](@transient val spark: SparkSession,
       }
       .setName("common")
 
+    val parsedGood = common.flatMap(_.toOption)
+
+    // Events that could not be parsed
+    val parsedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
+
     // Find an earliest timestamp in the batch. Will be used only if CB deduplication is enabled
     val batchTimestamp: Instant =
       eventsManifest match {
@@ -96,28 +101,25 @@ class ShredJob[T](@transient val spark: SparkSession,
           Instant.now()
       }
 
-    // Handling of properly-formed rows; drop bad, turn proper events to `Event`
-    // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
-    // only one event from an event id and event fingerprint combination is kept
-    val goodWithoutCache = common
-      .flatMap { shredded => shredded.toOption }
-      .groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
-      .flatMap { case (_, s) =>
-        val first = s.minBy(_.etl_tstamp)
-        Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
-          case Right(unique) if unique =>
-            Some(Right(first))
-          case Right(_) => None
-          case Left(badRow) => Some(Left(badRow))
-        }
-      }
-      .setName("good")
-
-    // Check first if spark cache is enabled explicitly.
-    // If it is not enabled, check if CB deduplication is enabled.
-    val shouldCacheEnabled = config.featureFlags.sparkCacheEnabled.getOrElse(eventsManifest.isDefined)
-
-    val good = if (shouldCacheEnabled) goodWithoutCache.cache() else goodWithoutCache
+    val good =
+      // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
+      // only one event from an event id and event fingerprint combination is kept
+      if (config.deduplication.natural) {
+        val dedupWithoutCache = parsedGood.groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
+          .flatMap { case (_, s) =>
+            val first = s.minBy(_.etl_tstamp)
+            Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
+              case Right(unique) if unique =>
+                Some(Right(first))
+              case Right(_) => None
+              case Left(badRow) => Some(Left(badRow))
+            }
+          }
+        // Check first if spark cache is enabled explicitly.
+        // If it is not enabled, check if CB deduplication is enabled.
+        val shouldCacheEnabled = config.featureFlags.sparkCacheEnabled.getOrElse(eventsManifest.isDefined)
+        if (shouldCacheEnabled) dedupWithoutCache.cache() else dedupWithoutCache
+      } else parsedGood.map(_.asRight[BadRow])
 
     // The events counter
     // Using accumulators for counting is unreliable, but we don't
@@ -128,12 +130,9 @@ class ShredJob[T](@transient val spark: SparkSession,
 
     val syntheticDupesBroadcasted = sc.broadcast(result.duplicates)
 
-    // Events that could not be parsed
-    val shreddedBad = common.flatMap(_.swap.toOption.map(_.asLeft[Event]))
-
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
-    val transformed = (shreddedBad ++ result.events).flatMap {
+    val transformed = (parsedBad ++ result.events).flatMap {
       case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
