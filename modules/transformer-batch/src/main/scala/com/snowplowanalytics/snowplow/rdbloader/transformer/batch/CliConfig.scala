@@ -28,4 +28,13 @@ object CliConfig {
 
   def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, CliConfig] =
     TransformerCliConfig.loadConfigFrom[Id, Config](name, description, args).value
+      .flatMap {
+        cli =>
+          if (cli.duplicateStorageConfig.isDefined && !cli.config.deduplication.natural)
+            Left("Natural deduplication needs to be enabled when cross batch deduplication is enabled")
+          else if (cli.config.deduplication.synthetic != Config.Deduplication.Synthetic.None && !cli.config.deduplication.natural)
+            Left("Natural deduplication needs to be enabled when synthetic deduplication is enabled")
+          else
+            Right(cli)
+      }
 }

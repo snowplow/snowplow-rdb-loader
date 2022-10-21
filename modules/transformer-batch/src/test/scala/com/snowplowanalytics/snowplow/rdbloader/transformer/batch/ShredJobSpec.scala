@@ -39,6 +39,7 @@ import cats.implicits._
 
 import io.circe.Json
 import io.circe.literal._
+import io.circe.syntax._
 import io.circe.optics.JsonPath._
 import io.circe.parser.{ parse => parseCirce }
 
@@ -273,6 +274,12 @@ object ShredJobSpec {
            | }
            |""".stripMargin
     }
+    val syntheticDeduplication = shredder.deduplication.synthetic match {
+      case Config.Deduplication.Synthetic.None => """{"type": "none"}"""
+      case Config.Deduplication.Synthetic.Join => """{"type": "join"}"""
+      case Config.Deduplication.Synthetic.Broadcast(cardinality) => s"""{"type": "broadcast", "cardinality": $cardinality}"""
+    }
+    val naturalDeduplication = shredder.deduplication.natural.asJson
     val configPlain = s"""|{
     |"input": "${shredder.input}",
     |"output" = {
@@ -286,6 +293,10 @@ object ShredJobSpec {
     |  "region": "us-east-1"
     |}
     |$formatsSection
+    |"deduplication": {
+    |  "synthetic": $syntheticDeduplication
+    |  "natural": $naturalDeduplication
+    |}
     |"validations": {
     |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
     |}
@@ -388,7 +399,7 @@ object ShredJobSpec {
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
-  def getShredder(events: Events, dirs: OutputDirs): Config = {
+  def getShredder(events: Events, dirs: OutputDirs, deduplication: Config.Deduplication): Config = {
     val input = events match {
       case r: ResourceFile => r.toUri
       case l: Lines => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
@@ -399,7 +410,7 @@ object ShredJobSpec {
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
       Config.Monitoring(None),
-      Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1)),
+      deduplication,
       Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None),
       TransformerConfig.Validations(None)
@@ -424,8 +435,9 @@ trait ShredJobSpec extends SparkSpec {
                   tsv: Boolean = false,
                   jsonSchemas: List[SchemaCriterion] = Nil,
                   wideRow: Option[WideRow] = None,
-                  outputDirs: Option[OutputDirs] = None): LoaderMessage.ShreddingComplete  = {
-    val shredder = getShredder(events, outputDirs.getOrElse(dirs))
+                  outputDirs: Option[OutputDirs] = None,
+                  deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)): LoaderMessage.ShreddingComplete  = {
+    val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication)
     val config = Array(
       "--iglu-config", igluConfigWithLocal,
       "--config", storageConfig(shredder, tsv, jsonSchemas, wideRow)

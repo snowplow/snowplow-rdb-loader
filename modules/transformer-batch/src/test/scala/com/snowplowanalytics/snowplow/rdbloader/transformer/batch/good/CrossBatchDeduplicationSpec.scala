@@ -15,26 +15,16 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.good
 import java.time.Instant
 import java.util.UUID
 
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
-
-import cats.syntax.either._
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec
-
-// AWS SDK
-import com.amazonaws.auth.{AWSStaticCredentialsProvider, BasicAWSCredentials}
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration
-import com.amazonaws.services.dynamodbv2.AmazonDynamoDBClientBuilder
-import com.amazonaws.services.dynamodbv2.document.Table
-import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanRequest}
 
 // Specs2
 import org.specs2.mutable.Specification
 
-import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifestConfig, EventsManifest, DynamoDbManifest}
+import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import ShredJobSpec._
 
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.DuplicateStorageSingleton
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.InMemoryEventManifest
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.InstantOps
 
 object CrossBatchDeduplicationSpec {
@@ -141,12 +131,6 @@ object CrossBatchDeduplicationSpec {
   /** Logic required to connect to duplicate storage and mock data */
   object Storage {
 
-    private lazy val client = AmazonDynamoDBClientBuilder
-      .standard()
-      .withEndpointConfiguration(new EndpointConfiguration("http://localhost:8000", dynamodbDuplicateStorageRegion))
-      .withCredentials(new AWSStaticCredentialsProvider(new BasicAWSCredentials("local", "local")))
-      .build()
-
     /** Helper container class to hold components stored in DuplicationStorage */
     case class DuplicateTriple(eventId: UUID, eventFingerprint: String, etlTstamp: Instant)
 
@@ -165,10 +149,11 @@ object CrossBatchDeduplicationSpec {
 
     /** Delete and re-create local DynamoDB table designed to store duplicate triples */
     private[good] def prepareLocalTable() = {
-      val storage = getStorage().valueOr(e => throw new RuntimeException(e))
+      val storage = getStorage()
       dupeStorage.foreach { case DuplicateTriple(eid, fp, etlTstamp) =>
         storage.put(eid, fp, etlTstamp)
       }
+      storage
     }
     
     /**
@@ -176,45 +161,17 @@ object CrossBatchDeduplicationSpec {
      * It'll delete table if it exist and recreate new one
      */
     private def getStorage() = {
-      def build(): EventsManifestConfig.DynamoDb = {
-        try {   // Send request to delete previously created table and wait unit it is deleted
-          println("Deleting the table")
-          client.deleteTable(dynamodbDuplicateStorageTable)
-          new Table(client, dynamodbDuplicateStorageTable).waitForDelete()
-          println("Table has been deleted")
-        } catch {
-          case _: ResourceNotFoundException =>
-            println("The table didn't exist, skipping")
-          case NonFatal(e) =>
-            println(s"Not-fatal exception $e. Ignoring")
-        }
+      val config = EventsManifestConfig.DynamoDb(
+        None,
+        name = "local",
+        None,
+        awsRegion = dynamodbDuplicateStorageRegion,
+        dynamodbTable = dynamodbDuplicateStorageTable
+      )
 
-        EventsManifestConfig.DynamoDb(
-          None,
-          name = "local",
-          None,
-          awsRegion = dynamodbDuplicateStorageRegion,
-          dynamodbTable = dynamodbDuplicateStorageTable
-        )
-      }
-
-      val config = build()
-
-      EventsManifest.initStorage(config) match {
-        case Right(t) => t.asRight[Throwable]
-        case Left(_) =>
-          DynamoDbManifest.createTable(client, config.dynamodbTable, None, None)
-          println("Table has been created")
-          val table = DynamoDbManifest.checkTable(client, dynamodbDuplicateStorageTable)
-          new DynamoDbManifest(client, table).asRight
-      }
-    }
-
-    /** Get list of item ids that were stored during the test */
-    private[good] def getStoredItems: List[String] = {
-      val res = new ScanRequest().withTableName(dynamodbDuplicateStorageTable)
-      val outcome = client.scan(res)
-      outcome.getItems.asScala.map(_.asScala).flatMap(_.get("eventId")).toList.map(_.getS)
+      val eventManifest = DuplicateStorageSingleton.get(Some(config)).get.asInstanceOf[InMemoryEventManifest]
+      eventManifest.deleteEvents()
+      eventManifest
     }
   }
 }
@@ -223,14 +180,14 @@ object CrossBatchDeduplicationSpec {
  * Integration test for the EtlJob:
  *
  * Two enriched events with same event id and different payload*
- * This test requires local DynamoDB instance, running on 127.0.0.1:8000
- * @see https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/DynamoDBLocal.html
  */
 class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
-  args(skipAll = true)
-
+  sequential
   override def appName = "cross-batch-deduplication"
   "A job which is provided with a two events with same event_id" should {
+    val storage = CrossBatchDeduplicationSpec.Storage.prepareLocalTable()
+
+    runShredJob(CrossBatchDeduplicationSpec.lines, crossBatchDedupe = true)
 
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
@@ -256,7 +213,7 @@ class CrossBatchDeduplicationSpec extends Specification with ShredJobSpec {
 
     "store exactly 5 known rows in DynamoDB" in {
       val expectedEids = Seq("1799a90f-f570-4414-b91a-b0db8f39cc2e", "1799a90f-f570-4414-b91a-b0db8f39cc2e", "2718ac0f-f510-4314-a98a-cfdb8f39abe4", "e271698a-3e86-4b2f-bb1b-f9f7aa5666c1", CrossBatchDeduplicationSpec.Storage.randomUUID.toString)
-      CrossBatchDeduplicationSpec.Storage.getStoredItems.sorted mustEqual expectedEids.sorted
+      storage.getEventIds.sorted mustEqual expectedEids.sorted
     }
 
     "not shred any unexpected JSONs" in {

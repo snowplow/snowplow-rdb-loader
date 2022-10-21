@@ -37,14 +37,17 @@
 
   # Configure the way in-batch deduplication is performed
   "deduplication": {
-    # Synethtetic deduplication reassigns new ids to events with same id-fingerprintt pair
+    # Synthetic deduplication reassigns new ids to events with same id-fingerprintt pair
     # Different options can be tried if synthetic deduplication affects performance
+    # Synthetic deduplication can only be enabled when natural deduplication is enabled
     "synthetic": {
       # Can be NONE (disable), BROADCAST and JOIN (different low-level implementations)
       "type": "BROADCAST"
       # Do not deduplicate pairs with less-or-equal cardinality
       "cardinality": 1
     }
+    # Optional. Default value 'true'. Enable or disable natural deduplication.
+    "natural": true
   }
 
   # Schema-specific format settings (recommended to leave all three groups empty and use TSV as default)
