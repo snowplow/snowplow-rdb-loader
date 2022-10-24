@@ -156,7 +156,7 @@ object Load {
       success  = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
       _       <- Monitoring[F].success(success)
       metrics <- Metrics.getCompletedMetrics[F](loaded)
-      _       <- Monitoring[F].periodicMetrics.setMinAgeOfLoadedData(metrics.collectorLatencyMin.map(_.v).getOrElse(0))
+      _       <- loaded.timestamps.max.map(t => Monitoring[F].periodicMetrics.setMaxTstampOfLoadedData(t)).sequence.void
       _       <- Monitoring[F].reportMetrics(metrics)
       _       <- Logging[F].info((metrics: Metrics.KVMetrics).show)
     } yield ()
