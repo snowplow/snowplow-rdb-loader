@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import java.time.Instant
+
 import fs2.Stream
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
@@ -34,7 +36,8 @@ object PureMonitoring {
     def periodicMetrics: Metrics.PeriodicMetrics[Pure] =
       new Metrics.PeriodicMetrics[Pure] {
         def report: Stream[Pure, Unit] = Stream.empty
-        def setMinAgeOfLoadedData(n: Long): Pure[Unit] = Pure.unit
+        def setMaxTstampOfLoadedData(tstamp: Instant): Pure[Unit] = Pure.unit
+        def setEarliestKnownUnloadedData(tstamp: Instant): Pure[Unit] = Pure.unit
       }
   }
 }
