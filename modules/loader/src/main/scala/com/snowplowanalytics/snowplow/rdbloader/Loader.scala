@@ -147,6 +147,7 @@ object Loader {
     val loading: F[Unit] = backgroundCheck {
       for {
         start    <- Clock[F].instantNow
+        _        <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
         loadAuth <- LoadAuthService[F].getLoadAuthMethod(config.storage.eventsLoadAuthMethod)
         result   <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery, loadAuth)
         attempts <- control.getAndResetAttempts

@@ -82,54 +82,72 @@ object Metrics {
     }
   }
 
+  sealed trait MaxTstampOfLoadedData {
+    def tstamp: Instant
+  }
+
+  object MaxTstampOfLoadedData {
+
+    /** When we know a batch has been loaded, and we know the timestamp */
+    case class FromLoad(tstamp: Instant) extends MaxTstampOfLoadedData
+
+    /** When no batch has yet been loaded, but we can guess the warehouse timestamp based on messages we've seen */
+    case class EarliestKnownUnloaded(tstamp: Instant) extends MaxTstampOfLoadedData
+  }
+
   trait PeriodicMetrics[F[_]] {
 
     /** Stream for sending metrics to reporter periodically */
     def report: Stream[F, Unit]
 
-    /** Set minimum age of loaded data to given value */
-    def setMinAgeOfLoadedData(n: Long): F[Unit]
+    /** Set maximum tstamp of loaded data to given value */
+    def setMaxTstampOfLoadedData(tstamp: Instant): F[Unit]
+
+    /** Updates the earliest known unloaded timestamp, if no batch has been loaded yet */
+    def setEarliestKnownUnloadedData(tstamp: Instant): F[Unit]
   }
 
   object PeriodicMetrics {
-    def init[F[_]: Sync: Timer: Clock](reporters: List[Reporter[F]], period: FiniteDuration): F[Metrics.PeriodicMetrics[F]] =
+    def init[F[_]: Sync: Timer](reporters: List[Reporter[F]], period: FiniteDuration): F[Metrics.PeriodicMetrics[F]] =
       Metrics.PeriodicMetricsRefs.init[F].map { refs =>
         new Metrics.PeriodicMetrics[F] {
           def report: Stream[F, Unit] =
             for {
               _        <- Stream.fixedDelay[F](period)
-              now      <- Stream.eval(Clock[F].instantNow)
-              m        <- Stream.eval(refs.minAgeOfLoadedData.get)
-              diff     = now.getEpochSecond - m.lastSet.getEpochSecond
-              incr     = Math.min(diff, period.toSeconds)
-              _        <- Stream.eval(refs.minAgeOfLoadedData.update(m => m.copy(value = m.value + incr)))
               snapshot <- Stream.eval(Metrics.PeriodicMetricsRefs.snapshot(refs))
               _        <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList)))
             } yield ()
 
-          def setMinAgeOfLoadedData(n: Long): F[Unit] =
-            Clock[F].instantNow.flatMap { now =>
-              refs.minAgeOfLoadedData.set(MinAgeOfLoadedDataRef(n, now))
+          def setMaxTstampOfLoadedData(tstamp: Instant): F[Unit] =
+            refs.maxTstampOfLoadedData.update {
+              case MaxTstampOfLoadedData.FromLoad(current) if current.isAfter(tstamp) => MaxTstampOfLoadedData.FromLoad(current)
+              case _ => MaxTstampOfLoadedData.FromLoad(tstamp)
+            }
+
+          def setEarliestKnownUnloadedData(tstamp: Instant): F[Unit] =
+            refs.maxTstampOfLoadedData.update {
+              case MaxTstampOfLoadedData.EarliestKnownUnloaded(current) if current.isAfter(tstamp) => MaxTstampOfLoadedData.EarliestKnownUnloaded(tstamp)
+              case other => other
             }
         }
       }
   }
 
-  final case class MinAgeOfLoadedDataRef(value: Long, lastSet: Instant)
 
-  final case class PeriodicMetricsRefs[F[_]](minAgeOfLoadedData: Ref[F, MinAgeOfLoadedDataRef])
+  final case class PeriodicMetricsRefs[F[_]](maxTstampOfLoadedData: Ref[F, MaxTstampOfLoadedData])
 
   object PeriodicMetricsRefs {
     def init[F[_]: Sync: Clock]: F[PeriodicMetricsRefs[F]] =
       for {
         now <- Clock[F].instantNow
-        minAgeOfLoadedData <- Ref.of[F, MinAgeOfLoadedDataRef](MinAgeOfLoadedDataRef(0, now))
-      } yield PeriodicMetricsRefs(minAgeOfLoadedData)
+        maxTstampOfLoadedData <- Ref.of[F, MaxTstampOfLoadedData](MaxTstampOfLoadedData.EarliestKnownUnloaded(now))
+      } yield PeriodicMetricsRefs(maxTstampOfLoadedData)
 
-    def snapshot[F[_]: Sync](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
-      refs.minAgeOfLoadedData.get.map {
-        m => KVMetrics.PeriodicMetricsSnapshot(KVMetric.MinAgeOfLoadedData(m.value))
-      }
+    def snapshot[F[_]: Sync: Clock](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
+      for {
+        now <- Clock[F].instantNow
+        m   <- refs.maxTstampOfLoadedData.get
+      } yield KVMetrics.PeriodicMetricsSnapshot(KVMetric.MinAgeOfLoadedData(Duration.between(m.tstamp, now).toSeconds()))
   }
 
   sealed trait KVMetrics {
