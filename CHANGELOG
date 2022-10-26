@@ -1,3 +1,8 @@
+Version 5.1.0 (2022-10-26)
+--------------------------
+Transformer Batch: make in-batch natural deduplication optional (#1108)
+Recover from disconnected SSH tunnel (#1084)
+
 Version 5.0.0 (2022-10-18)
 --------------------------
 GCP variant of Snowflake Loader and Stream Transformer (#1091)
