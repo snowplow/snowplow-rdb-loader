@@ -12,18 +12,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.time.{Instant, Duration}
+import java.time.{Duration, Instant}
 
 import scala.concurrent.duration._
 
 import cats.Monad
 import cats.implicits._
 
-import cats.effect.{ Timer, Concurrent, Resource }
+import cats.effect.{Concurrent, Resource, Timer}
 import cats.effect.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.state.State
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.loading.{Load, Stage}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
@@ -32,22 +32,24 @@ object StateMonitoring {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  /** 
-   *  Run `loading` and monitoring (`run`) as parallel fibers
-   *  If first one succeeds it just returns immediately
-   *  If second one returns first - it's likely because of timeout error
-   *  if loading has stuck in unexpected state. It results into timeout exception
-   *  that could be caught and recovered from downstream
+  /**
+   * Run `loading` and monitoring (`run`) as parallel fibers If first one succeeds it just returns
+   * immediately If second one returns first - it's likely because of timeout error if loading has
+   * stuck in unexpected state. It results into timeout exception that could be caught and recovered
+   * from downstream
    */
-  def inBackground[F[_]: Concurrent: Timer: Logging](timeouts: Config.Timeouts,
-                                                     getState: F[State],
-                                                     busy: Resource[F, Unit])
-                                                    (loading: F[Unit]) = {
+  def inBackground[F[_]: Concurrent: Timer: Logging](
+    timeouts: Config.Timeouts,
+    getState: F[State],
+    busy: Resource[F, Unit]
+  )(
+    loading: F[Unit]
+  ) = {
     val backgroundCheck =
       StateMonitoring.run(timeouts, getState).background <* busy
 
     backgroundCheck.use { join =>
-      Concurrent[F].race(loading, join).flatMap { 
+      Concurrent[F].race(loading, join).flatMap {
         case Left(_) => Concurrent[F].unit
         case Right(None) => Concurrent[F].unit
         case Right(Some(error)) =>
@@ -57,11 +59,11 @@ object StateMonitoring {
   }
 
   /**
-   * Start a periodic state check in order to extend an SQS message visibility
-   * if it hasn't been processed in time or about the process entirely it's stuck
-   * where it shouldn't
-   * @return None if monitoring completed has stopped because of Idle state
-   *         or some error message if it got stale
+   * Start a periodic state check in order to extend an SQS message visibility if it hasn't been
+   * processed in time or about the process entirely it's stuck where it shouldn't
+   * @return
+   *   None if monitoring completed has stopped because of Idle state or some error message if it
+   *   got stale
    */
   def run[F[_]: Monad: Timer: Logging](timeouts: Config.Timeouts, globalState: F[State]): F[Option[String]] = {
     val getNow: F[Instant] = Timer[F].clock.instantNow
@@ -84,8 +86,8 @@ object StateMonitoring {
             case _ =>
               info(current.loading) >> again
           }
+        }
       }
-    }
 
     globalState.flatMap { first =>
       go(first.loading)
@@ -95,13 +97,20 @@ object StateMonitoring {
   def info[F[_]: Logging](loading: Load.Status): F[Unit] =
     Logging[F].info(show"Loading is ongoing. $loading.")
 
-
-  def warn[F[_]: Logging](now: Instant, loading: Load.Status, updated: Instant): F[Unit] = {
+  def warn[F[_]: Logging](
+    now: Instant,
+    loading: Load.Status,
+    updated: Instant
+  ): F[Unit] = {
     val duration = Duration.between(updated, now).toMinutes
     Logging[F].warning(show"Loading is ongoing. $loading. Spent $duration minutes at this stage.")
   }
 
-  def mkError[F[_]: Logging](now: Instant, loading: Load.Status, updated: Instant): String = {
+  def mkError[F[_]: Logging](
+    now: Instant,
+    loading: Load.Status,
+    updated: Instant
+  ): String = {
     val duration = Duration.between(updated, now).toMinutes
     show"Loader is stuck. $loading. Spent $duration minutes at this stage"
   }
@@ -112,7 +121,11 @@ object StateMonitoring {
       case _ => false
     }
 
-  def isStale(timeouts: Config.Timeouts, now: Instant, state: State): Boolean = {
+  def isStale(
+    timeouts: Config.Timeouts,
+    now: Instant,
+    state: State
+  ): Boolean = {
     val lastUpdated = state.updated
     val passed = (now.toEpochMilli - lastUpdated.toEpochMilli).milli
     if (isLoading(state.loading)) passed > timeouts.loading else passed > timeouts.nonLoading

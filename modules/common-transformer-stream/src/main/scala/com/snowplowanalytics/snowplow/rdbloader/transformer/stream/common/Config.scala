@@ -30,15 +30,17 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 
-final case class Config(input: Config.StreamInput,
-                        windowing: Duration,
-                        output: Config.Output,
-                        queue: Config.QueueConfig,
-                        formats: TransformerConfig.Formats,
-                        monitoring: Config.Monitoring,
-                        telemetry: Telemetry.Config,
-                        featureFlags: TransformerConfig.FeatureFlags,
-                        validations: TransformerConfig.Validations)
+final case class Config(
+  input: Config.StreamInput,
+  windowing: Duration,
+  output: Config.Output,
+  queue: Config.QueueConfig,
+  formats: TransformerConfig.Formats,
+  monitoring: Config.Monitoring,
+  telemetry: Telemetry.Config,
+  featureFlags: TransformerConfig.FeatureFlags,
+  validations: TransformerConfig.Validations
+)
 
 object Config {
 
@@ -49,28 +51,32 @@ object Config {
     import decoders._
     for {
       config <- ConfigUtils.fromStringF[F, Config](conf)
-      _      <- EitherT.fromEither[F](TransformerConfig.formatsCheck(config.formats))
+      _ <- EitherT.fromEither[F](TransformerConfig.formatsCheck(config.formats))
     } yield config
   }
 
   sealed trait StreamInput extends Product with Serializable
   object StreamInput {
-    final case class Kinesis(appName: String,
-                             streamName: String,
-                             region: Region,
-                             position: AWSKinesis.InitPosition,
-                             retrievalMode: AWSKinesis.Retrieval,
-                             bufferSize: Int,
-                             customEndpoint: Option[URI],
-                             dynamodbCustomEndpoint: Option[URI],
-                             cloudwatchCustomEndpoint: Option[URI]) extends StreamInput
+    final case class Kinesis(
+      appName: String,
+      streamName: String,
+      region: Region,
+      position: AWSKinesis.InitPosition,
+      retrievalMode: AWSKinesis.Retrieval,
+      bufferSize: Int,
+      customEndpoint: Option[URI],
+      dynamodbCustomEndpoint: Option[URI],
+      cloudwatchCustomEndpoint: Option[URI]
+    ) extends StreamInput
 
-    final case class Pubsub(subscription: String,
-                            customPubsubEndpoint: Option[String],
-                            parallelPullCount: Int,
-                            bufferSize: Int,
-                            maxAckExtensionPeriod: FiniteDuration,
-                            maxOutstandingMessagesSize: Option[Long]) extends StreamInput {
+    final case class Pubsub(
+      subscription: String,
+      customPubsubEndpoint: Option[String],
+      parallelPullCount: Int,
+      bufferSize: Int,
+      maxAckExtensionPeriod: FiniteDuration,
+      maxOutstandingMessagesSize: Option[Long]
+    ) extends StreamInput {
       val (projectId, subscriptionId) =
         subscription.split("/").toList match {
           case List("projects", project, "subscriptions", name) =>
@@ -88,9 +94,18 @@ object Config {
   }
 
   object Output {
-    final case class S3(path: URI, compression: Compression, bufferSize: Int, region: Region) extends Output
+    final case class S3(
+      path: URI,
+      compression: Compression,
+      bufferSize: Int,
+      region: Region
+    ) extends Output
 
-    final case class GCS(path: URI, compression: Compression, bufferSize: Int) extends Output
+    final case class GCS(
+      path: URI,
+      compression: Compression,
+      bufferSize: Int
+    ) extends Output
   }
 
   sealed trait QueueConfig extends Product with Serializable
@@ -100,10 +115,12 @@ object Config {
 
     final case class SQS(queueName: String, region: Region) extends QueueConfig
 
-    final case class Pubsub(topic: String,
-                            batchSize: Long,
-                            requestByteThreshold: Option[Long],
-                            delayThreshold: FiniteDuration) extends QueueConfig {
+    final case class Pubsub(
+      topic: String,
+      batchSize: Long,
+      requestByteThreshold: Option[Long],
+      delayThreshold: FiniteDuration
+    ) extends QueueConfig {
       val (projectId, topicId) =
         topic.split("/").toList match {
           case List("projects", project, "topics", name) =>
@@ -190,7 +207,9 @@ object Config {
           case Right("gs") =>
             cur.as[Output.GCS]
           case Right(other) =>
-            Left(DecodingFailure(s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', and 'gs'", pathCur.history))
+            Left(
+              DecodingFailure(s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', and 'gs'", pathCur.history)
+            )
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
             Left(DecodingFailure("Cannot find 'path' string in output configuration", pathCur.history))
           case Left(other) =>

@@ -7,10 +7,12 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState._
 
 /**
- * Intermediate state and final result of every effectful test spec
- * Used as a core of [[Pure]] effect
- * @param genericLog list of strings that every effect can add
- * @param cache JSONPaths cache
+ * Intermediate state and final result of every effectful test spec Used as a core of [[Pure]]
+ * effect
+ * @param genericLog
+ *   list of strings that every effect can add
+ * @param cache
+ *   JSONPaths cache
  */
 case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Option[BlobStorage.Key]]) {
 
@@ -47,7 +49,7 @@ object TestState {
   object LogEntry {
     case class Message(content: String) extends LogEntry
     case class Sql(content: Statement) extends LogEntry {
-      override def equals(obj: Any): Boolean = {
+      override def equals(obj: Any): Boolean =
         content match {
           case Statement.CreateTable(t) =>
             obj match {
@@ -73,7 +75,6 @@ object TestState {
               case _ => false
             }
         }
-      }
     }
   }
 }

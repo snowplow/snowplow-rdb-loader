@@ -22,18 +22,20 @@ import java.util.concurrent.{CancellationException, CompletableFuture, Completio
 
 object Utils {
 
-  /** Convert a `CompletableFuture` into an effect type.
+  /**
+   * Convert a `CompletableFuture` into an effect type.
    *
-   * If the effect type terminates in cancellation or error, the underlying
-   * `CompletableFuture` is terminated in an analogous
-   * manner. This is important, otherwise a resource leak may occur.
+   * If the effect type terminates in cancellation or error, the underlying `CompletableFuture` is
+   * terminated in an analogous manner. This is important, otherwise a resource leak may occur.
    *
-   * @note Finally, regardless of how the effect and
-   *       `CompletableFuture` complete, the result is
-   *       shifted with the given `ContextShift`.
-   * @note taken from https://github.com/http4s/http4s-jdk-http-client/blob/main/core/src/main/scala/org/http4s/client/jdkhttpclient/package.scala
+   * @note
+   *   Finally, regardless of how the effect and `CompletableFuture` complete, the result is shifted
+   *   with the given `ContextShift`.
+   * @note
+   *   taken from
+   *   https://github.com/http4s/http4s-jdk-http-client/blob/main/core/src/main/scala/org/http4s/client/jdkhttpclient/package.scala
    */
-  def fromCompletableFuture[F[_] : Concurrent : ContextShift, A](fcs: F[CompletableFuture[A]]): F[A] =
+  def fromCompletableFuture[F[_]: Concurrent: ContextShift, A](fcs: F[CompletableFuture[A]]): F[A] =
     Concurrent[F].bracketCase(fcs) { cs =>
       Concurrent[F].async[A] { cb =>
         cs.handle[Unit] { (result, err) =>

@@ -17,9 +17,9 @@ import scala.concurrent.duration._
 
 import cats.implicits._
 
-import cats.effect.{ContextShift, Timer, IO, Resource }
+import cats.effect.{ContextShift, IO, Resource, Timer}
 import cats.effect.concurrent.Ref
-import com.snowplowanalytics.snowplow.rdbloader.loading.{ Load, Stage }
+import com.snowplowanalytics.snowplow.rdbloader.loading.{Load, Stage}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
@@ -30,7 +30,6 @@ import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.test.SyncLogging
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-
 
 class StateMonitoringSpec extends Specification {
 
@@ -54,46 +53,50 @@ class StateMonitoringSpec extends Specification {
   "inBackground" should {
     "abort long-running process if stuck in MigrationBuild" in {
       val (error, _, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
-        timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
+        timer.sleep(1.milli) *> // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 3)
-      } 
+          timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 3)
+      }
 
-      isBusy must beFalse   // dealocation runs even if it fails
+      isBusy must beFalse // dealocation runs even if it fails
       error must beSome
     }
 
     "not abort a process if it exits on its own before timeout" in {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
-        timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
+        timer.sleep(1.milli) *> // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
+          timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
       }
 
-      logs must beEqualTo(List(
-        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
-        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage."
-      ))
+      logs must beEqualTo(
+        List(
+          "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
+          "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage."
+        )
+      )
       isBusy must beFalse
       error must beNone
     }
 
     "not abort a process if it changes the state" in {
       val (error, logs, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
-        timer.sleep(1.milli) *>       // Artificial delay to make sure we don't change state too soon (makes test flaky)
+        timer.sleep(1.milli) *> // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
-            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2) *>
-            state.update(StateMonitoringSpec.setStage(Stage.MigrationPre)) *>
-            timer.clock.instantNow.flatMap(now => state.update(_.copy(updated = now))) *>
-            timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
+          timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2) *>
+          state.update(StateMonitoringSpec.setStage(Stage.MigrationPre)) *>
+          timer.clock.instantNow.flatMap(now => state.update(_.copy(updated = now))) *>
+          timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 2)
       }
 
-      logs must beEqualTo(List(
-        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
-        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage.",
-        "INFO Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations.",
-        "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 9 minutes at this stage."
-      ))
+      logs must beEqualTo(
+        List(
+          "INFO Loading is ongoing. Ongoing processing of s3://folder/ at migration building.",
+          "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at migration building. Spent 10 minutes at this stage.",
+          "INFO Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations.",
+          "WARNING Loading is ongoing. Ongoing processing of s3://folder/ at pre-transaction migrations. Spent 9 minutes at this stage."
+        )
+      )
       isBusy must beFalse
       error must beNone
     }
@@ -113,13 +116,13 @@ object StateMonitoringSpec {
       ec.ioTimer
 
     val result = for {
-      logStore  <- Ref.of[IO, List[String]](List.empty)
+      logStore <- Ref.of[IO, List[String]](List.empty)
       implicit0(logging: Logging[IO]) = SyncLogging.build[IO](logStore)
-      state     <- State.mk[IO]
-      _         <- state.update(init)
+      state <- State.mk[IO]
+      _ <- state.update(init)
 
-      error      = StateMonitoring.run[IO](Timeouts, state.get)
-      result    <- (error, logStore.get).tupled
+      error = StateMonitoring.run[IO](Timeouts, state.get)
+      result <- (error, logStore.get).tupled
     } yield result
 
     val future = result.unsafeToFuture()
@@ -136,14 +139,14 @@ object StateMonitoringSpec {
       ec.ioTimer
 
     val result = for {
-      logStore  <- Ref.of[IO, List[String]](List.empty)
+      logStore <- Ref.of[IO, List[String]](List.empty)
       implicit0(logging: Logging[IO]) = SyncLogging.build[IO](logStore)
-      state     <- State.mk[IO]
-      busyRef   <- Ref.of[IO, Boolean](true)
-      busy       = Resource.make(IO.pure(busyRef))(res => res.set(false)).void
+      state <- State.mk[IO]
+      busyRef <- Ref.of[IO, Boolean](true)
+      busy = Resource.make(IO.pure(busyRef))(res => res.set(false)).void
 
-      error      = StateMonitoring.inBackground(Timeouts, state.get, busy)(action(state, T)).attempt.map(_.swap.toOption)
-      result    <- (error, logStore.get.map(_.reverse), busyRef.get).tupled
+      error = StateMonitoring.inBackground(Timeouts, state.get, busy)(action(state, T)).attempt.map(_.swap.toOption)
+      result <- (error, logStore.get.map(_.reverse), busyRef.get).tupled
     } yield result
 
     val future = result.unsafeToFuture()

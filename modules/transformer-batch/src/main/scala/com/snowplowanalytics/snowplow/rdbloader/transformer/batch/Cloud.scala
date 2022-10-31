@@ -20,9 +20,9 @@ import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConf
 import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model.{ListObjectsV2Request, ListObjectsV2Result, S3ObjectSummary}
-import com.amazonaws.services.sqs.{AmazonSQSClientBuilder, AmazonSQS}
+import com.amazonaws.services.sqs.{AmazonSQS, AmazonSQSClientBuilder}
 import com.amazonaws.services.sqs.model.SendMessageRequest
-import com.amazonaws.services.sns.{AmazonSNSClientBuilder, AmazonSNS}
+import com.amazonaws.services.sns.{AmazonSNS, AmazonSNSClientBuilder}
 import com.amazonaws.services.sns.model.PublishRequest
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
@@ -38,8 +38,7 @@ object Cloud {
   /** Common retry policy for S3 and SQS (jitter) */
   final val RetryPolicy =
     new RetryPolicy(
-      (_: AmazonWebServiceRequest, _: AmazonClientException, retriesAttempted: Int) =>
-        retriesAttempted < MaxRetries,
+      (_: AmazonWebServiceRequest, _: AmazonClientException, retriesAttempted: Int) => retriesAttempted < MaxRetries,
       new PredefinedBackoffStrategies.FullJitterBackoffStrategy(RetryBaseDelay, RetryMaxDelay),
       MaxRetries,
       true
@@ -53,7 +52,7 @@ object Cloud {
       .withPrefix(prefix)
       .withDelimiter("/")
 
-    def keyUnfold(result: ListObjectsV2Result): Stream[S3ObjectSummary] = {
+    def keyUnfold(result: ListObjectsV2Result): Stream[S3ObjectSummary] =
       if (result.isTruncated) {
         val loaded = result.getObjectSummaries()
         req.setContinuationToken(result.getNextContinuationToken)
@@ -61,7 +60,6 @@ object Cloud {
       } else {
         result.getObjectSummaries().asScala.toStream
       }
-    }
 
     keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList
   }
@@ -74,7 +72,7 @@ object Cloud {
       .withPrefix(prefix)
       .withDelimiter("/")
 
-    def keyUnfold(result: ListObjectsV2Result): Stream[String] = {
+    def keyUnfold(result: ListObjectsV2Result): Stream[String] =
       if (result.isTruncated) {
         val loaded = result.getCommonPrefixes
         req.setContinuationToken(result.getNextContinuationToken)
@@ -82,7 +80,6 @@ object Cloud {
       } else {
         result.getCommonPrefixes.asScala.toStream
       }
-    }
 
     keyUnfold(client.listObjectsV2(req)).map(dir => BlobStorage.Folder.coerce(s"s3://$bucket/$dir")).toList
   }
@@ -92,7 +89,12 @@ object Cloud {
     client.doesObjectExist(bucket, s3Key)
   }
 
-  def sendToSns(client: AmazonSNS, topic: String, messageGroupId: String, message: String): Either[Throwable, Unit] =
+  def sendToSns(
+    client: AmazonSNS,
+    topic: String,
+    messageGroupId: String,
+    message: String
+  ): Either[Throwable, Unit] =
     Either.catchNonFatal {
       val request = new PublishRequest()
         .withTargetArn(topic)
@@ -102,7 +104,12 @@ object Cloud {
       ()
     }
 
-  def sendToSqs(client: AmazonSQS, queue: String, messageGroupId: String, message: String): Either[Throwable, Unit] =
+  def sendToSqs(
+    client: AmazonSQS,
+    queue: String,
+    messageGroupId: String,
+    message: String
+  ): Either[Throwable, Unit] =
     Either.catchNonFatal {
       val request = new SendMessageRequest()
         .withQueueUrl(queue)
@@ -112,7 +119,12 @@ object Cloud {
       ()
     }
 
-  def putToS3(client: AmazonS3, bucket: String, key: String, content: String): Either[Throwable, Unit] =
+  def putToS3(
+    client: AmazonS3,
+    bucket: String,
+    key: String,
+    content: String
+  ): Either[Throwable, Unit] =
     Either.catchNonFatal {
       client.putObject(bucket, key, content)
       ()

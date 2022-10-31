@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.{SchemaList, Migration => SchemaMigration}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.EventTableColumns
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
@@ -21,26 +21,29 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, Shredd
 import doobie.Fragment
 
 /**
- * Target represents all DB-specific logic and commands
- * Whenever generic Loader framework needs to perform something DB-specific,
- * e.g. get DDL for a manifest (which can be different for every DB) or
- * transform agnostic `Statement` into DB-specific SQL dialect, it uses
- * the `Target` which is typically tightly coupled with `DAO`
+ * Target represents all DB-specific logic and commands Whenever generic Loader framework needs to
+ * perform something DB-specific, e.g. get DDL for a manifest (which can be different for every DB)
+ * or transform agnostic `Statement` into DB-specific SQL dialect, it uses the `Target` which is
+ * typically tightly coupled with `DAO`
  */
 trait Target {
+
   /** Transform DB-agnostic, generic `Statement` into a concrete SQL statement */
   def toFragment(statement: Statement): Fragment
 
   /**
-   * Transform `DataDiscovery` into `LoadStatements`
-   * The statements could be either single statement (only `events` table)
-   * or multi-statement (`events` plus shredded types)
-   * @param discovery TODO
-   * @param eventTableColumns TODO
+   * Transform `DataDiscovery` into `LoadStatements` The statements could be either single statement
+   * (only `events` table) or multi-statement (`events` plus shredded types)
+   * @param discovery
+   *   TODO
+   * @param eventTableColumns
+   *   TODO
    */
-  def getLoadStatements(discovery: DataDiscovery,
-                        eventTableColumns: EventTableColumns,
-                        loadAuthMethod: LoadAuthMethod): LoadStatements
+  def getLoadStatements(
+    discovery: DataDiscovery,
+    eventTableColumns: EventTableColumns,
+    loadAuthMethod: LoadAuthMethod
+  ): LoadStatements
 
   /** Get DDL of a manifest table */
   def getManifest: Statement
@@ -51,7 +54,10 @@ trait Target {
   /** Create a table with columns dervived from list of Iglu schemas */
   def createTable(schemas: SchemaList): Block
 
-  /** Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates on `events` table */
+  /**
+   * Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates
+   * on `events` table
+   */
   def extendTable(info: ShreddedType.Info): Option[Block]
 
   /** Whether the target needs to know existing columns in the events table */

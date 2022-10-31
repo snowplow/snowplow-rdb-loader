@@ -45,18 +45,23 @@ class TransformingSpec extends Specification {
       val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/1/input/events", format = shredFormat)
 
       val testFileNameMap = List(
-        Transformed.Shredded.Tabular("com.snowplowanalytics.snowplow", "atomic", 1, dummyTransformedData).getPath -> "com.snowplowanalytics.snowplow-atomic",
-        Transformed.Shredded.Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, dummyTransformedData).getPath -> "com.snowplowanalytics.snowplow-consent_document",
+        Transformed.Shredded
+          .Tabular("com.snowplowanalytics.snowplow", "atomic", 1, dummyTransformedData)
+          .getPath -> "com.snowplowanalytics.snowplow-atomic",
+        Transformed.Shredded
+          .Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, dummyTransformedData)
+          .getPath -> "com.snowplowanalytics.snowplow-consent_document",
         Transformed.Shredded.Tabular("com.optimizely", "state", 1, dummyTransformedData).getPath -> "com.optimizely-state"
       ).toMap
 
-      val expectedTransformedMap = getExpectedTransformedEvents(good, testFileNameMap, 1, LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV)
+      val expectedTransformedMap =
+        getExpectedTransformedEvents(good, testFileNameMap, 1, LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV)
 
       val expectedBadEvent = getResourceLines("/processing-spec/1/output/bad").head
 
-      bad must have size(1)
+      bad must have size 1
       bad.head.data.str must beSome(expectedBadEvent)
-      good must have size(46)
+      good must have size 46
       // Checks whether transformed events are identical with the expected ones.
       // Only the paths in "pathsToCheck" are compared to not add
       // all shredded events to the test folder.
@@ -73,21 +78,25 @@ class TransformingSpec extends Specification {
       val expectedBadEvent = getResourceLines("/processing-spec/1/output/bad").head
       val expectedGoodEvents = getResourceLines("/processing-spec/1/output/good/widerow/events")
 
-      bad must have size(1)
+      bad must have size 1
       bad.head.data.str.get mustEqual expectedBadEvent
-      good must have size(2)
+      good must have size 2
       good.map(_.data.str.get) mustEqual expectedGoodEvents
     }
 
     "create bad row when timestamp is invalid" in {
       val timestampLowerLimit = Instant.parse("0000-01-02T00:00:00.00Z")
-      val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/2/input/events", format = wideRowFormat, timestampLowerLimit = Some(timestampLowerLimit))
+      val (good, bad) = transformTestEvents(
+        resourcePath = "/processing-spec/2/input/events",
+        format = wideRowFormat,
+        timestampLowerLimit = Some(timestampLowerLimit)
+      )
 
       val expectedBadEvents = getResourceLines("/processing-spec/2/output/bad")
 
-      bad must have size(2)
+      bad must have size 2
       replaceFailureTimestamps(bad.map(_.data.str.get)).toSet mustEqual replaceFailureTimestamps(expectedBadEvents).toSet
-      good must have size(1)
+      good must have size 1
     }
   }
 }
@@ -133,13 +142,14 @@ object TransformingSpec {
         Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
     }
 
-  def transformTestEvents(resourcePath: String,
-                          format: TransformerConfig.Formats,
-                          timestampLowerLimit: Option[Instant] = None): (TransformedList, TransformedList) = {
+  def transformTestEvents(
+    resourcePath: String,
+    format: TransformerConfig.Formats,
+    timestampLowerLimit: Option[Instant] = None
+  ): (TransformedList, TransformedList) = {
     val transformer = createTransformer(format)
     val validations = TransformerConfig.Validations(timestampLowerLimit)
     implicit val checkpointer = Checkpointer.noOpCheckpointer[IO, Unit]
-
 
     val eventStream = parsedEventStream(resourcePath)
       .through(Processing.transform(transformer, validations, TestProcessor))
@@ -163,16 +173,19 @@ object TransformingSpec {
 
   def fileStream(resourcePath: String): Stream[IO, String] = {
     val path = Path.of(getClass.getResource(resourcePath).getPath)
-    fs2File.readAll[IO](path, testBlocker, 4096)
+    fs2File
+      .readAll[IO](path, testBlocker, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
       .filter(_.nonEmpty)
   }
 
-  def getExpectedTransformedEvents(transformedList: TransformedList,
-                                   testFileNameMap: Map[SinkPath, String],
-                                   testNumber: Int,
-                                   format: LoaderMessage.TypesInfo.Shredded.ShreddedFormat): TransformedMap =
+  def getExpectedTransformedEvents(
+    transformedList: TransformedList,
+    testFileNameMap: Map[SinkPath, String],
+    testNumber: Int,
+    format: LoaderMessage.TypesInfo.Shredded.ShreddedFormat
+  ): TransformedMap =
     transformedList.flatMap {
       case (path: SinkPath, _) if testFileNameMap.contains(path) =>
         val testFilePath = s"/processing-spec/${testNumber}/output/good/${format.path}/${testFileNameMap(path)}"
@@ -187,7 +200,8 @@ object TransformingSpec {
   def replaceFailureTimestamps(jsons: List[String]): List[String] =
     jsons
       .map(parseCirce)
-      .sequence.map(_.map(replaceFailureTimestamp))
+      .sequence
+      .map(_.map(replaceFailureTimestamp))
       .toOption
       .get
       .map(_.noSpaces)

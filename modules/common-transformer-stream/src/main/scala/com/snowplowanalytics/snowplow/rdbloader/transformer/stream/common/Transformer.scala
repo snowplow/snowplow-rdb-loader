@@ -27,7 +27,11 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider, ParquetTransformer}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{
+  AtomicFieldsProvider,
+  NonAtomicFieldsProvider,
+  ParquetTransformer
+}
 
 /**
  * Includes common operations needed during event transformation
@@ -35,23 +39,25 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{A
 sealed trait Transformer[F[_]] extends Product with Serializable {
   def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]]
   def badTransform(badRow: BadRow): Transformed
-  def typesInfo(types:  Set[Data.ShreddedType]): TypesInfo
+  def typesInfo(types: Set[Data.ShreddedType]): TypesInfo
 }
 
 object Transformer {
-  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](igluResolver: Resolver[F],
-                                                              propertiesCache: PropertiesCache[F],
-                                                              formats: Formats.Shred,
-                                                              atomicLengths: Map[String, Int],
-                                                              processor: Processor) extends Transformer[F] {
+  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](
+    igluResolver: Resolver[F],
+    propertiesCache: PropertiesCache[F],
+    formats: Formats.Shred,
+    atomicLengths: Map[String, Int],
+    processor: Processor
+  ) extends Transformer[F] {
+
     /** Check if `shredType` should be transformed into TSV */
     def isTabular(shredType: SchemaKey): Boolean =
       Common.isTabular(formats)(shredType)
 
-    def findFormat(schemaKey: SchemaKey): TypesInfo.Shredded.ShreddedFormat = {
+    def findFormat(schemaKey: SchemaKey): TypesInfo.Shredded.ShreddedFormat =
       if (isTabular(schemaKey)) TypesInfo.Shredded.ShreddedFormat.TSV
       else TypesInfo.Shredded.ShreddedFormat.JSON
-    }
 
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
       Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, atomicLengths, processor)(event)
@@ -63,17 +69,18 @@ object Transformer {
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
-      val wrapped = types.map {
-        case Data.ShreddedType(shredProperty, schemaKey) =>
-          TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), SnowplowEntity.from(shredProperty))
+      val wrapped = types.map { case Data.ShreddedType(shredProperty, schemaKey) =>
+        TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), SnowplowEntity.from(shredProperty))
       }
       TypesInfo.Shredded(wrapped.toList)
     }
   }
 
-  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](igluResolver: Resolver[F],
-                                                                   format: Formats.WideRow,
-                                                                   processor: Processor) extends Transformer[F] {
+  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](
+    igluResolver: Resolver[F],
+    format: Formats.WideRow,
+    processor: Processor
+  ) extends Transformer[F] {
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] = {
       val result = format match {
         case WideRow.JSON =>
@@ -90,9 +97,8 @@ object Transformer {
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
-      val wrapped = types.map {
-        case Data.ShreddedType(shredProperty, schemaKey) =>
-          TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
+      val wrapped = types.map { case Data.ShreddedType(shredProperty, schemaKey) =>
+        TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
       }
       val fileFormat = format match {
         case Formats.WideRow.JSON => TypesInfo.WideRow.WideRowFormat.JSON
@@ -106,11 +112,10 @@ object Transformer {
 
       NonAtomicFieldsProvider
         .build(igluResolver, allTypesFromEvent.toList)
-        .leftMap { error => igluBadRow(event, error) }
-        .flatMap {
-          nonAtomicFields =>
-            val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
-            EitherT.fromEither(ParquetTransformer.transform(event, allFields, processor))
+        .leftMap(error => igluBadRow(event, error))
+        .flatMap { nonAtomicFields =>
+          val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+          EitherT.fromEither(ParquetTransformer.transform(event, allFields, processor))
         }
     }
 

@@ -12,7 +12,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-
 import org.specs2.mutable.Specification
 import java.sql.SQLException
 

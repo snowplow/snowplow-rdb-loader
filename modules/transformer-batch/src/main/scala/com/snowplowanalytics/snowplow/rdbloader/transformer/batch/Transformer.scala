@@ -44,7 +44,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
 
 /**
  * Includes common operations needed in Spark job during event transformation
- * @tparam T Type of items collected in accumulator
+ * @tparam T
+ *   Type of items collected in accumulator
  */
 sealed trait Transformer[T] extends Product with Serializable {
   def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed]
@@ -52,14 +53,21 @@ sealed trait Transformer[T] extends Product with Serializable {
   def typesAccumulator: TypesAccumulator[T]
   def timestampsAccumulator: TimestampsAccumulator
   def typesInfo: TypesInfo
-  def sink(sc: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit
+  def sink(
+    sc: SparkSession,
+    compression: TransformerConfig.Compression,
+    transformed: RDD[Transformed],
+    outFolder: Folder
+  ): Unit
   def register(sc: SparkContext): Unit
 }
 
 object Transformer {
-  case class ShredTransformer(resolverConfig: ResolverConfig,
-                              formats: Formats.Shred,
-                              atomicLengths: Map[String, Int]) extends Transformer[TypesInfo.Shredded.Type] {
+  case class ShredTransformer(
+    resolverConfig: ResolverConfig,
+    formats: Formats.Shred,
+    atomicLengths: Map[String, Int]
+  ) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
@@ -67,13 +75,20 @@ object Transformer {
     def isTabular(shredType: SchemaKey): Boolean =
       Common.isTabular(formats)(shredType)
 
-    def findFormat(schemaKey: SchemaKey): TypesInfo.Shredded.ShreddedFormat = {
+    def findFormat(schemaKey: SchemaKey): TypesInfo.Shredded.ShreddedFormat =
       if (isTabular(schemaKey)) TypesInfo.Shredded.ShreddedFormat.TSV
       else TypesInfo.Shredded.ShreddedFormat.JSON
-    }
 
     def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
-      Transformed.shredEvent[Id](IgluSingleton.get(resolverConfig), PropertiesCacheSingleton.get(resolverConfig), isTabular, atomicLengths, ShredJob.BadRowsProcessor)(event).value match {
+      Transformed
+        .shredEvent[Id](
+          IgluSingleton.get(resolverConfig),
+          PropertiesCacheSingleton.get(resolverConfig),
+          isTabular,
+          atomicLengths,
+          ShredJob.BadRowsProcessor
+        )(event)
+        .value match {
         case Right(shredded) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.shreddedTypeConverter(findFormat))(event.inventory)
           timestampsAccumulator.add(event)
@@ -91,7 +106,12 @@ object Transformer {
 
     def typesInfo: TypesInfo = TypesInfo.Shredded(typesAccumulator.value.toList)
 
-    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit =
+    def sink(
+      spark: SparkSession,
+      compression: TransformerConfig.Compression,
+      transformed: RDD[Transformed],
+      outFolder: Folder
+    ): Unit =
       Sink.writeShredded(spark, compression, transformed.flatMap(_.shredded), outFolder)
 
     def register(sc: SparkContext): Unit = {
@@ -116,11 +136,15 @@ object Transformer {
       Transformed.WideRow(false, data)
     }
 
-    def typesInfo: TypesInfo = {
+    def typesInfo: TypesInfo =
       TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, typesAccumulator.value.toList)
-    }
 
-    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit =
+    def sink(
+      spark: SparkSession,
+      compression: TransformerConfig.Compression,
+      transformed: RDD[Transformed],
+      outFolder: Folder
+    ): Unit =
       Sink.writeWideRowed(spark, compression, transformed.flatMap(_.wideRow), outFolder)
 
     def register(sc: SparkContext): Unit = {
@@ -129,8 +153,7 @@ object Transformer {
     }
   }
 
-  case class WideRowParquetTransformer(allFields: AllFields,
-                                       schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
+  case class WideRowParquetTransformer(allFields: AllFields, schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
@@ -150,11 +173,15 @@ object Transformer {
       Transformed.WideRow(false, data)
     }
 
-    def typesInfo: TypesInfo = {
+    def typesInfo: TypesInfo =
       TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, typesAccumulator.value.toList)
-    }
 
-    def sink(spark: SparkSession, compression: TransformerConfig.Compression, transformed: RDD[Transformed], outFolder: Folder): Unit = {
+    def sink(
+      spark: SparkSession,
+      compression: TransformerConfig.Compression,
+      transformed: RDD[Transformed],
+      outFolder: Folder
+    ): Unit = {
       // If it is not cached, events will be processed two times since
       // data is output in both wide row json and parquet format.
       val transformedCache = transformed.cache()
@@ -202,9 +229,9 @@ object Transformer {
       case FieldValue.TimestampValue(v) => v
       case FieldValue.DateValue(v) => v
       case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue)
-      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map { v => extractFieldValue(v.value) })
+      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map(v => extractFieldValue(v.value)))
       case FieldValue.JsonValue(v) => v.noSpaces
     }
-    
+
   }
 }

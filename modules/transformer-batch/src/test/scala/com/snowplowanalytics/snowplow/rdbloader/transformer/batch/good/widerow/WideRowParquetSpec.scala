@@ -79,7 +79,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
       val expected = readResourceFile(ResourceFile("/widerow/parquet/output-badrows"))
         .map(_.replace(VersionPlaceholder, BuildInfo.version))
       lines.size must beEqualTo(4)
-      lines.toSet mustEqual(expected.toSet)
+      lines.toSet mustEqual (expected.toSet)
     }
 
     "have SparkConf with outputTimestampType property is set to TIMESTAMP_MICROS" in {
@@ -144,8 +144,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
     )
 
     "transform the enriched event with test unstruct events to wide row parquet" in {
-      val lines = readParquetFile(spark, testOutputDirs.goodRows)
-        .toSet
+      val lines = readParquetFile(spark, testOutputDirs.goodRows).toSet
       val expected = inputEvents
         .flatMap(Event.parse(_).toOption)
         .map(transformEventForParquetTest("unstruct_event_com_snowplowanalytics_snowplow_parquet_test_a_1"))
@@ -175,32 +174,37 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   }
 
   def transformEventForParquetTest(entityColumnName: String)(e: Event): Json = {
-    val json = e.copy(
-      // Due to a bug in the Scala Analytics SDK's toJson method, derived_contexts overrides contexts with same schemas.
-      // In order to circumvent this problem, contexts and derived_contexts are combined under context
-      // and derived_contexts is made empty list.
-      contexts = Contexts(e.contexts.data ::: e.derived_contexts.data),
-      derived_contexts = Contexts(List.empty),
-      // Since parquet is using java.sql.Timestamp instead of Instant and
-      // Timestamp's precision is less than Instant's precision, we are truncating
-      // event's timestamps to match them to parquet output.
-      collector_tstamp = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
-      derived_tstamp = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-      etl_tstamp = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-      dvce_created_tstamp = e.dvce_created_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-      dvce_sent_tstamp = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-      refr_dvce_tstamp = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-      true_tstamp = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
-    ).toJson(true).deepDropNullValues
+    val json = e
+      .copy(
+        // Due to a bug in the Scala Analytics SDK's toJson method, derived_contexts overrides contexts with same schemas.
+        // In order to circumvent this problem, contexts and derived_contexts are combined under context
+        // and derived_contexts is made empty list.
+        contexts = Contexts(e.contexts.data ::: e.derived_contexts.data),
+        derived_contexts = Contexts(List.empty),
+        // Since parquet is using java.sql.Timestamp instead of Instant and
+        // Timestamp's precision is less than Instant's precision, we are truncating
+        // event's timestamps to match them to parquet output.
+        collector_tstamp = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
+        derived_tstamp = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        etl_tstamp = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        dvce_created_tstamp = e.dvce_created_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        dvce_sent_tstamp = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        refr_dvce_tstamp = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        true_tstamp = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
+      )
+      .toJson(true)
+      .deepDropNullValues
 
     def normalizeKeys(j: Json): Json =
       j.arrayOrObject(
         j,
         vec => Json.fromValues(vec.map(normalizeKeys)),
-        obj => 
-          JsonObject.fromIterable(obj.toList.map {
-            case (k, v) => k.replaceAll("(.)(\\p{Upper})", "$1_$2").toLowerCase -> normalizeKeys(v)
-          }).asJson
+        obj =>
+          JsonObject
+            .fromIterable(obj.toList.map { case (k, v) =>
+              k.replaceAll("(.)(\\p{Upper})", "$1_$2").toLowerCase -> normalizeKeys(v)
+            })
+            .asJson
       )
 
     val jsonTransformer: Json => Json = { j: Json =>
@@ -213,18 +217,24 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         // Therefore we serialize them to a JSON string in this json too.
         .withFocus(j => j.hcursor.downField("e_field").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
         .withFocus(j => j.hcursor.downField("f_field").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
-        .withFocus(j => j.hcursor.downField("j_field").downField("union").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j))
-        .top.getOrElse(j)
+        .withFocus(j =>
+          j.hcursor.downField("j_field").downField("union").withFocus(f => if (f.isNull) f else f.noSpaces.asJson).top.getOrElse(j)
+        )
+        .top
+        .getOrElse(j)
     }
 
     val transformed = json.hcursor
       .downField(entityColumnName)
-      .withFocus(_.arrayOrObject[Json](
-        "".asJson,
-        _.map(jsonTransformer).asJson,
-        j => jsonTransformer(j.asJson)
-      ))
-      .top.getOrElse(json)
+      .withFocus(
+        _.arrayOrObject[Json](
+          "".asJson,
+          _.map(jsonTransformer).asJson,
+          j => jsonTransformer(j.asJson)
+        )
+      )
+      .top
+      .getOrElse(json)
 
     normalizeKeys(transformed)
   }

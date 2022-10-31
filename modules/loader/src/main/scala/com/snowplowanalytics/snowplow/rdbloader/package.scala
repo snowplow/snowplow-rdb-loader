@@ -18,7 +18,7 @@ import cats.implicits._
 
 import fs2.Stream
 
-import doobie.util.{Read, Get, Put}
+import doobie.util.{Get, Put, Read}
 import doobie.implicits.javasql._
 
 import io.circe.parser.parse
@@ -27,17 +27,19 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{StringEnum, Semver}
-import com.snowplowanalytics.snowplow.rdbloader.config.{StorageTarget, Config}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, StringEnum}
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DiscoveryFailure, DataDiscovery}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure}
 
 package object rdbloader {
 
   /** Stream of discovered folders. `LoaderMessage` is here for metainformation */
   type DiscoveryStream[F[_]] = Stream[F, DataDiscovery.WithOrigin]
 
-  /** List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables */
+  /**
+   * List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables
+   */
   type LoadStatements = NonEmptyList[Statement.Loading]
 
   /** A function to build a specific `Target` or error in case invalid config is passed */
@@ -46,7 +48,7 @@ package object rdbloader {
   /** Loading effect, producing value of type `A` with possible `LoaderError` */
   type LoaderAction[F[_], A] = EitherT[F, LoaderError, A]
 
-  /** Lift value into  */
+  /** Lift value into */
   object LoaderAction {
     def apply[F[_], A](actionE: F[Either[LoaderError, A]]): LoaderAction[F, A] =
       EitherT[F, LoaderError, A](actionE)

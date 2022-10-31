@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import scala.concurrent.duration.FiniteDuration
 
-import cats.effect.{Timer, Clock}
+import cats.effect.{Clock, Timer}
 
 object PureTimer {
   def interpreter: Timer[Pure] = new Timer[Pure] {

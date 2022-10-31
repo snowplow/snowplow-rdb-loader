@@ -18,7 +18,7 @@ object Manifest {
   implicit private val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  val Name       = "manifest"
+  val Name = "manifest"
   val LegacyName = "manifest_legacy"
 
   // Applicable only for Redshift
@@ -31,7 +31,8 @@ object Manifest {
 
   def initialize[F[_]: MonadThrow: Logging: Timer, C[_]: DAO: Monad](
     target: StorageTarget
-  )(implicit F: Transaction[F, C]): F[Unit] =
+  )(implicit F: Transaction[F, C]
+  ): F[Unit] =
     F.transact(setup[C](target.schema, target)).attempt.flatMap {
       case Right(InitStatus.Created) =>
         Logging[F].info("The manifest table has been created")
@@ -52,24 +53,24 @@ object Manifest {
       for {
         exists <- Control.tableExists[F](Name)
         status <- if (exists) for {
-          existingTableColumns <- Control.getColumns[F](Name)
-          legacy = existingTableColumns.toSet === LegacyColumns.toSet
-          status <- if (legacy)
-            Control.renameTable[F](Name, LegacyName) *>
-              create[F].as[InitStatus](InitStatus.Migrated)
-          else
-            Monad[F].pure[InitStatus](InitStatus.NoChanges)
-        } yield status
-        else create[F].as(InitStatus.Created)
+                    existingTableColumns <- Control.getColumns[F](Name)
+                    legacy = existingTableColumns.toSet === LegacyColumns.toSet
+                    status <- if (legacy)
+                                Control.renameTable[F](Name, LegacyName) *>
+                                  create[F].as[InitStatus](InitStatus.Migrated)
+                              else
+                                Monad[F].pure[InitStatus](InitStatus.NoChanges)
+                  } yield status
+                  else create[F].as(InitStatus.Created)
         _ <- status match {
-          case InitStatus.Migrated | InitStatus.Created =>
-            target match {
-              case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"), DAO.Purpose.NonLoading)
-              case _           => Monad[F].unit
-            }
-          case _ =>
-            Monad[F].unit
-        }
+               case InitStatus.Migrated | InitStatus.Created =>
+                 target match {
+                   case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"), DAO.Purpose.NonLoading)
+                   case _ => Monad[F].unit
+                 }
+               case _ =>
+                 Monad[F].unit
+             }
       } yield status
   }
 
@@ -83,16 +84,14 @@ object Manifest {
   def create[F[_]: DAO: Functor]: F[Unit] =
     DAO[F].executeUpdate(DAO[F].target.getManifest, DAO.Purpose.NonLoading).void
 
-
   case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)
 
   object Entry {
     import com.snowplowanalytics.snowplow.rdbloader.readTimestamps
 
     implicit val entryRead: Read[Entry] =
-      (Read[java.sql.Timestamp], Read[LoaderMessage.ManifestItem]).mapN {
-        case (ingestion, meta) =>
-          Entry(ingestion.toInstant, meta)
+      (Read[java.sql.Timestamp], Read[LoaderMessage.ManifestItem]).mapN { case (ingestion, meta) =>
+        Entry(ingestion.toInstant, meta)
       }
   }
 

@@ -17,24 +17,27 @@ import cats.implicits._
 
 import cats.effect.Timer
 
-import com.snowplowanalytics.snowplow.rdbloader.config.Config.{ Retries, Strategy }
+import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 
-import retry.{RetryPolicies, retryingOnSomeErrors, RetryDetails, RetryPolicy}
+import retry.{RetryDetails, RetryPolicies, RetryPolicy, retryingOnSomeErrors}
 
 /**
- * A module responsible for retrying a transaction
- * Unlike, `discovery.Retries` it's all about retrying the current load,
- * whereas `discovery.Retries` is all about retrying past loads
+ * A module responsible for retrying a transaction Unlike, `discovery.Retries` it's all about
+ * retrying the current load, whereas `discovery.Retries` is all about retrying past loads
  */
 object Retry {
 
   /**
-   * This retry policy will attempt several times with short pauses (30 + 60 + 90 sec)
-   * Because most of errors such connection drops should be happening in in connection acquisition
-   * The error handler will also abort the transaction (it should start in the original action again)
+   * This retry policy will attempt several times with short pauses (30 + 60 + 90 sec) Because most
+   * of errors such connection drops should be happening in in connection acquisition The error
+   * handler will also abort the transaction (it should start in the original action again)
    */
-  def retryLoad[F[_]: MonadThrow: Logging: Timer, A](config: Retries, incrementAttempt: F[Unit], fa: F[A]): F[A] = {
+  def retryLoad[F[_]: MonadThrow: Logging: Timer, A](
+    config: Retries,
+    incrementAttempt: F[Unit],
+    fa: F[A]
+  ): F[A] = {
     val onError = (e: Throwable, d: RetryDetails) => incrementAttempt *> log[F](e, d)
     val retryPolicy = getRetryPolicy[F](config)
     retryingOnSomeErrors[A](retryPolicy, isWorth, onError)(fa)
@@ -45,7 +48,7 @@ object Retry {
 
   /** Check if error is worth retrying */
   def isWorth(e: Throwable): Boolean = {
-    val isFatal = FatalFailures.foldLeft(false) { (isPreviousFatal, predicate) => predicate(e) || isPreviousFatal }
+    val isFatal = FatalFailures.foldLeft(false)((isPreviousFatal, predicate) => predicate(e) || isPreviousFatal)
     !isFatal
   }
 
@@ -60,13 +63,14 @@ object Retry {
     e => e.toString.toLowerCase.contains("data loading error iam role"),
     e => e.toString.toLowerCase.contains("invalid operation: cannot copy into nonexistent table"),
     e => e.toString.toLowerCase.contains("jsonpath file") && e.toString.toLowerCase.contains("was not found"),
-    e => e.toString.toLowerCase.contains("invalid operation: number of jsonpath") && e.toString.toLowerCase.contains("columns should match"),
+    e =>
+      e.toString.toLowerCase.contains("invalid operation: number of jsonpath") && e.toString.toLowerCase.contains("columns should match"),
     e => e.toString.toLowerCase.contains("invalid operation: permission denied for"),
     e => e.toString.toLowerCase.contains("cannot decode sql row: table comment is not valid schemakey, invalid_igluuri")
   )
 
   /** Build a cats-retry-specific retry policy from Loader's config */
-  def getRetryPolicy[F[_]: Applicative](retries: Retries): RetryPolicy[F] = {
+  def getRetryPolicy[F[_]: Applicative](retries: Retries): RetryPolicy[F] =
     if (retries.attempts.contains(0)) RetryPolicies.alwaysGiveUp
     else {
       val policy = retries.strategy match {
@@ -77,7 +81,7 @@ object Retry {
       }
 
       val withAttempts = retries.attempts match {
-        case Some(attempts) => 
+        case Some(attempts) =>
           policy.join(RetryPolicies.limitRetries(attempts))
         case None =>
           policy
@@ -90,7 +94,6 @@ object Retry {
           withAttempts
       }
     }
-  }
 
   implicit val detailsShow: Show[RetryDetails] =
     Show.show {

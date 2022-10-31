@@ -38,17 +38,16 @@ class BlobStorageSpec extends Specification with Tables {
 
   "BlobStorage.Key.diff" should {
     "return path diff correctly" >> {
-                        "parent"                 |                   "sub"                     |                "diff"             |>
-      "s3://path1"                               !  "s3://path1/path2/path3/runs/run_id"       !  Some("path2/path3/runs/run_id")  |
-      "s3://path1/path2"                         !  "s3://path1/path2/path3/runs/run_id"       !  Some("path3/runs/run_id")        |
-      "s3://path1/path2/path3"                   !  "s3://path1/path2/path3/runs/run_id"       !  Some("runs/run_id")              |
-      "s3://path1/path2/path3/runs"              !  "s3://path1/path2/path3/runs/run_id"       !  Some("run_id")                   |
-      "s3://path1/path2/path3/runs/run_id"       !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
-      "s3://path1/path2/path3/runs/run_id/path4" !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
-      "s3://path1/path2/path4"                   !  "s3://path1/path2/path3/runs/run_id"       !  None                             |
-      { (parent, sub, diff) =>
-        BlobStorage.Folder.coerce(sub).diff(BlobStorage.Folder.coerce(parent)) must beEqualTo(diff)
-      }
+      "parent" | "sub" | "diff" |>
+        "s3://path1" ! "s3://path1/path2/path3/runs/run_id" ! Some("path2/path3/runs/run_id") |
+        "s3://path1/path2" ! "s3://path1/path2/path3/runs/run_id" ! Some("path3/runs/run_id") |
+        "s3://path1/path2/path3" ! "s3://path1/path2/path3/runs/run_id" ! Some("runs/run_id") |
+        "s3://path1/path2/path3/runs" ! "s3://path1/path2/path3/runs/run_id" ! Some("run_id") |
+        "s3://path1/path2/path3/runs/run_id" ! "s3://path1/path2/path3/runs/run_id" ! None |
+        "s3://path1/path2/path3/runs/run_id/path4" ! "s3://path1/path2/path3/runs/run_id" ! None |
+        "s3://path1/path2/path4" ! "s3://path1/path2/path3/runs/run_id" ! None | { (parent, sub, diff) =>
+          BlobStorage.Folder.coerce(sub).diff(BlobStorage.Folder.coerce(parent)) must beEqualTo(diff)
+        }
     }
   }
 }

@@ -25,10 +25,8 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec._
 
-
 import scala.concurrent.duration.DurationInt
 import org.specs2.mutable.Specification
-
 
 class DatabricksSpec extends Specification {
   import DatabricksSpec._
@@ -59,58 +57,76 @@ class DatabricksSpec extends Specification {
           path must beEqualTo(baseFolder)
           compression must beEqualTo(Compression.Gzip)
 
-          columnsToCopy.names must contain(allOf(
-            ColumnName("unstruct_event_com_acme_aaa_1"),
-            ColumnName("unstruct_event_com_acme_ccc_1"),
-            ColumnName("contexts_com_acme_yyy_1"),
-            ColumnName("contexts_com_acme_zzz_1"),
-          ))
+          columnsToCopy.names must contain(
+            allOf(
+              ColumnName("unstruct_event_com_acme_aaa_1"),
+              ColumnName("unstruct_event_com_acme_ccc_1"),
+              ColumnName("contexts_com_acme_yyy_1"),
+              ColumnName("contexts_com_acme_zzz_1")
+            )
+          )
 
-          columnsToCopy.names must not contain(ColumnName("unstruct_event_com_acme_bbb_1"))
-          columnsToCopy.names must not contain(ColumnName("contexts_com_acme_xxx_1"))
-          columnsToCopy.names must not contain(ColumnName("not_a_snowplow_column"))
+          columnsToCopy.names must not contain (ColumnName("unstruct_event_com_acme_bbb_1"))
+          columnsToCopy.names must not contain (ColumnName("contexts_com_acme_xxx_1"))
+          columnsToCopy.names must not contain (ColumnName("not_a_snowplow_column"))
 
-          columnsToSkip.names must beEqualTo(List(
-            ColumnName("unstruct_event_com_acme_bbb_1"),
-            ColumnName("contexts_com_acme_xxx_1"),
-          ))
+          columnsToSkip.names must beEqualTo(
+            List(
+              ColumnName("unstruct_event_com_acme_bbb_1"),
+              ColumnName("contexts_com_acme_xxx_1")
+            )
+          )
       }
     }
   }
 
   "toFragment" should {
     "create sql for loading" in {
-      val toCopy = ColumnsToCopy(List(
-        ColumnName("app_id"),
-        ColumnName("unstruct_event_com_acme_aaa_1"),
-        ColumnName("contexts_com_acme_xxx_1")
-      ))
-      val toSkip = ColumnsToSkip(List(
-        ColumnName("unstruct_event_com_acme_bbb_1"),
-        ColumnName("contexts_com_acme_yyy_1"),
-      ))
-      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), LoadAuthMethod.NoCreds)
+      val toCopy = ColumnsToCopy(
+        List(
+          ColumnName("app_id"),
+          ColumnName("unstruct_event_com_acme_aaa_1"),
+          ColumnName("contexts_com_acme_xxx_1")
+        )
+      )
+      val toSkip = ColumnsToSkip(
+        List(
+          ColumnName("unstruct_event_com_acme_bbb_1"),
+          ColumnName("contexts_com_acme_yyy_1")
+        )
+      )
+      val statement =
+        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), LoadAuthMethod.NoCreds)
 
       target.toFragment(statement).toString must beLike { case sql =>
-        sql must contain("SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/'")
+        sql must contain(
+          "SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/'"
+        )
       }
     }
 
     "create sql with credentials for loading" in {
-      val toCopy = ColumnsToCopy(List(
-        ColumnName("app_id"),
-        ColumnName("unstruct_event_com_acme_aaa_1"),
-        ColumnName("contexts_com_acme_xxx_1")
-      ))
-      val toSkip = ColumnsToSkip(List(
-        ColumnName("unstruct_event_com_acme_bbb_1"),
-        ColumnName("contexts_com_acme_yyy_1"),
-      ))
+      val toCopy = ColumnsToCopy(
+        List(
+          ColumnName("app_id"),
+          ColumnName("unstruct_event_com_acme_aaa_1"),
+          ColumnName("contexts_com_acme_xxx_1")
+        )
+      )
+      val toSkip = ColumnsToSkip(
+        List(
+          ColumnName("unstruct_event_com_acme_bbb_1"),
+          ColumnName("contexts_com_acme_yyy_1")
+        )
+      )
       val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken")
-      val statement = Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod)
+      val statement =
+        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod)
 
       target.toFragment(statement).toString must beLike { case sql =>
-        sql must contain(s"SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/' WITH ( CREDENTIAL (AWS_ACCESS_KEY = '${loadAuthMethod.awsAccessKey}', AWS_SECRET_KEY = '${loadAuthMethod.awsSecretKey}', AWS_SESSION_TOKEN = '${loadAuthMethod.awsSessionToken}') )")
+        sql must contain(
+          s"SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/' WITH ( CREDENTIAL (AWS_ACCESS_KEY = '${loadAuthMethod.awsAccessKey}', AWS_SECRET_KEY = '${loadAuthMethod.awsSecretKey}', AWS_SESSION_TOKEN = '${loadAuthMethod.awsSessionToken}') )"
+        )
       }
     }
   }
@@ -121,33 +137,38 @@ object DatabricksSpec {
   val baseFolder: BlobStorage.Folder =
     BlobStorage.Folder.coerce("s3://somewhere/path")
 
-  val target: Target = Databricks.build(Config(
-    StorageTarget.Databricks(
-      "host",
-      None,
-      "snowplow",
-      443,
-      "some/path",
-      StorageTarget.PasswordConfig.PlainText("xxx"),
-      None,
-      "useragent",
-      StorageTarget.LoadAuthMethod.NoCreds,
-      2.days
-    ),
-    Config.Cloud.AWS(
-      Region("eu-central-1"),
-      Config.Cloud.AWS.SQS("my-queue.fifo"),
-    ),
-    None,
-    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
-    None,
-    Config.Schedules(Nil),
-    Config.Timeouts(1.minute, 1.minute, 1.minute),
-    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.FeatureFlags(addLoadTstampColumn = true),
-    exampleTelemetry
-  )).right.get
+  val target: Target = Databricks
+    .build(
+      Config(
+        StorageTarget.Databricks(
+          "host",
+          None,
+          "snowplow",
+          443,
+          "some/path",
+          StorageTarget.PasswordConfig.PlainText("xxx"),
+          None,
+          "useragent",
+          StorageTarget.LoadAuthMethod.NoCreds,
+          2.days
+        ),
+        Config.Cloud.AWS(
+          Region("eu-central-1"),
+          Config.Cloud.AWS.SQS("my-queue.fifo")
+        ),
+        None,
+        Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
+        None,
+        Config.Schedules(Nil),
+        Config.Timeouts(1.minute, 1.minute, 1.minute),
+        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+        Config.FeatureFlags(addLoadTstampColumn = true),
+        exampleTelemetry
+      )
+    )
+    .right
+    .get
 
 }

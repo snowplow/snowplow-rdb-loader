@@ -39,49 +39,51 @@ import java.net.URI
 
 object ParquetSink {
 
-  def parquetSink[F[_] : Concurrent : ContextShift : Timer, C](resources: Resources[F, C],
-                                                            compression: Compression,
-                                                            uri: URI,
-                                                            window: Window,
-                                                            types: List[Data.ShreddedType],
-                                                            path: SinkPath): Pipe[F, Transformed.Data, Unit] = {
-    transformedData =>
+  def parquetSink[F[_]: Concurrent: ContextShift: Timer, C](
+    resources: Resources[F, C],
+    compression: Compression,
+    uri: URI,
+    window: Window,
+    types: List[Data.ShreddedType],
+    path: SinkPath
+  ): Pipe[F, Transformed.Data, Unit] = { transformedData =>
+    // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
+    // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
+    val targetPath = s"${uri.toString}/${window.getDir}/${path.value}"
+    val schemaCreation = createSchemaFromTypes(resources, types).value
 
-      // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
-      // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
-      val targetPath = s"${uri.toString}/${window.getDir}/${path.value}"
-      val schemaCreation = createSchemaFromTypes(resources, types).value
+    Stream.eval(schemaCreation).flatMap {
+      case Left(error) =>
+        Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
+      case Right(schema) =>
+        val parquetPipe = writeAsParquet(resources.blocker, compression, targetPath, schema)
 
-      Stream.eval(schemaCreation).flatMap {
-        case Left(error) =>
-          Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
-        case Right(schema) =>
-          val parquetPipe = writeAsParquet(resources.blocker, compression, targetPath, schema)
-
-          transformedData
-            .mapFilter(_.fieldValues)
-            .through(parquetPipe)
-            .map(_ => ())
-      }
+        transformedData
+          .mapFilter(_.fieldValues)
+          .through(parquetPipe)
+          .map(_ => ())
+    }
   }
 
-
-  private def createSchemaFromTypes[F[_] : Concurrent : ContextShift : Timer, C](resources: Resources[F, C],
-                                                                              types: List[Data.ShreddedType]): EitherT[F, FailureDetails.LoaderIgluError, MessageType] = {
+  private def createSchemaFromTypes[F[_]: Concurrent: ContextShift: Timer, C](
+    resources: Resources[F, C],
+    types: List[Data.ShreddedType]
+  ): EitherT[F, FailureDetails.LoaderIgluError, MessageType] =
     for {
       nonAtomic <- NonAtomicFieldsProvider.build[F](resources.igluResolver, types.map(WideRow.Type.from))
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
-  }
 
-  private def writeAsParquet[F[_] : Concurrent : ContextShift : Timer](blocker: Blocker,
-                                                                       compression: Compression,
-                                                                       path: String,
-                                                                       schema: MessageType) = {
+  private def writeAsParquet[F[_]: Concurrent: ContextShift: Timer](
+    blocker: Blocker,
+    compression: Compression,
+    path: String,
+    schema: MessageType
+  ) = {
     implicit val targetSchema = schema
 
     val compressionCodecName = compression match {
-      case Compression.None => CompressionCodecName.UNCOMPRESSED 
+      case Compression.None => CompressionCodecName.UNCOMPRESSED
       case Compression.Gzip => CompressionCodecName.GZIP
     }
 
@@ -93,9 +95,8 @@ object ParquetSink {
 
   private def buildParquetRecord(fieldsWithValues: List[FieldWithValue]) = Stream.emit {
     fieldsWithValues
-      .foldLeft[RowParquetRecord](RowParquetRecord.empty) {
-        case (acc, fieldWithValue) =>
-          acc.add(fieldWithValue.field.name, fieldWithValue.value, config)
+      .foldLeft[RowParquetRecord](RowParquetRecord.empty) { case (acc, fieldWithValue) =>
+        acc.add(fieldWithValue.field.name, fieldWithValue.value, config)
       }
   }
 }

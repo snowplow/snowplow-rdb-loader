@@ -23,7 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metric
 
 /** Report metrics to stdout (logger) */
 object StdoutReporter {
-  
+
   private val loggerName = "transformer.metrics"
 
   def make[F[_]: Sync](

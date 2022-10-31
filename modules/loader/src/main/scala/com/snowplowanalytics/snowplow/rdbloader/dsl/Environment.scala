@@ -40,23 +40,25 @@ import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
 
-
-/** Container for most of interepreters to be used in Main
- * JDBC will be instantiated only when necessary, and as a `Reousrce`
+/**
+ * Container for most of interepreters to be used in Main JDBC will be instantiated only when
+ * necessary, and as a `Reousrce`
  */
-class Environment[F[_]](cache: Cache[F],
-                        logging: Logging[F],
-                        monitoring: Monitoring[F],
-                        iglu: Iglu[F],
-                        blobStorage: BlobStorage[F],
-                        queueConsumer: Queue.Consumer[F],
-                        loadAuthService: LoadAuthService[F],
-                        jsonPathDiscovery: JsonPathDiscovery[F],
-                        transaction: Transaction[F, ConnectionIO],
-                        target: Target,
-                        timeouts: Config.Timeouts,
-                        control: Control[F],
-                        telemetry: Telemetry[F]) {
+class Environment[F[_]](
+  cache: Cache[F],
+  logging: Logging[F],
+  monitoring: Monitoring[F],
+  iglu: Iglu[F],
+  blobStorage: BlobStorage[F],
+  queueConsumer: Queue.Consumer[F],
+  loadAuthService: LoadAuthService[F],
+  jsonPathDiscovery: JsonPathDiscovery[F],
+  transaction: Transaction[F, ConnectionIO],
+  target: Target,
+  timeouts: Config.Timeouts,
+  control: Control[F],
+  telemetry: Telemetry[F]
+) {
   implicit val cacheF: Cache[F] = cache
   implicit val loggingF: Logging[F] = logging
   implicit val monitoringF: Monitoring[F] = monitoring
@@ -80,22 +82,27 @@ object Environment {
 
   val appId = java.util.UUID.randomUUID.toString
 
-  case class CloudServices[F[_]](blobStorage: BlobStorage[F],
-                                 queueConsumer: Queue.Consumer[F],
-                                 loadAuthService: LoadAuthService[F],
-                                 jsonPathDiscovery: JsonPathDiscovery[F],
-                                 secretStore: SecretStore[F])
+  case class CloudServices[F[_]](
+    blobStorage: BlobStorage[F],
+    queueConsumer: Queue.Consumer[F],
+    loadAuthService: LoadAuthService[F],
+    jsonPathDiscovery: JsonPathDiscovery[F],
+    secretStore: SecretStore[F]
+  )
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](cli: CliConfig,
-                                                                               statementer: Target,
-                                                                               appName: String,
-                                                                               appVersion: String): Resource[F, Environment[F]] =
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](
+    cli: CliConfig,
+    statementer: Target,
+    appName: String,
+    appVersion: String
+  ): Resource[F, Environment[F]] =
     for {
       blocker <- Blocker[F]
       implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
       httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
-      implicit0(logging: Logging[F]) = Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      implicit0(logging: Logging[F]) =
+        Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
@@ -107,18 +114,19 @@ object Environment {
       cloudServices <- createCloudServices(cli.config, blocker, control)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
-      implicit0(monitoring: Monitoring[F]) = Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
+      implicit0(monitoring: Monitoring[F]) =
+        Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
       telemetry <- Telemetry.build[F](
-        cli.config.telemetry,
-        appName,
-        appVersion,
-        httpClient,
-        appId,
-        getRegionForTelemetry(cli.config),
-        getCloudForTelemetry(cli.config)
-      )
+                     cli.config.telemetry,
+                     appName,
+                     appVersion,
+                     httpClient,
+                     appId,
+                     getRegionForTelemetry(cli.config),
+                     getCloudForTelemetry(cli.config)
+                   )
     } yield new Environment[F](
       cache,
       logging,
@@ -150,13 +158,18 @@ object Environment {
         Resource.pure[F, Option[SentryClient]](none[SentryClient])
     }
 
-  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](config: Config[StorageTarget], blocker: Blocker, control: Control[F]): Resource[F, CloudServices[F]] =
+  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](
+    config: Config[StorageTarget],
+    blocker: Blocker,
+    control: Control[F]
+  ): Resource[F, CloudServices[F]] =
     config.cloud match {
       case c: Cloud.AWS =>
-        for {          
+        for {
           implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](c.region.name)
           postProcess = Queue.Consumer.postProcess[F]
-          queueConsumer <- SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+          queueConsumer <-
+            SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore <- EC2ParameterStore.secretStore[F]
@@ -168,15 +181,15 @@ object Environment {
           implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(blocker)
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
-            blocker = blocker,
-            projectId = c.messageQueue.projectId,
-            subscription = c.messageQueue.subscriptionId,
-            parallelPullCount = c.messageQueue.parallelPullCount,
-            bufferSize = c.messageQueue.bufferSize,
-            maxAckExtensionPeriod = config.timeouts.loading,
-            customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
-            postProcess = Some(postProcess)
-          )
+                             blocker = blocker,
+                             projectId = c.messageQueue.projectId,
+                             subscription = c.messageQueue.subscriptionId,
+                             parallelPullCount = c.messageQueue.parallelPullCount,
+                             bufferSize = c.messageQueue.bufferSize,
+                             maxAckExtensionPeriod = config.timeouts.loading,
+                             customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
+                             postProcess = Some(postProcess)
+                           )
           secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }

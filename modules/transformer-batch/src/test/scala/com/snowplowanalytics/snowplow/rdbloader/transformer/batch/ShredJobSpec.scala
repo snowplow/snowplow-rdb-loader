@@ -42,7 +42,7 @@ import io.circe.Json
 import io.circe.literal._
 import io.circe.syntax._
 import io.circe.optics.JsonPath._
-import io.circe.parser.{ parse => parseCirce }
+import io.circe.parser.{parse => parseCirce}
 
 // Json4s
 import org.json4s.JsonDSL._
@@ -56,13 +56,12 @@ import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{TransformerConfig, Region}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 
 // Specs2
 import org.specs2.matcher.Matcher
 import org.specs2.matcher.Matchers._
-
 
 object ShredJobSpec {
 
@@ -109,9 +108,12 @@ object ShredJobSpec {
 
   /**
    * Read a part file at the given path into a List of Strings
-   * @param root A root filepath
-   * @param relativePath The relative path to the file from the root
-   * @return the file contents as well as the file name
+   * @param root
+   *   A root filepath
+   * @param relativePath
+   *   The relative path to the file from the root
+   * @return
+   *   the file contents as well as the file name
    */
   def readPartFile(root: File, relativePath: String = "/"): Option[(List[String], String)] = {
     val files = listFilesWithExclusions(new File(root, relativePath), List.empty)
@@ -124,20 +126,24 @@ object ShredJobSpec {
   }
 
   def readParquetFile(spark: SparkSession, root: File): List[Json] =
-    spark.read.parquet(root.toString)
+    spark.read
+      .parquet(root.toString)
       .toJSON
       .collectAsList()
-      .asScala.toList
+      .asScala
+      .toList
       .flatMap(parseCirce(_).toOption)
 
   def readParquetFields(spark: SparkSession, root: File): List[StructField] =
     spark.read.parquet(root.toString).schema.fields.toList
 
-
   def readResourceFile(resourceFile: ResourceFile): List[String] =
     read(resourceFile.toUri.getPath)
 
-  /** Ignore empty files on output (necessary since https://github.com/snowplow/snowplow-rdb-loader/issues/142) */
+  /**
+   * Ignore empty files on output (necessary since
+   * https://github.com/snowplow/snowplow-rdb-loader/issues/142)
+   */
   val NonEmpty = new IOFileFilter {
     def accept(file: File): Boolean = file.length() > 1L
     def accept(dir: File, name: String): Boolean = true
@@ -145,36 +151,42 @@ object ShredJobSpec {
 
   /**
    * Recursively list files in a given path, excluding the supplied paths.
-   * @param root A root filepath
-   * @param exclusions A list of paths to exclude from the listing
-   * @return the list of files contained in the root, minus the exclusions
+   * @param root
+   *   A root filepath
+   * @param exclusions
+   *   A list of paths to exclude from the listing
+   * @return
+   *   the list of files contained in the root, minus the exclusions
    */
   def listFilesWithExclusions(root: File, exclusions: List[String]): List[String] =
-    try {
-      FileUtils.listFiles(root, NonEmpty, TrueFileFilter.TRUE)
+    try
+      FileUtils
+        .listFiles(root, NonEmpty, TrueFileFilter.TRUE)
         .asScala
         .toList
         .map(_.getCanonicalPath)
         .filter(p => !exclusions.contains(p) && !p.contains("crc") && !p.contains("SUCCESS"))
-    } catch {
+    catch {
       case e: IllegalArgumentException if e.getMessage.contains("Parameter 'directory' is not a directory") =>
         Nil
     }
 
   /** A Specs2 matcher to check if a directory on disk is empty or not. */
   val beEmptyDir: Matcher[File] =
-    ((f: File) =>
-      !f.isDirectory ||
-        f.list().length == 0 ||
-        f.listFiles().filter(f => f.getName != "_SUCCESS" && !f.getName.endsWith(".crc")).map(_.length).sum == 0,
-      "is populated dir")
+    (
+      (f: File) =>
+        !f.isDirectory ||
+          f.list().length == 0 ||
+          f.listFiles().filter(f => f.getName != "_SUCCESS" && !f.getName.endsWith(".crc")).map(_.length).sum == 0,
+      "is populated dir"
+    )
 
   /**
-   * Delete a file or directory and its contents recursively.
-   * Throws an exception if deletion is unsuccessful.
+   * Delete a file or directory and its contents recursively. Throws an exception if deletion is
+   * unsuccessful.
    */
   def deleteRecursively(file: File): Unit = {
-    def listFilesSafely(file: File): Seq[File] = {
+    def listFilesSafely(file: File): Seq[File] =
       if (file.exists()) {
         val files = file.listFiles()
         if (files == null) throw new IOException(s"Failed to list files for dir: $file")
@@ -182,35 +194,36 @@ object ShredJobSpec {
       } else {
         Seq.empty[File]
       }
-    }
 
-    try {
+    try
       if (file.isDirectory) {
         var savedIOException: IOException = null
-        for (child <- listFilesSafely(file)) {
-          try {
+        for (child <- listFilesSafely(file))
+          try
             deleteRecursively(child)
-          } catch {
+          catch {
             // In case of multiple exceptions, only last one will be thrown
             case ioe: IOException => savedIOException = ioe
           }
-        }
         if (savedIOException != null) throw savedIOException
       }
-    } finally {
+    finally
       if (!file.delete()) {
         // Delete can also fail if the file simply did not exist
         if (file.exists()) throw new IOException(s"Failed to delete: ${file.getAbsolutePath}")
       }
-    }
   }
 
   /**
    * Make a temporary file optionally filling it with contents.
-   * @param tag an identifier who will become part of the file name
-   * @param createParents whether or not to create the parent directories
-   * @param containing the optional contents
-   * @return the created file
+   * @param tag
+   *   an identifier who will become part of the file name
+   * @param createParents
+   *   whether or not to create the parent directories
+   * @param containing
+   *   the optional contents
+   * @return
+   *   the created file
    */
   def mkTmpFile(
     tag: String,
@@ -225,18 +238,19 @@ object ShredJobSpec {
 
   /**
    * Create a file with the specified name with a random number at the end.
-   * @param tag an identifier who will become part of the file name
-   * @return the created file
+   * @param tag
+   *   an identifier who will become part of the file name
+   * @return
+   *   the created file
    */
   def randomFile(tag: String): File =
-    new File(System.getProperty("java.io.tmpdir"),
-      s"snowplow-shred-job-${tag}-${Random.nextInt(Int.MaxValue)}")
+    new File(System.getProperty("java.io.tmpdir"), s"snowplow-shred-job-${tag}-${Random.nextInt(Int.MaxValue)}")
 
   /** Remove the timestamp from bad rows so that what remains is deterministic */
   def removeTstamp(badRow: String): String = {
     val badRowJson = parse(badRow)
     val badRowWithoutTimestamp =
-      ("line", (badRowJson \ "line")) ~ (("errors", (badRowJson \ "errors")))
+      ("line", badRowJson \ "line") ~ (("errors", badRowJson \ "errors"))
     compact(badRowWithoutTimestamp)
   }
 
@@ -245,7 +259,12 @@ object ShredJobSpec {
     parseCirce(s).map(setter).map(_.noSpaces).getOrElse(s)
   }
 
-  private def storageConfig(shredder: Config, tsv: Boolean, jsonSchemas: List[SchemaCriterion], wideRow: Option[WideRow]) = {
+  private def storageConfig(
+    shredder: Config,
+    tsv: Boolean,
+    jsonSchemas: List[SchemaCriterion],
+    wideRow: Option[WideRow]
+  ) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
@@ -308,8 +327,9 @@ object ShredJobSpec {
 
   private val igluConfigWithLocal = {
     val encoder = Base64.getUrlEncoder
-    new String(encoder.encode(
-      """|{
+    new String(
+      encoder.encode(
+        """|{
          |"schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
          |"data": {
          |"cacheSize": 500,
@@ -356,18 +376,21 @@ object ShredJobSpec {
          |}
          |]
          |}
-         |}""".stripMargin.replaceAll("[\n\r]","").getBytes()
-    ))
+         |}""".stripMargin.replaceAll("[\n\r]", "").getBytes()
+      )
+    )
 
   }
 
   val dynamodbDuplicateStorageTable = "snowplow-integration-test-crossbatch-deduplication"
   val dynamodbDuplicateStorageRegion = "us-east-1"
+
   /**
-   * Duplicate storage configuration, enabling cross-batch deduplication on CI environment
-   * If CI is set and all envvars are available it becomes valid schema
-   * If not all envvars are available, but CI is set - it will throw runtime exception as impoperly configured CI environment
-   * If not all envvars are available, but CI isn't set - it will return empty JSON, which should not be used anywhere (in JobSpecHelpers)
+   * Duplicate storage configuration, enabling cross-batch deduplication on CI environment If CI is
+   * set and all envvars are available it becomes valid schema If not all envvars are available, but
+   * CI is set - it will throw runtime exception as impoperly configured CI environment If not all
+   * envvars are available, but CI isn't set - it will return empty JSON, which should not be used
+   * anywhere (in JobSpecHelpers)
    */
   val duplicateStorageConfig =
     json"""{
@@ -389,7 +412,8 @@ object ShredJobSpec {
   def clearFailureTimestamps(jsons: List[String]): List[String] =
     jsons
       .map(parseCirce)
-      .sequence.map(_.map(clearTimestamp))
+      .sequence
+      .map(_.map(clearTimestamp))
       .toOption
       .get
       .map(_.noSpaces)
@@ -400,7 +424,11 @@ object ShredJobSpec {
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
-  def getShredder(events: Events, dirs: OutputDirs, deduplication: Config.Deduplication): Config = {
+  def getShredder(
+    events: Events,
+    dirs: OutputDirs,
+    deduplication: Config.Deduplication
+  ): Config = {
     val input = events match {
       case r: ResourceFile => r.toUri
       case l: Lines => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
@@ -429,25 +457,34 @@ trait ShredJobSpec extends SparkSpec {
 
   /**
    * Run the shred job with the specified lines as input.
-   * @param lines input lines
+   * @param lines
+   *   input lines
    */
-  def runShredJob(events: Events,
-                  crossBatchDedupe: Boolean = false,
-                  tsv: Boolean = false,
-                  jsonSchemas: List[SchemaCriterion] = Nil,
-                  wideRow: Option[WideRow] = None,
-                  outputDirs: Option[OutputDirs] = None,
-                  deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)): LoaderMessage.ShreddingComplete  = {
+  def runShredJob(
+    events: Events,
+    crossBatchDedupe: Boolean = false,
+    tsv: Boolean = false,
+    jsonSchemas: List[SchemaCriterion] = Nil,
+    wideRow: Option[WideRow] = None,
+    outputDirs: Option[OutputDirs] = None,
+    deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
+  ): LoaderMessage.ShreddingComplete = {
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication)
     val config = Array(
-      "--iglu-config", igluConfigWithLocal,
-      "--config", storageConfig(shredder, tsv, jsonSchemas, wideRow)
+      "--iglu-config",
+      igluConfigWithLocal,
+      "--config",
+      storageConfig(shredder, tsv, jsonSchemas, wideRow)
     )
 
     val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
       val encoder = Base64.getUrlEncoder
       val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
-      val config = SelfDescribingData.parse(duplicateStorageConfig).leftMap(_.code).flatMap(EventsManifestConfig.DynamoDb.extract).valueOr(e => throw new RuntimeException(e))
+      val config = SelfDescribingData
+        .parse(duplicateStorageConfig)
+        .leftMap(_.code)
+        .flatMap(EventsManifestConfig.DynamoDb.extract)
+        .valueOr(e => throw new RuntimeException(e))
       (Array("--duplicate-storage-config", encoded), Some(config))
     } else {
       (Array.empty[String], None)
@@ -455,7 +492,9 @@ trait ShredJobSpec extends SparkSpec {
 
     CliConfig.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
       case Right(cli) =>
-        val resolverConfig = Resolver.parseConfig(cli.igluConfig).valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
+        val resolverConfig = Resolver
+          .parseConfig(cli.igluConfig)
+          .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
 
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty)
@@ -467,7 +506,7 @@ trait ShredJobSpec extends SparkSpec {
             val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).value.right.get
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
-            
+
             Transformer.WideRowParquetTransformer(allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
@@ -479,7 +518,6 @@ trait ShredJobSpec extends SparkSpec {
     }
   }
 
-  override def afterAll(): Unit = {
+  override def afterAll(): Unit =
     super.afterAll()
-  }
 }

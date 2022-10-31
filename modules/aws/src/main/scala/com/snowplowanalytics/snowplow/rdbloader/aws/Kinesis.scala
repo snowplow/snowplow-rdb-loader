@@ -27,7 +27,7 @@ import eu.timepit.refined.numeric._
 
 import fs2.Stream
 
-import fs2.aws.kinesis.{CommittableRecord, KinesisConsumerSettings, Kinesis => Fs2Kinesis}
+import fs2.aws.kinesis.{CommittableRecord, Kinesis => Fs2Kinesis, KinesisConsumerSettings}
 
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.kinesis.common.{ConfigsBuilder, InitialPositionInStream, InitialPositionInStreamExtended}
@@ -52,50 +52,53 @@ object Kinesis {
     override def ack: F[Unit] = record.checkpoint
   }
 
-  def consumer[F[_] : ConcurrentEffect : ContextShift : Timer : Applicative](blocker: Blocker,
-                                                                             appName: String,
-                                                                             streamName: String,
-                                                                             region: Region,
-                                                                             position: InitPosition,
-                                                                             retrievalMode: Retrieval,
-                                                                             bufferSize: Int,
-                                                                             customEndpoint: Option[URI],
-                                                                             dynamodbCustomEndpoint: Option[URI],
-                                                                             cloudwatchCustomEndpoint: Option[URI],
-                                                                             cloudwatchEnabled: Boolean): Resource[F, Queue.Consumer[F]] =
+  def consumer[F[_]: ConcurrentEffect: ContextShift: Timer: Applicative](
+    blocker: Blocker,
+    appName: String,
+    streamName: String,
+    region: Region,
+    position: InitPosition,
+    retrievalMode: Retrieval,
+    bufferSize: Int,
+    customEndpoint: Option[URI],
+    dynamodbCustomEndpoint: Option[URI],
+    cloudwatchCustomEndpoint: Option[URI],
+    cloudwatchEnabled: Boolean
+  ): Resource[F, Queue.Consumer[F]] =
     for {
       region <- Resource.pure[F, AWSRegion](AWSRegion.of(region.name))
       bufferSize <- Resource.eval[F, Int Refined Positive](
-        refineV[Positive](bufferSize) match {
-          case Right(mc) => Sync[F].pure(mc)
-          case Left(e) =>
-            Sync[F].raiseError(
-              new IllegalArgumentException(s"$bufferSize can't be refined as positive: $e")
-            )
-        }
-      )
+                      refineV[Positive](bufferSize) match {
+                        case Right(mc) => Sync[F].pure(mc)
+                        case Left(e) =>
+                          Sync[F].raiseError(
+                            new IllegalArgumentException(s"$bufferSize can't be refined as positive: $e")
+                          )
+                      }
+                    )
       consumerSettings = KinesisConsumerSettings(streamName, appName, bufferSize = bufferSize)
       kinesisClient <- mkKinesisClient[F](region, customEndpoint)
       dynamoClient <- mkDynamoDbClient[F](region, dynamodbCustomEndpoint)
       cloudWatchClient <- mkCloudWatchClient[F](region, cloudwatchCustomEndpoint)
       kinesis = Fs2Kinesis.create(
-        blocker,
-        scheduler[F](
-          kinesisClient,
-          dynamoClient,
-          cloudWatchClient,
-          streamName,
-          appName,
-          position,
-          retrievalMode,
-          cloudwatchEnabled
-        )
-      )
+                  blocker,
+                  scheduler[F](
+                    kinesisClient,
+                    dynamoClient,
+                    cloudWatchClient,
+                    streamName,
+                    appName,
+                    position,
+                    retrievalMode,
+                    cloudwatchEnabled
+                  )
+                )
       consumer = new Queue.Consumer[F] {
-        override def read: Stream[F, Consumer.Message[F]] =
-          kinesis.readFromKinesisStream(consumerSettings)
-            .map(r => Message(r))
-      }
+                   override def read: Stream[F, Consumer.Message[F]] =
+                     kinesis
+                       .readFromKinesisStream(consumerSettings)
+                       .map(r => Message(r))
+                 }
     } yield consumer
 
   def getContent(record: CommittableRecord): String = {
@@ -104,26 +107,22 @@ object Kinesis {
     new String(buf, "UTF-8")
   }
 
-  private def scheduler[F[_] : Sync](kinesisClient: KinesisAsyncClient,
-                                     dynamoDbClient: DynamoDbAsyncClient,
-                                     cloudWatchClient: CloudWatchAsyncClient,
-                                     streamName: String,
-                                     appName: String,
-                                     position: InitPosition,
-                                     retrievalMode: Retrieval,
-                                     cloudWatchEnabled: Boolean)
-                                    (recordProcessorFactory: ShardRecordProcessorFactory): F[Scheduler] = {
+  private def scheduler[F[_]: Sync](
+    kinesisClient: KinesisAsyncClient,
+    dynamoDbClient: DynamoDbAsyncClient,
+    cloudWatchClient: CloudWatchAsyncClient,
+    streamName: String,
+    appName: String,
+    position: InitPosition,
+    retrievalMode: Retrieval,
+    cloudWatchEnabled: Boolean
+  )(
+    recordProcessorFactory: ShardRecordProcessorFactory
+  ): F[Scheduler] = {
     def build(uuid: UUID, hostname: String): F[Scheduler] = {
 
       val configsBuilder =
-        new ConfigsBuilder(streamName,
-          appName,
-          kinesisClient,
-          dynamoDbClient,
-          cloudWatchClient,
-          s"$hostname:$uuid",
-          recordProcessorFactory
-        )
+        new ConfigsBuilder(streamName, appName, kinesisClient, dynamoDbClient, cloudWatchClient, s"$hostname:$uuid", recordProcessorFactory)
 
       val initPositionExtended = position match {
         case InitPosition.Latest =>
@@ -170,7 +169,7 @@ object Kinesis {
     } yield scheduler
   }
 
-  private def mkKinesisClient[F[_] : Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, KinesisAsyncClient] =
+  private def mkKinesisClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, KinesisAsyncClient] =
     Resource.fromAutoCloseable {
       Sync[F].delay {
         val builder =
@@ -182,7 +181,7 @@ object Kinesis {
       }
     }
 
-  private def mkDynamoDbClient[F[_] : Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, DynamoDbAsyncClient] =
+  private def mkDynamoDbClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, DynamoDbAsyncClient] =
     Resource.fromAutoCloseable {
       Sync[F].delay {
         val builder =
@@ -194,7 +193,7 @@ object Kinesis {
       }
     }
 
-  private def mkCloudWatchClient[F[_] : Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, CloudWatchAsyncClient] =
+  private def mkCloudWatchClient[F[_]: Sync](region: AWSRegion, customEndpoint: Option[URI]): Resource[F, CloudWatchAsyncClient] =
     Resource.fromAutoCloseable {
       Sync[F].delay {
         val builder =

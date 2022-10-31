@@ -67,7 +67,7 @@ object Redshift {
                     (Item.AlterColumn(Fragment.const0(s.toDdl)) :: preTransaction, inTransaction)
                   case s @ AlterTable(_, _) =>
                     (preTransaction, Item.AddColumn(Fragment.const0(s.toDdl), ddlFile.warnings) :: inTransaction)
-                  case _ =>   // We explicitly support only ALTER TABLE here; also drops BEGIN/END
+                  case _ => // We explicitly support only ALTER TABLE here; also drops BEGIN/END
                     (preTransaction, inTransaction)
                 }
             }
@@ -79,13 +79,23 @@ object Redshift {
           override def extendTable(info: ShreddedType.Info): Option[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
-            val shreddedStatements = discovery
-              .shreddedTypes
+          override def getLoadStatements(
+            discovery: DataDiscovery,
+            eventTableColumns: EventTableColumns,
+            loadAuthMethod: LoadAuthMethod
+          ): LoadStatements = {
+            val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
-            
-            val atomic = Statement.EventsCopy(discovery.base, discovery.compression, ColumnsToCopy(AtomicColumns.Columns), ColumnsToSkip.none, discovery.typesInfo, loadAuthMethod)
+
+            val atomic = Statement.EventsCopy(
+              discovery.base,
+              discovery.compression,
+              ColumnsToCopy(AtomicColumns.Columns),
+              ColumnsToSkip.none,
+              discovery.typesInfo,
+              loadAuthMethod
+            )
             NonEmptyList(atomic, shreddedStatements)
           }
 
@@ -175,11 +185,15 @@ object Redshift {
                     throw new IllegalStateException("Widerow loading is not yet supported for Redshift")
                 }
               case Statement.CreateTransient =>
-                Fragment.const0(s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )")
+                Fragment.const0(
+                  s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )"
+                )
               case Statement.DropTransient =>
                 Fragment.const0(s"DROP TABLE ${EventsTable.TransitTable(schema).withSchema}")
               case Statement.AppendTransient =>
-                Fragment.const0(s"ALTER TABLE ${EventsTable.AtomicEvents(schema).withSchema} APPEND FROM ${EventsTable.TransitTable(schema).withSchema}")
+                Fragment.const0(
+                  s"ALTER TABLE ${EventsTable.AtomicEvents(schema).withSchema} APPEND FROM ${EventsTable.TransitTable(schema).withSchema}"
+                )
               case Statement.TableExists(tableName) =>
                 sql"""|SELECT EXISTS (
                       |  SELECT 1
@@ -204,7 +218,7 @@ object Redshift {
                       WHERE table_name = $tableName and table_schema = $schema"""
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
-                val types     = message.types.asJson.noSpaces
+                val types = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
@@ -263,20 +277,17 @@ object Redshift {
     }
 
   val ManifestColumns = List(
-    Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull),KeyConstaint(PrimaryKey))),
-    Column("types",RedshiftVarchar(65535),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("shredding_started",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("shredding_completed",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("min_collector_tstamp",RedshiftTimestamp,Set(CompressionEncoding(RawEncoding)),Set(Nullability(Null))),
-    Column("max_collector_tstamp",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(Null))),
-    Column("ingestion_tstamp",RedshiftTimestamp,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("compression",RedshiftVarchar(16),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("processor_artifact",RedshiftVarchar(64),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-    Column("processor_version",RedshiftVarchar(32),Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(NotNull))),
-
-    Column("count_good",RedshiftInteger,Set(CompressionEncoding(ZstdEncoding)),Set(Nullability(Null))),
+    Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull), KeyConstaint(PrimaryKey))),
+    Column("types", RedshiftVarchar(65535), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("shredding_started", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("shredding_completed", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("min_collector_tstamp", RedshiftTimestamp, Set(CompressionEncoding(RawEncoding)), Set(Nullability(Null))),
+    Column("max_collector_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(Null))),
+    Column("ingestion_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("compression", RedshiftVarchar(16), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("processor_artifact", RedshiftVarchar(64), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("processor_version", RedshiftVarchar(32), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
+    Column("count_good", RedshiftInteger, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(Null)))
   )
 
   /** Add `schema` to otherwise static definition of manifest table */
@@ -285,6 +296,6 @@ object Redshift {
       s"$schema.${Manifest.Name}",
       ManifestColumns,
       Set.empty,
-      Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None,NonEmptyList.one("ingestion_tstamp")))
+      Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None, NonEmptyList.one("ingestion_tstamp")))
     )
 }

@@ -29,9 +29,9 @@ object StdoutReporter {
             for {
               logger <- Slf4jLogger.fromName[F]("rdbloader.metrics")
               _ <- metrics.traverse_ { m =>
-                val formatted = formatMetric(config.prefix, m)
-                logger.info(formatted)
-              }
+                     val formatted = formatMetric(config.prefix, m)
+                     logger.info(formatted)
+                   }
             } yield ()
         }
       case None =>

@@ -52,7 +52,7 @@ object Snowflake {
       case tgt: StorageTarget.Snowflake =>
         val schema = tgt.schema
         val result = new Target {
-          
+
           override val requiresEventsColumns: Boolean = false
 
           override def updateTable(migration: Migration): Block = {
@@ -70,7 +70,11 @@ object Snowflake {
             Some(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
+          override def getLoadStatements(
+            discovery: DataDiscovery,
+            eventTableColumns: EventTableColumns,
+            loadAuthMethod: LoadAuthMethod
+          ): LoadStatements = {
             val columnsToCopy = ColumnsToCopy.fromDiscoveredData(discovery)
             loadAuthMethod match {
               case LoadAuthMethod.NoCreds =>
@@ -110,10 +114,10 @@ object Snowflake {
 
           override def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Select1 => sql"SELECT 1"     // OK
+              case Statement.Select1 => sql"SELECT 1" // OK
               case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(tgt.warehouse)} RESUME IF SUSPENDED"
 
-              case Statement.CreateAlertingTempTable =>   // OK
+              case Statement.CreateAlertingTempTable => // OK
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR )"
               case Statement.DropAlertingTempTable =>
@@ -128,7 +132,9 @@ object Snowflake {
                 val frPath = loadAuthMethod match {
                   case LoadAuthMethod.NoCreds =>
                     // This is validated on config decoding stage
-                    val stage = tgt.folderMonitoringStage.getOrElse(throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided"))
+                    val stage = tgt.folderMonitoringStage.getOrElse(
+                      throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided")
+                    )
                     val afterStage = findPathAfterStage(stage, source)
                     Fragment.const0(s"@${qualify(stage.name)}/$afterStage")
                   case _: LoadAuthMethod.TempCreds =>
@@ -141,7 +147,9 @@ object Snowflake {
 
               case Statement.EventsCopy(path, _, columns, _, typesInfo, _) =>
                 // This is validated on config decoding stage
-                val stage = tgt.transformedStage.getOrElse(throw new IllegalStateException("Transformed stage is tried to be used without being provided"))
+                val stage = tgt.transformedStage.getOrElse(
+                  throw new IllegalStateException("Transformed stage is tried to be used without being provided")
+                )
                 val afterStage = findPathAfterStage(stage, path)
                 val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
@@ -186,11 +194,15 @@ object Snowflake {
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
 
               case Statement.CreateTransient =>
-                Fragment.const0(s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )")
+                Fragment.const0(
+                  s"CREATE TABLE ${EventsTable.TransitTable(schema).withSchema} ( LIKE ${EventsTable.AtomicEvents(schema).withSchema} )"
+                )
               case Statement.DropTransient =>
                 Fragment.const0(s"DROP TABLE ${EventsTable.TransitTable(schema).withSchema}")
               case Statement.AppendTransient =>
-                Fragment.const0(s"ALTER TABLE ${EventsTable.AtomicEvents(schema).withSchema} APPEND FROM ${EventsTable.TransitTable(schema).withSchema}")
+                Fragment.const0(
+                  s"ALTER TABLE ${EventsTable.AtomicEvents(schema).withSchema} APPEND FROM ${EventsTable.TransitTable(schema).withSchema}"
+                )
 
               case Statement.TableExists(tableName) => // OK
                 sql"""|SELECT EXISTS (
@@ -214,7 +226,7 @@ object Snowflake {
                 val jobStarted: String = message.timestamps.jobStarted.toString
                 val jobCompleted: String = message.timestamps.jobCompleted.toString
                 val minTstamp: String = message.timestamps.min.map(_.toString).getOrElse("")
-                val maxTstamp:String = message.timestamps.max.map(_.toString).getOrElse("")
+                val maxTstamp: String = message.timestamps.max.map(_.toString).getOrElse("")
                 // Redshift JDBC doesn't accept java.time.Instant
                 sql"""INSERT INTO $tableName
                   (base, types, shredding_started, shredding_completed,
@@ -247,7 +259,7 @@ object Snowflake {
               case Statement.VacuumManifest =>
                 throw new IllegalStateException("Snowflake Loader does not use vacuum manifest statement")
             }
-            
+
           private def qualify(tableName: String): String =
             s"$schema.$tableName"
 
@@ -273,24 +285,22 @@ object Snowflake {
         Left(s"Invalid State: trying to build Snowflake interpreter with unrecognized config (${other.driver} driver)")
     }
   }
-  
-  private def buildFileFormatFragment(typesInfo: TypesInfo): Fragment = {
+
+  private def buildFileFormatFragment(typesInfo: TypesInfo): Fragment =
     typesInfo match {
-      case TypesInfo.Shredded(_) => 
+      case TypesInfo.Shredded(_) =>
         throw new IllegalStateException("Shredded type is not supported for Snowflake")
       case TypesInfo.WideRow(JSON, _) =>
         Fragment.const0("FILE_FORMAT = (TYPE = JSON TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF')")
       case TypesInfo.WideRow(PARQUET, _) =>
         Fragment.const0("FILE_FORMAT = (TYPE = PARQUET)")
     }
-  }
 
   /**
-   * Build ON_ERROR fragment according to the file format.
-   * If file format is JSON, ON_ERROR will be ABORT_STATEMENT.
-   * If file format is PARQUET, ON_ERROR will be 'CONTINUE'.
-   * This is because loading Parquet transformed file with ABORT_STATEMENT fails
-   * due to empty files in the transformed folder.
+   * Build ON_ERROR fragment according to the file format. If file format is JSON, ON_ERROR will be
+   * ABORT_STATEMENT. If file format is PARQUET, ON_ERROR will be 'CONTINUE'. This is because
+   * loading Parquet transformed file with ABORT_STATEMENT fails due to empty files in the
+   * transformed folder.
    */
   private def buildErrorFragment(typesInfo: TypesInfo): Fragment =
     typesInfo match {
@@ -307,15 +317,18 @@ object Snowflake {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
       case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
-        Fragment.const0(s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')")
+        Fragment.const0(
+          s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')"
+        )
     }
 
   private def findPathAfterStage(stage: StorageTarget.Snowflake.Stage, pathToLoad: BlobStorage.Folder): String =
     stage.location match {
-      case Some(loc) => pathToLoad.diff(loc) match {
-        case Some(diff) => diff
-        case None => throw new IllegalStateException(s"The stage's path and the path to load don't match: $pathToLoad")
-      }
+      case Some(loc) =>
+        pathToLoad.diff(loc) match {
+          case Some(diff) => diff
+          case None => throw new IllegalStateException(s"The stage's path and the path to load don't match: $pathToLoad")
+        }
       case None => pathToLoad.folderName
     }
 }

@@ -46,8 +46,8 @@ object BlobStorage {
   def apply[F[_]](implicit ev: BlobStorage[F]): BlobStorage[F] = ev
 
   /**
-   * Refined type for blob storage bucket, allowing only valid blob storage paths
-   * (with `xx://` prefix and trailing shash)
+   * Refined type for blob storage bucket, allowing only valid blob storage paths (with `xx://`
+   * prefix and trailing shash)
    */
   type Folder = String @@ BlobStorageFolderTag
 
@@ -65,8 +65,7 @@ object BlobStorage {
       f.split("://").last.split("/").head
 
     /**
-     * Find diff of two blob storage paths.
-     * Return None if parent path is longer than sub path or
+     * Find diff of two blob storage paths. Return None if parent path is longer than sub path or
      * parent path doesn't match with sub path.
      */
     def diff(parent: Folder): Option[String] = {
@@ -85,7 +84,6 @@ object BlobStorage {
       go(parent.split("/").toList, f.split("/").toList)
     }
   }
-
 
   object Folder extends tag.Tagger[BlobStorageFolderTag] {
 
@@ -116,9 +114,8 @@ object BlobStorage {
   }
 
   /**
-   * Extract `xx://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events` part from
-   * Set of prefixes that can be used in config.yml
-   * In the end it won't affect how blob storage is accessed
+   * Extract `xx://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events` part from Set of prefixes that can be
+   * used in config.yml In the end it won't affect how blob storage is accessed
    */
   val supportedPrefixes = Set("s3", "s3n", "s3a", "gs")
 
@@ -130,8 +127,8 @@ object BlobStorage {
   case class BlobObject(key: Key, size: Long)
 
   /**
-   * Refined type for blob storage key,  allowing only valid blob storage paths
-   * (with `xx://` prefix and without trailing shash)
+   * Refined type for blob storage key, allowing only valid blob storage paths (with `xx://` prefix
+   * and without trailing shash)
    */
   type Key = String @@ BlobStorageKeyTag
 
@@ -176,8 +173,10 @@ object BlobStorage {
   /**
    * Split blob storage path into bucket name and folder path
    *
-   * @param path blob storage full path with `xx://` and with trailing slash
-   * @return pair of bucket name and remaining path ("some-bucket", "some/prefix/")
+   * @param path
+   *   blob storage full path with `xx://` and with trailing slash
+   * @return
+   *   pair of bucket name and remaining path ("some-bucket", "some/prefix/")
    */
   private[rdbloader] def splitPath(path: Folder): (String, String) =
     path.split("://").drop(1).mkString("").split("/").toList match {
@@ -189,8 +188,10 @@ object BlobStorage {
   /**
    * Split blob storage key into bucket name and filePath
    *
-   * @param key blob storage full path with `xx://` prefix and without trailing slash
-   * @return pair of bucket name and remaining path ("some-bucket", "some/prefix/")
+   * @param key
+   *   blob storage full path with `xx://` prefix and without trailing slash
+   * @return
+   *   pair of bucket name and remaining path ("some-bucket", "some/prefix/")
    */
   def splitKey(key: Key): (String, String) =
     key.split("://").drop(1).mkString("").split("/").toList match {

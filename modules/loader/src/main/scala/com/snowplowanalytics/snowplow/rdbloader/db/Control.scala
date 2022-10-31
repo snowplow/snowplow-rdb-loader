@@ -26,6 +26,7 @@ object Control {
     DAO[F].executeQuery[Boolean](Statement.TableExists(tableName))
 
   def getColumns[F[_]: Monad: DAO](tableName: String): F[List[ColumnName]] =
-    DAO[F].executeQueryList[String](Statement.GetColumns(tableName))
+    DAO[F]
+      .executeQueryList[String](Statement.GetColumns(tableName))
       .map(_.map(ColumnName))
 }

@@ -17,10 +17,12 @@ package com.snowplowanalytics.snowplow.loader.snowflake.ast
 import doobie.Fragment
 import doobie.implicits._
 
-case class Column(name: String,
-                  dataType: SnowflakeDatatype,
-                  notNull: Boolean = false,
-                  unique: Boolean = false) extends Ddl {
+case class Column(
+  name: String,
+  dataType: SnowflakeDatatype,
+  notNull: Boolean = false,
+  unique: Boolean = false
+) extends Ddl {
   def toDdl: Fragment = {
     val datatype = dataType.toDdl
     val frNotNull = if (notNull) Fragment.const0("NOT NULL") else Fragment.empty

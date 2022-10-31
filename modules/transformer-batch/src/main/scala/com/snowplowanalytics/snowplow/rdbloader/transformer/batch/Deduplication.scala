@@ -23,7 +23,7 @@ import io.circe.literal._
 
 import org.apache.spark.rdd.RDD
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
@@ -31,15 +31,14 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifest
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload}
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.{ Deduplication => DedupConfig }
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.{Deduplication => DedupConfig}
 
 object Deduplication {
 
   /** Arbitrary UUID, used as a dummy event id for all bad rows */
   val BadRowId = UUID.randomUUID()
 
-
-  val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1,0,0))
+  val DuplicateSchema = SchemaKey("com.snowplowanalytics.snowplow", "duplicate", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   /** Add duplicate context */
   def withSynthetic(event: Event): Event = {
@@ -50,14 +49,15 @@ object Deduplication {
   }
 
   /**
-   * Deduplication result, containing either original dataset and set of
-   * synthetic deduplicate UUIDs (in case of broadcast deduplication) or
-   * deduplicated dataset and empty set of UUIDs (in case of JOIN deduplication)
-   * for later id generation original dataset and empty UUID set (in case of 
+   * Deduplication result, containing either original dataset and set of synthetic deduplicate UUIDs
+   * (in case of broadcast deduplication) or deduplicated dataset and empty set of UUIDs (in case of
+   * JOIN deduplication) for later id generation original dataset and empty UUID set (in case of
    * disabled deduplication) - no-op basically
    *
-   * @param events parsed dataset of events, can be original or deduplicated
-   * @param duplicates set of duplicate UUIDs, can be empty or non-empty
+   * @param events
+   *   parsed dataset of events, can be original or deduplicated
+   * @param duplicates
+   *   set of duplicate UUIDs, can be empty or non-empty
    */
   final case class Result(events: RDD[Either[BadRow, Event]], duplicates: Set[UUID])
 
@@ -101,27 +101,33 @@ object Deduplication {
     }
   }
 
-
   /**
-   * Try to store event components in duplicate storage and check if it was stored before
-   * If event is unique in storage - true will be returned,
-   * If event is already in storage, with different etlTstamp - false will be returned,
-   * If event is already in storage, but with same etlTstamp - true will be returned (previous shredding was interrupted),
-   * If storage is not configured - true will be returned.
-   * If provisioned throughput exception happened - interrupt whole job
-   * If other runtime exception happened - failure is returned to be used as bad row
-   * @param event whole enriched event with possibly faked fingerprint
-   * @param tstamp the ETL tstamp, an earliest timestamp in a batch
-   * @param duplicateStorage object dealing with possible duplicates
-   * @return boolean inside validation, denoting presence or absence of event in storage
+   * Try to store event components in duplicate storage and check if it was stored before If event
+   * is unique in storage - true will be returned, If event is already in storage, with different
+   * etlTstamp - false will be returned, If event is already in storage, but with same etlTstamp -
+   * true will be returned (previous shredding was interrupted), If storage is not configured - true
+   * will be returned. If provisioned throughput exception happened - interrupt whole job If other
+   * runtime exception happened - failure is returned to be used as bad row
+   * @param event
+   *   whole enriched event with possibly faked fingerprint
+   * @param tstamp
+   *   the ETL tstamp, an earliest timestamp in a batch
+   * @param duplicateStorage
+   *   object dealing with possible duplicates
+   * @return
+   *   boolean inside validation, denoting presence or absence of event in storage
    */
   @throws[RuntimeException]
-  def crossBatch(event: Event, tstamp: Instant, duplicateStorage: Option[EventsManifest]): Either[BadRow, Boolean] = {
+  def crossBatch(
+    event: Event,
+    tstamp: Instant,
+    duplicateStorage: Option[EventsManifest]
+  ): Either[BadRow, Boolean] =
     (event, duplicateStorage) match {
       case (_, Some(storage)) =>
-        try {
+        try
           Right(storage.put(event.event_id, event.event_fingerprint.getOrElse(UUID.randomUUID().toString), tstamp))
-        } catch {
+        catch {
           case e: ProvisionedThroughputExceededException =>
             throw e
           case NonFatal(e) =>
@@ -130,5 +136,4 @@ object Deduplication {
         }
       case _ => Right(true)
     }
-  }
 }

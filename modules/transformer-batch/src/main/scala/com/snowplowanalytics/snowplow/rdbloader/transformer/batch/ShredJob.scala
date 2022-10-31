@@ -33,7 +33,7 @@ import org.apache.spark.SparkContext
 import org.apache.spark.sql.SparkSession
 
 // Snowplow
-import com.snowplowanalytics.snowplow.badrows.{Processor, BadRow}
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
@@ -47,35 +47,39 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Discovery.MessageProcessor
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.TypesAccumulator
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, DuplicateStorageSingleton}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{DuplicateStorageSingleton, IgluSingleton}
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
 
 /**
  * The Snowplow Shred job, written in Spark.
- * @param spark Spark session used throughout the job
- * @param shredConfig parsed command-line arguments
+ * @param spark
+ *   Spark session used throughout the job
+ * @param shredConfig
+ *   parsed command-line arguments
  */
-class ShredJob[T](@transient val spark: SparkSession,
-                  transformer: Transformer[T],
-                  config: Config) extends Serializable {
+class ShredJob[T](
+  @transient val spark: SparkSession,
+  transformer: Transformer[T],
+  config: Config
+) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   /**
    * Runs the shred job by:
-   *  - shredding the Snowplow enriched events
-   *  - separating out malformed rows from the properly-formed
-   *  - finding synthetic duplicates and adding them back with new ids
-   *  - writing out JSON contexts as well as properly-formed and malformed events
+   *   - shredding the Snowplow enriched events
+   *   - separating out malformed rows from the properly-formed
+   *   - finding synthetic duplicates and adding them back with new ids
+   *   - writing out JSON contexts as well as properly-formed and malformed events
    */
-  def run(folderName: String,
-          eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
+  def run(folderName: String, eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
     val jobStarted: Instant = Instant.now()
     val inputFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.input.toString).append(folderName)
     val outFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
     transformer.register(sc)
     // Enriched TSV lines along with their shredded components
-    val common = sc.textFile(inputFolder)
+    val common = sc
+      .textFile(inputFolder)
       .map { line =>
         for {
           event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
@@ -107,7 +111,8 @@ class ShredJob[T](@transient val spark: SparkSession,
       // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
       // only one event from an event id and event fingerprint combination is kept
       if (config.deduplication.natural) {
-        val dedupWithoutCache = parsedGood.groupBy { s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)) }
+        val dedupWithoutCache = parsedGood
+          .groupBy(s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)))
           .flatMap { case (_, s) =>
             val first = s.minBy(_.etl_tstamp)
             Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
@@ -148,17 +153,24 @@ class ShredJob[T](@transient val spark: SparkSession,
     val batchTimestamps = transformer.timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
-    LoaderMessage.ShreddingComplete(outFolder, transformer.typesInfo, timestamps, config.output.compression, MessageProcessor, Some(LoaderMessage.Count(eventsCounter.value)))
+    LoaderMessage.ShreddingComplete(
+      outFolder,
+      transformer.typesInfo,
+      timestamps,
+      config.output.compression,
+      MessageProcessor,
+      Some(LoaderMessage.Count(eventsCounter.value))
+    )
   }
 }
 
-class TypeAccumJob(@transient val spark: SparkSession,
-                   config: Config) extends Serializable {
+class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
   def run(folderName: String): List[TypesInfo.WideRow.Type] = {
     val inputFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.input.toString).append(folderName)
-    val types = sc.textFile(inputFolder)
+    val types = sc
+      .textFile(inputFolder)
       .map { line =>
         for {
           event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
@@ -170,7 +182,10 @@ class TypeAccumJob(@transient val spark: SparkSession,
           event.inventory.map(TypesAccumulator.wideRowTypeConverter)
         case Left(_) =>
           List.empty
-      }.distinct().collect().toList
+      }
+      .distinct()
+      .collect()
+      .toList
 
     config.deduplication.synthetic match {
       case Config.Deduplication.Synthetic.None => types
@@ -191,8 +206,10 @@ object ShredJob {
     duplicateStorageConfig: Option[Json],
     config: Config
   ): Unit = {
-   
-    val resolverConfig = Resolver.parseConfig(igluConfig).valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}")) 
+
+    val resolverConfig = Resolver
+      .parseConfig(igluConfig)
+      .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
     val s3Client = Cloud.createS3Client(config.output.region)
     val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(resolverConfig)).fold(err => throw err, identity)
 
@@ -203,7 +220,7 @@ object ShredJob {
       .getState(enrichedFolder, shreddedFolder, config.runInterval, Instant.now, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
-      val igluClient = Client[Id, Json](IgluSingleton.get(resolverConfig), CirceValidator) 
+      val igluClient = Client[Id, Json](IgluSingleton.get(resolverConfig), CirceValidator)
       val config = EventsManifestConfig
         .parseJson[Id](igluClient, json)
         .valueOr(err => throw new IllegalArgumentException(err))
@@ -212,13 +229,13 @@ object ShredJob {
     }
 
     val sendToQueue = config.queue match {
-        case q: Config.QueueConfig.SQS =>
-          val sqsClient = Cloud.createSqsClient(q.region)
-          Cloud.sendToSqs(sqsClient, q.queueName, _, _)
-        case q: Config.QueueConfig.SNS =>
-          val snsClient = Cloud.creteSnsClient(q.region)
-          Cloud.sendToSns(snsClient, q.topicArn, _, _)
-      }
+      case q: Config.QueueConfig.SQS =>
+        val sqsClient = Cloud.createSqsClient(q.region)
+        Cloud.sendToSqs(sqsClient, q.queueName, _, _)
+      case q: Config.QueueConfig.SNS =>
+        val snsClient = Cloud.creteSnsClient(q.region)
+        Cloud.sendToSns(snsClient, q.topicArn, _, _)
+    }
     val putToS3 = Cloud.putToS3(s3Client, _, _, _)
 
     unshredded.foreach { folder =>
@@ -229,11 +246,13 @@ object ShredJob {
         case TransformerConfig.Formats.WideRow.PARQUET =>
           val resolver = IgluSingleton.get(resolverConfig)
           val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
-          
-          val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
+
+          val nonAtomicFields = NonAtomicFieldsProvider
+            .build[Id](resolver, allTypesForRun)
+            .fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
-          
+
           Transformer.WideRowParquetTransformer(allFields, schema)
       }
       val job = new ShredJob(spark, transformer, config)

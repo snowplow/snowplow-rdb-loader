@@ -18,7 +18,7 @@ import scala.concurrent.duration._
 
 import fs2.Stream
 
-import cats.{ Functor, Show }
+import cats.{Functor, Show}
 import cats.implicits._
 
 import cats.effect.{Clock, Sync, Timer}
@@ -91,7 +91,10 @@ object Metrics {
     /** When we know a batch has been loaded, and we know the timestamp */
     case class FromLoad(tstamp: Instant) extends MaxTstampOfLoadedData
 
-    /** When no batch has yet been loaded, but we can guess the warehouse timestamp based on messages we've seen */
+    /**
+     * When no batch has yet been loaded, but we can guess the warehouse timestamp based on messages
+     * we've seen
+     */
     case class EarliestKnownUnloaded(tstamp: Instant) extends MaxTstampOfLoadedData
   }
 
@@ -113,9 +116,9 @@ object Metrics {
         new Metrics.PeriodicMetrics[F] {
           def report: Stream[F, Unit] =
             for {
-              _        <- Stream.fixedDelay[F](period)
+              _ <- Stream.fixedDelay[F](period)
               snapshot <- Stream.eval(Metrics.PeriodicMetricsRefs.snapshot(refs))
-              _        <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList)))
+              _ <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList)))
             } yield ()
 
           def setMaxTstampOfLoadedData(tstamp: Instant): F[Unit] =
@@ -126,13 +129,13 @@ object Metrics {
 
           def setEarliestKnownUnloadedData(tstamp: Instant): F[Unit] =
             refs.maxTstampOfLoadedData.update {
-              case MaxTstampOfLoadedData.EarliestKnownUnloaded(current) if current.isAfter(tstamp) => MaxTstampOfLoadedData.EarliestKnownUnloaded(tstamp)
+              case MaxTstampOfLoadedData.EarliestKnownUnloaded(current) if current.isAfter(tstamp) =>
+                MaxTstampOfLoadedData.EarliestKnownUnloaded(tstamp)
               case other => other
             }
         }
       }
   }
-
 
   final case class PeriodicMetricsRefs[F[_]](maxTstampOfLoadedData: Ref[F, MaxTstampOfLoadedData])
 
@@ -146,13 +149,13 @@ object Metrics {
     def snapshot[F[_]: Sync: Clock](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
       for {
         now <- Clock[F].instantNow
-        m   <- refs.maxTstampOfLoadedData.get
+        m <- refs.maxTstampOfLoadedData.get
       } yield KVMetrics.PeriodicMetricsSnapshot(KVMetric.MinAgeOfLoadedData(Duration.between(m.tstamp, now).toSeconds()))
   }
 
   sealed trait KVMetrics {
     def toList: List[KVMetric] = this match {
-      case KVMetrics.LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) => 
+      case KVMetrics.LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
         List(Some(count), minTstamp, maxTstamp, Some(shredderStart), Some(shredderEnd)).unite
       case KVMetrics.PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
         List(minAgeOfLoadedData)
@@ -179,7 +182,7 @@ object Metrics {
 
     implicit val kvMetricsShow: Show[KVMetrics] =
       Show.show {
-        case LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) => 
+        case LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
           s"""${count.value} good events were loaded.
             | It took minimum ${minTstamp.map(_.value).getOrElse("unknown")} seconds and maximum
             | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and warehouse for these events.

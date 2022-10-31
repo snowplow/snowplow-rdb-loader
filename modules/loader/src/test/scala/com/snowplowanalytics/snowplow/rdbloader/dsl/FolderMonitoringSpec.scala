@@ -36,21 +36,31 @@ class FolderMonitoringSpec extends Specification {
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
 
-      val expectedState = TestState(List(
-        PureTransaction.CommitMessage,
-        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
-        TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        PureTransaction.StartMessage,
-        TestState.LogEntry.Sql(Statement.ReadyCheck),
-        PureTransaction.NoTransactionMessage),Map()
+      val expectedState = TestState(
+        List(
+          PureTransaction.CommitMessage,
+          TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
+          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+          PureTransaction.StartMessage,
+          TestState.LogEntry.Sql(Statement.ReadyCheck),
+          PureTransaction.NoTransactionMessage
+        ),
+        Map()
       )
       val ExpectedResult = List(
-        Monitoring.AlertPayload(Monitoring.Application, Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Incomplete shredding", Map.empty)
+        Monitoring.AlertPayload(
+          Monitoring.Application,
+          Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")),
+          Severity.Warning,
+          "Incomplete shredding",
+          Map.empty
+        )
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
+      val (state, result) =
+        FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -67,21 +77,31 @@ class FolderMonitoringSpec extends Specification {
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
 
-      val expectedState = TestState(List(
-        PureTransaction.CommitMessage,
-        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
-        TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        PureTransaction.StartMessage,
-        TestState.LogEntry.Sql(Statement.ReadyCheck),
-        PureTransaction.NoTransactionMessage),Map()
+      val expectedState = TestState(
+        List(
+          PureTransaction.CommitMessage,
+          TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
+          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+          PureTransaction.StartMessage,
+          TestState.LogEntry.Sql(Statement.ReadyCheck),
+          PureTransaction.NoTransactionMessage
+        ),
+        Map()
       )
       val ExpectedResult = List(
-        Monitoring.AlertPayload(Monitoring.Application, Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")), Severity.Warning, "Unloaded batch", Map.empty)
+        Monitoring.AlertPayload(
+          Monitoring.Application,
+          Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")),
+          Severity.Warning,
+          "Unloaded batch",
+          Map.empty
+        )
       )
 
-      val (state, result) = FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
+      val (state, result) =
+        FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -95,7 +115,17 @@ class FolderMonitoringSpec extends Specification {
     "produce new keys with interval" in {
       implicit val T = IO.timer(scala.concurrent.ExecutionContext.global)
       val result = FolderMonitoring
-        .getOutputKeys[IO](Config.Folders(1.second, BlobStorage.Folder.coerce("s3://acme/logs/"), None, BlobStorage.Folder.coerce("s3://acme/shredder-output/"), None, Some(3), Some(true)))
+        .getOutputKeys[IO](
+          Config.Folders(
+            1.second,
+            BlobStorage.Folder.coerce("s3://acme/logs/"),
+            None,
+            BlobStorage.Folder.coerce("s3://acme/shredder-output/"),
+            None,
+            Some(3),
+            Some(true)
+          )
+        )
         .take(2)
         .compile
         .toList
@@ -119,40 +149,48 @@ class FolderMonitoringSpec extends Specification {
       val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
       result must beTrue
     }
-     "for key with UUID" >> {
-       "return false if key is old enough" in {
-         val duration = FiniteDuration.apply(1, "day")
-         val input = BlobStorage.Folder.parse("s3://bucket/run=2020-09-01-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
-         val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
-         result must beFalse
-       }
+    "for key with UUID" >> {
+      "return false if key is old enough" in {
+        val duration = FiniteDuration.apply(1, "day")
+        val input = BlobStorage.Folder
+          .parse("s3://bucket/run=2020-09-01-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
+          .getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+        result must beFalse
+      }
 
-       "return true if key is fresh enough" in {
-         val duration = FiniteDuration.apply(1, "day")
-         val now = Instant.parse("2021-10-30T18:35:24.00Z")
-         val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
-         val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
-         result must beTrue
-       }
+      "return true if key is fresh enough" in {
+        val duration = FiniteDuration.apply(1, "day")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = BlobStorage.Folder
+          .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
+          .getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+        result must beTrue
+      }
 
-       "return false if key is fresh, but not old enough" in {
-         val sinceDuration = FiniteDuration.apply(1, "day")
-         val untilDuration = FiniteDuration.apply(19, "hours")
-         val now = Instant.parse("2021-10-30T18:35:24.00Z")
-         val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
-         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
-         result must beFalse
-       }
+      "return false if key is fresh, but not old enough" in {
+        val sinceDuration = FiniteDuration.apply(1, "day")
+        val untilDuration = FiniteDuration.apply(19, "hours")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = BlobStorage.Folder
+          .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
+          .getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        result must beFalse
+      }
 
-       "return true if key is fresh and old enough" in {
-         val sinceDuration = FiniteDuration.apply(1, "day")
-         val untilDuration = FiniteDuration.apply(17, "hours")
-         val now = Instant.parse("2021-10-30T18:35:24.00Z")
-         val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/").getOrElse(throw new RuntimeException("Wrong key"))
-         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
-         result must beTrue
-       }
-     }
+      "return true if key is fresh and old enough" in {
+        val sinceDuration = FiniteDuration.apply(1, "day")
+        val untilDuration = FiniteDuration.apply(17, "hours")
+        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input = BlobStorage.Folder
+          .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
+          .getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        result must beTrue
+      }
+    }
 
     "for key without UUID" >> {
       "return false if key is old enough" in {

@@ -19,7 +19,7 @@ import java.util.Base64
 
 import cats.Id
 import cats.effect.Sync
-import cats.data.{ValidatedNel, EitherT}
+import cats.data.{EitherT, ValidatedNel}
 import cats.syntax.either._
 import cats.syntax.show._
 
@@ -69,22 +69,25 @@ object ConfigUtils {
         .toValidatedNel
   }
 
-  /** Optionally give precedence to configs wrapped in a "snowplow" block. To help avoid polluting config namespace */
+  /**
+   * Optionally give precedence to configs wrapped in a "snowplow" block. To help avoid polluting
+   * config namespace
+   */
   private def namespaced(configObjSource: ConfigObjectSource): ConfigObjectSource =
     ConfigObjectSource {
       for {
         configObj <- configObjSource.value()
         conf = configObj.toConfig
-      } yield {
+      } yield
         if (conf.hasPath(Namespace))
           conf.getConfig(Namespace).withFallback(conf.withoutPath(Namespace))
         else
           conf
-      }
     }
 
   def validateResolverJson(resolverJson: Json): ValidatedNel[String, Json] =
-    Resolver.parse[Id](resolverJson)
+    Resolver
+      .parse[Id](resolverJson)
       .leftMap(_.show)
       .map(_ => resolverJson)
       .toValidatedNel

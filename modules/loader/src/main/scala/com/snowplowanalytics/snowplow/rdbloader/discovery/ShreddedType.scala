@@ -24,18 +24,19 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 /**
- * Generally same as `LoaderMessage.ShreddedType`, but for JSON types
- * holds an information about discovered JSONPath file and does NOT
- * contain full SchemaVer
+ * Generally same as `LoaderMessage.ShreddedType`, but for JSON types holds an information about
+ * discovered JSONPath file and does NOT contain full SchemaVer
  *
- * Can be converted from `LoaderMessage.ShreddedType`
- * using `DataDiscover.fromLoaderMessage`
+ * Can be converted from `LoaderMessage.ShreddedType` using `DataDiscover.fromLoaderMessage`
  */
 sealed trait ShreddedType {
+
   /** raw metadata extracted from S3 Key */
   def info: ShreddedType.Info
+
   /** Get S3 prefix which DB should COPY FROM */
   def getLoadPath: String
+
   /** Human-readable form */
   def show: String
 
@@ -56,11 +57,12 @@ sealed trait ShreddedType {
 object ShreddedType {
 
   /**
-    * Container for S3 folder with shredded JSONs ready to load with JSONPaths
-    * Usually it represents self-describing event or custom/derived context
-    *
-    * @param jsonPaths existing JSONPaths file
-    */
+   * Container for S3 folder with shredded JSONs ready to load with JSONPaths Usually it represents
+   * self-describing event or custom/derived context
+   *
+   * @param jsonPaths
+   *   existing JSONPaths file
+   */
   final case class Json(info: Info, jsonPaths: BlobStorage.Key) extends ShreddedType {
     def getLoadPath: String =
       s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
@@ -69,11 +71,12 @@ object ShreddedType {
   }
 
   /**
-    * Container for S3 folder with shredded TSVs ready to load, without JSONPaths
-    * Usually it represents self-describing event or custom/derived context
-    *
-    * @param info raw metadata extracted from S3 Key
-    */
+   * Container for S3 folder with shredded TSVs ready to load, without JSONPaths Usually it
+   * represents self-describing event or custom/derived context
+   *
+   * @param info
+   *   raw metadata extracted from S3 Key
+   */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
       s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
@@ -88,17 +91,27 @@ object ShreddedType {
   }
 
   /**
-   * Raw metadata that can be parsed from S3 Key.
-   * It cannot be counted as "final" shredded type,
-   * as it's not proven to have JSONPaths file
+   * Raw metadata that can be parsed from S3 Key. It cannot be counted as "final" shredded type, as
+   * it's not proven to have JSONPaths file
    *
-   * @param base s3 path run folder
-   * @param vendor self-describing type's vendor
-   * @param name self-describing type's name
-   * @param model self-describing type's SchemaVer model
-   * @param entity what kind of Snowplow entity it is (context or event)
+   * @param base
+   *   s3 path run folder
+   * @param vendor
+   *   self-describing type's vendor
+   * @param name
+   *   self-describing type's name
+   * @param model
+   *   self-describing type's SchemaVer model
+   * @param entity
+   *   what kind of Snowplow entity it is (context or event)
    */
-  final case class Info(base: BlobStorage.Folder, vendor: String, name: String, model: Int, entity: LoaderMessage.SnowplowEntity) {
+  final case class Info(
+    base: BlobStorage.Folder,
+    vendor: String,
+    name: String,
+    model: Int,
+    entity: LoaderMessage.SnowplowEntity
+  ) {
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
 
     /** Build valid table name for the shredded type */
@@ -112,12 +125,14 @@ object ShreddedType {
   }
 
   /**
-   * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail,
-   * but JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
+   * Transform common shredded type into loader-ready. TSV is isomorphic and cannot fail, but
+   * JSONPath-based must have JSONPath file discovered - it's the only possible point of failure
    */
-  def fromCommon[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](base: BlobStorage.Folder,
-                                                                     jsonpathAssets: Option[BlobStorage.Folder],
-                                                                     typesInfo: TypesInfo): F[List[DiscoveryStep[ShreddedType]]] =
+  def fromCommon[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](
+    base: BlobStorage.Folder,
+    jsonpathAssets: Option[BlobStorage.Folder],
+    typesInfo: TypesInfo
+  ): F[List[DiscoveryStep[ShreddedType]]] =
     typesInfo match {
       case t: TypesInfo.Shredded =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
@@ -129,10 +144,9 @@ object ShreddedType {
             Monad[F].map(JsonPathDiscovery[F].discoverJsonPath(jsonpathAssets, info))(_.map(Json(info, _)))
         }
       case t: TypesInfo.WideRow =>
-        t.types.traverse[F, DiscoveryStep[ShreddedType]] {
-          case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
-            (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] { case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
+          val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
+          (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
         }
     }
 }

@@ -24,7 +24,7 @@ object SnowflakeDatatype {
     def toDdl: Fragment =
       size match {
         case None => fr0"VARCHAR"
-        case Some(s) =>  Fragment.const0(s"VARCHAR($s)")
+        case Some(s) => Fragment.const0(s"VARCHAR($s)")
       }
   }
   object Varchar {
@@ -72,4 +72,3 @@ object SnowflakeDatatype {
     def toDdl: Fragment = fr0"ARRAY"
   }
 }
-

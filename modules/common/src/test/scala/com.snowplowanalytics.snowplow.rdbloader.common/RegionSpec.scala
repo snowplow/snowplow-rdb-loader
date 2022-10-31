@@ -24,8 +24,7 @@ object RegionSpec {
   val DefaultTestRegion: Region = Region("sa-east-1")
 
   /**
-   * Region decoder for testing.
-   * It returns predefined region if region is missing.
+   * Region decoder for testing. It returns predefined region if region is missing.
    */
   val testRegionConfigDecoder: Decoder[Region] = new Decoder[Region] {
     override def apply(c: HCursor): Result[Region] = tryDecode(c)

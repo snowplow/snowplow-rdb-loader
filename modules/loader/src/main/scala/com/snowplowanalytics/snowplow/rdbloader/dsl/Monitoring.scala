@@ -17,20 +17,20 @@ import java.time.Instant
 import cats.data.NonEmptyList
 import cats.implicits._
 
-import cats.effect.{Clock, Resource, Timer, ConcurrentEffect, Sync}
+import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
 
 import io.circe._
 import io.circe.generic.semiauto._
 
-import org.http4s.{Request, EntityEncoder, Method}
+import org.http4s.{EntityEncoder, Method, Request}
 import org.http4s.client.Client
 import org.http4s.circe.jsonEncoderOf
 
 import io.sentry.SentryClient
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Emitter}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -52,9 +52,9 @@ trait Monitoring[F[_]] { self =>
 
   def periodicMetrics: Metrics.PeriodicMetrics[F]
 
-  /** 
-   * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` 
-   * to either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
+  /**
+   * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` to
+   * either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
    */
   def alert(payload: Monitoring.AlertPayload): F[Unit]
 
@@ -74,17 +74,19 @@ object Monitoring {
 
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3,0,0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 0))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =
     s"snowplow-rdb-loader-${BuildInfo.version}"
 
-  final case class AlertPayload(application: String,
-                                base: Option[BlobStorage.Folder],
-                                severity: AlertPayload.Severity,
-                                message: String,
-                                tags: Map[String, String])
+  final case class AlertPayload(
+    application: String,
+    base: Option[BlobStorage.Folder],
+    severity: AlertPayload.Severity,
+    message: String,
+    tags: Map[String, String]
+  )
 
   object AlertPayload {
     sealed trait Severity
@@ -122,12 +124,14 @@ object Monitoring {
       AlertPayload(Application, None, Severity.Error, message, Map.empty)
   }
 
-  final case class SuccessPayload(shredding: ShreddingComplete,
-                                  application: String,
-                                  attempt: Int,
-                                  loadingStarted: Instant,
-                                  loadingCompleted: Instant,
-                                  tags: Map[String, String])
+  final case class SuccessPayload(
+    shredding: ShreddingComplete,
+    application: String,
+    attempt: Int,
+    loadingStarted: Instant,
+    loadingCompleted: Instant,
+    tags: Map[String, String]
+  )
 
   object SuccessPayload {
     // Very odd hack, but I couldn't derive a right codec without it
@@ -147,7 +151,12 @@ object Monitoring {
     implicit def successPayloadEntityEncoder[F[_]]: EntityEncoder[F, SuccessPayload] =
       jsonEncoderOf[F, SuccessPayload]
 
-    def build(shredding: ShreddingComplete, attempts: Int, start: Instant, ingestion: Instant): SuccessPayload =
+    def build(
+      shredding: ShreddingComplete,
+      attempts: Int,
+      start: Instant,
+      ingestion: Instant
+    ): SuccessPayload =
       SuccessPayload(shredding, Application, attempts, start, ingestion, Map.empty)
   }
 
@@ -173,7 +182,8 @@ object Monitoring {
               .use { response =>
                 if (response.status.isSuccess) Sync[F].unit
                 else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
-              }.handleErrorWith { e =>
+              }
+              .handleErrorWith { e =>
                 Logging[F].error(e)(s"Webhook ${webhook.endpoint} resulted in exception without a response")
               }
             Some(req)
@@ -221,10 +231,15 @@ object Monitoring {
   /**
    * Initialize Snowplow tracker, if `monitoring` section is properly configured
    *
-   * @param monitoring config.yml `monitoring` section
-   * @return some tracker if enabled, none otherwise
+   * @param monitoring
+   *   config.yml `monitoring` section
+   * @return
+   *   some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](monitoring: Config.Monitoring, client: Client[F]): Resource[F, Option[Tracker[F]]] =
+  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](
+    monitoring: Config.Monitoring,
+    client: Client[F]
+  ): Resource[F, Option[Tracker[F]]] =
     monitoring.snowplow.map(_.collector) match {
       case Some(Collector((host, port))) =>
         val endpoint = Emitter.EndpointParams(host, Some(port), port == 443)
@@ -234,8 +249,12 @@ object Monitoring {
       case None => Resource.pure[F, Option[Tracker[F]]](none[Tracker[F]])
     }
 
-  /** Callback for failed  */
-  private def callback[F[_]: Sync: Clock: Logging](params: Emitter.EndpointParams, request: Emitter.Request, response: Emitter.Result): F[Unit] = {
+  /** Callback for failed */
+  private def callback[F[_]: Sync: Clock: Logging](
+    params: Emitter.EndpointParams,
+    request: Emitter.Request,
+    response: Emitter.Result
+  ): F[Unit] = {
     val _ = request
     def toMsg(rsp: Emitter.Result): Option[String] = rsp match {
       case Emitter.Result.Failure(code) =>
@@ -258,7 +277,8 @@ object Monitoring {
    * Config helper functions
    */
   private object Collector {
-    def isInt(s: String): Boolean = try { s.toInt; true } catch { case _: NumberFormatException => false }
+    def isInt(s: String): Boolean = try { s.toInt; true }
+    catch { case _: NumberFormatException => false }
 
     def unapply(hostPort: String): Option[(String, Int)] =
       hostPort.split(":").toList match {
@@ -268,4 +288,3 @@ object Monitoring {
       }
   }
 }
-

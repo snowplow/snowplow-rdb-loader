@@ -14,9 +14,9 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 
-
 /** ADT representing possible destination of events table */
 sealed trait EventsTable {
+
   /** Get `schema_name.table_name` representation */
   def withSchema: String = this match {
     case EventsTable.AtomicEvents(schema) =>
@@ -27,8 +27,10 @@ sealed trait EventsTable {
 }
 
 object EventsTable {
+
   /** Main "atomic" table name */
   val MainName = "events"
+
   /** Default name for temporary local table used for transient COPY */
   val TransitName = "temp_transit_events"
 
@@ -45,5 +47,3 @@ object EventsTable {
   def withSchema(storage: StorageTarget): String =
     withSchema(storage.schema)
 }
-
-

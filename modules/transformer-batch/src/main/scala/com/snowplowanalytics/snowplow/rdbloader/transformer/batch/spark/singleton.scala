@@ -29,7 +29,6 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsMani
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
 
-
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
 
@@ -39,15 +38,16 @@ object singleton {
     @volatile private var instance: Resolver[Id] = _
 
     /**
-      * Retrieve or build an instance of Iglu's Resolver.
-      *
-      * @param igluConfig JSON representing the Iglu configuration
-      */
+     * Retrieve or build an instance of Iglu's Resolver.
+     *
+     * @param igluConfig
+     *   JSON representing the Iglu configuration
+     */
     def get(resolverConfig: ResolverConfig): Resolver[Id] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = getIgluResolver(resolverConfig) 
+            instance = getIgluResolver(resolverConfig)
               .valueOr(e => throw new IllegalArgumentException(e))
           }
         }
@@ -56,11 +56,13 @@ object singleton {
     }
 
     /**
-      * Build an Iglu resolver from a JSON.
-      *
-      * @param igluConfig JSON representing the Iglu resolver
-      * @return A Resolver or one or more error messages boxed in a Scalaz ValidationNel
-      */
+     * Build an Iglu resolver from a JSON.
+     *
+     * @param igluConfig
+     *   JSON representing the Iglu resolver
+     * @return
+     *   A Resolver or one or more error messages boxed in a Scalaz ValidationNel
+     */
     private def getIgluResolver(resolverConfig: ResolverConfig): Either[String, Resolver[Id]] =
       Resolver.fromConfig[Id](resolverConfig).leftMap(_.show).value
   }
@@ -71,10 +73,11 @@ object singleton {
     @volatile private var instance: Option[EventsManifest] = _
 
     /**
-      * Retrieve or build an instance of DuplicateStorage.
-      *
-      * @param dupStorageConfig configuration for DuplicateStorage
-      */
+     * Retrieve or build an instance of DuplicateStorage.
+     *
+     * @param dupStorageConfig
+     *   configuration for DuplicateStorage
+     */
     def get(dupStorageConfig: Option[EventsManifestConfig]): Option[EventsManifest] = {
       if (instance == null) {
         synchronized {

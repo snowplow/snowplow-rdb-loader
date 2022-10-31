@@ -23,10 +23,10 @@ import org.specs2.mutable.Specification
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 class WindowedRecordsSpec extends Specification {
-  
+
   val globalCS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
   val globalTimer: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
-  
+
   val `00:00` = Window(1970, 1, 1, 0, 0)
   val `00:01` = Window(1970, 1, 1, 0, 1)
   val `00:02` = Window(1970, 1, 1, 0, 2)
@@ -36,8 +36,8 @@ class WindowedRecordsSpec extends Specification {
     "be correctly created when" >> {
       "nothing is emitted for empty input" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 1, //every minute
-          streamingDuration = 2.minutes + 5.seconds 
+          windowRotatingFrequency = 1, // every minute
+          streamingDuration = 2.minutes + 5.seconds
         )
 
         val input = List()
@@ -48,12 +48,12 @@ class WindowedRecordsSpec extends Specification {
       }
       "there is input data, 1 batch" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 1, //every minute
-          streamingDuration = 1.minute + 5.seconds 
+          windowRotatingFrequency = 1, // every minute
+          streamingDuration = 1.minute + 5.seconds
         )
 
         val input = List(
-          InputBatch(after =  5.seconds, produce = List(1, 2, 3))
+          InputBatch(after = 5.seconds, produce = List(1, 2, 3))
         )
 
         val expectedOutput = List(
@@ -67,12 +67,12 @@ class WindowedRecordsSpec extends Specification {
       }
       "there is input data, 2 batches, within same window" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 1, //every minute
+          windowRotatingFrequency = 1, // every minute
           streamingDuration = 1.minute + 5.seconds
         )
 
         val input = List(
-          InputBatch(after =  5.seconds, produce = List(1, 2, 3)),
+          InputBatch(after = 5.seconds, produce = List(1, 2, 3)),
           InputBatch(after = 20.seconds, produce = List(4, 5, 6))
         )
 
@@ -91,7 +91,7 @@ class WindowedRecordsSpec extends Specification {
 
       "there is input data, 2 batches, second batch goes to different window" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 1, //every minute
+          windowRotatingFrequency = 1, // every minute
           streamingDuration = 2.minutes + 5.seconds
         )
 
@@ -115,12 +115,12 @@ class WindowedRecordsSpec extends Specification {
       }
       "there is input data, 1 batch, second window without data" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 1, //every minute
+          windowRotatingFrequency = 1, // every minute
           streamingDuration = 2.minutes + 5.seconds
         )
 
         val input = List(
-          InputBatch(after =  5.seconds, produce = List(1, 2, 3))
+          InputBatch(after = 5.seconds, produce = List(1, 2, 3))
         )
 
         val expectedOutput = List(
@@ -134,12 +134,12 @@ class WindowedRecordsSpec extends Specification {
       }
       "there is input data, 2 batches, rotate window every 10 minutes" in {
         val windowing = Windowing(
-          windowRotatingFrequency = 10, //every 10 minutes
+          windowRotatingFrequency = 10, // every 10 minutes
           streamingDuration = 10.minutes + 30.seconds
         )
 
         val input = List(
-          InputBatch(after =  5.seconds, produce = List(1, 2, 3)),
+          InputBatch(after = 5.seconds, produce = List(1, 2, 3)),
           InputBatch(after = 10.minutes, produce = List(4, 5, 6))
         )
 
@@ -159,32 +159,34 @@ class WindowedRecordsSpec extends Specification {
     }
   }
 
-  private def run(windowing: Windowing,
-                  inputBatches: List[InputBatch],
-                  expectedOutput: List[Record[Window, Int, String]]) = {
+  private def run(
+    windowing: Windowing,
+    inputBatches: List[InputBatch],
+    expectedOutput: List[Record[Window, Int, String]]
+  ) = {
     val testContext = TestContext() // for easier time manipulation (manual tick)
     val inputStream = createInputDataStream(inputBatches)(testContext.ioTimer)
-    val windowingAction  = createWindowedStream(inputStream, windowing)(testContext.ioContextShift, testContext.ioTimer)
+    val windowingAction = createWindowedStream(inputStream, windowing)(testContext.ioContextShift, testContext.ioTimer)
     for {
-      windowingRunning   <- windowingAction.start(globalCS)
-      _                  <- IO.sleep(1.second)(globalTimer)
-      _                  <- IO(testContext.tick(windowing.streamingDuration)) // move time to the expected end of streaming
-      records            <- windowingRunning.join // wait for windowed records
+      windowingRunning <- windowingAction.start(globalCS)
+      _ <- IO.sleep(1.second)(globalTimer)
+      _ <- IO(testContext.tick(windowing.streamingDuration)) // move time to the expected end of streaming
+      records <- windowingRunning.join // wait for windowed records
     } yield assertOutput(records, expectedOutput)
   }
 
-  private def createInputDataStream(batches: List[InputBatch])
-                                   (implicit timer: Timer[IO]): Stream[IO, (Int, String)] = {
+  private def createInputDataStream(batches: List[InputBatch])(implicit timer: Timer[IO]): Stream[IO, (Int, String)] =
     Stream(batches: _*).flatMap { batch =>
       val items = batch.produce.map(id => (id, s"state-$id"))
       Stream.sleep[IO](batch.after) >> Stream(items: _*).covary[IO]
     }
-  }
 
-  private def createWindowedStream(inputStream: Stream[IO, (Int, String)],
-                                   windowing: Windowing)
-                                  (implicit CS: ContextShift[IO],
-                                   timer: Timer[IO]) = {
+  private def createWindowedStream(
+    inputStream: Stream[IO, (Int, String)],
+    windowing: Windowing
+  )(implicit CS: ContextShift[IO],
+    timer: Timer[IO]
+  ) = {
     val windowProvider = Window.fromNow[IO](windowing.windowRotatingFrequency)
 
     inputStream
@@ -192,16 +194,14 @@ class WindowedRecordsSpec extends Specification {
       .compile
       .toList
   }
-  
-  private def assertOutput(actualRecords: List[Record[Window, Int, String]],
-                           expectedRecords: List[Record[Window, Int, String]]) =
+
+  private def assertOutput(actualRecords: List[Record[Window, Int, String]], expectedRecords: List[Record[Window, Int, String]]) =
     actualRecords must beEqualTo(expectedRecords)
 }
 
 object WindowedRecordsSpec {
 
-  final case class Windowing(windowRotatingFrequency: Int,
-                             streamingDuration: FiniteDuration)
+  final case class Windowing(windowRotatingFrequency: Int, streamingDuration: FiniteDuration)
 
   final case class InputBatch(after: FiniteDuration, produce: List[Int])
 

@@ -49,8 +49,10 @@ object Main extends IOApp {
       PubsubCheckpointer.checkpointer
     )
 
-  private def mkSource[F[_] : ConcurrentEffect : ContextShift : Timer](blocker: Blocker,
-                                                                       streamInput: Config.StreamInput): Resource[F, Queue.Consumer[F]] =
+  private def mkSource[F[_]: ConcurrentEffect: ContextShift: Timer](
+    blocker: Blocker,
+    streamInput: Config.StreamInput
+  ): Resource[F, Queue.Consumer[F]] =
     streamInput match {
       case conf: Config.StreamInput.Pubsub =>
         Pubsub.consumer(
@@ -62,19 +64,19 @@ object Main extends IOApp {
           maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
           customPubsubEndpoint = conf.customPubsubEndpoint,
           customizeSubscriber = { s =>
-            s.setFlowControlSettings({
+            s.setFlowControlSettings {
               val builder = FlowControlSettings.newBuilder()
-                // In here, we are only setting request bytes because it is safer choice
-                // in term of memory safety.
-                // Also, buffer size set above doesn't have to be inline with flow control settings.
-                // Even if more items than given buffer size arrives, it wouldn't create problem because
-                // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
-                // memory problem again.
+              // In here, we are only setting request bytes because it is safer choice
+              // in term of memory safety.
+              // Also, buffer size set above doesn't have to be inline with flow control settings.
+              // Even if more items than given buffer size arrives, it wouldn't create problem because
+              // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
+              // memory problem again.
               (conf.maxOutstandingMessagesSize match {
                 case Some(v) => builder.setMaxOutstandingRequestBytes(v * 1000000)
                 case None => builder.setMaxOutstandingRequestBytes(null)
               }).build()
-            })
+            }
             s.setExecutorProvider {
               new ExecutorProvider {
                 def shouldAutoClose: Boolean = true
@@ -90,13 +92,31 @@ object Main extends IOApp {
   def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
     val delegate = MoreExecutors.newDirectExecutorService
     lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
-    override def schedule[V](callable: Callable[V], delay: Long, unit: TimeUnit): ScheduledFuture[V] =
+    override def schedule[V](
+      callable: Callable[V],
+      delay: Long,
+      unit: TimeUnit
+    ): ScheduledFuture[V] =
       scheduler.schedule(callable, delay, unit)
-    override def schedule(runnable: Runnable, delay: Long, unit: TimeUnit): ScheduledFuture[_] =
+    override def schedule(
+      runnable: Runnable,
+      delay: Long,
+      unit: TimeUnit
+    ): ScheduledFuture[_] =
       scheduler.schedule(runnable, delay, unit)
-    override def scheduleAtFixedRate(runnable: Runnable, initialDelay: Long, period: Long, unit: TimeUnit): ScheduledFuture[_] =
+    override def scheduleAtFixedRate(
+      runnable: Runnable,
+      initialDelay: Long,
+      period: Long,
+      unit: TimeUnit
+    ): ScheduledFuture[_] =
       scheduler.scheduleAtFixedRate(runnable, initialDelay, period, unit)
-    override def scheduleWithFixedDelay(runnable: Runnable, initialDelay: Long, delay: Long, unit: TimeUnit): ScheduledFuture[_] =
+    override def scheduleWithFixedDelay(
+      runnable: Runnable,
+      initialDelay: Long,
+      delay: Long,
+      unit: TimeUnit
+    ): ScheduledFuture[_] =
       scheduler.scheduleWithFixedDelay(runnable, initialDelay, delay, unit)
     override def shutdown(): Unit = {
       delegate.shutdown()

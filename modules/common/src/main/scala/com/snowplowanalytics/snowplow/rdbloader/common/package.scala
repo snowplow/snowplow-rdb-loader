@@ -34,9 +34,9 @@ package object common {
   }
 
   /**
-    * Syntax extension to transform `Either` with string as failure
-    * into circe-appropriate decoder result
-    */
+   * Syntax extension to transform `Either` with string as failure into circe-appropriate decoder
+   * result
+   */
   implicit class ParseErrorOps[A](val error: Either[String, A]) extends AnyVal {
     def asDecodeResult(hCursor: HCursor): Decoder.Result[A] = error match {
       case Right(success) => Right(success)
@@ -60,8 +60,8 @@ package object common {
     }
 
   implicit def schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
-    Decoder.decodeString.emap {
-      s => SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
+    Decoder.decodeString.emap { s =>
+      SchemaCriterion.parse(s).toRight(s"Cannot parse [$s] as Iglu SchemaCriterion, it must have iglu:vendor/name/format/1-*-* format")
     }
 
   implicit class ShredPropertyTransformer(val snowplowEntity: LoaderMessage.SnowplowEntity) extends AnyVal {
@@ -70,16 +70,16 @@ package object common {
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
     }
   }
-  
+
   implicit val loaderIgluErrorShow: Show[LoaderIgluError] = Show.show {
-    case LoaderIgluError.IgluError(schemaKey, error) => 
+    case LoaderIgluError.IgluError(schemaKey, error) =>
       s"Iglu error for schema with the key: '${schemaKey.toSchemaUri}', error: ${error.show}"
-    case LoaderIgluError.InvalidSchema(schemaKey, message) => 
+    case LoaderIgluError.InvalidSchema(schemaKey, message) =>
       s"Invalid schema with key: '${schemaKey.toSchemaUri}, reason: $message"
     case LoaderIgluError.SchemaListNotFound(schemaCriterion, error) =>
       s"Schema list not found for criterion: '${schemaCriterion.asString}', error: ${error.show}"
 
-    //for logging purposes we omit printing json values which may contain sensitive user-sent data
+    // for logging purposes we omit printing json values which may contain sensitive user-sent data
     case LoaderIgluError.WrongType(schemaKey, _, expected) =>
       s"Wrong type for field in schema with the key: '${schemaKey.toSchemaUri}', expected: $expected"
     case LoaderIgluError.NotAnArray(schemaKey, _, expected) =>
@@ -87,7 +87,7 @@ package object common {
     case LoaderIgluError.MissingInValue(schemaKey, key, _) =>
       s"Missing value for field: $key in schema with the key: '${schemaKey.toSchemaUri}'"
   }
-  
+
   implicit val clientErrorShow: Show[ClientError] = Show.show {
     case error: ClientError.ResolutionError => error.getMessage
     case _: ClientError.ValidationError => "Validation error" // Should not really happen as loader only lookups schemas

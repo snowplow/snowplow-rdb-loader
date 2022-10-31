@@ -28,10 +28,10 @@ object Region {
   private val regionResolveErrorMessage = "Region cannot be resolved, needs to be passed explicitly"
 
   /**
-   * Custom Region decoder which allows Region types to be missing.
-   * If they are missing, it tries to retrieve region with "DefaultAwsRegionProviderChain".
-   * If it is also unsuccessful, it throws error. In the tests, it is changed with dummy config
-   * reader in order to not use "DefaultAwsRegionProviderChain" during tests.
+   * Custom Region decoder which allows Region types to be missing. If they are missing, it tries to
+   * retrieve region with "DefaultAwsRegionProviderChain". If it is also unsuccessful, it throws
+   * error. In the tests, it is changed with dummy config reader in order to not use
+   * "DefaultAwsRegionProviderChain" during tests.
    */
   val regionConfigDecoder: Decoder[Region] = new Decoder[Region] {
     override def apply(c: HCursor): Result[Region] = tryDecode(c)

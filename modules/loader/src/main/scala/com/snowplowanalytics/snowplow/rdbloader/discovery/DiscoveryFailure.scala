@@ -16,10 +16,9 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 /**
-  * Discovery failure. Represents failure of single step.
-  * Multiple failures can be aggregated into `DiscoveryError`,
-  * which is top-level `LoaderError`
-  */
+ * Discovery failure. Represents failure of single step. Multiple failures can be aggregated into
+ * `DiscoveryError`, which is top-level `LoaderError`
+ */
 sealed trait DiscoveryFailure {
   def getMessage: String
 
@@ -29,6 +28,7 @@ sealed trait DiscoveryFailure {
 }
 
 object DiscoveryFailure {
+
   /** Cannot find JSONPaths file */
   case class JsonpathDiscoveryFailure(jsonpathFile: String) extends DiscoveryFailure {
     def getMessage: String =

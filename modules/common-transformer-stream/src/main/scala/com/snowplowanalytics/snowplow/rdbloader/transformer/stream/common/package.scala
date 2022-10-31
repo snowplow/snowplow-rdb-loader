@@ -18,4 +18,3 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerCliConf
 package object common {
   type CliConfig = TransformerCliConfig[Config]
 }
-

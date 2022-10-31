@@ -33,13 +33,13 @@ object KinesisCheckpointer {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def checkpointer[F[_] : Sync](message: Queue.Consumer.Message[F]): KinesisCheckpointer[F] =
+  def checkpointer[F[_]: Sync](message: Queue.Consumer.Message[F]): KinesisCheckpointer[F] =
     message match {
       case m: Kinesis.Message[F] => KinesisCheckpointer[F](Map(m.record.shardId -> safelyCheckpoint(m)))
       case _ => Checkpointer[F, KinesisCheckpointer[F]].empty
     }
 
-  private def safelyCheckpoint[F[_] : Sync](message: Kinesis.Message[F]): F[Unit] =
+  private def safelyCheckpoint[F[_]: Sync](message: Kinesis.Message[F]): F[Unit] =
     message.ack.recoverWith {
       case _: ShutdownException =>
         // The ShardRecordProcessor instance has been shutdown. This just means another KCL worker
@@ -68,13 +68,14 @@ object KinesisCheckpointer {
         )
     }
 
-  implicit def kinesisCheckpointer[F[_] : Applicative]: Checkpointer[F, KinesisCheckpointer[F]] = new Checkpointer[F, KinesisCheckpointer[F]] {
-    def checkpoint(c: KinesisCheckpointer[F]): F[Unit] = c.byShard.values.toList.sequence_
+  implicit def kinesisCheckpointer[F[_]: Applicative]: Checkpointer[F, KinesisCheckpointer[F]] =
+    new Checkpointer[F, KinesisCheckpointer[F]] {
+      def checkpoint(c: KinesisCheckpointer[F]): F[Unit] = c.byShard.values.toList.sequence_
 
-    def combine(older: KinesisCheckpointer[F], newer: KinesisCheckpointer[F]): KinesisCheckpointer[F] =
-      KinesisCheckpointer[F](byShard = older.byShard ++ newer.byShard) // order is important!
+      def combine(older: KinesisCheckpointer[F], newer: KinesisCheckpointer[F]): KinesisCheckpointer[F] =
+        KinesisCheckpointer[F](byShard = older.byShard ++ newer.byShard) // order is important!
 
-    def empty: KinesisCheckpointer[F] =
-      KinesisCheckpointer(Map.empty)
-  }
+      def empty: KinesisCheckpointer[F] =
+        KinesisCheckpointer(Map.empty)
+    }
 }

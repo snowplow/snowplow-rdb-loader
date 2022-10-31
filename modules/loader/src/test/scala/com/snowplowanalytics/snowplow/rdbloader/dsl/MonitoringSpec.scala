@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.data.EitherT
 
-import cats.effect.{IO, Clock}
+import cats.effect.{Clock, IO}
 import cats.implicits._
 
 import fs2.text.utf8Decode
@@ -53,7 +53,7 @@ class MonitoringSpec extends Specification {
           .through(utf8Decode)
           .compile
           .string
-          .map { string => parse(string).flatMap(_.as[SelfDescribingData[Json]]).leftMap(_.show) }
+          .map(string => parse(string).flatMap(_.as[SelfDescribingData[Json]]).leftMap(_.show))
 
       val result = EitherT(json)
         .flatMap(data => Client.IgluCentral.check(data).leftMap(_.show))

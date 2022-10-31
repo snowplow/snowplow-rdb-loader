@@ -20,7 +20,6 @@ import org.specs2.Specification
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec
 
-
 class NewlineSpec extends Specification with ShredJobSpec {
   override def appName = "newline-output"
   sequential
@@ -77,6 +76,7 @@ object NewlineSpec {
       "com.snowplowanalytics.snowplow\tchange_form\tjsonschema\t1-0-0\tdeadbeef-dead-beef-dead-0000beefdead\t1970-01-01 00:00:00.000\tevents\t[\"events\",\"change_form\"]\tevents\tb\ta\tTEXTAREA\t\\N\t\\N\tline 1 line2 column2"
 
     // Removed three JSON columns and added 7 columns at the end
-    val event = """	app	2020-12-08 19:04:12.098	1970-01-01 00:00:00.000		page_view	deadbeef-dead-beef-dead-0000beefdead			test-0.0.1	ssc-0.0.0-test	fs2-enrich-1.4.2-common-1.4.2		175.16.199.0																																																																																																												1970-01-01 00:00:00.000	com.snowplowanalytics.snowplow	page_view	jsonschema	1-0-0		"""
+    val event =
+      """	app	2020-12-08 19:04:12.098	1970-01-01 00:00:00.000		page_view	deadbeef-dead-beef-dead-0000beefdead			test-0.0.1	ssc-0.0.0-test	fs2-enrich-1.4.2-common-1.4.2		175.16.199.0																																																																																																												1970-01-01 00:00:00.000	com.snowplowanalytics.snowplow	page_view	jsonschema	1-0-0		"""
   }
 }

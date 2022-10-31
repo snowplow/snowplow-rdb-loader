@@ -5,7 +5,7 @@ import cats.implicits._
 
 import io.circe.literal._
 
-import com.snowplowanalytics.iglu.core.{SchemaList, SelfDescribingSchema, SchemaMap, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaList, SchemaMap, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.IgluSchema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
@@ -16,12 +16,16 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Iglu
 
 object PureIglu {
   def interpreter: Iglu[Pure] = new Iglu[Pure] {
-    def getSchemas(vendor: String, name: String, model: Int): Pure[Either[LoaderError, DSchemaList]] =
+    def getSchemas(
+      vendor: String,
+      name: String,
+      model: Int
+    ): Pure[Either[LoaderError, DSchemaList]] =
       SchemaList
         .parseStrings(List(s"iglu:$vendor/$name/jsonschema/$model-0-0"))
-        .map { x => DSchemaList.fromSchemaList(x, fetch).value }
+        .map(x => DSchemaList.fromSchemaList(x, fetch).value)
         .sequence[Pure, Either[String, DSchemaList]]
-        .map { e => e.flatten.leftMap { x => LoaderError.RuntimeError(x)} }
+        .map(e => e.flatten.leftMap(x => LoaderError.RuntimeError(x)))
   }
 
   private def fetch(key: SchemaKey): EitherT[Pure, String, IgluSchema] = {
