@@ -29,11 +29,11 @@ import com.google.pubsub.v1.PubsubMessage
 
 import com.permutive.pubsub.consumer.grpc.{PubsubGoogleConsumer, PubsubGoogleConsumerConfig}
 import com.permutive.pubsub.consumer.decoder.MessageDecoder
-import com.permutive.pubsub.consumer.Model.{Subscription, ProjectId => ConsumerProjectId}
+import com.permutive.pubsub.consumer.Model.{ProjectId => ConsumerProjectId, Subscription}
 
 import com.permutive.pubsub.producer.grpc.{GooglePubsubProducer, PubsubProducerConfig}
 import com.permutive.pubsub.producer.encoder.MessageEncoder
-import com.permutive.pubsub.producer.Model.{Topic, ProjectId => ProducerProjectId}
+import com.permutive.pubsub.producer.Model.{ProjectId => ProducerProjectId, Topic}
 
 import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder
 
@@ -57,11 +57,13 @@ object Pubsub {
 
   case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
 
-  def producer[F[_] : Concurrent : Logger](projectId: String,
-                                           topic: String,
-                                           batchSize: Long,
-                                           requestByteThreshold: Option[Long],
-                                           delayThreshold: FiniteDuration): Resource[F, Queue.Producer[F]] = {
+  def producer[F[_]: Concurrent: Logger](
+    projectId: String,
+    topic: String,
+    batchSize: Long,
+    requestByteThreshold: Option[Long],
+    delayThreshold: FiniteDuration
+  ): Resource[F, Queue.Producer[F]] = {
     val config = PubsubProducerConfig[F](
       batchSize = batchSize,
       requestByteThreshold = requestByteThreshold,
@@ -71,68 +73,75 @@ object Pubsub {
 
     GooglePubsubProducer
       .of[F, Array[Byte]](ProducerProjectId(projectId), Topic(topic), config)
-      .map(producer => {
+      .map { producer =>
         new Queue.Producer[F] {
           override def send(groupId: Option[String], message: String): F[Unit] =
             producer.produce(message.getBytes).void
         }
-      })
+      }
   }
 
-  def consumer[F[_] : ConcurrentEffect : Logger : ContextShift : Timer](blocker: Blocker,
-                                                                        projectId: String,
-                                                                        subscription: String,
-                                                                        parallelPullCount: Int,
-                                                                        bufferSize: Int,
-                                                                        maxAckExtensionPeriod: FiniteDuration,
-                                                                        customPubsubEndpoint: Option[String] = None,
-                                                                        customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
-                                                                        postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Resource[F, Queue.Consumer[F]] =
+  def consumer[F[_]: ConcurrentEffect: Logger: ContextShift: Timer](
+    blocker: Blocker,
+    projectId: String,
+    subscription: String,
+    parallelPullCount: Int,
+    bufferSize: Int,
+    maxAckExtensionPeriod: FiniteDuration,
+    customPubsubEndpoint: Option[String] = None,
+    customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
+    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
+  ): Resource[F, Queue.Consumer[F]] =
     for {
       channelProvider <- customPubsubEndpoint.map(createPubsubChannelProvider[F]).sequence
       consumer = new Queue.Consumer[F] {
-        override def read: fs2.Stream[F, Queue.Consumer.Message[F]] = {
-          val onFailedTerminate: Throwable => F[Unit] =
-            e => Logger[F].error(s"Cannot terminate ${e.getMessage}")
-          val pubSubConfig =
-            PubsubGoogleConsumerConfig(
-              onFailedTerminate = onFailedTerminate,
-              parallelPullCount = parallelPullCount,
-              maxQueueSize = bufferSize,
-              maxAckExtensionPeriod = maxAckExtensionPeriod,
-              customizeSubscriber = {
-                val customChannel: Subscriber.Builder => Subscriber.Builder = channelProvider
-                  .map { c => { b: Subscriber.Builder =>
-                    b.setChannelProvider(c)
-                      .setCredentialsProvider(NoCredentialsProvider.create())
-                  }
-                  }.getOrElse(identity)
-                customizeSubscriber.andThen(customChannel).some
-              }
-            )
-          val errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit] = // Should be useless
-            (message, error, _, _) =>
-              Logger[F].error(s"Cannot decode message ${message.getMessageId} into array of bytes. ${error.getMessage}")
+                   override def read: fs2.Stream[F, Queue.Consumer.Message[F]] = {
+                     val onFailedTerminate: Throwable => F[Unit] =
+                       e => Logger[F].error(s"Cannot terminate ${e.getMessage}")
+                     val pubSubConfig =
+                       PubsubGoogleConsumerConfig(
+                         onFailedTerminate = onFailedTerminate,
+                         parallelPullCount = parallelPullCount,
+                         maxQueueSize = bufferSize,
+                         maxAckExtensionPeriod = maxAckExtensionPeriod,
+                         customizeSubscriber = {
+                           val customChannel: Subscriber.Builder => Subscriber.Builder = channelProvider
+                             .map { c => b: Subscriber.Builder =>
+                               b.setChannelProvider(c)
+                                 .setCredentialsProvider(NoCredentialsProvider.create())
+                             }
+                             .getOrElse(identity)
+                           customizeSubscriber.andThen(customChannel).some
+                         }
+                       )
+                     val errorHandler: (PubsubMessage, Throwable, F[Unit], F[Unit]) => F[Unit] = // Should be useless
+                       (message, error, _, _) =>
+                         Logger[F].error(s"Cannot decode message ${message.getMessageId} into array of bytes. ${error.getMessage}")
 
-          // Ack deadline extension isn't needed in here because it is handled by the pubsub library
-          val stream = PubsubGoogleConsumer
-            .subscribe[F, Array[Byte]](blocker, ConsumerProjectId(projectId), Subscription(subscription), errorHandler, pubSubConfig)
-            .map { r => Message(new String(r.value, "UTF-8"), r.ack) }
+                     // Ack deadline extension isn't needed in here because it is handled by the pubsub library
+                     val stream = PubsubGoogleConsumer
+                       .subscribe[F, Array[Byte]](
+                         blocker,
+                         ConsumerProjectId(projectId),
+                         Subscription(subscription),
+                         errorHandler,
+                         pubSubConfig
+                       )
+                       .map(r => Message(new String(r.value, "UTF-8"), r.ack))
 
-          postProcess match {
-            case None => stream
-            case Some(p) => stream.flatMap(p.process(_))
-          }
-        }
-      }
+                     postProcess match {
+                       case None => stream
+                       case Some(p) => stream.flatMap(p.process(_))
+                     }
+                   }
+                 }
     } yield consumer
 
-  private def createPubsubChannelProvider[F[_] : ConcurrentEffect](host: String): Resource[F, TransportChannelProvider] = {
+  private def createPubsubChannelProvider[F[_]: ConcurrentEffect](host: String): Resource[F, TransportChannelProvider] =
     Resource.make(
       ConcurrentEffect[F].delay {
         val channel = NettyChannelBuilder.forTarget(host).usePlaintext().build()
         FixedTransportChannelProvider.create(GrpcTransportChannel.create(channel))
       }
     )(p => ConcurrentEffect[F].delay(p.getTransportChannel.close()))
-  }
 }

@@ -16,18 +16,21 @@ import io.circe.Json
 
 object ParquetTransformer {
 
-  def transform(event: Event,
-                allFields: AllFields,
-                processor: Processor): Either[BadRow, Transformed.Parquet] = {
+  def transform(
+    event: Event,
+    allFields: AllFields,
+    processor: Processor
+  ): Either[BadRow, Transformed.Parquet] =
     for {
       atomicValues <- extractAtomicFieldValues(allFields.atomic, event, processor)
       nonAtomicValues <- extractNonAtomicFieldValues(allFields.nonAtomicFields, processor, event)
     } yield Transformed.Parquet(ParquetData(atomicValues ::: nonAtomicValues))
-  }
 
-  private def extractAtomicFieldValues(atomicFields: AtomicFields,
-                                       event: Event,
-                                       processor: Processor): Either[BadRow, List[FieldWithValue]] = {
+  private def extractAtomicFieldValues(
+    atomicFields: AtomicFields,
+    event: Event,
+    processor: Processor
+  ): Either[BadRow, List[FieldWithValue]] = {
 
     val atomicJsonValues = event.atomic
 
@@ -40,38 +43,34 @@ object ParquetTransformer {
       }
   }
 
-  private def extractNonAtomicFieldValues(nonAtomicFields: NonAtomicFields,
-                                          processor: Processor,
-                                          event: Event): Either[BadRow, List[FieldWithValue]] = {
+  private def extractNonAtomicFieldValues(
+    nonAtomicFields: NonAtomicFields,
+    processor: Processor,
+    event: Event
+  ): Either[BadRow, List[FieldWithValue]] =
     nonAtomicFields.value
       .traverse { typedField =>
         valueFromTypedField(typedField, event)
           .leftMap(castingBadRow(event, processor, typedField.`type`.schemaKey))
       }
-  }
 
-  private def valueFromTypedField(fieldWithType: TypedField,
-                                  event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
+  private def valueFromTypedField(fieldWithType: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] =
     fieldWithType.`type`.snowplowEntity match {
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent =>
         forUnstruct(fieldWithType, event)
       case LoaderMessage.SnowplowEntity.Context =>
         forContexts(fieldWithType, event)
     }
-  }
 
-  private def forUnstruct(typedField: TypedField,
-                          event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
+  private def forUnstruct(typedField: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] =
     event.unstruct_event.data match {
       case Some(SelfDescribingData(schemaKey, unstructData)) if keysMatch(schemaKey, typedField.`type`.schemaKey) =>
         provideValue(typedField.field, unstructData)
       case _ =>
         Right(FieldWithValue(typedField.field, FieldValue.NullValue))
     }
-  }
 
-  private def forContexts(typedField: TypedField,
-                          event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
+  private def forContexts(typedField: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
     val allContexts = event.contexts.data ::: event.derived_contexts.data
     val matchingContexts = allContexts
       .filter(context => keysMatch(context.schema, typedField.`type`.schemaKey))
@@ -79,24 +78,27 @@ object ParquetTransformer {
     if (matchingContexts.nonEmpty) {
       val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(_.data).toVector)
       provideValue(typedField.field, jsonArrayWithContexts)
-    }
-    else {
+    } else {
       Right(FieldWithValue(typedField.field, FieldValue.NullValue))
     }
   }
 
-  private def provideValue(field: Field,
-                           jsonValue: Json): Either[NonEmptyList[CastError], FieldWithValue] = {
+  private def provideValue(field: Field, jsonValue: Json): Either[NonEmptyList[CastError], FieldWithValue] =
     FieldValue
       .cast(field)(jsonValue)
       .toEither
       .map(value => FieldWithValue(field, value))
-  }
 
   private def keysMatch(k1: SchemaKey, k2: SchemaKey): Boolean =
     k1.vendor === k2.vendor && k1.name === k2.name && k1.version.model === k2.version.model
 
-  private def castingBadRow(event: Event, processor: Processor, schemaKey: SchemaKey)(error: NonEmptyList[CastError]): BadRow = {
+  private def castingBadRow(
+    event: Event,
+    processor: Processor,
+    schemaKey: SchemaKey
+  )(
+    error: NonEmptyList[CastError]
+  ): BadRow = {
     val loaderIgluErrors = error.map(castErrorToLoaderIgluError(schemaKey))
     igluBadRow(event, processor, loaderIgluErrors)
   }
@@ -107,7 +109,11 @@ object ParquetTransformer {
       case CastError.MissingInValue(k, v) => FailureDetails.LoaderIgluError.MissingInValue(schemaKey, k, v)
     }
 
-  private def igluBadRow(event: Event, processor: Processor, errors: NonEmptyList[FailureDetails.LoaderIgluError]): BadRow = {
+  private def igluBadRow(
+    event: Event,
+    processor: Processor,
+    errors: NonEmptyList[FailureDetails.LoaderIgluError]
+  ): BadRow = {
     val failure = Failure.LoaderIgluErrors(errors)
     val payload = Payload.LoaderPayload(event)
     BadRow.LoaderIgluError(processor, failure, payload)

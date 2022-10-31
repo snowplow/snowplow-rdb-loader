@@ -24,16 +24,19 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 
 /**
- * Module checks whether target is ready to load or not.
- * It blocks the application until target become ready to accept statements.
+ * Module checks whether target is ready to load or not. It blocks the application until target
+ * become ready to accept statements.
  */
 object TargetCheck {
 
   /**
-   * Probe the target database to find out if it is operational.
-   * Continue to make this check until it become ready.
+   * Probe the target database to find out if it is operational. Continue to make this check until
+   * it become ready.
    */
-  def blockUntilReady[F[_]: Transaction[*[_], C]: Logging: MonadThrow: Timer, C[_]: DAO](readyCheckConfig: Config.Retries, target: StorageTarget): F[Unit] = {
+  def blockUntilReady[F[_]: Transaction[*[_], C]: Logging: MonadThrow: Timer, C[_]: DAO](
+    readyCheckConfig: Config.Retries,
+    target: StorageTarget
+  ): F[Unit] = {
     val onError = (e: Throwable, d: RetryDetails) => log(e, d)
     val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
     val fa: F[Unit] = target match {
@@ -50,8 +53,7 @@ object TargetCheck {
       Logging[F].debug(show"Caught exception during target check: ${e.toString}")
 
   /** Check if error is worth retrying */
-  def isWorth(e: Throwable): Boolean = {
+  def isWorth(e: Throwable): Boolean =
     e.toString.toLowerCase.contains("(700100) connection timeout expired. details: none") ||
-    e.toString.toLowerCase.contains("(500051) error processing query/statement")
-  }
+      e.toString.toLowerCase.contains("(500051) error processing query/statement")
 }

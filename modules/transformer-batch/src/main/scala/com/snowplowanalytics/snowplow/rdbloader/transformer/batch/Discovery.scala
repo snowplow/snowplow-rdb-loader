@@ -18,7 +18,7 @@ import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.global
 
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, Common}
+import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -41,16 +41,17 @@ object Discovery {
     LoaderMessage.Processor(BuildInfo.name, MessageProcessorVersion)
 
   /**
-   * Get an async computation, looking for incomplete folders
-   * (ones where shredding hasn't completed successfully) and
-   * list of folders ready to be shredded
+   * Get an async computation, looking for incomplete folders (ones where shredding hasn't completed
+   * successfully) and list of folders ready to be shredded
    */
-  def getState(enrichedFolder: Folder,
-               shreddedFolder: Folder,
-               runInterval: RunInterval,
-               now: Instant,
-               listDirs: Folder => List[Folder],
-               keyExists: BlobStorage.Key => Boolean): (Future[List[Folder]], List[Folder]) = {
+  def getState(
+    enrichedFolder: Folder,
+    shreddedFolder: Folder,
+    runInterval: RunInterval,
+    now: Instant,
+    listDirs: Folder => List[Folder],
+    keyExists: BlobStorage.Key => Boolean
+  ): (Future[List[Folder]], List[Folder]) = {
     val since = getConcrete(runInterval, now)
     val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
     val shreddedDirs = listDirs(shreddedFolder)
@@ -58,7 +59,8 @@ object Discovery {
     val enrichedFolderNames = enrichedDirs.map(Folder.coerce).map(_.folderName)
     val shreddedFolderNames = shreddedDirs.map(Folder.coerce).map(_.folderName)
 
-    val unshredded = enrichedFolderNames.diff(shreddedFolderNames)
+    val unshredded = enrichedFolderNames
+      .diff(shreddedFolderNames)
       .map(enrichedFolder.append)
 
     // Folders that exist both in enriched and shredded
@@ -71,7 +73,6 @@ object Discovery {
       }
     }(global)
 
-
     (incomplete, unshredded)
   }
 
@@ -79,18 +80,22 @@ object Discovery {
     val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
     (runInterval.sinceTimestamp.map(_.value), instantForDuration) match {
       case (None, None) => None
-      case (i1@Some(v1), i2@Some(v2)) => if (v1.isAfter(v2)) i1 else i2
+      case (i1 @ Some(v1), i2 @ Some(v2)) => if (v1.isAfter(v2)) i1 else i2
       case (v1, None) => v1
       case (None, v2) => v2
     }
   }
 
   /**
-   * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format.
-   * This function extracts timestamp in the folder names and returns the ones in the
-   * given interval. Folders that does not have this format are included in the result also.
+   * Most likely folder names should have "s3://path/run=YYYY-MM-dd-HH-mm-ss" format. This function
+   * extracts timestamp in the folder names and returns the ones in the given interval. Folders that
+   * does not have this format are included in the result also.
    */
-  def findIntervalFolders(folders: List[Folder], since: Option[Instant], until: Option[Instant]): List[Folder] =
+  def findIntervalFolders(
+    folders: List[Folder],
+    since: Option[Instant],
+    until: Option[Instant]
+  ): List[Folder] =
     (since, until) match {
       case (None, None) => folders
       case _ =>
@@ -98,22 +103,26 @@ object Discovery {
           val folderName = f.folderName
           !folderName.startsWith("run=") || {
             val time = folderName.stripPrefix("run=")
-            Common.parseFolderTime(time).fold(
-              _ => true,
-              time => since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time))
-            )
+            Common
+              .parseFolderTime(time)
+              .fold(
+                _ => true,
+                time => since.fold(true)(_.isBefore(time)) && until.fold(true)(_.isAfter(time))
+              )
           }
         }
     }
 
   /**
-   * Send message to queue and save thumb file on S3, signalising that the folder
-   * has been shredded and can be loaded now
+   * Send message to queue and save thumb file on S3, signalising that the folder has been shredded
+   * and can be loaded now
    */
-  def seal(message: LoaderMessage.ShreddingComplete,
-           sendToQueue: (String, String) => Either[Throwable, Unit],
-           putToS3: (String,String, String) => Either[Throwable, Unit],
-           legacyMessageFormat: Boolean): Unit = {
+  def seal(
+    message: LoaderMessage.ShreddingComplete,
+    sendToQueue: (String, String) => Either[Throwable, Unit],
+    putToS3: (String, String, String) => Either[Throwable, Unit],
+    legacyMessageFormat: Boolean
+  ): Unit = {
     val (bucket, key) = BlobStorage.splitKey(message.base.withKey(FinalKeyName))
     val asString = message.selfDescribingData(legacyMessageFormat).asString
 
@@ -126,7 +135,10 @@ object Discovery {
 
     putToS3(bucket, key, asString) match {
       case Left(e) =>
-        throw new RuntimeException(s"Could send shredded types $asString to queue but could not write ${message.base.withKey(FinalKeyName)}", e)
+        throw new RuntimeException(
+          s"Could send shredded types $asString to queue but could not write ${message.base.withKey(FinalKeyName)}",
+          e
+        )
       case _ =>
         ()
     }

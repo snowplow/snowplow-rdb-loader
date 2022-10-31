@@ -36,11 +36,12 @@ object Shutdown {
    * The `source` and `sink` each run in concurrent streams, so they are not immediately cancelled
    * upon receiving a SIGINT
    *
-   * The "main" stream just waits for a SIGINT, and then cleanly shuts down the concurrent processes.
+   * The "main" stream just waits for a SIGINT, and then cleanly shuts down the concurrent
+   * processes.
    *
-   * We use a queue as a level of indirection between the stream of transformed events and the
-   * sink + checkpointing. When we receive a SIGINT or exception then we terminate the sink by
-   * pushing a `None` to the queue.
+   * We use a queue as a level of indirection between the stream of transformed events and the sink
+   * + checkpointing. When we receive a SIGINT or exception then we terminate the sink by pushing a
+   * `None` to the queue.
    */
   def run[F[_]: Concurrent: Timer, A](
     source: Stream[F, A],
@@ -48,8 +49,8 @@ object Shutdown {
   ): Stream[F, Unit] =
     for {
       queue <- Stream.eval(Queue.synchronousNoneTerminated[F, A])
-      sig   <- Stream.eval(Deferred[F, Unit])
-      _     <- impl(source, sinkAndCheckpoint, queue, sig)
+      sig <- Stream.eval(Deferred[F, Unit])
+      _ <- impl(source, sinkAndCheckpoint, queue, sig)
     } yield ()
 
   private def impl[F[_]: Concurrent: Timer, A](
@@ -78,16 +79,17 @@ object Shutdown {
       }
       .concurrently {
         Stream.bracket(().pure[F])(_ => sig.complete(())) >>
-        queue.dequeue.through(sinkAndCheckpoint)
-          .onFinalizeCase {
-            case ExitCase.Completed =>
-              // The queue has completed "naturally", i.e. a `None` got enqueued.
-              Logger[F].info("Completed sinking and checkpointing events")
-            case ExitCase.Canceled =>
-              Logger[F].info("Sinking and checkpointing was cancelled")
-            case ExitCase.Error(e) =>
-              Logger[F].error(e)("Error on sinking and checkpointing events")
-          }
+          queue.dequeue
+            .through(sinkAndCheckpoint)
+            .onFinalizeCase {
+              case ExitCase.Completed =>
+                // The queue has completed "naturally", i.e. a `None` got enqueued.
+                Logger[F].info("Completed sinking and checkpointing events")
+              case ExitCase.Canceled =>
+                Logger[F].info("Sinking and checkpointing was cancelled")
+              case ExitCase.Error(e) =>
+                Logger[F].error(e)("Error on sinking and checkpointing events")
+            }
       }
       .concurrently {
         source

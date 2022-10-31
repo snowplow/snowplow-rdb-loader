@@ -51,10 +51,13 @@ object TransformerConfig {
       final case object PARQUET extends WideRow
     }
 
-    final case class Shred(default: LoaderMessage.TypesInfo.Shredded.ShreddedFormat,
-                           tsv: List[SchemaCriterion],
-                           json: List[SchemaCriterion],
-                           skip: List[SchemaCriterion]) extends Formats {
+    final case class Shred(
+      default: LoaderMessage.TypesInfo.Shredded.ShreddedFormat,
+      tsv: List[SchemaCriterion],
+      json: List[SchemaCriterion],
+      skip: List[SchemaCriterion]
+    ) extends Formats {
+
       /** Find if there are overlapping criterions in any two of known three groups */
       def findOverlaps: Set[SchemaCriterion] =
         Shred.findOverlaps(tsv, json) ++
@@ -70,7 +73,9 @@ object TransformerConfig {
       def findOverlaps(as: List[SchemaCriterion], bs: List[SchemaCriterion]): Set[SchemaCriterion] =
         as.flatMap(a => bs.map(b => (a, b))).foldLeft(Set.empty[SchemaCriterion])(aggregateMatching(overlap))
 
-      /** Check if two criterions can have a potential overlap, i.e. a schema belongs to two groups */
+      /**
+       * Check if two criterions can have a potential overlap, i.e. a schema belongs to two groups
+       */
       def overlap(a: SchemaCriterion, b: SchemaCriterion): Boolean = (a, b) match {
         case (SchemaCriterion(av, an, _, am, ar, aa), SchemaCriterion(bv, bn, _, bm, br, ba)) =>
           av == bv && an == bn && versionOverlap(am, bm) && versionOverlap(ar, br) && versionOverlap(aa, ba)
@@ -79,8 +84,8 @@ object TransformerConfig {
       /** Check if two version numbers (MODEL, REVISION or ADDITION) can overlap */
       private def versionOverlap(av: Option[Int], bv: Option[Int]): Boolean = (av, bv) match {
         case (Some(aam), Some(bbm)) if aam == bbm => true // Identical and explicit - overlap
-        case (Some(_), Some(_)) => false                  // Different and explicit
-        case _ => true                                    // At least one is a wildcard - overlap
+        case (Some(_), Some(_)) => false // Different and explicit
+        case _ => true // At least one is a wildcard - overlap
       }
 
       /** Accumulate all pairs matching predicate */
@@ -157,8 +162,8 @@ object TransformerConfig {
   }
 
   /**
-   * All config implicits are put into trait because we want to make region decoder
-   * replaceable to write unit tests for config parsing.
+   * All config implicits are put into trait because we want to make region decoder replaceable to
+   * write unit tests for config parsing.
    */
   trait Decoders extends RegionDecodable
 

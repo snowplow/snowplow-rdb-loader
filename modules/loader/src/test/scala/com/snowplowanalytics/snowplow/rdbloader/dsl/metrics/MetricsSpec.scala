@@ -23,7 +23,7 @@ import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.{PeriodicMetrics, KVMetric}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.{KVMetric, PeriodicMetrics}
 
 import scala.concurrent.duration.TimeUnit
 
@@ -81,9 +81,10 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (_: PeriodicMetrics[IO]) => for {
-        _ <- IO(testContext.tick(5.minutes))
-      } yield ()
+      val testCase = (_: PeriodicMetrics[IO]) =>
+        for {
+          _ <- IO(testContext.tick(5.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 3.minutes + 5.seconds)
 
@@ -101,11 +102,12 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (pms: PeriodicMetrics[IO]) => for {
-        now <- ioTimer.clock.instantNow
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(500))
-        _   <- IO(testContext.tick(5.minutes))
-      } yield ()
+      val testCase = (pms: PeriodicMetrics[IO]) =>
+        for {
+          now <- ioTimer.clock.instantNow
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(500))
+          _ <- IO(testContext.tick(5.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 3.minutes + 5.seconds)
 
@@ -123,15 +125,16 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (pms: PeriodicMetrics[IO]) => for {
-        now <- ioTimer.clock.instantNow
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(500))
-        _   <- IO(testContext.tick(2.minutes))
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(1500))
-        _   <- IO(testContext.tick(2.minutes))
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
-        _   <- IO(testContext.tick(3.minutes))
-      } yield ()
+      val testCase = (pms: PeriodicMetrics[IO]) =>
+        for {
+          now <- ioTimer.clock.instantNow
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(500))
+          _ <- IO(testContext.tick(2.minutes))
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(1500))
+          _ <- IO(testContext.tick(2.minutes))
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
+          _ <- IO(testContext.tick(3.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 6.minutes + 5.seconds)
 
@@ -154,11 +157,12 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (pms: PeriodicMetrics[IO]) => for {
-        now <- ioTimer.clock.instantNow
-        _   <- pms.setMaxTstampOfLoadedData(now.minusSeconds(500))
-        _   <- IO(testContext.tick(5.minutes))
-      } yield ()
+      val testCase = (pms: PeriodicMetrics[IO]) =>
+        for {
+          now <- ioTimer.clock.instantNow
+          _ <- pms.setMaxTstampOfLoadedData(now.minusSeconds(500))
+          _ <- IO(testContext.tick(5.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 3.minutes + 5.seconds)
 
@@ -176,15 +180,16 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (pms: PeriodicMetrics[IO]) => for {
-        now <- ioTimer.clock.instantNow
-        _   <- pms.setMaxTstampOfLoadedData(now.minusSeconds(800))
-        _   <- IO(testContext.tick(2.minutes))
-        _   <- pms.setMaxTstampOfLoadedData(now.minusSeconds(1800))
-        _   <- IO(testContext.tick(2.minutes))
-        _   <- pms.setMaxTstampOfLoadedData(now.minusSeconds(200))
-        _   <- IO(testContext.tick(3.minutes))
-      } yield ()
+      val testCase = (pms: PeriodicMetrics[IO]) =>
+        for {
+          now <- ioTimer.clock.instantNow
+          _ <- pms.setMaxTstampOfLoadedData(now.minusSeconds(800))
+          _ <- IO(testContext.tick(2.minutes))
+          _ <- pms.setMaxTstampOfLoadedData(now.minusSeconds(1800))
+          _ <- IO(testContext.tick(2.minutes))
+          _ <- pms.setMaxTstampOfLoadedData(now.minusSeconds(200))
+          _ <- IO(testContext.tick(3.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 6.minutes + 5.seconds)
 
@@ -207,19 +212,20 @@ class MetricsSpec extends Specification {
       implicit val ioTimer: Timer[IO] = testContext.ioTimer
       implicit val ioContextShift: ContextShift[IO] = testContext.ioContextShift
 
-      val testCase = (pms: PeriodicMetrics[IO]) => for {
-        now <- ioTimer.clock.instantNow
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
-        _   <- pms.setMaxTstampOfLoadedData(now.minusSeconds(800))
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
-        _   <- pms.setEarliestKnownUnloadedData(now.minusSeconds(2000))
-        _   <- IO(testContext.tick(2.minutes))
-      } yield ()
+      val testCase = (pms: PeriodicMetrics[IO]) =>
+        for {
+          now <- ioTimer.clock.instantNow
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
+          _ <- pms.setMaxTstampOfLoadedData(now.minusSeconds(800))
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(200))
+          _ <- pms.setEarliestKnownUnloadedData(now.minusSeconds(2000))
+          _ <- IO(testContext.tick(2.minutes))
+        } yield ()
 
       val res = runPeriodicMetrics(testCase, 1.minute, 1.minutes + 5.seconds)
 
       val expected = List(
-        KVMetric.MinAgeOfLoadedData(860),
+        KVMetric.MinAgeOfLoadedData(860)
       )
 
       res must beEqualTo(expected)
@@ -227,27 +233,31 @@ class MetricsSpec extends Specification {
 
   }
 
-  def runPeriodicMetrics(testCase: PeriodicMetrics[IO] => IO[Unit],
-                         metricPeriod: FiniteDuration,
-                         metricStreamDuration: FiniteDuration)(implicit cs: ContextShift[IO], timer: Timer[IO]): List[KVMetric]  = {
-      val metricsRef = Ref.unsafe[IO, List[KVMetric]](Nil)
+  def runPeriodicMetrics(
+    testCase: PeriodicMetrics[IO] => IO[Unit],
+    metricPeriod: FiniteDuration,
+    metricStreamDuration: FiniteDuration
+  )(implicit cs: ContextShift[IO],
+    timer: Timer[IO]
+  ): List[KVMetric] = {
+    val metricsRef = Ref.unsafe[IO, List[KVMetric]](Nil)
 
-      val kvs = for {
-        pms <- Metrics.PeriodicMetrics.init[IO](List(reporterImpl(metricsRef)), metricPeriod)
-        fiber <- pms.report.interruptAfter(metricStreamDuration).compile.drain.start
-        _ <- IO.sleep(1.seconds)(globalTimer)
-        _ <- testCase(pms)
-        _ <- fiber.join
-        kvs <- metricsRef.get
-      } yield kvs
+    val kvs = for {
+      pms <- Metrics.PeriodicMetrics.init[IO](List(reporterImpl(metricsRef)), metricPeriod)
+      fiber <- pms.report.interruptAfter(metricStreamDuration).compile.drain.start
+      _ <- IO.sleep(1.seconds)(globalTimer)
+      _ <- testCase(pms)
+      _ <- fiber.join
+      kvs <- metricsRef.get
+    } yield kvs
 
-      kvs.unsafeRunSync()
+    kvs.unsafeRunSync()
   }
 
   def reporterImpl[F[_]](ref: Ref[F, List[KVMetric]]): Reporter[F] =
     new Reporter[F] {
       def report(metrics: List[KVMetric]): F[Unit] =
-        ref.update { _ ++ metrics }
+        ref.update(_ ++ metrics)
     }
 
 }

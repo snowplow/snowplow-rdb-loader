@@ -27,7 +27,7 @@ object PubsubCheckpointer {
   def checkpointer[F[_]](message: Queue.Consumer.Message[F]): PubsubCheckpointer[F] =
     PubsubCheckpointer[F](List(message.ack))
 
-  implicit def pubsubCheckPointer[F[_] : Applicative]: Checkpointer[F, PubsubCheckpointer[F]] = new Checkpointer[F, PubsubCheckpointer[F]] {
+  implicit def pubsubCheckPointer[F[_]: Applicative]: Checkpointer[F, PubsubCheckpointer[F]] = new Checkpointer[F, PubsubCheckpointer[F]] {
     override def checkpoint(c: PubsubCheckpointer[F]): F[Unit] = c.acks.sequence_
 
     override def combine(x: PubsubCheckpointer[F], y: PubsubCheckpointer[F]): PubsubCheckpointer[F] =

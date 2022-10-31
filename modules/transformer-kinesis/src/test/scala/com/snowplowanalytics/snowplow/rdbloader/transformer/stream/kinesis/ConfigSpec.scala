@@ -39,7 +39,8 @@ class ConfigSpec extends Specification {
 
   "config fromString" should {
     "be able to parse extended transformer-kinesis config" in {
-      val result = getConfig("/transformer/aws/transformer.kinesis.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
+      val result =
+        getConfig("/transformer/aws/transformer.kinesis.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,
@@ -109,10 +110,10 @@ object ConfigSpec {
     LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV,
     Nil,
     List(
-      SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0)),
-      SchemaCriterion("com.acme","json-event","jsonschema",Some(2),None,None)
+      SchemaCriterion("com.acme", "json-event", "jsonschema", Some(1), Some(0), Some(0)),
+      SchemaCriterion("com.acme", "json-event", "jsonschema", Some(2), None, None)
     ),
-    List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+    List(SchemaCriterion("com.acme", "skip-event", "jsonschema", Some(1), None, None))
   )
   val exampleDefaultFormats = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
   val exampleMonitoringStream = Config.Monitoring(

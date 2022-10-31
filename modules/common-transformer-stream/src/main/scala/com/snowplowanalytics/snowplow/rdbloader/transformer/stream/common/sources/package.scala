@@ -4,6 +4,7 @@ import com.snowplowanalytics.snowplow.badrows.BadRow
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
 package object sources {
+
   /** The very initial data type that source can produce */
   type Parsed = Either[BadRow.LoaderParsingError, Event]
 

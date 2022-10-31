@@ -34,10 +34,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 
-
 /**
  * Main config file parsed from HOCON
- * @tparam D kind of supported warehouse
+ * @tparam D
+ *   kind of supported warehouse
  */
 case class Config[+D <: StorageTarget](
   storage: D,
@@ -61,33 +61,71 @@ object Config {
   def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
     fromString(s, implicits().configDecoder)
 
-  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] =  {
+  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] = {
     implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
     ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
   }
 
-  final case class Schedule(name: String, when: CronExpr, duration: FiniteDuration)
-  final case class Schedules(noOperation: List[Schedule],
-                             optimizeEvents: Option[CronExpr] = None,
-                             optimizeManifest: Option[CronExpr] = None)
-  final case class Monitoring(snowplow: Option[SnowplowMonitoring], sentry: Option[Sentry], metrics: Metrics, webhook: Option[Webhook], folders: Option[Folders], healthCheck: Option[HealthCheck])
+  final case class Schedule(
+    name: String,
+    when: CronExpr,
+    duration: FiniteDuration
+  )
+  final case class Schedules(
+    noOperation: List[Schedule],
+    optimizeEvents: Option[CronExpr] = None,
+    optimizeManifest: Option[CronExpr] = None
+  )
+  final case class Monitoring(
+    snowplow: Option[SnowplowMonitoring],
+    sentry: Option[Sentry],
+    metrics: Metrics,
+    webhook: Option[Webhook],
+    folders: Option[Folders],
+    healthCheck: Option[HealthCheck]
+  )
   final case class SnowplowMonitoring(appId: String, collector: String)
   final case class Sentry(dsn: URI)
   final case class HealthCheck(frequency: FiniteDuration, timeout: FiniteDuration)
-  final case class Metrics(statsd: Option[StatsD], stdout: Option[Stdout], period: FiniteDuration)
-  final case class StatsD(hostname: String, port: Int, tags: Map[String, String], prefix: Option[String])
+  final case class Metrics(
+    statsd: Option[StatsD],
+    stdout: Option[Stdout],
+    period: FiniteDuration
+  )
+  final case class StatsD(
+    hostname: String,
+    port: Int,
+    tags: Map[String, String],
+    prefix: Option[String]
+  )
   final case class Stdout(prefix: Option[String])
   final case class Webhook(endpoint: Uri, tags: Map[String, String])
-  final case class Folders(period: FiniteDuration,
-                           staging: BlobStorage.Folder,
-                           since: Option[FiniteDuration],
-                           transformerOutput: BlobStorage.Folder,
-                           until: Option[FiniteDuration],
-                           failBeforeAlarm: Option[Int],
-                           appendStagingPath: Option[Boolean])
-  final case class RetryQueue(period: FiniteDuration, size: Int, maxAttempts: Int, interval: FiniteDuration)
-  final case class Timeouts(loading: FiniteDuration, nonLoading: FiniteDuration, sqsVisibility: FiniteDuration)
-  final case class Retries(strategy: Strategy, attempts: Option[Int], backoff: FiniteDuration, cumulativeBound: Option[FiniteDuration])
+  final case class Folders(
+    period: FiniteDuration,
+    staging: BlobStorage.Folder,
+    since: Option[FiniteDuration],
+    transformerOutput: BlobStorage.Folder,
+    until: Option[FiniteDuration],
+    failBeforeAlarm: Option[Int],
+    appendStagingPath: Option[Boolean]
+  )
+  final case class RetryQueue(
+    period: FiniteDuration,
+    size: Int,
+    maxAttempts: Int,
+    interval: FiniteDuration
+  )
+  final case class Timeouts(
+    loading: FiniteDuration,
+    nonLoading: FiniteDuration,
+    sqsVisibility: FiniteDuration
+  )
+  final case class Retries(
+    strategy: Strategy,
+    attempts: Option[Int],
+    backoff: FiniteDuration,
+    cumulativeBound: Option[FiniteDuration]
+  )
   final case class FeatureFlags(addLoadTstampColumn: Boolean)
 
   sealed trait Strategy
@@ -102,8 +140,7 @@ object Config {
 
   object Cloud {
 
-    final case class AWS(region: Region,
-                         messageQueue: AWS.SQS) extends Cloud
+    final case class AWS(region: Region, messageQueue: AWS.SQS) extends Cloud
 
     object AWS {
       final case class SQS(queueName: String)
@@ -112,10 +149,12 @@ object Config {
     final case class GCP(messageQueue: GCP.Pubsub) extends Cloud
 
     object GCP {
-      final case class Pubsub(subscription: String,
-                              customPubsubEndpoint: Option[String],
-                              parallelPullCount: Int,
-                              bufferSize: Int) {
+      final case class Pubsub(
+        subscription: String,
+        customPubsubEndpoint: Option[String],
+        parallelPullCount: Int,
+        bufferSize: Int
+      ) {
         val (projectId, subscriptionId) =
           subscription.split("/").toList match {
             case List("projects", project, "subscriptions", name) =>
@@ -128,20 +167,21 @@ object Config {
   }
 
   /**
-   * All config implicits are put into case class because we want to make region decoder
-   * replaceable to write unit tests for config parsing.
+   * All config implicits are put into case class because we want to make region decoder replaceable
+   * to write unit tests for config parsing.
    */
   final case class implicits(regionConfigDecoder: Decoder[Region] = Region.regionConfigDecoder) {
     implicit val implRegionConfigDecoder: Decoder[Region] =
       regionConfigDecoder
 
-    implicit val nullableCronExprDecoder: Decoder[Option[CronExpr]] =  Decoder.instance { cur =>
+    implicit val nullableCronExprDecoder: Decoder[Option[CronExpr]] = Decoder.instance { cur =>
       cur.as[String] match {
         case Left(other) => Left(other)
-        case Right(cred) => cred match {
-          case "" => Right(None)
-          case _ => cur.as[CronExpr].map(_.some)
-        }
+        case Right(cred) =>
+          cred match {
+            case "" => Right(None)
+            case _ => cur.as[CronExpr].map(_.some)
+          }
       }
     }
 
@@ -295,7 +335,9 @@ object Config {
           case Some(_) =>
             (storage.folderMonitoringStage, storage.loadAuthMethod) match {
               case (None, StorageTarget.LoadAuthMethod.NoCreds) =>
-                Some("Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing")
+                Some(
+                  "Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing"
+                )
               case _ => None
             }
         }

@@ -16,26 +16,32 @@ import cats.Show
 import cats.syntax.show._
 
 /**
- * Loading stage.
- * Represents the finite state machine of the Loader, it can be only in one of the below stages
- * Internal state sets the stage right before it gets executed, i.e. if it failed being in
- * `ManifestCheck` stage it means that manifest check has failed, but it certainly has started
+ * Loading stage. Represents the finite state machine of the Loader, it can be only in one of the
+ * below stages Internal state sets the stage right before it gets executed, i.e. if it failed being
+ * in `ManifestCheck` stage it means that manifest check has failed, but it certainly has started
  */
 sealed trait Stage
 
 object Stage {
+
   /** Figure out how the migration should look like, by inspecting affected tables. First stage */
   final case object MigrationBuild extends Stage
+
   /** Pre-transaction migrations, such as ALTER COLUMN. Usually empty. Second stage */
   final case object MigrationPre extends Stage
+
   /** Checking manifest if the folder is already loaded. Third stage */
   final case object ManifestCheck extends Stage
+
   /** In-transaction migrations, such as ADD COLUMN. Fourth stage */
   final case object MigrationIn extends Stage
+
   /** Actual loading into a table. Appears for many different tables. Fifth stage */
   final case class Loading(table: String) extends Stage
-  /** Adding manifest item, acking SQS comment. Sixth stage  */
+
+  /** Adding manifest item, acking SQS comment. Sixth stage */
   final case object Committing extends Stage
+
   /** Abort the loading. Can appear after any stage */
   final case class Cancelling(reason: String) extends Stage
 

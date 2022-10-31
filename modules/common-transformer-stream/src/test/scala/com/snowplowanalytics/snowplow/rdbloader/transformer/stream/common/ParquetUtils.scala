@@ -21,11 +21,15 @@ import org.apache.hadoop.fs.{Path => HadoopPath}
 import org.apache.parquet.column.ColumnDescriptor
 import org.apache.parquet.format.converter.ParquetMetadataConverter
 import org.apache.parquet.hadoop.ParquetFileReader
-import org.apache.parquet.schema.LogicalTypeAnnotation.{DateLogicalTypeAnnotation, DecimalLogicalTypeAnnotation, TimestampLogicalTypeAnnotation}
+import org.apache.parquet.schema.LogicalTypeAnnotation.{
+  DateLogicalTypeAnnotation,
+  DecimalLogicalTypeAnnotation,
+  TimestampLogicalTypeAnnotation
+}
 import org.apache.parquet.schema.{MessageTypeParser, PrimitiveType}
 
 import java.io.{File, FileFilter}
-import java.math.{MathContext, BigDecimal => BigDec}
+import java.math.{BigDecimal => BigDec, MathContext}
 import java.nio.file.Path
 import java.sql.Date
 import java.time.temporal.ChronoUnit
@@ -54,28 +58,27 @@ object ParquetUtils {
       .toMap
   }
 
-  def extractColumnsFromSchemaString(schema: String) = {
+  def extractColumnsFromSchemaString(schema: String) =
     MessageTypeParser
       .parseMessageType(schema)
       .getColumns
       .asScala
       .toList
-  }
 
-  def convertParquetRecordToJson(record: RowParquetRecord,
-                                 parentPath: List[String],
-                                 columns: List[ColumnDescriptor]): Json = {
-    val fields = record.iterator.map {
-      case (name, value) =>
-        val fullPath = parentPath :+ name
-        val json: Json = convertValue(columns, fullPath)(value)
-        (name, json)
+  def convertParquetRecordToJson(
+    record: RowParquetRecord,
+    parentPath: List[String],
+    columns: List[ColumnDescriptor]
+  ): Json = {
+    val fields = record.iterator.map { case (name, value) =>
+      val fullPath = parentPath :+ name
+      val json: Json = convertValue(columns, fullPath)(value)
+      (name, json)
     }
     Json.fromFields(fields.toList)
   }
 
-  private def convertValue(columns: List[ColumnDescriptor],
-                           fullPath: List[String])(value: Value): Json = {
+  private def convertValue(columns: List[ColumnDescriptor], fullPath: List[String])(value: Value): Json =
     value match {
       case primitiveValue: PrimitiveValue[_] =>
         convertPrimitive(columns, fullPath, primitiveValue)
@@ -87,15 +90,20 @@ object ParquetUtils {
       case _ =>
         Json.Null
     }
-  }
 
-  private def convertPrimitive(columns: List[ColumnDescriptor],
-                               fullPath: List[String], 
-                               primitiveValue: PrimitiveValue[_]) = {
+  private def convertPrimitive(
+    columns: List[ColumnDescriptor],
+    fullPath: List[String],
+    primitiveValue: PrimitiveValue[_]
+  ) = {
     val expectedColumnType = columns
       .find(_.getPath.toList == fullPath)
       .map(_.getPrimitiveType)
-      .getOrElse(throw new RuntimeException(s"Could not find expected type for value: $primitiveValue with path: ${fullPath.mkString("[", ",", "]")}"))
+      .getOrElse(
+        throw new RuntimeException(
+          s"Could not find expected type for value: $primitiveValue with path: ${fullPath.mkString("[", ",", "]")}"
+        )
+      )
 
     primitiveValue match {
       case value: BooleanValue =>
@@ -107,11 +115,11 @@ object ParquetUtils {
       case value: DoubleValue =>
         Json.fromDoubleOrNull(value.value)
       case value: BinaryValue =>
-        convertBinary(expectedColumnType, value) 
+        convertBinary(expectedColumnType, value)
     }
   }
 
-  private def convertInt(expectedColumnType: PrimitiveType, value: IntValue) = {
+  private def convertInt(expectedColumnType: PrimitiveType, value: IntValue) =
     expectedColumnType.getLogicalTypeAnnotation match {
       case _: DateLogicalTypeAnnotation =>
         val date = implicitly[ValueCodec[Date]].decode(value, config)
@@ -121,9 +129,8 @@ object ParquetUtils {
       case _ =>
         Json.fromInt(value.value)
     }
-  }
 
-  private def convertLong(expectedColumnType: PrimitiveType, value: LongValue) = {
+  private def convertLong(expectedColumnType: PrimitiveType, value: LongValue) =
     expectedColumnType.getLogicalTypeAnnotation match {
       case _: TimestampLogicalTypeAnnotation =>
         val timestamp = Instant.EPOCH.plus(value.value, ChronoUnit.MICROS).truncatedTo(ChronoUnit.MILLIS)
@@ -133,23 +140,21 @@ object ParquetUtils {
       case _ =>
         Json.fromLong(value.value)
     }
-  }
-  private def convertBinary(expectedColumnType: PrimitiveType, value: BinaryValue) = {
+  private def convertBinary(expectedColumnType: PrimitiveType, value: BinaryValue) =
     expectedColumnType.getLogicalTypeAnnotation match {
       case annotation: DecimalLogicalTypeAnnotation =>
-
         /**
-         * Create decimal with scale 18 first, cause parquet4s rescales it in 'com.github.mjakubowski84.parquet4s.ParquetReadSupport.DecimalConverter' when reading.
+         * Create decimal with scale 18 first, cause parquet4s rescales it in
+         * 'com.github.mjakubowski84.parquet4s.ParquetReadSupport.DecimalConverter' when reading.
          * Incoming bytes represent decimal with scale 18.
          */
         val scale18Decimal = BigDecimal(BigInt(value.value.getBytes), Decimals.Scale, new MathContext(Decimals.Precision))
-        
+
         /** We need decimal with scale matching annotation, so rescale again */
         val desiredDecimal = scale18Decimal.setScale(annotation.getScale)
-        
+
         Json.fromBigDecimal(desiredDecimal)
       case _ =>
         Json.fromString(value.value.toStringUsingUTF8)
     }
-  }
 }

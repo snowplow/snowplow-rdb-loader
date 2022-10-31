@@ -29,26 +29,29 @@ import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 /** Generic starting point for all loaders */
 object Runner {
 
-  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](argv: List[String],
-                                                                        buildStatements: BuildTarget,
-                                                                        appName: String): F[ExitCode] = {
+  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](
+    argv: List[String],
+    buildStatements: BuildTarget,
+    appName: String
+  ): F[ExitCode] = {
     val result = for {
       parsed <- CliConfig.parse[F](argv)
       statements <- EitherT.fromEither[F](buildStatements(parsed.config))
-      application = {
-        Environment.initialize[F](
-          parsed,
-          statements,
-          appName,
-          generated.BuildInfo.version
-        ).use { env: Environment[F] =>
-          import env._
+      application =
+        Environment
+          .initialize[F](
+            parsed,
+            statements,
+            appName,
+            generated.BuildInfo.version
+          )
+          .use { env: Environment[F] =>
+            import env._
 
-          Logging[F]
-            .info(s"RDB Loader ${generated.BuildInfo.version} has started.") *>
-            Loader.run[F, ConnectionIO](parsed.config, env.controlF, env.telemetryF).as(ExitCode.Success)
-        }
-      }
+            Logging[F]
+              .info(s"RDB Loader ${generated.BuildInfo.version} has started.") *>
+              Loader.run[F, ConnectionIO](parsed.config, env.controlF, env.telemetryF).as(ExitCode.Success)
+          }
       exitCode <- EitherT.liftF[F, String, ExitCode](application)
     } yield exitCode
 

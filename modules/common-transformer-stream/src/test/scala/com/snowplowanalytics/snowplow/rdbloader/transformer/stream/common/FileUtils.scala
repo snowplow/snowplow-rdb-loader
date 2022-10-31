@@ -22,29 +22,25 @@ import java.nio.file.Path
 
 object FileUtils {
 
-  def createTempDirectory(blocker: Blocker)(implicit cs: ContextShift[IO]): Resource[IO, Path] = {
+  def createTempDirectory(blocker: Blocker)(implicit cs: ContextShift[IO]): Resource[IO, Path] =
     fs2.io.file.tempDirectoryResource[IO](blocker, Path.of(System.getProperty("java.io.tmpdir")))
-  }
 
-  def directoryStream(blocker: Blocker, dir: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] = {
+  def directoryStream(blocker: Blocker, dir: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] =
     fs2.io.file.directoryStream[IO](blocker, dir).flatMap(fileStream(blocker, _))
-  }
 
-  def readLines(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): IO[List[String]] = {
-   resourceFileStream(blocker, resourcePath)
-     .map(_.replace("version_placeholder", BuildInfo.version))
-     .compile
-     .toList
-  }
+  def readLines(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): IO[List[String]] =
+    resourceFileStream(blocker, resourcePath)
+      .map(_.replace("version_placeholder", BuildInfo.version))
+      .compile
+      .toList
 
-  def resourceFileStream(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): Stream[IO, String] = {
+  def resourceFileStream(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): Stream[IO, String] =
     fileStream(blocker, Path.of(getClass.getResource(resourcePath).getPath))
-  }
 
-  def fileStream(blocker: Blocker, filePath: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] = {
-    fs2.io.file.readAll[IO](filePath, blocker, 4096)
+  def fileStream(blocker: Blocker, filePath: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] =
+    fs2.io.file
+      .readAll[IO](filePath, blocker, 4096)
       .through(text.utf8Decode)
       .through(text.lines)
-  }
 
 }

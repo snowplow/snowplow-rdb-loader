@@ -164,4 +164,3 @@ object Telemetry {
   implicit val telemetryDecoder: Decoder[Config] =
     deriveDecoder[Config]
 }
-

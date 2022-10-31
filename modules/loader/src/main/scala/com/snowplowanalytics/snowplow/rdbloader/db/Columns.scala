@@ -16,10 +16,10 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 
 object Columns {
-  
+
   final case class ColumnName(value: String) extends AnyVal
   type EventTableColumns = List[ColumnName]
-  
+
   final case class ColumnsToCopy(names: List[ColumnName]) extends AnyVal
 
   object ColumnsToCopy {
@@ -34,7 +34,7 @@ object Columns {
       val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
       val info = shreddedType.info
       ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model))
-    } 
+    }
   }
 
   final case class ColumnsToSkip(names: List[ColumnName]) extends AnyVal

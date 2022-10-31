@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.{Show, Applicative, ~>}
+import cats.{Applicative, Show, ~>}
 
 import cats.effect.Sync
 

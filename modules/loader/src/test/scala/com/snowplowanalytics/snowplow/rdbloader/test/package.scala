@@ -1,9 +1,10 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
-import cats.data.{StateT, EitherT, State => CState}
+import cats.data.{EitherT, State => CState, StateT}
 import cats.syntax.either._
 
 package object test {
+
   /** Pure effect. It can only change [[TestState]] and never actually produce side-effects */
   type Pure[A] = EitherT[CState[TestState, *], Throwable, A]
 

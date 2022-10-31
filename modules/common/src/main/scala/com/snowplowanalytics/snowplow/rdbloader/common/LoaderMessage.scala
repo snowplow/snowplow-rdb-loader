@@ -51,13 +51,22 @@ object LoaderMessage {
     )
 
   /**
-    * Set of timestamps coming from shredder
-    * @param jobStarted time shred job has started processing the batch
-    * @param jobCompleted time shred job has finished processing the batch
-    * @param min earliest collector timestamp in the batch
-    * @param max latest collector timestamp in the batch
-    */
-  final case class Timestamps(jobStarted: Instant, jobCompleted: Instant, min: Option[Instant], max: Option[Instant])
+   * Set of timestamps coming from shredder
+   * @param jobStarted
+   *   time shred job has started processing the batch
+   * @param jobCompleted
+   *   time shred job has finished processing the batch
+   * @param min
+   *   earliest collector timestamp in the batch
+   * @param max
+   *   latest collector timestamp in the batch
+   */
+  final case class Timestamps(
+    jobStarted: Instant,
+    jobCompleted: Instant,
+    min: Option[Instant],
+    max: Option[Instant]
+  )
 
   sealed trait TypesInfo {
     def isEmpty: Boolean
@@ -69,7 +78,11 @@ object LoaderMessage {
     }
 
     object Shredded {
-      case class Type(schemaKey: SchemaKey, format: ShreddedFormat, snowplowEntity: SnowplowEntity)
+      case class Type(
+        schemaKey: SchemaKey,
+        format: ShreddedFormat,
+        snowplowEntity: SnowplowEntity
+      )
 
       sealed trait ShreddedFormat {
         def path: String = this.toString.toLowerCase
@@ -78,9 +91,9 @@ object LoaderMessage {
       object ShreddedFormat {
         def fromString(str: String): Either[String, ShreddedFormat] =
           str match {
-            case "TSV"  => TSV.asRight
+            case "TSV" => TSV.asRight
             case "JSON" => JSON.asRight
-            case _      => s"$str is unexpected format. TSV and JSON are possible options".asLeft
+            case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
           }
 
         case object TSV extends ShreddedFormat
@@ -114,27 +127,25 @@ object LoaderMessage {
       }
 
       def latestByModel(types: List[WideRow.Type]): List[WideRow.Type] =
-        types.groupBy {
-          case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
+        types
+          .groupBy { case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
             (vendor, name, model, snowplowEntity)
-        }
+          }
           .toList
           .flatMap { case (_, grouped) =>
             grouped.sorted.lastOption
           }
 
-
       implicit val wideRowTypeOrdering: math.Ordering[WideRow.Type] = {
         implicit val schemaKeyOrdering = SchemaKey.ordering
-        implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] = 
+        implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] =
           math.Ordering.by {
-            case SnowplowEntity.Context => 0 
-            case SnowplowEntity.SelfDescribingEvent => 1 
+            case SnowplowEntity.Context => 0
+            case SnowplowEntity.SelfDescribingEvent => 1
           }
-        
-        math.Ordering.by {
-          case WideRow.Type(schemaKey, snowplowEntity) =>
-            (snowplowEntity, schemaKey)
+
+        math.Ordering.by { case WideRow.Type(schemaKey, snowplowEntity) =>
+          (snowplowEntity, schemaKey)
         }
       }
     }
@@ -158,19 +169,23 @@ object LoaderMessage {
   final case class Count(good: Long)
 
   /**
-    * Message signalling that shredder has finished and data ready to be loaded
-    * @param base root of the shredded data
-    * @param typesInfo all types found in the batch
-    * @param timestamps set of auxiliary timestamps known to shredder
-    * @param processor shredder application metadata
-    */
+   * Message signalling that shredder has finished and data ready to be loaded
+   * @param base
+   *   root of the shredded data
+   * @param typesInfo
+   *   all types found in the batch
+   * @param timestamps
+   *   set of auxiliary timestamps known to shredder
+   * @param processor
+   *   shredder application metadata
+   */
   final case class ShreddingComplete(
-                                      base: BlobStorage.Folder,
-                                      typesInfo: TypesInfo,
-                                      timestamps: Timestamps,
-                                      compression: Compression,
-                                      processor: Processor,
-                                      count: Option[Count]
+    base: BlobStorage.Folder,
+    typesInfo: TypesInfo,
+    timestamps: Timestamps,
+    compression: Compression,
+    processor: Processor,
+    count: Option[Count]
   ) extends LoaderMessage {
     def toManifestItem: ManifestItem =
       LoaderMessage.createManifestItem(this)
@@ -187,28 +202,26 @@ object LoaderMessage {
       )
       .flatMap {
         case SelfDescribingData(
-            SchemaKey(
-              "com.snowplowanalytics.snowplow.storage.rdbloader",
-              "shredding_complete",
-              _,
-              SchemaVer.Full(1, _, _)
-            ),
-            data
+              SchemaKey(
+                "com.snowplowanalytics.snowplow.storage.rdbloader",
+                "shredding_complete",
+                _,
+                SchemaVer.Full(1, _, _)
+              ),
+              data
             ) =>
           data
             .as[LegacyLoaderMessage.ShreddingComplete]
-            .leftMap(e =>
-              s"Cannot decode valid ShreddingComplete legacy payload version 1 from [${data.noSpaces}], ${e.show}"
-            )
+            .leftMap(e => s"Cannot decode valid ShreddingComplete legacy payload version 1 from [${data.noSpaces}], ${e.show}")
             .map(LegacyLoaderMessage.unlegacify)
         case SelfDescribingData(
-            SchemaKey(
-              "com.snowplowanalytics.snowplow.storage.rdbloader",
-              "shredding_complete",
-              _,
-              SchemaVer.Full(2, _, _)
-            ),
-            data
+              SchemaKey(
+                "com.snowplowanalytics.snowplow.storage.rdbloader",
+                "shredding_complete",
+                _,
+                SchemaVer.Full(2, _, _)
+              ),
+              data
             ) =>
           data
             .as[ShreddingComplete]
@@ -218,15 +231,19 @@ object LoaderMessage {
       }
 
   /** An entity's type how it's stored in manifest */
-  final case class ManifestType(schemaKey: SchemaKey, format: String, transformation: Option[String])
+  final case class ManifestType(
+    schemaKey: SchemaKey,
+    format: String,
+    transformation: Option[String]
+  )
 
   final case class ManifestItem(
-                                 base: BlobStorage.Folder,
-                                 types: List[ManifestType],
-                                 timestamps: Timestamps,
-                                 compression: Compression,
-                                 processor: Processor,
-                                 count: Option[Count]
+    base: BlobStorage.Folder,
+    types: List[ManifestType],
+    timestamps: Timestamps,
+    compression: Compression,
+    processor: Processor,
+    count: Option[Count]
   )
 
   def createManifestItem(s: ShreddingComplete): ManifestItem = {
@@ -297,7 +314,7 @@ object LoaderMessage {
       val transformationCur = cur.downField("transformation")
       transformationCur.as[String].map(_.toLowerCase) match {
         case Right("shredded") => cur.as[TypesInfo.Shredded]
-        case Right("widerow")  => cur.as[TypesInfo.WideRow]
+        case Right("widerow") => cur.as[TypesInfo.WideRow]
         case Left(DecodingFailure(_, List(CursorOp.DownField("transformation")))) =>
           Left(DecodingFailure("Cannot find 'transformation' string in loader message", transformationCur.history))
         case Left(other) =>
@@ -306,12 +323,12 @@ object LoaderMessage {
     }
   implicit val loaderMessageShredPropertyEncoder: Encoder[SnowplowEntity] =
     Encoder.encodeString.contramap {
-      case SnowplowEntity.Context             => "CONTEXT"
+      case SnowplowEntity.Context => "CONTEXT"
       case SnowplowEntity.SelfDescribingEvent => "SELF_DESCRIBING_EVENT"
     }
   implicit val loaderMessageSnowplowEntityDecoder: Decoder[SnowplowEntity] =
     Decoder.decodeString.emap {
-      case "CONTEXT"               => SnowplowEntity.Context.asRight[String]
+      case "CONTEXT" => SnowplowEntity.Context.asRight[String]
       case "SELF_DESCRIBING_EVENT" => SnowplowEntity.SelfDescribingEvent.asRight[String]
       case other =>
         s"ShredProperty $other is not supported. Supported values: CONTEXT, SELFDESCRIBING_EVENT".asLeft[SnowplowEntity]

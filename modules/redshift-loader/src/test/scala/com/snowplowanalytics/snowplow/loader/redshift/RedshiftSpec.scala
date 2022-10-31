@@ -12,12 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.loader.redshift
 
-import com.snowplowanalytics.iglu.core.{SchemaVer, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.{ SchemaList, Migration => SchemaMigration }
-import com.snowplowanalytics.iglu.schemaddl.redshift.{CompressionEncoding, RedshiftVarchar, AlterType, ZstdEncoding, AlterTable, AddColumn}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
+import com.snowplowanalytics.iglu.schemaddl.redshift.{AddColumn, AlterTable, AlterType, CompressionEncoding, RedshiftVarchar, ZstdEncoding}
 
-import com.snowplowanalytics.snowplow.rdbloader.db.{Target, Migration}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Target}
 
 import org.specs2.mutable.Specification
 
@@ -38,7 +38,11 @@ class RedshiftSpec extends Specification {
       )
 
       result must beLike {
-        case Migration.Block(Nil, List(Migration.Item.AddColumn(fragment, Nil)), Migration.Entity.Table("atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1,0,1)))) =>
+        case Migration.Block(
+              Nil,
+              List(Migration.Item.AddColumn(fragment, Nil)),
+              Migration.Entity.Table("atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 1)))
+            ) =>
           fragment.toString() must beEqualTo(s"""Fragment("${alterTable.toDdl}")""")
         case _ => ko("Unexpected block found")
       }
@@ -54,7 +58,11 @@ class RedshiftSpec extends Specification {
       )
 
       result must beLike {
-        case Migration.Block(List(Migration.Item.AlterColumn(fragment)), List(), Migration.Entity.Table("atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2,0,1)))) =>
+        case Migration.Block(
+              List(Migration.Item.AlterColumn(fragment)),
+              List(),
+              Migration.Entity.Table("atomic", SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2, 0, 1)))
+            ) =>
           fragment.toString() must beEqualTo(s"""Fragment("${alterTable.toDdl}")""")
         case _ => ko("Unexpected block found")
       }

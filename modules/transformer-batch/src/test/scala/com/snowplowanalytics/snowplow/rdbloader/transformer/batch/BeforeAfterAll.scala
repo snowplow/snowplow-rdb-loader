@@ -19,8 +19,7 @@ import org.specs2.specification.core.Fragments
 
 /**
  * The content of `beforeAll` is executed before a spec and the content of `afterAll` is executed
- * once the spec is done.
- * TODO: To remove once specs2 has been updated.
+ * once the spec is done. TODO: To remove once specs2 has been updated.
  */
 trait BeforeAfterAll extends SpecificationLike {
   override def map(fragments: => Fragments) =

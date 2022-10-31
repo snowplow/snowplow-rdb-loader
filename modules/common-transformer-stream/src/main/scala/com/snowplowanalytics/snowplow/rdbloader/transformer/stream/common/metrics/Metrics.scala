@@ -39,7 +39,7 @@ object Metrics {
 
   val goodCounterName = "good"
   val badCounterName = "bad"
-  
+
   private val defaultPrefix = "snowplow.transformer"
 
   final case class MetricSnapshot(
@@ -121,7 +121,6 @@ object Metrics {
       snapshot <- Stream.eval(MetricRefs.snapshot(metrics))
       _ <- Stream.eval(rep.report(snapshot))
     } yield ()
-
 
   def noop[F[_]: Async]: Metrics[F] =
     new Metrics[F] {

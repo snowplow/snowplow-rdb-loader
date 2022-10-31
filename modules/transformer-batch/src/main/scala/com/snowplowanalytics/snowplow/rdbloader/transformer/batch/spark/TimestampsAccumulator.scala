@@ -34,8 +34,7 @@ class TimestampsAccumulator extends AccumulatorV2[Event, Option[BatchTimestamps]
   def merge(other: AccumulatorV2[Event, Option[BatchTimestamps]]): Unit = other match {
     case o: TimestampsAccumulator =>
       accum = mergeWith(o.accum)
-    case _ => throw new UnsupportedOperationException(
-      s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
+    case _ => throw new UnsupportedOperationException(s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
   }
 
   def isZero: Boolean = accum.isEmpty
@@ -50,13 +49,11 @@ class TimestampsAccumulator extends AccumulatorV2[Event, Option[BatchTimestamps]
 
   def value = accum
 
-  def add(event: Event): Unit = {
+  def add(event: Event): Unit =
     accum = mergeWith(Some(BatchTimestamps(event.collector_tstamp, event.collector_tstamp)))
-  }
 
-  def reset(): Unit = {
+  def reset(): Unit =
     accum = None
-  }
 }
 
 object TimestampsAccumulator {

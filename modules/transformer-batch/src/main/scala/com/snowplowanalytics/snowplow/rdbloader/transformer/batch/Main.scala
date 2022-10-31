@@ -32,25 +32,25 @@ object Main {
     .set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
     .registerKryoClasses(Serialization.classesToRegister)
 
-  def main(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit =
     CliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
       case Right(cli) =>
-        val spark = SparkSession.builder()
+        val spark = SparkSession
+          .builder()
           .config(sparkConfig)
           .getOrCreate()
         val sentryClient = cli.config.monitoring.sentry.map(s => Sentry.init(SentryOptions.defaults(s.dsn.toString)))
         Either
           .catchNonFatal(ShredJob.run(spark, cli.igluConfig, cli.duplicateStorageConfig, cli.config)) match {
-            case Left(throwable) =>
-              sentryClient.foreach(_.sendException(throwable))
-              spark.stop()
-              throw throwable
-            case Right(_) =>
-              spark.stop()
-          }
+          case Left(throwable) =>
+            sentryClient.foreach(_.sendException(throwable))
+            spark.stop()
+            throw throwable
+          case Right(_) =>
+            spark.stop()
+        }
       case Left(error) =>
         System.err.println(error)
         System.exit(2)
     }
-  }
 }

@@ -13,7 +13,6 @@
 
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 
-
 import java.time.Instant
 import java.util.UUID
 
@@ -30,7 +29,11 @@ class InMemoryEventManifest extends EventsManifest {
    * This function mimics actual behavior used in DynamoDbManifest
    * https://github.com/snowplow-incubator/snowplow-events-manifest/blob/master/src/main/scala/com/snowplowanalytics/snowplow/eventsmanifest/DynamoDbManifest.scala#L71
    */
-  override def put(eventId: UUID, eventFingerprint: String, etlTstamp: Instant): Boolean = {
+  override def put(
+    eventId: UUID,
+    eventFingerprint: String,
+    etlTstamp: Instant
+  ): Boolean = {
     val cond = events.get((eventId, eventFingerprint)).forall(_ == etlTstamp.getEpochSecond)
     if (cond) {
       events = events.updated((eventId, eventFingerprint), etlTstamp.getEpochSecond)
@@ -42,4 +45,3 @@ class InMemoryEventManifest extends EventsManifest {
 
   def getEventIds: List[String] = events.toList.map(_._1._1.toString)
 }
-

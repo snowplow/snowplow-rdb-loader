@@ -33,20 +33,29 @@ object Flattening {
   /** Redshift default NULL string */
   val NullCharacter: String = "\\N"
 
-  val MetaSchema = SchemaKey("com.snowplowanalyics.self-desc", "schema", "jsonschema", SchemaVer.Full(1,0,0))
+  val MetaSchema = SchemaKey("com.snowplowanalyics.self-desc", "schema", "jsonschema", SchemaVer.Full(1, 0, 0))
 
-  def getOrdered[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F], vendor: String, name: String, model: Int): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] = {
+  def getOrdered[F[_]: Monad: RegistryLookup: Clock](
+    resolver: Resolver[F],
+    vendor: String,
+    name: String,
+    model: Int
+  ): EitherT[F, FailureDetails.LoaderIgluError, DdlSchemaList] = {
     val criterion = SchemaCriterion(vendor, name, "jsonschema", Some(model), None, None)
     val schemaList = resolver.listSchemas(vendor, name, model)
     for {
-      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
+      schemaList <- EitherT[F, ClientError.ResolutionError, SchemaList](schemaList).leftMap(error =>
+                      FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error)
+                    )
       ordered <- DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
     } yield ordered
   }
 
-  def getDdlProperties[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
-                                                           propertiesCache: PropertiesCache[F],
-                                                           schemaKey: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
+  def getDdlProperties[F[_]: Monad: RegistryLookup: Clock](
+    resolver: Resolver[F],
+    propertiesCache: PropertiesCache[F],
+    schemaKey: SchemaKey
+  ): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
     val criterion = SchemaCriterion(schemaKey.vendor, schemaKey.name, "jsonschema", Some(schemaKey.version.model), None, None)
 
     EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model))
@@ -59,15 +68,21 @@ object Flattening {
       }
   }
 
-  def fetch[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F])(key: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, IgluSchema] =
+  def fetch[F[_]: Monad: RegistryLookup: Clock](
+    resolver: Resolver[F]
+  )(
+    key: SchemaKey
+  ): EitherT[F, FailureDetails.LoaderIgluError, IgluSchema] =
     for {
       json <- EitherT(resolver.lookupSchema(key)).leftMap(error => FailureDetails.LoaderIgluError.IgluError(key, error))
       schema <- EitherT.fromEither(parseSchema(json))
     } yield schema
 
-  private def lookupInCache[F[_]: Monad: RegistryLookup: Clock](resolver: Resolver[F],
-                                                                propertiesCache: PropertiesCache[F],
-                                                                resolvedSchemaList: ResolverResult.Cached[SchemaListKey, SchemaList]): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
+  private def lookupInCache[F[_]: Monad: RegistryLookup: Clock](
+    resolver: Resolver[F],
+    propertiesCache: PropertiesCache[F],
+    resolvedSchemaList: ResolverResult.Cached[SchemaListKey, SchemaList]
+  ): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
     val propertiesKey = (resolvedSchemaList.key, resolvedSchemaList.timestamp)
 
     EitherT.liftF(propertiesCache.get(propertiesKey)).flatMap {
@@ -79,12 +94,14 @@ object Flattening {
     }
   }
 
-  private def evaluateProperties[F[_]: Monad: RegistryLookup: Clock](schemaList: SchemaList,
-                                                                     resolver: Resolver[F]): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
-    DdlSchemaList.fromSchemaList(schemaList, fetch(resolver))
+  private def evaluateProperties[F[_]: Monad: RegistryLookup: Clock](
+    schemaList: SchemaList,
+    resolver: Resolver[F]
+  ): EitherT[F, FailureDetails.LoaderIgluError, Properties] =
+    DdlSchemaList
+      .fromSchemaList(schemaList, fetch(resolver))
       .map(FlatSchema.extractProperties)
-  }
-  
+
   /** Parse JSON into self-describing schema, or return `FlatteningError` */
   private def parseSchema(json: Json): Either[FailureDetails.LoaderIgluError, IgluSchema] =
     for {

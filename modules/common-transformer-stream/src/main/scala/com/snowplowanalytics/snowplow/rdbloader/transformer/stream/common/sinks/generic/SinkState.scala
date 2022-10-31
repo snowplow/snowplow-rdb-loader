@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.generic
 
-import cats.{Semigroup, Monoid, Show}
+import cats.{Monoid, Semigroup, Show}
 import cats.implicits._
 
 import cats.effect.{Concurrent, Sync}
@@ -8,17 +8,23 @@ import cats.effect.{Concurrent, Sync}
 import fs2.{Pipe, Stream}
 
 /**
- * A top buffer type for [[Partitioned]], static over existence of the window
- * Contains multiple [[KeyedEnqueue]] objects over time, swapped with [[nextQueue]]
- * Once previous one is emitted into a stream it gets replaced with fresh one
- * Every *source window* has 1:1 correspondence, joined by `W`,
- * but [[SinkState]] is for [[Partitioned]] sink
+ * A top buffer type for [[Partitioned]], static over existence of the window Contains multiple
+ * [[KeyedEnqueue]] objects over time, swapped with [[nextQueue]] Once previous one is emitted into
+ * a stream it gets replaced with fresh one Every *source window* has 1:1 correspondence, joined by
+ * `W`, but [[SinkState]] is for [[Partitioned]] sink
  *
  * @param id
- * @param enqueue pending data to be emitted to sinks
- * @param data extra local state which is accumulated as records are processed. Not used by [[Partitioned]] but needed by the surrounding application.
+ * @param enqueue
+ *   pending data to be emitted to sinks
+ * @param data
+ *   extra local state which is accumulated as records are processed. Not used by [[Partitioned]]
+ *   but needed by the surrounding application.
  */
-final case class SinkState[W, K, V, D](id: W, enqueue: KeyedEnqueue[K, V], data: D) {
+final case class SinkState[W, K, V, D](
+  id: W,
+  enqueue: KeyedEnqueue[K, V],
+  data: D
+) {
 
   /** To be called mid-window after flushing the queue. The window's id and data are preserved */
   def nextQueue: SinkState[W, K, V, D] =
@@ -48,4 +54,3 @@ object SinkState {
     SinkState(id, KeyedEnqueue.empty, Monoid[D].empty)
 
 }
-

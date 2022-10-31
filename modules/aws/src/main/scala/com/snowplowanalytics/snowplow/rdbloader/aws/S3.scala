@@ -29,58 +29,64 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Key
 
 object S3 {
 
-  def blobStorage[F[_] : ConcurrentEffect : Timer](region: String): Resource[F, BlobStorage[F]] = {
+  def blobStorage[F[_]: ConcurrentEffect: Timer](region: String): Resource[F, BlobStorage[F]] =
     for {
       client <- getClient(region)
       blobStorage <- Resource.pure[F, BlobStorage[F]](
-        new BlobStorage[F] {
-          /** * Transform S3 object summary into valid S3 key string */
-          def getKey(path: S3Path): BlobStorage.BlobObject = {
-            val key = BlobStorage.Key.coerce(s"s3://${path.bucket}/${path.key}")
-            BlobStorage.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
-          }
+                       new BlobStorage[F] {
 
-          def get(path: Key): F[Either[Throwable, String]] = {
-            val (bucket, s3Key) = BlobStorage.splitKey(path)
-            client
-              .get(S3Path(bucket, s3Key, None), 1024)
-              .compile
-              .to(Array)
-              .map(array => new String(array))
-              .attempt
-          }
+                         /**
+                          * * Transform S3 object summary into valid S3 key string
+                          */
+                         def getKey(path: S3Path): BlobStorage.BlobObject = {
+                           val key = BlobStorage.Key.coerce(s"s3://${path.bucket}/${path.key}")
+                           BlobStorage.BlobObject(key, path.meta.flatMap(_.size).getOrElse(0L))
+                         }
 
-          def list(folder: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
-            val (bucket, s3Key) = BlobStorage.splitPath(folder)
-            client.list(S3Path(bucket, s3Key, None), recursive).map(getKey)
-          }
+                         def get(path: Key): F[Either[Throwable, String]] = {
+                           val (bucket, s3Key) = BlobStorage.splitKey(path)
+                           client
+                             .get(S3Path(bucket, s3Key, None), 1024)
+                             .compile
+                             .to(Array)
+                             .map(array => new String(array))
+                             .attempt
+                         }
 
-          def put(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
-            val (bucket, s3Key) = BlobStorage.splitKey(path)
-            client.put(S3Path(bucket, s3Key, None), overwrite)
-          }
+                         def list(folder: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
+                           val (bucket, s3Key) = BlobStorage.splitPath(folder)
+                           client.list(S3Path(bucket, s3Key, None), recursive).map(getKey)
+                         }
 
-          /**
-           * Check if some `key` exists in S3 `path`
-           *
-           * @param key valid S3 key (without trailing slash)
-           * @return true if file exists, false if file doesn't exist or not available
-           */
-          def keyExists(key: BlobStorage.Key): F[Boolean] = {
-            val (bucket, s3Key) = BlobStorage.splitKey(key)
-            client.list(S3Path(bucket, s3Key, None)).compile.toList.map(_.nonEmpty)
-          }
-        }
-      )
+                         def put(path: BlobStorage.Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
+                           val (bucket, s3Key) = BlobStorage.splitKey(path)
+                           client.put(S3Path(bucket, s3Key, None), overwrite)
+                         }
+
+                         /**
+                          * Check if some `key` exists in S3 `path`
+                          *
+                          * @param key
+                          *   valid S3 key (without trailing slash)
+                          * @return
+                          *   true if file exists, false if file doesn't exist or not available
+                          */
+                         def keyExists(key: BlobStorage.Key): F[Boolean] = {
+                           val (bucket, s3Key) = BlobStorage.splitKey(key)
+                           client.list(S3Path(bucket, s3Key, None)).compile.toList.map(_.nonEmpty)
+                         }
+                       }
+                     )
     } yield blobStorage
-  }
 
   /**
    * Create S3 client, backed by AWS Java SDK
    *
-   * @param region AWS region
-   * @return Snowplow-specific S3 client
+   * @param region
+   *   AWS region
+   * @return
+   *   Snowplow-specific S3 client
    */
-  private def getClient[F[_] : ConcurrentEffect](region: String): Resource[F, S3Store[F]] =
+  private def getClient[F[_]: ConcurrentEffect](region: String): Resource[F, S3Store[F]] =
     Resource.eval(S3Store(S3AsyncClient.builder().region(Region.of(region)).build()))
 }

@@ -29,12 +29,15 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 
 object ShredderValidations {
 
-  def apply(processor: Processor, event: Event, validations: Validations): Option[BadRow] =
+  def apply(
+    processor: Processor,
+    event: Event,
+    validations: Validations
+  ): Option[BadRow] =
     for {
       minimumTimestamp <- validations.minimumTimestamp
       failures <- checkTimestamp(event, minimumTimestamp).toNel
     } yield BadRow.GenericError(processor, GenericFailure(Instant.now, failures), Payload.RawPayload(event.asJson.noSpaces))
-
 
   private def checkTimestamp(event: Event, minimumTimestamp: Instant): List[String] =
     List(
@@ -45,8 +48,7 @@ object ShredderValidations {
       (event.etl_tstamp, "etl_tstamp"),
       (event.refr_dvce_tstamp, "refr_dvce_tstamp"),
       (event.true_tstamp, "true_tstamp")
-    ).map((checkTimestampHelper(minimumTimestamp) _).tupled)
-    .flatten
+    ).map((checkTimestampHelper(minimumTimestamp) _).tupled).flatten
 
   private def checkTimestampHelper(minimumTimestamp: Instant)(timestamp: Option[Instant], col: String): Option[String] =
     for {

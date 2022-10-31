@@ -136,6 +136,6 @@ object AtomicColumns {
     "event_format",
     "event_version",
     "event_fingerprint",
-    "true_tstamp",
+    "true_tstamp"
   ).map(ColumnName)
 }

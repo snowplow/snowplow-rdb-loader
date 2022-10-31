@@ -29,13 +29,12 @@ import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
 
 /**
- * Module responsible for periodic attempts to re-load recently failed folders.
- * It works together with internal manifest of failed runs from `State` and
- * [[DataDiscovery]]. First provides a list of recently failed loads that can
- * be retried and `Retries` pushes them back into discovery stream via `RetryQueue`
- * `Retries` pulls the failures periodically, but does its best to not overpopulate
- * the [[DataDiscovery]] stream with failed folders because it's assumed that failed
- * folders have lower priority or pending a fix.
+ * Module responsible for periodic attempts to re-load recently failed folders. It works together
+ * with internal manifest of failed runs from `State` and [[DataDiscovery]]. First provides a list
+ * of recently failed loads that can be retried and `Retries` pushes them back into discovery stream
+ * via `RetryQueue` `Retries` pulls the failures periodically, but does its best to not overpopulate
+ * the [[DataDiscovery]] stream with failed folders because it's assumed that failed folders have
+ * lower priority or pending a fix.
  */
 object Retries {
 
@@ -43,14 +42,11 @@ object Retries {
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
-   * Internal manifest of recent failures
-   * Loader uses this manifest to periodically revisit failed loads
-   * and make another attempt to load corresponding folder.
-   * Once a folder has been successfully loaded it must be deleted
-   * from this manifest. Also it's important that whatever puts folders
-   * into the manifest respected a maximum amount of attempt - it helps
-   * to avoid infinite loading, where a problematic folders gets back
-   * into queue again and again
+   * Internal manifest of recent failures Loader uses this manifest to periodically revisit failed
+   * loads and make another attempt to load corresponding folder. Once a folder has been
+   * successfully loaded it must be deleted from this manifest. Also it's important that whatever
+   * puts folders into the manifest respected a maximum amount of attempt - it helps to avoid
+   * infinite loading, where a problematic folders gets back into queue again and again
    */
   type Failures = Map[BlobStorage.Folder, LoadFailure]
 
@@ -60,42 +56,57 @@ object Retries {
     Ordering[String].on(_.toString)
 
   /**
-    * Information about past failure 
-    *
-    * @param lastError an exception that has been raised last time (a previous one 
-    *                  could be different). It's generally a rule that these exception 
-    *                  also pass Retry.isWorth predicate
-    * @param attempts amount of *total* attempts that were taked to load the folder,
-    *                 i.e. if loading failed 3 times within `Load`, added to retry queue,
-    *                 picked up by Load again and failed 3 times - it will be 6
-    * @param first timestamp of the first failure occured
-    * @param last timestamp of the lastError occured (cannot be earlier than `first`)
-    */
-  final case class LoadFailure(lastError: Throwable,
-                               attempts: Int,
-                               first: Instant,
-                               last: Instant) {
+   * Information about past failure
+   *
+   * @param lastError
+   *   an exception that has been raised last time (a previous one could be different). It's
+   *   generally a rule that these exception also pass Retry.isWorth predicate
+   * @param attempts
+   *   amount of *total* attempts that were taked to load the folder,
+   * i.e. if loading failed 3 times within `Load`, added to retry queue, picked up by Load again and
+   * failed 3 times - it will be 6
+   * @param first
+   *   timestamp of the first failure occured
+   * @param last
+   *   timestamp of the lastError occured (cannot be earlier than `first`)
+   */
+  final case class LoadFailure(
+    lastError: Throwable,
+    attempts: Int,
+    first: Instant,
+    last: Instant
+  ) {
+
     /**
-      * Update an existing in-RetryQueue failure with new details
-      *
-      * @param error new last error, previous one will be thrown away
-      * @param now timestamp
-      * @param currentAttempts
-      * @return
-      */
-    def update(error: Throwable, now: Instant, currentAttempts: Int): LoadFailure =
+     * Update an existing in-RetryQueue failure with new details
+     *
+     * @param error
+     *   new last error, previous one will be thrown away
+     * @param now
+     *   timestamp
+     * @param currentAttempts
+     * @return
+     */
+    def update(
+      error: Throwable,
+      now: Instant,
+      currentAttempts: Int
+    ): LoadFailure =
       LoadFailure(error, currentAttempts + attempts, first, now)
   }
 
   /**
-   * Periodically try to emit a set of [[DataDiscovery]] objects
-   * All discoveries are made though `failures` action which pulls a set of known failures,
-   * which later "rediscovered" via S3 (so SQS details don't matter)
-   * It's important that no attempt is made to make sure that enqueued failures are unique,
-   * they can be re-sent into SQS as well as re-pulled by retry stream.
-   * It's expected that DB manifest handles such duplicates
+   * Periodically try to emit a set of [[DataDiscovery]] objects All discoveries are made though
+   * `failures` action which pulls a set of known failures, which later "rediscovered" via S3 (so
+   * SQS details don't matter) It's important that no attempt is made to make sure that enqueued
+   * failures are unique, they can be re-sent into SQS as well as re-pulled by retry stream. It's
+   * expected that DB manifest handles such duplicates
    */
-  def run[F[_]: BlobStorage: Cache: Logging: Timer: Concurrent: JsonPathDiscovery](assets: Option[BlobStorage.Folder], config: Option[Config.RetryQueue], failures: F[Failures]): DiscoveryStream[F] =
+  def run[F[_]: BlobStorage: Cache: Logging: Timer: Concurrent: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder],
+    config: Option[Config.RetryQueue],
+    failures: F[Failures]
+  ): DiscoveryStream[F] =
     config match {
       case Some(config) =>
         Stream
@@ -105,25 +116,33 @@ object Retries {
         Stream.empty
     }
 
-  def get[F[_]: BlobStorage: Cache: Logging: Timer: MonadThrow: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
-                                                                                   config: Config.RetryQueue,
-                                                                                   failures: F[Failures])
-                                                                                  (queue: RetryQueue[F]): DiscoveryStream[F] = {
+  def get[F[_]: BlobStorage: Cache: Logging: Timer: MonadThrow: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder],
+    config: Config.RetryQueue,
+    failures: F[Failures]
+  )(
+    queue: RetryQueue[F]
+  ): DiscoveryStream[F] =
     Stream
       .awakeDelay[F](config.period)
-      .evalTap { _ => pullFailures[F](config.size, queue, failures) }
-      .flatMap { _ => periodicDequeue[F, BlobStorage.Folder](queue, config.interval) }
+      .evalTap(_ => pullFailures[F](config.size, queue, failures))
+      .flatMap(_ => periodicDequeue[F, BlobStorage.Folder](queue, config.interval))
       .through(readMessages[F](assets))
-  }
 
   /** Confert S3 paths to respective discoveries */
-  def readMessages[F[_]: BlobStorage: Cache: Logging: MonadThrow: JsonPathDiscovery](assets: Option[BlobStorage.Folder]): Pipe[F, BlobStorage.Folder, DataDiscovery.WithOrigin] =
-    folders => folders
-      .evalMap(readShreddingComplete[F])
-      .evalMapFilter(fromLoaderMessage[F](assets))
+  def readMessages[F[_]: BlobStorage: Cache: Logging: MonadThrow: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder]
+  ): Pipe[F, BlobStorage.Folder, DataDiscovery.WithOrigin] =
+    folders =>
+      folders
+        .evalMap(readShreddingComplete[F])
+        .evalMapFilter(fromLoaderMessage[F](assets))
 
-  def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: JsonPathDiscovery](assets: Option[BlobStorage.Folder])
-                                                           (message: LoaderMessage.ShreddingComplete): F[Option[DataDiscovery.WithOrigin]] =
+  def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder]
+  )(
+    message: LoaderMessage.ShreddingComplete
+  ): F[Option[DataDiscovery.WithOrigin]] =
     DataDiscovery.fromLoaderMessage[F](assets, message).value.flatMap {
       case _ if DataDiscovery.isEmpty(message) =>
         Logging[F].warning(s"Empty folder ${message.base} re-discovered in failure manifest. It might signal about corrupted S3").as(none)
@@ -134,12 +153,17 @@ object Retries {
     }
 
   /**
-   * Pull failures from a global manifest of failures and enqueues them into local queue
-   * It never tries to enqueue if not all items were processed, which helps to make sure
-   * that no item is enqueued twice
-   * @param max a size of the queue, to make sure the action is not blocking because of underprovision
+   * Pull failures from a global manifest of failures and enqueues them into local queue It never
+   * tries to enqueue if not all items were processed, which helps to make sure that no item is
+   * enqueued twice
+   * @param max
+   *   a size of the queue, to make sure the action is not blocking because of underprovision
    */
-  def pullFailures[F[_]: Monad: Logging](max: Int, queue: RetryQueue[F], failures: F[Failures]): F[Unit] =
+  def pullFailures[F[_]: Monad: Logging](
+    max: Int,
+    queue: RetryQueue[F],
+    failures: F[Failures]
+  ): F[Unit] =
     queue.getSize.flatMap { size =>
       if (size == 0) {
         failures.map(_.keys.toList.sorted).flatMap {
@@ -161,29 +185,37 @@ object Retries {
   }
 
   /**
-   * Add a failure into (or remove from if attempts exceeded) failure queue
-   * Amount of taken attempts come from the state (i.e. control.incrementAttempt sets it)
+   * Add a failure into (or remove from if attempts exceeded) failure queue Amount of taken attempts
+   * come from the state (i.e. control.incrementAttempt sets it)
    *
-   * @return true if the folder has been added or false if folder has been dropped
-   *         (too many attempts to load or too many stored failures)
+   * @return
+   *   true if the folder has been added or false if folder has been dropped (too many attempts to
+   *   load or too many stored failures)
    */
-  def addFailure[F[_]: Clock: Monad](config: Config.RetryQueue, state: State.Ref[F])(base: BlobStorage.Folder, error: Throwable): F[Boolean] =
+  def addFailure[F[_]: Clock: Monad](
+    config: Config.RetryQueue,
+    state: State.Ref[F]
+  )(
+    base: BlobStorage.Folder,
+    error: Throwable
+  ): F[Boolean] =
     Clock[F].instantNow.flatMap { now =>
       state.modify { original =>
         if (original.failures.size >= config.size) (original, false)
-        else original.failures.get(base) match {
-          case Some(existing) if existing.attempts < config.maxAttempts =>
-            val failures = original.failures + (base -> existing.update(error, now, original.attempts))
-            (original.copy(failures = failures), true)
-          case Some(_) =>
-            val failures = original.failures - base
-            (original.copy(failures = failures), false)
-          case None if Retry.isWorth(error) =>
-            val failures = original.failures + (base -> Retries.LoadFailure(error, original.attempts, now, now))
-            (original.copy(failures = failures), true)
-          case None =>
-            (original, false)
-        }
+        else
+          original.failures.get(base) match {
+            case Some(existing) if existing.attempts < config.maxAttempts =>
+              val failures = original.failures + (base -> existing.update(error, now, original.attempts))
+              (original.copy(failures = failures), true)
+            case Some(_) =>
+              val failures = original.failures - base
+              (original.copy(failures = failures), false)
+            case None if Retry.isWorth(error) =>
+              val failures = original.failures + (base -> Retries.LoadFailure(error, original.attempts, now, now))
+              (original.copy(failures = failures), true)
+            case None =>
+              (original, false)
+          }
       }
     }
 

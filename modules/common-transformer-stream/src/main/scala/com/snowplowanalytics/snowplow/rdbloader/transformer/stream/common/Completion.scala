@@ -41,18 +41,26 @@ object Completion {
    * Finalize the batch
    *
    * The order is:
-   * 1. Write a `shredding_complete` file to S3. This is the official seal that says a batch is complete.
-   * 2. Checkpoint processed events to the source stream, so we don't process them again.
-   * 3. Send a `ShreddingComplete` SQS message.
+   *   1. Write a `shredding_complete` file to S3. This is the official seal that says a batch is
+   *      complete. 2. Checkpoint processed events to the source stream, so we don't process them
+   *      again. 3. Send a `ShreddingComplete` SQS message.
    *
-   * @param compression a compression type used in the batch
-   * @param getTypes a function converts set of event inventory items to TypesInfo
-   * @param root S3 batch root (with output=good and output=bad)
-   * @param producer Producer instance to send the message with
-   * @param legacyMessageFormat Feature flag to use legacy shredding complete version 1
-   * @param processor Processor info to include to shredding complete message
-   * @param window run id (when batch has been started)
-   * @param state all metadata shredder extracted from a batch
+   * @param compression
+   *   a compression type used in the batch
+   * @param getTypes
+   *   a function converts set of event inventory items to TypesInfo
+   * @param root
+   *   S3 batch root (with output=good and output=bad)
+   * @param producer
+   *   Producer instance to send the message with
+   * @param legacyMessageFormat
+   *   Feature flag to use legacy shredding complete version 1
+   * @param processor
+   *   Processor info to include to shredding complete message
+   * @param window
+   *   run id (when batch has been started)
+   * @param state
+   *   all metadata shredder extracted from a batch
    */
   def seal[F[_]: Clock: ConcurrentEffect: BlobStorage, C: Checkpointer[F, *]](
     compression: Compression,
@@ -63,23 +71,29 @@ object Completion {
     processor: LoaderMessage.Processor,
     window: Window,
     state: State[C]
-  ): F[Unit] = {
+  ): F[Unit] =
     for {
       timestamps <- Clock[F].instantNow.map { now =>
-        Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
-      }
+                      Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
+                    }
       base = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
       shreddingCompletePath = base.withKey(sealFile)
       count = LoaderMessage.Count(state.total - state.bad)
-      message = LoaderMessage.ShreddingComplete(BlobStorage.Folder.coerce(base), getTypes(state.types), timestamps, compression, processor, Some(count))
+      message = LoaderMessage.ShreddingComplete(
+                  BlobStorage.Folder.coerce(base),
+                  getTypes(state.types),
+                  timestamps,
+                  compression,
+                  processor,
+                  Some(count)
+                )
       body = message.selfDescribingData(legacyMessageFormat).asJson.noSpaces
       _ <- writeFile(shreddingCompletePath, body)
       _ <- Checkpointer[F, C].checkpoint(state.checkpointer)
       _ <- producer.send(Some(MessageGroupId), body)
     } yield ()
-  }
 
-  def writeFile[F[_] : ConcurrentEffect : BlobStorage](
+  def writeFile[F[_]: ConcurrentEffect: BlobStorage](
     key: BlobStorage.Key,
     content: String
   ): F[Unit] = {

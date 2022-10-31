@@ -50,11 +50,17 @@ object Databricks {
 
           override def extendTable(info: ShreddedType.Info): Option[Block] = None
 
-          override def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements = {
+          override def getLoadStatements(
+            discovery: DataDiscovery,
+            eventTableColumns: EventTableColumns,
+            loadAuthMethod: LoadAuthMethod
+          ): LoadStatements = {
             val toCopy = ColumnsToCopy.fromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
 
-            NonEmptyList.one(Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod))
+            NonEmptyList.one(
+              Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod)
+            )
           }
 
           override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
@@ -91,25 +97,25 @@ object Databricks {
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frManifest  = Fragment.const(qualify(Manifest.Name))
+                val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source, loadAuthMethod) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frPath      = Fragment.const0(source)
-                val frAuth      = loadAuthMethodFragment(loadAuthMethod)
+                val frPath = Fragment.const0(source)
+                val frAuth = loadAuthMethodFragment(loadAuthMethod)
 
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
               case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod) =>
-                val frTableName      = Fragment.const(qualify(EventsTable.MainName))
-                val frPath           = Fragment.const0(path.append("output=good"))
-                val nonNulls         = toCopy.names.map(_.value)
-                val nulls            = toSkip.names.map(c => s"NULL AS ${c.value}")
+                val frTableName = Fragment.const(qualify(EventsTable.MainName))
+                val frPath = Fragment.const0(path.append("output=good"))
+                val nonNulls = toCopy.names.map(_.value)
+                val nulls = toSkip.names.map(c => s"NULL AS ${c.value}")
                 val currentTimestamp = "current_timestamp() AS load_tstamp"
-                val allColumns       = (nonNulls ::: nulls) :+ currentTimestamp
-                val frAuth           = loadAuthMethodFragment(loadAuthMethod)
-                val frSelectColumns  = Fragment.const0(allColumns.mkString(","))
+                val allColumns = (nonNulls ::: nulls) :+ currentTimestamp
+                val frAuth = loadAuthMethodFragment(loadAuthMethod)
+                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
 
                 sql"""COPY INTO $frTableName
                       FROM (
@@ -135,7 +141,7 @@ object Databricks {
                 sql"SHOW columns in $qualifiedName"
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
-                val types     = message.types.asJson.noSpaces
+                val types = message.types.asJson.noSpaces
                 val jobStarted: String = message.timestamps.jobStarted.toString
                 val jobCompleted: String = message.timestamps.jobCompleted.toString
                 val minTstamp: String = message.timestamps.min.map(_.toString).getOrElse("")
@@ -190,17 +196,18 @@ object Databricks {
     }
   }
 
-  private def getEntityColumnsPresentInDbOnly(eventTableColumns: EventTableColumns, toCopy: ColumnsToCopy) = {
+  private def getEntityColumnsPresentInDbOnly(eventTableColumns: EventTableColumns, toCopy: ColumnsToCopy) =
     eventTableColumns
       .filter(name => name.value.startsWith(UnstructPrefix) || name.value.startsWith(ContextsPrefix))
       .diff(toCopy.names)
-  }
 
   private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod): Fragment =
     loadAuthMethod match {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
       case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
-        Fragment.const0(s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )")
+        Fragment.const0(
+          s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )"
+        )
     }
 }

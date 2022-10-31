@@ -14,12 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.concurrent.duration._
 
-import java.time.{ ZonedDateTime, ZoneId }
+import java.time.{ZoneId, ZonedDateTime}
 import java.time.temporal.ChronoUnit
 
 import cats.implicits._
 
-import cats.effect.{Timer, Concurrent, Sync, Clock, BracketThrow}
+import cats.effect.{BracketThrow, Clock, Concurrent, Sync, Timer}
 
 import fs2.Stream
 import fs2.concurrent.Signal
@@ -40,44 +40,46 @@ object NoOperation {
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
   /**
-   * This is additional timeout duration
-   * Necessary because `waitForIdle` and logging introduce own execution time
-   * and because of that the overall pause time can increase.
-   * Without it all pauses will be timed out
+   * This is additional timeout duration Necessary because `waitForIdle` and logging introduce own
+   * execution time and because of that the overall pause time can increase. Without it all pauses
+   * will be timed out
    */
   val ErrorAllowance: FiniteDuration = 200.millis
 
   /**
-   * Run a Stream that periodically (specified in schedules.when cron expression)
-   * runs makePaused action, which composed of two actions, first executed immediately
-   * at schedules.when and second executed after schedules.period
+   * Run a Stream that periodically (specified in schedules.when cron expression) runs makePaused
+   * action, which composed of two actions, first executed immediately at schedules.when and second
+   * executed after schedules.period
    *
-   * Typically, makePaused first sets global mutable variable `status` to `Paused`,
-   * and after some period sets it back to `Idle`
+   * Typically, makePaused first sets global mutable variable `status` to `Paused`, and after some
+   * period sets it back to `Idle`
    *
-   * The NoOperation stream tries to act only when global status is `Idle` (which means
-   * the Loader is ready for loading). When it's already `Paused` (i.e. two interleaving
-   * schedules) it also does not have an effect until first duration is not expired.
+   * The NoOperation stream tries to act only when global status is `Idle` (which means the Loader
+   * is ready for loading). When it's already `Paused` (i.e. two interleaving schedules) it also
+   * does not have an effect until first duration is not expired.
    */
-  def run[F[_]: Concurrent: Timer: Logging](schedules: List[Schedule], makePaused: MakePaused[F], signal: Signal[F, Status]): Stream[F, Unit] = {
-    val paused = schedules.map {
-      case Schedule(name, cron, duration) =>
-        new ScheduledStreams(Cron4sScheduler.systemDefault[F])
-          .awakeEvery(cron)
-          .evalMap { _ =>
-            // The pause stars only when status signal reaches Idle state
-            val pause = waitForIdle(signal) *>
-              Logging[F].info(s"Transitioning from Idle status for sleeping $duration for $name schedule") *>
-              makePaused(name).use { _ => Timer[F].sleep(duration) } *>
-              Logging[F].info(s"Transitioning back to Idle status after sleeping for $duration")
+  def run[F[_]: Concurrent: Timer: Logging](
+    schedules: List[Schedule],
+    makePaused: MakePaused[F],
+    signal: Signal[F, Status]
+  ): Stream[F, Unit] = {
+    val paused = schedules.map { case Schedule(name, cron, duration) =>
+      new ScheduledStreams(Cron4sScheduler.systemDefault[F])
+        .awakeEvery(cron)
+        .evalMap { _ =>
+          // The pause stars only when status signal reaches Idle state
+          val pause = waitForIdle(signal) *>
+            Logging[F].info(s"Transitioning from Idle status for sleeping $duration for $name schedule") *>
+            makePaused(name).use(_ => Timer[F].sleep(duration)) *>
+            Logging[F].info(s"Transitioning back to Idle status after sleeping for $duration")
 
-            // Typically happens if the Loader has been paused by another schedule
-            // Sometimes the current schedule haven't even had a chance to set the pause
-            val noPause = Logging[F].warning(s"NoOperation schedule $name has been cancelled before expected $duration")
+          // Typically happens if the Loader has been paused by another schedule
+          // Sometimes the current schedule haven't even had a chance to set the pause
+          val noPause = Logging[F].warning(s"NoOperation schedule $name has been cancelled before expected $duration")
 
-            Logging[F].info(s"Initiating $name schedule") *>
-              Concurrent.timeoutTo(pause, duration + ErrorAllowance, noPause)
-          }
+          Logging[F].info(s"Initiating $name schedule") *>
+            Concurrent.timeoutTo(pause, duration + ErrorAllowance, noPause)
+        }
     }
 
     Stream(paused: _*).parJoinUnbounded
@@ -85,18 +87,22 @@ object NoOperation {
 
   /** Block the execution until `Status.Idle` appears in the signal */
   def waitForIdle[F[_]: Logging: Sync](signal: Signal[F, Status]): F[Unit] =
-    signal.discrete.evalFilter {
-      case Status.Idle =>
-        Logging[F].debug("Status is Idle").as(true)
-      case Status.Paused(owner) =>
-        Logging[F].warning(s"Overlapping NoOp schedules. Already paused by $owner").as(false)
-      case loading: Status.Loading =>
-        Logging[F].warning(show"Cannot pause Loader in non-Idle state. $loading").as(false)
-    }.head.compile.drain
+    signal.discrete
+      .evalFilter {
+        case Status.Idle =>
+          Logging[F].debug("Status is Idle").as(true)
+        case Status.Paused(owner) =>
+          Logging[F].warning(s"Overlapping NoOp schedules. Already paused by $owner").as(false)
+        case loading: Status.Loading =>
+          Logging[F].warning(show"Cannot pause Loader in non-Idle state. $loading").as(false)
+      }
+      .head
+      .compile
+      .drain
 
-  /** 
-   * Check all available schedules before the start of the stream and check if current timestamp
-   * is within any known window. If it is within a window - pause the app until the schedule is over
+  /**
+   * Check all available schedules before the start of the stream and check if current timestamp is
+   * within any known window. If it is within a window - pause the app until the schedule is over
    */
   def prepare[F[_]: Logging: Timer: Sync](schedules: List[Schedule], makePaused: MakePaused[F]): F[Unit] =
     schedules.traverse_ { schedule =>
@@ -107,19 +113,24 @@ object NoOperation {
     }
 
   /** Special on-start pause action */
-  def pauseOnce[F[_]: Timer: BracketThrow: Logging](schedule: Schedule, from: ZonedDateTime, makePaused: MakePaused[F]) = {
+  def pauseOnce[F[_]: Timer: BracketThrow: Logging](
+    schedule: Schedule,
+    from: ZonedDateTime,
+    makePaused: MakePaused[F]
+  ) = {
     val duration = getPauseDuration(schedule, from)
     val start = show"Loader has started within no-op window of ${schedule.name}, "
-    val warn = if (duration.length === 0L)
-      Logging[F].warning(show"$start, but couldn't find out how long to sleep. Ignoring the initial pause")
-    else 
-      Logging[F].warning(show"$start, pausing for ${duration}")
-    warn *> makePaused(schedule.name).use { _ => Timer[F].sleep(duration) } *> Logging[F].info(s"Unpausing ${schedule.name}")
+    val warn =
+      if (duration.length === 0L)
+        Logging[F].warning(show"$start, but couldn't find out how long to sleep. Ignoring the initial pause")
+      else
+        Logging[F].warning(show"$start, pausing for ${duration}")
+    warn *> makePaused(schedule.name).use(_ => Timer[F].sleep(duration)) *> Logging[F].info(s"Unpausing ${schedule.name}")
   }
-    
+
   /**
-   * Check if the schedule active at the moment (i.e. Loader should not be running)
-   * Used when the app starts in the middle of no-op window
+   * Check if the schedule active at the moment (i.e. Loader should not be running) Used when the
+   * app starts in the middle of no-op window
    */
   def isActive[F[_]: Clock: Sync](schedule: Schedule): F[Boolean] =
     getTime[F].map(now => isInWindow(schedule, now))

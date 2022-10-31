@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import java.net.URI
-import java.nio.file.{Paths, Files}
+import java.nio.file.{Files, Paths}
 import java.time.Instant
 
 import io.circe.Decoder
@@ -91,7 +91,6 @@ class ConfigSpec extends Specification {
           }
         }"""
 
-
       val expected = "Following schema criterions overlap in different groups (TSV, JSON, skip): " +
         "iglu:com.acme/overlap/jsonschema/1-0-0, iglu:com.acme/overlap/jsonschema/1-*-*. " +
         "Make sure every schema can have only one format"
@@ -122,10 +121,10 @@ object TransformerConfigSpec {
     LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV,
     Nil,
     List(
-      SchemaCriterion("com.acme","json-event","jsonschema",Some(1),Some(0),Some(0)),
-      SchemaCriterion("com.acme","json-event","jsonschema",Some(2),None,None)
+      SchemaCriterion("com.acme", "json-event", "jsonschema", Some(1), Some(0), Some(0)),
+      SchemaCriterion("com.acme", "json-event", "jsonschema", Some(2), None, None)
     ),
-    List(SchemaCriterion("com.acme","skip-event","jsonschema",Some(1),None,None))
+    List(SchemaCriterion("com.acme", "skip-event", "jsonschema", Some(1), None, None))
   )
   val exampleDefaultFormats = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
   val exampleMonitoringBatch = Config.Monitoring(

@@ -16,7 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 
 import cats.effect._
 
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Queue, BlobStorage}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{Kinesis, S3, SNS, SQS}
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
@@ -38,9 +38,11 @@ object Main extends IOApp {
       KinesisCheckpointer.checkpointer
     )
 
-  private def mkSource[F[_]: ConcurrentEffect: ContextShift: Timer](blocker: Blocker,
-                                                                    streamInput: Config.StreamInput,
-                                                                    monitoring: Config.Monitoring): Resource[F, Queue.Consumer[F]] =
+  private def mkSource[F[_]: ConcurrentEffect: ContextShift: Timer](
+    blocker: Blocker,
+    streamInput: Config.StreamInput,
+    monitoring: Config.Monitoring
+  ): Resource[F, Queue.Consumer[F]] =
     streamInput match {
       case conf: Config.StreamInput.Kinesis =>
         Kinesis.consumer[F](

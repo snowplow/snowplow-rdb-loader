@@ -12,20 +12,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import doobie.{Read, ConnectionIO, HPS, HRS}
+import doobie.{ConnectionIO, HPS, HRS, Read}
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.db.{ Statement, Target }
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 
 /**
- * An effect declaration of communicating with a DB.
- * Typically, it represents a second effect from the main app, i.e.
- * communication with DB happens within `C` effect and then it's
- * translated with [[Transaction]] into `F`.
+ * An effect declaration of communicating with a DB. Typically, it represents a second effect from
+ * the main app, i.e. communication with DB happens within `C` effect and then it's translated with
+ * [[Transaction]] into `F`.
  *
- * This is done mostly to mimic doobie's `ConnectionIO` behavior,
- * which is is a separate effect (not `IO`). Also we cannot have
- * `ConnectionIO` anywhere in tests as it's impossible to inspect
+ * This is done mostly to mimic doobie's `ConnectionIO` behavior, which is is a separate effect (not
+ * `IO`). Also we cannot have `ConnectionIO` anywhere in tests as it's impossible to inspect
  */
 trait DAO[C[_]] {
 
@@ -56,6 +54,7 @@ object DAO {
   def apply[F[_]](implicit ev: DAO[F]): DAO[F] = ev
 
   def connectionIO(dbTarget: Target, timeouts: Config.Timeouts): DAO[ConnectionIO] = new DAO[ConnectionIO] {
+
     /** Execute single SQL statement (against target in interpreter) */
     def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] = {
       val timeout = purpose match {

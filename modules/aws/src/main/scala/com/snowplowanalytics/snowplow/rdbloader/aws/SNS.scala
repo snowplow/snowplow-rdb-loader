@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SNS {
 
-  def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+  def producer[F[_]: Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
     mkClient(Region.of(region)).map { client =>
       new Queue.Producer[F] {
         override def send(groupId: Option[String], message: String): F[Unit] =
@@ -33,15 +33,21 @@ object SNS {
       }
     }
 
-  private def mkClient[F[_] : Sync](region: Region): Resource[F, SnsClient] =
+  private def mkClient[F[_]: Sync](region: Region): Resource[F, SnsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SnsClient] {
       SnsClient.builder.region(region).build
     })
 
-
-  private def sendMessage[F[_] : Sync](client: SnsClient)(topicArn: String, groupId: Option[String], message: String): F[Unit] = {
+  private def sendMessage[F[_]: Sync](
+    client: SnsClient
+  )(
+    topicArn: String,
+    groupId: Option[String],
+    message: String
+  ): F[Unit] = {
     def getRequest = {
-      val builder = PublishRequest.builder()
+      val builder = PublishRequest
+        .builder()
         .topicArn(topicArn)
         .message(message)
       groupId

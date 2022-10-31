@@ -6,7 +6,10 @@ import fs2.Stream
 
 import scala.concurrent.duration.DurationInt
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.{TransformerConfig, ProcessingOutput}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.{
+  ProcessingOutput,
+  TransformerConfig
+}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.ParsedC
 
@@ -14,40 +17,41 @@ class ShutdownSpec extends BaseProcessingSpec {
 
   "Streaming transformer" should {
     "send completion message and checkpoint upon shutdown" in {
-      temporaryDirectory.use { outputDirectory =>
-        val inputStream = InputEventsProvider.eventStream(
-          inputEventsPath = "/processing-spec/1/input/events"
-        )
+      temporaryDirectory
+        .use { outputDirectory =>
+          val inputStream = InputEventsProvider.eventStream(
+            inputEventsPath = "/processing-spec/1/input/events"
+          )
 
-        val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
-        for {
-          output                    <- runWithShutdown(inputStream, config)
-          expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", outputDirectory)
-        } yield {
-          removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+          for {
+            output <- runWithShutdown(inputStream, config)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", outputDirectory)
+          } yield {
+            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
 
-          output.checkpointed must beEqualTo(1)
+            output.checkpointed must beEqualTo(1)
+          }
+
         }
-
-      }.unsafeRunSync()
+        .unsafeRunSync()
     }
   }
 
-  def runWithShutdown(input: Stream[IO, ParsedC[Unit]],
-                      config: TransformerConfig): IO[ProcessingOutput] = {
+  def runWithShutdown(input: Stream[IO, ParsedC[Unit]], config: TransformerConfig): IO[ProcessingOutput] = {
     val args = prepareAppArgs(config)
     for {
-      wait           <- Deferred[IO, Unit]
-      checkpointRef  <- Ref.of[IO, Int](0)
+      wait <- Deferred[IO, Unit]
+      checkpointRef <- Ref.of[IO, Int](0)
       completionsRef <- Ref.of[IO, Vector[String]](Vector.empty)
-      stream          = nonTerminatingStream(input, wait)
-      fiber          <- TestApplication.run(args, completionsRef, checkpointRef, stream).start
-      _              <- wait.get.timeout(60.seconds)
-      _              <- fiber.cancel.timeout(60.seconds) // This terminates the application
-      checkpointed   <- checkpointRef.get
-      completions    <- completionsRef.get
-    } yield ProcessingOutput(completions, checkpointed) 
+      stream = nonTerminatingStream(input, wait)
+      fiber <- TestApplication.run(args, completionsRef, checkpointRef, stream).start
+      _ <- wait.get.timeout(60.seconds)
+      _ <- fiber.cancel.timeout(60.seconds) // This terminates the application
+      checkpointed <- checkpointRef.get
+      completions <- completionsRef.get
+    } yield ProcessingOutput(completions, checkpointed)
   }
 
   // Unlike the input stream, this stream does not terminate naturally.

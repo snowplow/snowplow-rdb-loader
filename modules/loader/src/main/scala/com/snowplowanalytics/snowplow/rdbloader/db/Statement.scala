@@ -22,19 +22,17 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMe
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
-
 /**
  * ADT of all SQL statements the Loader can execute
  *
- * It does *not* represent Redshift (or other RDBMS) DDL AST
- * Instead it reflects all kinds of commands that *RDB Loader* can execute and tries to be
- * as specific with its needs as possible.
+ * It does *not* represent Redshift (or other RDBMS) DDL AST Instead it reflects all kinds of
+ * commands that *RDB Loader* can execute and tries to be as specific with its needs as possible.
  *
- * By design a [[Statement]] is a ready-to-use independent SQL statement and isn't supposed
- * to be composable or boilerplate-free.
+ * By design a [[Statement]] is a ready-to-use independent SQL statement and isn't supposed to be
+ * composable or boilerplate-free.
  *
- * It exists mostly to avoid passing around SQL-as-string because of potential SQL-injection
- * and SQL-as-fragment because it's useless in testing - all values are replaced with "?"
+ * It exists mostly to avoid passing around SQL-as-string because of potential SQL-injection and
+ * SQL-as-fragment because it's useless in testing - all values are replaced with "?"
  */
 sealed trait Statement
 
@@ -56,12 +54,15 @@ object Statement {
   case class FoldersCopy(source: BlobStorage.Folder, loadAuthMethod: LoadAuthMethod) extends Statement
 
   // Loading
-  case class EventsCopy(path: BlobStorage.Folder,
-                        compression: Compression,
-                        columnsToCopy: ColumnsToCopy,
-                        columnsToSkip: ColumnsToSkip,
-                        typesInfo: TypesInfo,
-                        loadAuthMethod: LoadAuthMethod) extends Statement with Loading {
+  case class EventsCopy(
+    path: BlobStorage.Folder,
+    compression: Compression,
+    columnsToCopy: ColumnsToCopy,
+    columnsToSkip: ColumnsToSkip,
+    typesInfo: TypesInfo,
+    loadAuthMethod: LoadAuthMethod
+  ) extends Statement
+      with Loading {
     def table: String = EventsTable.MainName
     def title = s"COPY $table FROM $path"
   }
@@ -76,10 +77,12 @@ object Statement {
   case class DropTempEventTable(table: String) extends Loading {
     def title: String = s"DROP TEMP TABLE $table"
   }
-  case class EventsCopyToTempTable(path: BlobStorage.Folder,
-                                   table: String,
-                                   tempCreds: LoadAuthMethod.TempCreds,
-                                   typesInfo: TypesInfo) extends Loading {
+  case class EventsCopyToTempTable(
+    path: BlobStorage.Folder,
+    table: String,
+    tempCreds: LoadAuthMethod.TempCreds,
+    typesInfo: TypesInfo
+  ) extends Loading {
     def title: String = s"COPY EVENTS FROM $path TO TEMP TABLE $table"
   }
   case class EventsCopyFromTempTable(table: String, columnsToCopy: ColumnsToCopy) extends Loading {

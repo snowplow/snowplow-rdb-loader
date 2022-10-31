@@ -25,17 +25,21 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 /**
-  * Result of data discovery in transformer output folder
-  * It still exists mostly to fulfill legacy batch-discovery behavior,
-  * once Loader entirely switched to RT architecture we can replace it with
-  * `ShreddingComplete` message
-  * @param base transformed run folder full path
-  * @param shreddedTypes list of shredded types in this directory
-  */
-case class DataDiscovery(base: BlobStorage.Folder,
-                         shreddedTypes: List[ShreddedType],
-                         compression: Compression,
-                         typesInfo: TypesInfo) {
+ * Result of data discovery in transformer output folder It still exists mostly to fulfill legacy
+ * batch-discovery behavior, once Loader entirely switched to RT architecture we can replace it with
+ * `ShreddingComplete` message
+ * @param base
+ *   transformed run folder full path
+ * @param shreddedTypes
+ *   list of shredded types in this directory
+ */
+case class DataDiscovery(
+  base: BlobStorage.Folder,
+  shreddedTypes: List[ShreddedType],
+  compression: Compression,
+  typesInfo: TypesInfo
+) {
+
   /** ETL id */
   def runId: String = base.split("/").last
 
@@ -47,13 +51,12 @@ case class DataDiscovery(base: BlobStorage.Folder,
 }
 
 /**
- * This module provides data-discovery mechanism for "atomic" events only
- * and for "full" discovery (atomic and shredded types)
- * Primary methods return lists of `DataDiscovery` results, where
- * each `DataDiscovery` represents particular `run=*` folder in shredded.good
+ * This module provides data-discovery mechanism for "atomic" events only and for "full" discovery
+ * (atomic and shredded types) Primary methods return lists of `DataDiscovery` results, where each
+ * `DataDiscovery` represents particular `run=*` folder in shredded.good
  *
- * It lists all keys in run id folder, parse each one as atomic-events key or
- * shredded type key and then groups by run ids
+ * It lists all keys in run id folder, parse each one as atomic-events key or shredded type key and
+ * then groups by run ids
  */
 object DataDiscovery {
 
@@ -63,18 +66,23 @@ object DataDiscovery {
   case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
 
   /**
-   * App entrypoint, a generic discovery stream reading from message queue (like SQS)
-   * The plain text queue will be parsed into known message types (`LoaderMessage`) and
-   * handled appropriately - transformed either into action or into [[DataDiscovery]]
-   * In case of any error (parsing or transformation) the error will be raised
-   * Empty folder will be reported, but stream will keep running
+   * App entrypoint, a generic discovery stream reading from message queue (like SQS) The plain text
+   * queue will be parsed into known message types (`LoaderMessage`) and handled appropriately -
+   * transformed either into action or into [[DataDiscovery]] In case of any error (parsing or
+   * transformation) the error will be raised Empty folder will be reported, but stream will keep
+   * running
    *
    * The stream is responsible for state changing as well
    *
-   * @param config generic storage target configuration
+   * @param config
+   *   generic storage target configuration
    */
-  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](config: Config[_], incrementMessages: F[State]): DiscoveryStream[F] =
-    Queue.Consumer[F]
+  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](
+    config: Config[_],
+    incrementMessages: F[State]
+  ): DiscoveryStream[F] =
+    Queue
+      .Consumer[F]
       .read
       .evalMapFilter { message =>
         val action = LoaderMessage.fromString(message.content) match {
@@ -86,22 +94,26 @@ object DataDiscovery {
 
         Logging[F].info("Received a new message") *>
           Logging[F].debug(message.content) *>
-          incrementMessages.flatMap(state => Logging[F].info(state.show)) *> 
+          incrementMessages.flatMap(state => Logging[F].info(state.show)) *>
           action
       }
 
   /**
-   * Get `DataDiscovery` or log an error and drop the message
-   * actionable `DataDiscovery`
-   * @param region AWS region to discover JSONPaths
-   * @param assets optional bucket with custom JSONPaths
-   * @param message payload coming from transformer
-   * @tparam F effect type to perform AWS interactions
+   * Get `DataDiscovery` or log an error and drop the message actionable `DataDiscovery`
+   * @param region
+   *   AWS region to discover JSONPaths
+   * @param assets
+   *   optional bucket with custom JSONPaths
+   * @param message
+   *   payload coming from transformer
+   * @tparam F
+   *   effect type to perform AWS interactions
    */
-  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
-                                                                               message: LoaderMessage.ShreddingComplete): F[Option[WithOrigin]] =
-    fromLoaderMessage[F](assets, message)
-      .value
+  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder],
+    message: LoaderMessage.ShreddingComplete
+  ): F[Option[WithOrigin]] =
+    fromLoaderMessage[F](assets, message).value
       .flatMap[Option[WithOrigin]] {
         case Right(_) if isEmpty(message) =>
           Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt").as(none)
@@ -114,14 +126,18 @@ object DataDiscovery {
       }
 
   /**
-   * Convert `ShreddingComplete` message coming from shredder into
-   * actionable `DataDiscovery`
-   * @param assets optional bucket with custo mJSONPaths
-   * @param message payload coming from shredder
-   * @tparam F effect type to perform AWS interactions
+   * Convert `ShreddingComplete` message coming from shredder into actionable `DataDiscovery`
+   * @param assets
+   *   optional bucket with custo mJSONPaths
+   * @param message
+   *   payload coming from shredder
+   * @tparam F
+   *   effect type to perform AWS interactions
    */
-  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](assets: Option[BlobStorage.Folder],
-                                                                            message: LoaderMessage.ShreddingComplete): LoaderAction[F, DataDiscovery] = {
+  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](
+    assets: Option[BlobStorage.Folder],
+    message: LoaderMessage.ShreddingComplete
+  ): LoaderAction[F, DataDiscovery] = {
     val types = ShreddedType
       .fromCommon[F](message.base, assets, message.typesInfo)
       .map { steps =>
@@ -137,5 +153,7 @@ object DataDiscovery {
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
-    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message.count.contains(LoaderMessage.Count(0))
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message.count.contains(
+      LoaderMessage.Count(0)
+    )
 }
