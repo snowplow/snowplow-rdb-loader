@@ -7,12 +7,14 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Proces
 
 import java.time.Instant
 
-case class State[C](total: Long,
-                    bad: Long,
-                    minCollector: Option[Instant],
-                    maxCollector: Option[Instant],
-                    types: Set[Data.ShreddedType],
-                    checkpointer: C) {
+case class State[C](
+  total: Long,
+  bad: Long,
+  minCollector: Option[Instant],
+  maxCollector: Option[Instant],
+  types: Set[Data.ShreddedType],
+  checkpointer: C
+) {
   def show: String =
     List(
       s"total=$total",
@@ -39,7 +41,11 @@ object State {
         State(1, 0, Some(event.collector_tstamp), Some(event.collector_tstamp), event.inventory, ())
     }
 
-  private def combineOption[A](f: (A, A) => A, a: Option[A], b: Option[A]): Option[A] =
+  private def combineOption[A](
+    f: (A, A) => A,
+    a: Option[A],
+    b: Option[A]
+  ): Option[A] =
     (a, b).mapN(f).orElse(a).orElse(b)
 
   implicit def stateSemigroup[C: Monoid]: Monoid[State[C]] =
@@ -60,4 +66,3 @@ object State {
   implicit val stateShow: Show[State[Any]] =
     Show.show(_.show)
 }
-

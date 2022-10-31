@@ -13,18 +13,23 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
 import cats.implicits._
-import cats.{Show, PartialOrder}
+import cats.{PartialOrder, Show}
 
-import io.circe.{Encoder, Decoder}
+import io.circe.{Decoder, Encoder}
 import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.IntString
 
 /**
- * Snowplow-specific semantic versioning for apps, libs and jobs,
- * with defined decoders and ordering to compare different versions
+ * Snowplow-specific semantic versioning for apps, libs and jobs, with defined decoders and ordering
+ * to compare different versions
  */
-final case class Semver(major: Int, minor: Int, patch: Int, prerelease: Option[Semver.Prerelease])
+final case class Semver(
+  major: Int,
+  minor: Int,
+  patch: Int,
+  prerelease: Option[Semver.Prerelease]
+)
 
 /**
  * Helpers for Snowplow-specific semantic versioning
@@ -32,17 +37,15 @@ final case class Semver(major: Int, minor: Int, patch: Int, prerelease: Option[S
 object Semver {
 
   /**
-   * Prerelease part of semantic version, mostly intended to be private
-   * Milestone is for libs, release candidate for apps,
-   * unknown as last resort - will match any string
+   * Prerelease part of semantic version, mostly intended to be private Milestone is for libs,
+   * release candidate for apps, unknown as last resort - will match any string
    */
   sealed trait Prerelease { def full: String }
   object Prerelease {
-    final case class Milestone(version: Int) extends Prerelease { def full = s"-M$version"}
-    final case class ReleaseCandidate(version: Int) extends Prerelease { def full = s"-rc$version"}
+    final case class Milestone(version: Int) extends Prerelease { def full = s"-M$version" }
+    final case class ReleaseCandidate(version: Int) extends Prerelease { def full = s"-rc$version" }
     final case class Unknown(full: String) extends Prerelease
   }
-
 
   val semverPattern = """^(\d+)\.(\d+)\.(\d+)(.*)$""".r
   val milestonePattern = """-M(\d+)$""".r
@@ -51,13 +54,16 @@ object Semver {
   /**
    * Alternative constructor to omit optional prerelease part
    */
-  def apply(major: Int, minor: Int, patch: Int): Semver =
+  def apply(
+    major: Int,
+    minor: Int,
+    patch: Int
+  ): Semver =
     Semver(major, minor, patch, None)
 
   /**
-   * Partial ordering instance for optional `Prerelease`.
-   * Can compare only same milestones with milestones, rcs with rcs
-   * and final release with prerelease
+   * Partial ordering instance for optional `Prerelease`. Can compare only same milestones with
+   * milestones, rcs with rcs and final release with prerelease
    */
   private implicit val prereleaseOrder = new PartialOrder[Option[Prerelease]] {
     def partialCompare(x: Option[Prerelease], y: Option[Prerelease]): Double = (x, y) match {
@@ -73,22 +79,19 @@ object Semver {
   }
 
   /**
-   * Partial ordering instance for semantic version
-   * Order isn't defined for prereleases of different types,
-   * prerelease is always "less" than final release
+   * Partial ordering instance for semantic version Order isn't defined for prereleases of different
+   * types, prerelease is always "less" than final release
    */
   implicit val semverOrder = new PartialOrder[Semver] {
-    def partialCompare(x: Semver, y: Semver): Double = {
+    def partialCompare(x: Semver, y: Semver): Double =
       implicitly[PartialOrder[(Int, Int, Int, Option[Prerelease])]].partialCompare(
         (x.major, x.minor, x.patch, x.prerelease),
         (y.major, y.minor, y.patch, y.prerelease)
       )
-    }
   }
 
   /**
-   * Decode `Prerelease` from string.
-   * Any string can be decoded as last-resort `Unknown`
+   * Decode `Prerelease` from string. Any string can be decoded as last-resort `Unknown`
    */
   def decodePrerelease(s: String): Prerelease = s match {
     case milestonePattern(IntString(m)) => Prerelease.Milestone(m)
@@ -97,8 +100,8 @@ object Semver {
   }
 
   /**
-   * Decode semantic version from string.
-   * First part must match X.Y.Z, last can be parsed either as final release or prerelease
+   * Decode semantic version from string. First part must match X.Y.Z, last can be parsed either as
+   * final release or prerelease
    */
   def decodeSemver(s: String): Either[String, Semver] = s match {
     case semverPattern(IntString(major), IntString(minor), IntString(patch), "") =>
@@ -127,4 +130,3 @@ object Semver {
   implicit val semverEncoder: Encoder[Semver] =
     Encoder.instance(ver => ver.show.asJson)
 }
-

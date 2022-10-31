@@ -20,12 +20,10 @@ object VacuumScheduling {
 
   def logError[F[_]: Logging](err: Throwable, details: RetryDetails): F[Unit] = details match {
 
-    case WillDelayAndRetry(
-      nextDelay: FiniteDuration,
-      retriesSoFar: Int,
-      cumulativeDelay: FiniteDuration) => Logging[F].warning(
-      s"Failed to vacuum with ${err.getMessage}. So far we have retried $retriesSoFar times over for $cumulativeDelay. Next attempt in $nextDelay.")
-
+    case WillDelayAndRetry(nextDelay: FiniteDuration, retriesSoFar: Int, cumulativeDelay: FiniteDuration) =>
+      Logging[F].warning(
+        s"Failed to vacuum with ${err.getMessage}. So far we have retried $retriesSoFar times over for $cumulativeDelay. Next attempt in $nextDelay."
+      )
 
     case GivingUp(totalRetries: Int, totalDelay: FiniteDuration) =>
       Logging[F].error(
@@ -33,36 +31,49 @@ object VacuumScheduling {
       )
   }
 
-  def run[F[_]: Transaction[*[_], C]: Concurrent: Logging: Timer, C[_]: DAO: MonadThrow: Logging](tgt: StorageTarget,cfg: Config.Schedules): Stream[F, Unit] =  {
+  def run[F[_]: Transaction[*[_], C]: Concurrent: Logging: Timer, C[_]: DAO: MonadThrow: Logging](
+    tgt: StorageTarget,
+    cfg: Config.Schedules
+  ): Stream[F, Unit] = {
     val vacuumEvents: Stream[F, Unit] = tgt match {
-      case _: StorageTarget.Databricks => cfg.optimizeEvents match {
-        case Some(cron) =>
-          new ScheduledStreams(Cron4sScheduler.systemDefault[F])
-            .awakeEvery(cron)
-            .evalMap { _ =>
-              Transaction[F, C].transact(
-                Logging[C].info("initiating events vacuum") *> DAO[C].executeQuery(Statement.VacuumEvents) *> Logging[C].info("vacuum events complete")
-              ).retryingOnAllErrors(retryPolicy[F], logError[F]).orElse(().pure[F])
-            }
-        case _ => Stream.empty[F]
-      }
-      case _ => Stream.empty[F]
-    }
-
-    val vacuumManifest: Stream[F, Unit]  = tgt match {
-        case _: StorageTarget.Databricks => cfg.optimizeManifest match {
+      case _: StorageTarget.Databricks =>
+        cfg.optimizeEvents match {
           case Some(cron) =>
             new ScheduledStreams(Cron4sScheduler.systemDefault[F])
               .awakeEvery(cron)
               .evalMap { _ =>
-                Transaction[F, C].transact(
-                  Logging[C].info("initiating manifest vacuum") *> DAO[C].executeQuery(Statement.VacuumManifest) *> Logging[C].info("vacuum manifest complete")
-                ).retryingOnAllErrors(retryPolicy[F], logError[F]).orElse(().pure[F])
+                Transaction[F, C]
+                  .transact(
+                    Logging[C].info("initiating events vacuum") *> DAO[C].executeQuery(Statement.VacuumEvents) *> Logging[C]
+                      .info("vacuum events complete")
+                  )
+                  .retryingOnAllErrors(retryPolicy[F], logError[F])
+                  .orElse(().pure[F])
+              }
+          case _ => Stream.empty[F]
         }
-           case _ => Stream.empty[F]
+      case _ => Stream.empty[F]
+    }
+
+    val vacuumManifest: Stream[F, Unit] = tgt match {
+      case _: StorageTarget.Databricks =>
+        cfg.optimizeManifest match {
+          case Some(cron) =>
+            new ScheduledStreams(Cron4sScheduler.systemDefault[F])
+              .awakeEvery(cron)
+              .evalMap { _ =>
+                Transaction[F, C]
+                  .transact(
+                    Logging[C].info("initiating manifest vacuum") *> DAO[C].executeQuery(Statement.VacuumManifest) *> Logging[C]
+                      .info("vacuum manifest complete")
+                  )
+                  .retryingOnAllErrors(retryPolicy[F], logError[F])
+                  .orElse(().pure[F])
+              }
+          case _ => Stream.empty[F]
         }
-        case _ => Stream.empty[F]
-      }
+      case _ => Stream.empty[F]
+    }
 
     vacuumEvents merge vacuumManifest
   }

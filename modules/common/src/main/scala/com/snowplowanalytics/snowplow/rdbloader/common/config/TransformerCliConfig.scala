@@ -23,40 +23,52 @@ import com.monovore.decline.{Command, Opts}
 
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 
-case class TransformerCliConfig[C](igluConfig: Json,
-                                   duplicateStorageConfig: Option[Json],
-                                   config: C)
+case class TransformerCliConfig[C](
+  igluConfig: Json,
+  duplicateStorageConfig: Option[Json],
+  config: C
+)
 object TransformerCliConfig {
 
   trait Parsable[F[_], C] {
     def fromString(conf: String): EitherT[F, String, C]
   }
 
-  case class RawConfig(igluConfig: Json, duplicateStorageConfig: Option[Json], config: String)
+  case class RawConfig(
+    igluConfig: Json,
+    duplicateStorageConfig: Option[Json],
+    config: String
+  )
 
-  val igluConfigOpt = Opts.option[String]("iglu-config",
-    "Base64-encoded Iglu Client JSON config",
-    metavar = "<base64>")
+  val igluConfigOpt = Opts
+    .option[String]("iglu-config", "Base64-encoded Iglu Client JSON config", metavar = "<base64>")
     .mapValidated(ConfigUtils.Base64Json.decode)
     .mapValidated(ConfigUtils.validateResolverJson)
 
-  val duplicatesOpt = Opts.option[String]("duplicate-storage-config",
-    "Base64-encoded Events Manifest JSON config",
-    metavar = "<base64>").mapValidated(ConfigUtils.Base64Json.decode).orNone
+  val duplicatesOpt = Opts
+    .option[String]("duplicate-storage-config", "Base64-encoded Events Manifest JSON config", metavar = "<base64>")
+    .mapValidated(ConfigUtils.Base64Json.decode)
+    .orNone
 
-  def configOpt = Opts.option[String]("config",
-    "base64-encoded config HOCON", "c", "config.hocon")
+  def configOpt = Opts
+    .option[String]("config", "base64-encoded config HOCON", "c", "config.hocon")
     .mapValidated(x => ConfigUtils.base64decode(x).toValidatedNel)
 
   def rawConfigOpt: Opts[RawConfig] =
-    (igluConfigOpt, duplicatesOpt, configOpt).mapN {
-      (iglu, dupeStorage, target) => RawConfig(iglu, dupeStorage, target)
+    (igluConfigOpt, duplicatesOpt, configOpt).mapN { (iglu, dupeStorage, target) =>
+      RawConfig(iglu, dupeStorage, target)
     }
 
   def command(name: String, description: String): Command[RawConfig] =
     Command(s"$name-${BuildInfo.version}", description)(rawConfigOpt)
 
-  def loadConfigFrom[F[_], C](name: String, description: String, args: Seq[String])(implicit M: Monad[F], P: Parsable[F, C]): EitherT[F, String, TransformerCliConfig[C]] =
+  def loadConfigFrom[F[_], C](
+    name: String,
+    description: String,
+    args: Seq[String]
+  )(implicit M: Monad[F],
+    P: Parsable[F, C]
+  ): EitherT[F, String, TransformerCliConfig[C]] =
     for {
       raw <- EitherT.fromEither[F](command(name, description).parse(args).leftMap(_.show))
       conf <- P.fromString(raw.config)

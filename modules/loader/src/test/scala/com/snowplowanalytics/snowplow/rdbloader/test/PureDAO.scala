@@ -17,7 +17,7 @@ import cats.implicits._
 import doobie.{Fragment, Read}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, SchemaList, Migration => SchemaMigration}
+import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => SchemaMigration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
@@ -29,19 +29,16 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMe
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
-
-case class PureDAO(executeQuery: Statement => Pure[Any],
-                   executeUpdate: Statement => Pure[Int]) {
+case class PureDAO(executeQuery: Statement => Pure[Any], executeUpdate: Statement => Pure[Int]) {
 
   /** If certain predicate met, return `update` action, otherwise do usual `executeUpdate` */
   def withExecuteUpdate(predicate: (Statement, TestState) => Boolean, update: Pure[Int]): PureDAO = {
-    val updated = (sql: Statement) => {
+    val updated = (sql: Statement) =>
       Pure { (ts: TestState) =>
         if (predicate(sql, ts))
           (ts, update)
         else (ts, executeUpdate(sql))
       }.flatten
-    }
     this.copy(executeUpdate = updated)
   }
 }
@@ -50,7 +47,7 @@ object PureDAO {
 
   def getResult(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2,0,0))
+      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
       case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) => None
@@ -60,9 +57,8 @@ object PureDAO {
     }
 
   def custom(getResult: TestState => Statement => Any): PureDAO = {
-    def executeQuery(query: Statement): Pure[Any] = {
+    def executeQuery(query: Statement): Pure[Any] =
       Pure((s: TestState) => (s.log(query), getResult(s)(query).asInstanceOf[Any]))
-    }
 
     def executeUpdate(sql: Statement): Pure[Int] =
       Pure((s: TestState) => (s.log(sql), 1))
@@ -92,9 +88,20 @@ object PureDAO {
     def toFragment(statement: Statement): Fragment =
       Fragment.const0(statement.toString)
 
-    def getLoadStatements(discovery: DataDiscovery, eventTableColumns: EventTableColumns, loadAuthMethod: LoadAuthMethod): LoadStatements =
+    def getLoadStatements(
+      discovery: DataDiscovery,
+      eventTableColumns: EventTableColumns,
+      loadAuthMethod: LoadAuthMethod
+    ): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(discovery.base, Compression.Gzip, ColumnsToCopy(List.empty), ColumnsToSkip(List.empty), TypesInfo.Shredded(List.empty), loadAuthMethod),
+        Statement.EventsCopy(
+          discovery.base,
+          Compression.Gzip,
+          ColumnsToCopy(List.empty),
+          ColumnsToSkip(List.empty),
+          TypesInfo.Shredded(List.empty),
+          loadAuthMethod
+        ),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }

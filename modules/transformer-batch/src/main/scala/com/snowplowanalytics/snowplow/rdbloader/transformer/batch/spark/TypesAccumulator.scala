@@ -20,14 +20,14 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{TypesInfo, SnowplowEntity}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import TypesAccumulator._
 
 /**
- * Accumulator to collect inventory of events in current batch in one place.
- * Since types of shredded and widerow items are different,
- * accumulator has type parameter.
- * @tparam T Shredded.Type or WideRow.Type
+ * Accumulator to collect inventory of events in current batch in one place. Since types of shredded
+ * and widerow items are different, accumulator has type parameter.
+ * @tparam T
+ *   Shredded.Type or WideRow.Type
  */
 class TypesAccumulator[T] extends AccumulatorV2[KeyAccum[T], KeyAccum[T]] {
 
@@ -35,8 +35,7 @@ class TypesAccumulator[T] extends AccumulatorV2[KeyAccum[T], KeyAccum[T]] {
 
   def merge(other: AccumulatorV2[KeyAccum[T], KeyAccum[T]]): Unit = other match {
     case o: TypesAccumulator[T] => accum ++= o.accum
-    case _ => throw new UnsupportedOperationException(
-      s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
+    case _ => throw new UnsupportedOperationException(s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
   }
 
   def isZero: Boolean = accum.isEmpty
@@ -51,30 +50,30 @@ class TypesAccumulator[T] extends AccumulatorV2[KeyAccum[T], KeyAccum[T]] {
 
   def value = accum
 
-  def add(keys: KeyAccum[T]): Unit = {
+  def add(keys: KeyAccum[T]): Unit =
     accum ++= keys
-  }
 
   def add(keys: Set[T]): Unit = {
     val mutableSet = mutable.Set(keys.toList: _*)
     add(mutableSet)
   }
 
-  def reset(): Unit = {
+  def reset(): Unit =
     accum.clear()
-  }
 }
 
 object TypesAccumulator {
   type KeyAccum[T] = mutable.Set[T]
 
   /** Save set of shredded types into accumulator, for master to send to SQS */
-  def recordType[T](accumulator: TypesAccumulator[T],
-                    convert: Data.ShreddedType => T)
-                   (inventory: Set[Data.ShreddedType]): Unit =
+  def recordType[T](accumulator: TypesAccumulator[T], convert: Data.ShreddedType => T)(inventory: Set[Data.ShreddedType]): Unit =
     accumulator.add(inventory.map(convert))
 
-  def shreddedTypeConverter(findFormat: SchemaKey => TypesInfo.Shredded.ShreddedFormat)(shreddedType: Data.ShreddedType): TypesInfo.Shredded.Type = {
+  def shreddedTypeConverter(
+    findFormat: SchemaKey => TypesInfo.Shredded.ShreddedFormat
+  )(
+    shreddedType: Data.ShreddedType
+  ): TypesInfo.Shredded.Type = {
     val schemaKey = shreddedType.schemaKey
     val shredProperty = getSnowplowEntity(shreddedType.shredProperty)
     TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), shredProperty)

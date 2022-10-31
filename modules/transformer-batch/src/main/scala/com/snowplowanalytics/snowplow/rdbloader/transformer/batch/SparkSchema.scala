@@ -20,13 +20,11 @@ import org.apache.spark.sql.types._
 
 object SparkSchema {
 
-  def build(allFields: AllFields): StructType = {
+  def build(allFields: AllFields): StructType =
     StructType {
-      allFields
-        .fieldsOnly
+      allFields.fieldsOnly
         .map(asSparkField)
     }
-  }
 
   private def asSparkField(ddlField: Field): StructField = {
     val normalizedName = Field.normalize(ddlField).name

@@ -26,7 +26,7 @@ import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 import java.util.TimeZone
 
-private [parquet] object Codecs {
+private[parquet] object Codecs {
 
   val config = ValueCodecConfiguration(TimeZone.getTimeZone(ZoneOffset.UTC))
 
@@ -52,18 +52,17 @@ private [parquet] object Codecs {
       case FieldValue.TimestampValue(value) =>
         as[Long](ChronoUnit.MICROS.between(Instant.EPOCH, value.toInstant))
       case FieldValue.DateValue(value) =>
-       as[Date](value) 
+        as[Date](value)
       case FieldValue.ArrayValue(values) =>
-       as[List[FieldValue]](values) 
+        as[List[FieldValue]](values)
       case FieldValue.StructValue(values) =>
         values
-          .foldLeft[RowParquetRecord](RowParquetRecord.empty) {
-            case (acc, NamedValue(name, value)) =>
-              acc.add(name, value, config)
+          .foldLeft[RowParquetRecord](RowParquetRecord.empty) { case (acc, NamedValue(name, value)) =>
+            acc.add(name, value, config)
           }
     }
 
-    private def encodeDecimal(value: BigDecimal, precision: DecimalPrecision) = {
+    private def encodeDecimal(value: BigDecimal, precision: DecimalPrecision) =
       precision match {
         case DecimalPrecision.Digits9 =>
           as[Int](value.underlying().unscaledValue().intValue())
@@ -72,11 +71,11 @@ private [parquet] object Codecs {
         case DecimalPrecision.Digits38 =>
           encodeDecimalAsByteArray(value)
       }
-    }
 
     /**
-     * Inspired by org.apache.spark.sql.execution.datasources.parquet.ParquetWriteSupport.makeDecimalWriter
-     * and com.github.mjakubowski84.parquet4s.Decimals.binaryFromDecimal
+     * Inspired by
+     * org.apache.spark.sql.execution.datasources.parquet.ParquetWriteSupport.makeDecimalWriter and
+     * com.github.mjakubowski84.parquet4s.Decimals.binaryFromDecimal
      */
     private def encodeDecimalAsByteArray(value: BigDecimal) = {
       val unscaledBytes = value.underlying().unscaledValue().toByteArray
@@ -86,19 +85,19 @@ private [parquet] object Codecs {
       } else {
         val buffer = ByteBuffer.allocate(ParquetSchema.byteArrayLength)
         val sign: Byte = if (unscaledBytes.head < 0) -1 else 0
-        //sign as head, unscaled as tail of buffer
+        // sign as head, unscaled as tail of buffer
         (0 until bytesDifference).foreach(_ => buffer.put(sign))
         buffer.put(unscaledBytes)
         BinaryValue(Binary.fromReusedByteArray(buffer.array()))
       }
     }
 
-    private def as[T: ValueCodec](value: T) = {
+    private def as[T: ValueCodec](value: T) =
       implicitly[ValueCodec[T]].encode(value, config)
-    }
 
     /**
-     * As transformer is only responsible for writing parquet files, implementing decoder is not necessary 
+     * As transformer is only responsible for writing parquet files, implementing decoder is not
+     * necessary
      */
     override def decode(value: Value, configuration: ValueCodecConfiguration): FieldValue =
       throw new IllegalStateException("Decoding from parquet values is not defined")

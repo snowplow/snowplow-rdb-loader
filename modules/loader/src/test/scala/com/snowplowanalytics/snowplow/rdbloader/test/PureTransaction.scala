@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.~>
 import cats.arrow.FunctionK
-import cats.data.{State, EitherT}
+import cats.data.{EitherT, State}
 import cats.implicits._
 
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Transaction
@@ -44,7 +44,7 @@ object PureTransaction {
             case Left(e) => State.modify[TestState](_.log(Rollback)).as(Left(e))
           })
         }
-      
+
       def run[A](io: Pure[A]): Pure[A] =
         Pure.modify(_.log(NoTransaction)) *>
           io

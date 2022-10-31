@@ -46,9 +46,8 @@ object Transformed {
   }
 
   /**
-   * Represents the path of the shredded data in blob storage.
-   * It has all the necessary abstract methods which are needed
-   * to determine the path of the shredded data.
+   * Represents the path of the shredded data in blob storage. It has all the necessary abstract
+   * methods which are needed to determine the path of the shredded data.
    */
   sealed trait Shredded extends Transformed {
     def isGood: Boolean
@@ -60,50 +59,74 @@ object Transformed {
   }
 
   object Shredded {
-    /** Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format */
-    case class Json(isGood: Boolean, vendor: String, name: String, model: Int, data: Data.DString) extends Shredded {
+
+    /**
+     * Data will be represented as JSON, with RDB Loader loading it using JSON Paths. Legacy format
+     */
+    case class Json(
+      isGood: Boolean,
+      vendor: String,
+      name: String,
+      model: Int,
+      data: Data.DString
+    ) extends Shredded {
       val format = ShreddedFormat.JSON
     }
 
     /** Data will be represented as TSV, with RDB Loader loading it directly */
-    case class Tabular(vendor: String, name: String, model: Int, data: Data.DString) extends Shredded {
-      val isGood = true   // We don't support TSV shredding for bad data
+    case class Tabular(
+      vendor: String,
+      name: String,
+      model: Int,
+      data: Data.DString
+    ) extends Shredded {
+      val isGood = true // We don't support TSV shredding for bad data
       val format = ShreddedFormat.TSV
     }
   }
 
   /**
-   * Represents the path of the wide-row formatted data in blob storage.
-   * Since the event is only converted to JSON format without any shredding
-   * operation, we only need the information for whether event is good or
-   * bad to determine the path in blob storage.
+   * Represents the path of the wide-row formatted data in blob storage. Since the event is only
+   * converted to JSON format without any shredding operation, we only need the information for
+   * whether event is good or bad to determine the path in blob storage.
    */
   case class WideRow(good: Boolean, data: Data.DString) extends Transformed
 
   case class Parquet(data: Data.ParquetData) extends Transformed
 
   /**
-   * Parse snowplow enriched event into a list of shredded (either JSON or TSV, according to settings) entities
-   * TSV will be flattened according to their schema, JSONs will be attached as is
+   * Parse snowplow enriched event into a list of shredded (either JSON or TSV, according to
+   * settings) entities TSV will be flattened according to their schema, JSONs will be attached as
+   * is
    *
-   * @param igluResolver Iglu Resolver
-   * @param isTabular predicate to decide whether output should be JSON or TSV
-   * @param atomicLengths a map to trim atomic event columns
-   * @param event enriched event
-   * @return either bad row (in case of failed flattening) or list of shredded entities inside original event
+   * @param igluResolver
+   *   Iglu Resolver
+   * @param isTabular
+   *   predicate to decide whether output should be JSON or TSV
+   * @param atomicLengths
+   *   a map to trim atomic event columns
+   * @param event
+   *   enriched event
+   * @return
+   *   either bad row (in case of failed flattening) or list of shredded entities inside original
+   *   event
    */
-  def shredEvent[F[_]: Monad: RegistryLookup: Clock](igluResolver: Resolver[F],
-                                                     propertiesCache: PropertiesCache[F],
-                                                     isTabular: SchemaKey => Boolean,
-                                                     atomicLengths: Map[String, Int],
-                                                     processor: Processor)
-                                                    (event: Event): EitherT[F, BadRow, List[Transformed]] =
-    Hierarchy.fromEvent(event)
+  def shredEvent[F[_]: Monad: RegistryLookup: Clock](
+    igluResolver: Resolver[F],
+    propertiesCache: PropertiesCache[F],
+    isTabular: SchemaKey => Boolean,
+    atomicLengths: Map[String, Int],
+    processor: Processor
+  )(
+    event: Event
+  ): EitherT[F, BadRow, List[Transformed]] =
+    Hierarchy
+      .fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
         fromHierarchy(tabular, igluResolver, propertiesCache)(hierarchy)
       }
-      .leftMap { error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)) }
+      .leftMap(error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)))
       .map { shredded =>
         val data = EventUtils.alterEnrichedEvent(event, atomicLengths)
         val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
@@ -114,18 +137,24 @@ object Transformed {
     WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
 
   /**
-   * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity,
-   * specifying how it should look like in destination: JSON or TSV
-   * If flattening algorithm failed at any point - it will fallback to the JSON format
+   * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity, specifying how it
+   * should look like in destination: JSON or TSV If flattening algorithm failed at any point - it
+   * will fallback to the JSON format
    *
-   * @param tabular whether data should be transformed into TSV format
-   * @param resolver Iglu resolver to request all necessary entities
-   * @param hierarchy actual JSON hierarchy from an enriched event
+   * @param tabular
+   *   whether data should be transformed into TSV format
+   * @param resolver
+   *   Iglu resolver to request all necessary entities
+   * @param hierarchy
+   *   actual JSON hierarchy from an enriched event
    */
-  private def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](tabular: Boolean,
-                                                                resolver: => Resolver[F],
-                                                                propertiesCache: PropertiesCache[F])
-                                                               (hierarchy: Hierarchy): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
+  private def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](
+    tabular: Boolean,
+    resolver: => Resolver[F],
+    propertiesCache: PropertiesCache[F]
+  )(
+    hierarchy: Hierarchy
+  ): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     if (tabular) {

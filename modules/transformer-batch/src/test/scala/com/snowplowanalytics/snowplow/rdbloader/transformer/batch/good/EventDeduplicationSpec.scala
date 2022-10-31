@@ -170,7 +170,8 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
         rootIds.contains(EventDeduplicationSpec.originalUuid) mustEqual false
       val conformDummyContent = contexts.map(EventDeduplicationSpec.eraseHierarchy) mustEqual Seq(
         expected.additionalContextContents,
-        expected.additionalContextContents)
+        expected.additionalContextContents
+      )
 
       distinctIds.and(absenceOfOriginalId).and(conformDummyContent)
     }
@@ -227,7 +228,11 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     }
 
     val testOutputDirs = OutputDirs(randomFile("output"))
-    runShredJob(EventDeduplicationSpec.lines, outputDirs = Some(testOutputDirs), deduplication = Config.Deduplication(synthetic = Config.Deduplication.Synthetic.None, natural = false))
+    runShredJob(
+      EventDeduplicationSpec.lines,
+      outputDirs = Some(testOutputDirs),
+      deduplication = Config.Deduplication(synthetic = Config.Deduplication.Synthetic.None, natural = false)
+    )
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
 
     "transform three enriched events and store them in atomic events folder" in {

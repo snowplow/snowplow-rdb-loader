@@ -31,9 +31,7 @@ class CliConfigSpec extends Specification {
 
   "parse" should {
     "parse valid configuration" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig)
+      val cli = Array("--config", configB64, "--iglu-config", resolverConfig)
 
       val expected = CliConfig(validConfig, false, resolverJson)
       val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
@@ -41,10 +39,7 @@ class CliConfigSpec extends Specification {
     }
 
     "parse CLI options with dry-run" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", resolverConfig,
-        "--dry-run")
+      val cli = Array("--config", configB64, "--iglu-config", resolverConfig, "--dry-run")
 
       val expected = CliConfig(validConfig, true, resolverJson)
       val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
@@ -52,10 +47,7 @@ class CliConfigSpec extends Specification {
     }
 
     "give error with invalid resolver" in {
-      val cli = Array(
-        "--config", configB64,
-        "--iglu-config", invalidResolverConfig,
-        "--dry-run")
+      val cli = Array("--config", configB64, "--iglu-config", invalidResolverConfig, "--dry-run")
 
       val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
       result.isLeft must beTrue

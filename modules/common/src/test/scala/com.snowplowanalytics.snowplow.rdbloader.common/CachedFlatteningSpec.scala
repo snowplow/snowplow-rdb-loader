@@ -16,7 +16,7 @@ import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
 
 class CachedFlatteningSpec extends Specification {
 
-  //single 'field1' field
+  // single 'field1' field
   val `original schema - 1 field`: Json =
     json"""
          {
@@ -36,7 +36,7 @@ class CachedFlatteningSpec extends Specification {
          }
         """
 
-  //same key as schema1, but with additional `field2` field. 
+  // same key as schema1, but with additional `field2` field.
   val `patched schema - 2 fields`: Json =
     json"""
          {
@@ -57,8 +57,7 @@ class CachedFlatteningSpec extends Specification {
          }
         """
 
-
-  val cacheTtl = 10 //seconds 
+  val cacheTtl = 10 // seconds
   val dataToFlatten = json"""{ "field1": "1", "field2": 2 }"""
   val schemaKey = "iglu:com.snowplowanalytics.snowplow/test_schema/jsonschema/1-0-0"
 
@@ -70,13 +69,13 @@ class CachedFlatteningSpec extends Specification {
     "(1) original schema only, 1 flatten call => 1 field flattened" in {
       val propertiesCache = getCache
       val result = flatten(propertiesCache, getResolver)(
-        currentTime = 1000, //ms
+        currentTime = 1000, // ms
         schemaInRegistry = `original schema - 1 field`
       )
 
       result must beEqualTo(List("1"))
 
-      //Properties are cached after first call (1 second)
+      // Properties are cached after first call (1 second)
       propertiesCache.get((propertiesKey, 1)) must beSome
     }
 
@@ -84,22 +83,22 @@ class CachedFlatteningSpec extends Specification {
       val propertiesCache = getCache
       val resolver = getResolver
 
-      //first call
+      // first call
       flatten(propertiesCache, resolver)(
-        currentTime = 1000, //ms
+        currentTime = 1000, // ms
         schemaInRegistry = `original schema - 1 field`
       )
 
-      //second call, same time
+      // second call, same time
       val result = flatten(propertiesCache, resolver)(
-        currentTime = 1000, //ms
-        schemaInRegistry = `patched schema - 2 fields` //different schema with the same key!
+        currentTime = 1000, // ms
+        schemaInRegistry = `patched schema - 2 fields` // different schema with the same key!
       )
 
-      //no data from patched schema
+      // no data from patched schema
       result must beEqualTo(List("1"))
 
-      //Properties are cached after first call (1 second)
+      // Properties are cached after first call (1 second)
       propertiesCache.get((propertiesKey, 1)) must beSome
     }
 
@@ -107,25 +106,25 @@ class CachedFlatteningSpec extends Specification {
       val propertiesCache = getCache
       val resolver = getResolver
 
-      //first call
+      // first call
       flatten(propertiesCache, resolver)(
-        currentTime = 1000, //ms
+        currentTime = 1000, // ms
         schemaInRegistry = `original schema - 1 field`
       )
 
-      //second call, 2s later, less than 10s TTL 
+      // second call, 2s later, less than 10s TTL
       val result = flatten(propertiesCache, resolver)(
-        currentTime = 3000, //ms
-        schemaInRegistry = `patched schema - 2 fields` //different schema with the same key!
+        currentTime = 3000, // ms
+        schemaInRegistry = `patched schema - 2 fields` // different schema with the same key!
       )
 
-      //no data from patched schema
+      // no data from patched schema
       result must beEqualTo(List("1"))
 
-      //Properties are cached after first call (1 second)
+      // Properties are cached after first call (1 second)
       propertiesCache.get((propertiesKey, 1)) must beSome
 
-      //Properties are not cached after second call (3 seconds)
+      // Properties are not cached after second call (3 seconds)
       propertiesCache.get((propertiesKey, 3)) must beNone
     }
 
@@ -133,44 +132,49 @@ class CachedFlatteningSpec extends Specification {
       val propertiesCache = getCache
       val resolver = getResolver
 
-      //first call
+      // first call
       flatten(propertiesCache, resolver)(
-        currentTime = 1000, //ms
+        currentTime = 1000, // ms
         schemaInRegistry = `original schema - 1 field`
       )
 
-      //second call, 12s later, greater than 10s TTL 
+      // second call, 12s later, greater than 10s TTL
       val result = flatten(propertiesCache, resolver)(
-        currentTime = 13000, //ms
-        schemaInRegistry = `patched schema - 2 fields` //different schema with the same key!
+        currentTime = 13000, // ms
+        schemaInRegistry = `patched schema - 2 fields` // different schema with the same key!
       )
 
-      //Cache content expired, patched schema is fetched => 2 fields flattened 
+      // Cache content expired, patched schema is fetched => 2 fields flattened
       result must beEqualTo(List("1", "2"))
 
-      //Properties are cached after first call (1 second)
+      // Properties are cached after first call (1 second)
       propertiesCache.get((propertiesKey, 1)) must beSome
 
-      //Properties are cached after second call (13 seconds)
+      // Properties are cached after second call (13 seconds)
       propertiesCache.get((propertiesKey, 13)) must beSome
     }
   }
 
-  //Helper method to wire all test dependencies and execute EventUtils.flatten
-  private def flatten(propertiesCache: PropertiesCache[Id], resolver: Resolver[Id])
-                     (currentTime: Long,
-                      schemaInRegistry: Json): List[String] = {
+  // Helper method to wire all test dependencies and execute EventUtils.flatten
+  private def flatten(
+    propertiesCache: PropertiesCache[Id],
+    resolver: Resolver[Id]
+  )(
+    currentTime: Long,
+    schemaInRegistry: Json
+  ): List[String] = {
 
-    //To return value stored in the schemaInRegistry variable, passed registry is ignored
+    // To return value stored in the schemaInRegistry variable, passed registry is ignored
     val testRegistryLookup: RegistryLookup[Id] = new RegistryLookup[Id] {
-      override def lookup(registry: Registry,
-                          schemaKey: SchemaKey): Id[Either[RegistryError, Json]] =
+      override def lookup(registry: Registry, schemaKey: SchemaKey): Id[Either[RegistryError, Json]] =
         Right(schemaInRegistry)
 
-      override def list(registry: Registry,
-                        vendor: String,
-                        name: String,
-                        model: Int): Id[Either[RegistryError, SchemaList]] =
+      override def list(
+        registry: Registry,
+        vendor: String,
+        name: String,
+        model: Int
+      ): Id[Either[RegistryError, SchemaList]] =
         Right(SchemaList(List(SchemaKey.fromUri("iglu:com.snowplowanalytics.snowplow/test_schema/jsonschema/1-0-0").right.get)))
     }
 
@@ -188,15 +192,14 @@ class CachedFlatteningSpec extends Specification {
   }
 
   private def getCache: PropertiesCache[Id] = CreateLruMap[Id, PropertiesKey, Properties].create(100)
-  
-  private def getResolver: Resolver[Id] = {
+
+  private def getResolver: Resolver[Id] =
     Resolver.init[Id](
       cacheSize = 10,
       cacheTtl = Some(cacheTtl),
-      refs = Registry.Embedded( //not used in test as we fix returned schema in custom test RegistryLookup
+      refs = Registry.Embedded( // not used in test as we fix returned schema in custom test RegistryLookup
         Registry.Config("Test", 0, List.empty),
         path = "/fake"
       )
     )
-  }
 }

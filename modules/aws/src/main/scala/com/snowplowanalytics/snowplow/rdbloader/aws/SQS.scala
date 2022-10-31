@@ -34,11 +34,13 @@ object SQS {
 
   case class SQSMessage[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
 
-  def consumer[F[_] : ConcurrentEffect : Timer : Logger](queueName: String,
-                                                         sqsVisibility: FiniteDuration,
-                                                         region: String,
-                                                         stop: Stream[F, Boolean],
-                                                         postProcess: Option[Queue.Consumer.PostProcess[F]] = None): Resource[F, Queue.Consumer[F]] =
+  def consumer[F[_]: ConcurrentEffect: Timer: Logger](
+    queueName: String,
+    sqsVisibility: FiniteDuration,
+    region: String,
+    stop: Stream[F, Boolean],
+    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
+  ): Resource[F, Queue.Consumer[F]] =
     Resource.pure[F, Queue.Consumer[F]](
       new Queue.Consumer[F] {
         override def read: Stream[F, Queue.Consumer.Message[F]] = {
@@ -46,15 +48,16 @@ object SQS {
             .map { case (msg, ack, extend) => (SQSMessage(msg.body(), ack), extend) }
           postProcess match {
             case None => stream.map(_._1)
-            case Some(p) => stream.flatMap { case (msg, extend) =>
-              p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
-            }
+            case Some(p) =>
+              stream.flatMap { case (msg, extend) =>
+                p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
+              }
           }
         }
       }
     )
 
-  def producer[F[_] : Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+  def producer[F[_]: Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
     mkClient(Region.of(region)).map { client =>
       new Queue.Producer[F] {
         override def send(groupId: Option[String], message: String): F[Unit] =
@@ -62,12 +65,17 @@ object SQS {
       }
     }
 
-  private def mkClient[F[_] : Concurrent](region: Region): Resource[F, SqsClient] =
+  private def mkClient[F[_]: Concurrent](region: Region): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient] {
       SqsClient.builder.region(region).build
     })
 
-  private def readQueue[F[_] : Timer : Concurrent](queueName: String, visibilityTimeout: Int, region: Region, stop: Stream[F, Boolean]): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  private def readQueue[F[_]: Timer: Concurrent](
+    queueName: String,
+    visibilityTimeout: Int,
+    region: Region,
+    stop: Stream[F, Boolean]
+  ): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest
@@ -90,23 +98,25 @@ object SQS {
               val delete = Sync[F].delay(client.deleteMessage(buildDelete(queueUrl, message.receiptHandle()))).void
 
               val extend = (timeout: FiniteDuration) =>
-                Sync[F].delay(client.changeMessageVisibility(buildExtend(queueUrl, message.receiptHandle(), timeout)))
-                  .void
+                Sync[F].delay(client.changeMessageVisibility(buildExtend(queueUrl, message.receiptHandle(), timeout))).void
               (message, delete, extend)
             }
         }
     }
   }
 
-  private def buildDelete(queueUrl: String, receiptHandle: String): DeleteMessageRequest = {
+  private def buildDelete(queueUrl: String, receiptHandle: String): DeleteMessageRequest =
     DeleteMessageRequest
       .builder()
       .queueUrl(queueUrl)
       .receiptHandle(receiptHandle)
       .build()
-  }
 
-  private def buildExtend(queueUrl: String, receiptHandle: String, timeout: FiniteDuration): ChangeMessageVisibilityRequest =
+  private def buildExtend(
+    queueUrl: String,
+    receiptHandle: String,
+    timeout: FiniteDuration
+  ): ChangeMessageVisibilityRequest =
     ChangeMessageVisibilityRequest
       .builder()
       .queueUrl(queueUrl)
@@ -114,9 +124,13 @@ object SQS {
       .visibilityTimeout(timeout.toSeconds.toInt)
       .build()
 
-
-  private def sendMessage[F[_] : Sync](sqsClient: SqsClient)
-                              (queueName: String, groupId: Option[String], body: String): F[Unit] = {
+  private def sendMessage[F[_]: Sync](
+    sqsClient: SqsClient
+  )(
+    queueName: String,
+    groupId: Option[String],
+    body: String
+  ): F[Unit] = {
     def getRequestBuilder(queueUrl: String) =
       SendMessageRequest
         .builder()
@@ -136,7 +150,7 @@ object SQS {
     }
   }
 
-  private def getUrl[F[_] : Sync](queueName: String)(client: SqsClient) =
+  private def getUrl[F[_]: Sync](queueName: String)(client: SqsClient) =
     Sync[F]
       .delay(client.getQueueUrl(GetQueueUrlRequest.builder().queueName(queueName).build()))
       .map(req => (client, req.queueUrl))

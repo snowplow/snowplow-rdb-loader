@@ -28,15 +28,17 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 
-final case class Config(input: URI,
-                        output: Config.Output,
-                        queue: Config.QueueConfig,
-                        formats: TransformerConfig.Formats,
-                        monitoring: Config.Monitoring,
-                        deduplication: Config.Deduplication,
-                        runInterval: Config.RunInterval,
-                        featureFlags: TransformerConfig.FeatureFlags,
-                        validations: TransformerConfig.Validations)
+final case class Config(
+  input: URI,
+  output: Config.Output,
+  queue: Config.QueueConfig,
+  formats: TransformerConfig.Formats,
+  monitoring: Config.Monitoring,
+  deduplication: Config.Deduplication,
+  runInterval: Config.RunInterval,
+  featureFlags: TransformerConfig.FeatureFlags,
+  validations: TransformerConfig.Validations
+)
 
 object Config {
   def fromString(conf: String): Either[String, Config] =
@@ -46,11 +48,15 @@ object Config {
     import decoders._
     for {
       config <- ConfigUtils.fromString[Config](conf)
-      _      <- TransformerConfig.formatsCheck(config.formats)
+      _ <- TransformerConfig.formatsCheck(config.formats)
     } yield config
   }
 
-  final case class Output(path: URI, compression: Compression, region: Region)
+  final case class Output(
+    path: URI,
+    compression: Compression,
+    region: Region
+  )
 
   sealed trait QueueConfig extends Product with Serializable
 
@@ -60,7 +66,11 @@ object Config {
     final case class SQS(queueName: String, region: Region) extends QueueConfig
   }
 
-  final case class RunInterval(sinceTimestamp: Option[RunInterval.IntervalInstant], sinceAge: Option[FiniteDuration], until: Option[RunInterval.IntervalInstant])
+  final case class RunInterval(
+    sinceTimestamp: Option[RunInterval.IntervalInstant],
+    sinceAge: Option[FiniteDuration],
+    until: Option[RunInterval.IntervalInstant]
+  )
 
   object RunInterval {
     final case class IntervalInstant(value: Instant)

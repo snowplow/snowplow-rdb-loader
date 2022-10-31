@@ -16,7 +16,6 @@ import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.CreateTabl
 import com.snowplowanalytics.snowplow.rdbloader.db.Manifest
 import com.snowplowanalytics.snowplow.loader.snowflake.ast._
 
-
 object SnowflakeManifest {
   val Columns: List[Column] = List(
     Column("base", SnowflakeDatatype.Varchar(512), notNull = true, unique = true),

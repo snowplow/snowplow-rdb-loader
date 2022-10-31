@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
-import java.nio.file.{Paths, Files}
+import java.nio.file.{Files, Paths}
 import cats.effect.IO
 import io.circe.Decoder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region

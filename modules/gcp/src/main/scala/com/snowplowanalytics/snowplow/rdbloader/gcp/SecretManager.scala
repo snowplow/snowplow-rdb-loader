@@ -29,10 +29,10 @@ object SecretManager {
     for {
       client <- Resource.fromAutoCloseable(Sync[F].delay(SecretManagerServiceClient.create()))
       secretStore <- Resource.pure[F, SecretStore[F]](
-        new SecretStore[F] {
-          override def getValue(key: String): F[String] =
-            Sync[F].delay(client.accessSecretVersion(key).getPayload.getData.toStringUtf8)
-        }
-      )
+                       new SecretStore[F] {
+                         override def getValue(key: String): F[String] =
+                           Sync[F].delay(client.accessSecretVersion(key).getPayload.getData.toStringUtf8)
+                       }
+                     )
     } yield secretStore
 }

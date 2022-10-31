@@ -16,7 +16,7 @@ import java.time.Instant
 
 import cats.implicits._
 
-import cats.effect.{Concurrent, Clock}
+import cats.effect.{Clock, Concurrent}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import fs2.concurrent.SignallingRef
@@ -28,26 +28,31 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status.Loading
 import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
 
 /**
- * Primary state of the loader
- * Every Loader's action has two input parameters: message and current state
- * The state is used to exchange data between data discovery stream and load actions
+ * Primary state of the loader Every Loader's action has two input parameters: message and current
+ * state The state is used to exchange data between data discovery stream and load actions
  *
- * @param loading state of the folder loading, which can be either idling ("not busy" or
- *        "no folder") or loading at some stage
- * @param updated when the state was updated the last time
- *        Used to find out about degraded infra - if state is not updated for long enough
- *        it likely means that the database is unresponsive
- * @param attempts amount of attempts the Loader took to load **current** folder
+ * @param loading
+ *   state of the folder loading, which can be either idling ("not busy" or "no folder") or loading
+ *   at some stage
+ * @param updated
+ *   when the state was updated the last time Used to find out about degraded infra - if state is
+ *   not updated for long enough it likely means that the database is unresponsive
+ * @param attempts
+ *   amount of attempts the Loader took to load **current** folder
  *
- * @param loaded amount of folders the loader managed to load
- * @param messages total amount of message received
+ * @param loaded
+ *   amount of folders the loader managed to load
+ * @param messages
+ *   total amount of message received
  */
-case class State(loading: Load.Status,
-                 updated: Instant,
-                 attempts: Int,
-                 failures: Failures,
-                 loaded: Int,
-                 messages: Int) {
+case class State(
+  loading: Load.Status,
+  updated: Instant,
+  attempts: Int,
+  failures: Failures,
+  loaded: Int,
+  messages: Int
+) {
 
   /** Start loading a folder */
   def start(folder: BlobStorage.Folder): State = {

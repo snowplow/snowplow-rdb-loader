@@ -18,7 +18,6 @@ import cats.effect.concurrent.Ref
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 
-
 /** testing version of logging, simply putting all log messages into a mutable ref */
 object SyncLogging {
   def build[F[_]](store: Ref[F, List[String]]): Logging[F] =

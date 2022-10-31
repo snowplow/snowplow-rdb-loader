@@ -29,13 +29,13 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 
 import org.specs2.mutable.Specification
 
-
 class ConfigSpec extends Specification {
   import ConfigSpec._
 
   "config fromString" should {
     "be able to parse extended transformer-pubsub config" in {
-      val result = getConfig("/transformer/gcp/transformer.pubsub.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
+      val result =
+        getConfig("/transformer/gcp/transformer.pubsub.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,

@@ -13,12 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.utils
 
 import cats.Monad
-import cats.effect.{Blocker, ContextShift, ConcurrentEffect, Effect, Resource, Sync}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, Resource, Sync}
 import cats.effect.concurrent.Semaphore
 import cats.syntax.all._
 import cats.effect.syntax.all._
 import doobie.Transactor
-import com.jcraft.jsch.{JSch, Session, Logger => JLogger}
+import com.jcraft.jsch.{JSch, Logger => JLogger, Session}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -33,8 +33,15 @@ object SSH {
 
   final class SSHException(cause: Throwable) extends Exception(s"Error setting up SSH tunnel: ${cause.getMessage}", cause)
 
-  /** A doobie transactor that ensures the SSH tunnel is connected before attempting a connection to the warehouse */
-  def transactor[F[_]: ConcurrentEffect: ContextShift: SecretStore, A](config: TunnelConfig, blocker: Blocker, inner: Transactor.Aux[F, A]): Resource[F, Transactor.Aux[F, A]] =
+  /**
+   * A doobie transactor that ensures the SSH tunnel is connected before attempting a connection to
+   * the warehouse
+   */
+  def transactor[F[_]: ConcurrentEffect: ContextShift: SecretStore, A](
+    config: TunnelConfig,
+    blocker: Blocker,
+    inner: Transactor.Aux[F, A]
+  ): Resource[F, Transactor.Aux[F, A]] =
     for {
       _ <- Resource.eval(configureLogging)
       identity <- Resource.eval(getIdentity(config))
@@ -43,25 +50,30 @@ object SSH {
       sem <- Resource.eval(Semaphore[F](1))
     } yield inner.copy(connect0 = a => Resource.eval(ensureTunnel(session, blocker, sem)) *> inner.connect(a))
 
-
-  /** Ensure the SSH tunnel is connected.
+  /**
+   * Ensure the SSH tunnel is connected.
    *
-   *  Uses a semaphore to prevent multiple fibers trying to connect the session at the same time
+   * Uses a semaphore to prevent multiple fibers trying to connect the session at the same time
    */
-  def ensureTunnel[F[_]: Sync: ContextShift](session: Session, blocker: Blocker, sem: Semaphore[F]): F[Unit] =
+  def ensureTunnel[F[_]: Sync: ContextShift](
+    session: Session,
+    blocker: Blocker,
+    sem: Semaphore[F]
+  ): F[Unit] =
     sem.withPermit {
-      Sync[F].delay(session.isConnected())
+      Sync[F]
+        .delay(session.isConnected())
         .ifM(
-            Logger[F].debug("SSH session is already connected"),
-            blocker.delay(session.connect())
-          )
-        .adaptError {
-          case t: Throwable => new SSHException(t)
+          Logger[F].debug("SSH session is already connected"),
+          blocker.delay(session.connect())
+        )
+        .adaptError { case t: Throwable =>
+          new SSHException(t)
         }
     }
 
   def configureLogging[F[_]: Effect]: F[Unit] =
-    Sync[F].delay(JSch.setLogger(new JLogger{
+    Sync[F].delay(JSch.setLogger(new JLogger {
       override def isEnabled(level: Int): Boolean = true
 
       override def log(level: Int, message: String): Unit = level match {
@@ -76,19 +88,20 @@ object SSH {
 
   /** Convert pure tunnel configuration to configuration with actual key and passphrase */
   def getIdentity[F[_]: Monad: Sync: SecretStore](tunnelConfig: TunnelConfig): F[Identity] =
-    tunnelConfig
-      .bastion
-      .key
-      .map(_.parameterName).traverse(SecretStore[F].getValue)
-      .map { key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)) }
+    tunnelConfig.bastion.key
+      .map(_.parameterName)
+      .traverse(SecretStore[F].getValue)
+      .map(key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)))
 
   /**
    * Create a SSH session configured for the bastion host.
    *
    * The returned session is not yet connected and is not yet listening on a local port.
    *
-   * @param tunnelConfig SSH-tunnel configuration
-   * @param identity SSH identity data
+   * @param tunnelConfig
+   *   SSH-tunnel configuration
+   * @param identity
+   *   SSH identity data
    */
   def createSession[F[_]: Sync](tunnelConfig: TunnelConfig, identity: Identity): F[Session] =
     Sync[F].delay {
@@ -105,11 +118,14 @@ object SSH {
    * Start the Session listening on the local port
    */
   def setPortForwarding[F[_]: Sync](config: TunnelConfig, session: Session): Resource[F, Unit] = {
-    val acquire = Sync[F].delay {
-      session.setPortForwardingL(config.localPort, config.destination.host, config.destination.port)
-    }.adaptError {
-      case t: Throwable => new SSHException(t)
-    }.void
+    val acquire = Sync[F]
+      .delay {
+        session.setPortForwardingL(config.localPort, config.destination.host, config.destination.port)
+      }
+      .adaptError { case t: Throwable =>
+        new SSHException(t)
+      }
+      .void
     val release = Sync[F].delay {
       session.delPortForwardingL(config.localPort)
     }

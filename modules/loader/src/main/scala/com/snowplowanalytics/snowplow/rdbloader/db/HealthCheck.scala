@@ -18,10 +18,10 @@ import cats.implicits._
 import fs2.Stream
 
 import cats.effect.implicits._
-import cats.effect.{Timer, Concurrent}
+import cats.effect.{Concurrent, Timer}
 import cats.effect.concurrent.Ref
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Logging, DAO, Transaction, Monitoring}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Monitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
@@ -30,13 +30,15 @@ object HealthCheck {
   private implicit val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def start[F[_]: Transaction[*[_], C]: Timer: Concurrent: Logging: Monitoring,
-            C[_]: DAO](config: Option[Config.HealthCheck]): Stream[F, Unit] =
+  def start[F[_]: Transaction[*[_], C]: Timer: Concurrent: Logging: Monitoring, C[_]: DAO](
+    config: Option[Config.HealthCheck]
+  ): Stream[F, Unit] =
     config match {
       case Some(config) =>
         Stream.eval(Ref.of[F, Boolean](true)).flatMap { previousHealthy =>
-          Stream.awakeDelay[F](config.frequency)
-            .evalMap { _ => perform[F, C].timeoutTo(config.timeout, Concurrent[F].pure(false)) }
+          Stream
+            .awakeDelay[F](config.frequency)
+            .evalMap(_ => perform[F, C].timeoutTo(config.timeout, Concurrent[F].pure(false)))
             .evalMap {
               case h @ true =>
                 val report = Monitoring[F].reportMetrics(Metrics.getHealthMetrics(h))

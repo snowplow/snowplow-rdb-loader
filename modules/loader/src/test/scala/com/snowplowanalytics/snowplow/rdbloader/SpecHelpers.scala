@@ -26,7 +26,8 @@ object SpecHelpers {
 
   val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
   val invalidResolverConfig = fromInputStream(getClass.getResourceAsStream("/invalid-resolver.json.base64")).getLines.mkString("\n")
-  val resolverJson = parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
+  val resolverJson =
+    parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
 
   val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validConfig: Config[StorageTarget.Redshift] = Config(
@@ -46,15 +47,25 @@ object SpecHelpers {
   val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
 
   /**
-    * Pretty prints a Scala value similar to its source represention.
-    * Particularly useful for case classes.
-    * @param a - The value to pretty print.
-    * @param indentSize - Number of spaces for each indent.
-    * @param maxElementWidth - Largest element size before wrapping.
-    * @param depth - Initial depth to pretty print indents.
-    * @author https://gist.github.com/carymrobbins/7b8ed52cd6ea186dbdf8
-    */
-  def prettyPrint(a: Any, indentSize: Int = 2, maxElementWidth: Int = 30, depth: Int = 0): String = {
+   * Pretty prints a Scala value similar to its source represention. Particularly useful for case
+   * classes.
+   * @param a
+   *   \- The value to pretty print.
+   * @param indentSize
+   *   \- Number of spaces for each indent.
+   * @param maxElementWidth
+   *   \- Largest element size before wrapping.
+   * @param depth
+   *   \- Initial depth to pretty print indents.
+   * @author
+   *   https://gist.github.com/carymrobbins/7b8ed52cd6ea186dbdf8
+   */
+  def prettyPrint(
+    a: Any,
+    indentSize: Int = 2,
+    maxElementWidth: Int = 30,
+    depth: Int = 0
+  ): String = {
     val indent = " " * depth * indentSize
     val fieldIndent = indent + (" " * indentSize)
     val thisDepth = prettyPrint(_: Any, indentSize, maxElementWidth, depth)

@@ -11,9 +11,9 @@ object PureClock {
 
   def interpreter: Clock[Pure] = new Clock[Pure] {
     def realTime(unit: TimeUnit): Pure[Long] =
-      Pure { state => (state.log(RealTimeTick), state.time) }
+      Pure(state => (state.log(RealTimeTick), state.time))
 
     def monotonic(unit: TimeUnit): Pure[Long] =
-      Pure { state => (state.log(MonotonickTick), state.time) }
+      Pure(state => (state.log(MonotonickTick), state.time))
   }
 }

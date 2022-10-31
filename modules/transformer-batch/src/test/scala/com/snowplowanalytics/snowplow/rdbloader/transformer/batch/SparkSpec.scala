@@ -18,8 +18,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 import org.apache.spark.sql.SparkSession
 
 /**
- * Trait to mix in in every spec which has to run a Spark job.
- * Create a spark session before the spec and delete it afterwards.
+ * Trait to mix in in every spec which has to run a Spark job. Create a spark session before the
+ * spec and delete it afterwards.
  */
 trait SparkSpec extends BeforeAfterAll {
   def appName: String
@@ -33,12 +33,14 @@ trait SparkSpec extends BeforeAfterAll {
     .set("spark.sql.session.timeZone", "UTC")
 
   var spark: SparkSession =
-    SparkSession.builder()
+    SparkSession
+      .builder()
       .config(conf)
       .getOrCreate()
 
   override def beforeAll(): Unit = {
-    val _ = SparkSession.builder()
+    val _ = SparkSession
+      .builder()
       .config(conf)
       .getOrCreate()
   }

@@ -58,16 +58,16 @@ object Kinesis {
         for {
           rawParsed <- cur.as[RetrievalRaw].map(raw => raw.copy(`type` = raw.`type`.toUpperCase))
           retrieval <- rawParsed match {
-            case RetrievalRaw("POLLING", Some(maxRecords)) =>
-              Polling(maxRecords).asRight
-            case RetrievalRaw("FANOUT", _) =>
-              FanOut.asRight
-            case other =>
-              DecodingFailure(
-                s"Retrieval mode $other is not supported. Possible types are FanOut and Polling (must provide maxRecords field)",
-                cur.history
-              ).asLeft
-          }
+                         case RetrievalRaw("POLLING", Some(maxRecords)) =>
+                           Polling(maxRecords).asRight
+                         case RetrievalRaw("FANOUT", _) =>
+                           FanOut.asRight
+                         case other =>
+                           DecodingFailure(
+                             s"Retrieval mode $other is not supported. Possible types are FanOut and Polling (must provide maxRecords field)",
+                             cur.history
+                           ).asLeft
+                       }
         } yield retrieval
       }
     implicit val retrievalEncoder: Encoder[Retrieval] = deriveEncoder[Retrieval]

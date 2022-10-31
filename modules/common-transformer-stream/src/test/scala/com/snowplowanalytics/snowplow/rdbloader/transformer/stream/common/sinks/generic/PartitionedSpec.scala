@@ -18,9 +18,9 @@ import scala.concurrent.ExecutionContext
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
-import cats.effect.{Timer, IO, Sync, ContextShift}
+import cats.effect.{ContextShift, IO, Sync, Timer}
 
-import fs2.{Stream, Pipe}
+import fs2.{Pipe, Stream}
 
 import org.specs2.mutable.Specification
 
@@ -38,32 +38,33 @@ class PartitionedSpec extends Specification {
       val itemsPerKeyPerRecord = 2
 
       val action = for {
-        ref       <- Ref.of[IO, WindowedKV](Nil)
-        sinkFun    = PartitionedSpec.getSink(ref) _
-        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
-        result    <- wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord)
-                      .through(writePipe)
-                      .compile
-                      .toList
-                      .timeout(2000.millis)
-                      .attempt
-        piped     <- ref.get
+        ref <- Ref.of[IO, WindowedKV](Nil)
+        sinkFun = PartitionedSpec.getSink(ref) _
+        writePipe = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
+        result <- wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord)
+                    .through(writePipe)
+                    .compile
+                    .toList
+                    .timeout(2000.millis)
+                    .attempt
+        piped <- ref.get
       } yield (result, piped)
-
 
       val (result, piped) = action.unsafeRunSync()
       result must beRight.like { case emitted =>
-        emitted must beEqualTo(List(
-          ("window-0" -> List(0, 1, 2, 3, 4, 5, 6, 7)),
-          ("window-1" -> List(0, 1, 2, 3, 4, 5, 6, 7)),
-          ("window-2" -> List(0, 1, 2, 3, 4, 5, 6, 7)),
-          ("window-3" -> List(0, 1, 2, 3, 4, 5, 6, 7)),
-        ))
+        emitted must beEqualTo(
+          List(
+            "window-0" -> List(0, 1, 2, 3, 4, 5, 6, 7),
+            "window-1" -> List(0, 1, 2, 3, 4, 5, 6, 7),
+            "window-2" -> List(0, 1, 2, 3, 4, 5, 6, 7),
+            "window-3" -> List(0, 1, 2, 3, 4, 5, 6, 7)
+          )
+        )
       }
 
-      piped must have size(numWindows * numKeys * recordsPerWindow * itemsPerKeyPerRecord)
+      piped must have size (numWindows * numKeys * recordsPerWindow * itemsPerKeyPerRecord)
 
-      piped.filter(_._1 == "window-1") must have size(numKeys * recordsPerWindow * itemsPerKeyPerRecord)
+      piped.filter(_._1 == "window-1") must have size (numKeys * recordsPerWindow * itemsPerKeyPerRecord)
     }
 
     "emit on completion when there is no EndWindow" in {
@@ -76,33 +77,35 @@ class PartitionedSpec extends Specification {
       val itemsPerKeyPerRecord = 2
 
       // Filter out the EndWindow
-      val stream = wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord).collect {
-        case d @ Record.Data(_, _, _) => d
+      val stream = wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord).collect { case d @ Record.Data(_, _, _) =>
+        d
       }
 
       val action = for {
-        ref       <- Ref.of[IO, WindowedKV](Nil)
-        sinkFun    = PartitionedSpec.getSink(ref) _
-        writePipe  = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
-        result    <- stream
-                      .through(writePipe)
-                      .compile
-                      .toList
-                      .timeout(2000.millis)
-                      .attempt
-        piped     <- ref.get
+        ref <- Ref.of[IO, WindowedKV](Nil)
+        sinkFun = PartitionedSpec.getSink(ref) _
+        writePipe = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
+        result <- stream
+                    .through(writePipe)
+                    .compile
+                    .toList
+                    .timeout(2000.millis)
+                    .attempt
+        piped <- ref.get
 
       } yield (result, piped)
 
       val (result, piped) = action.unsafeRunSync()
 
       result must beRight.like { case emitted =>
-        emitted must beEqualTo(List(
-          ("window-0" -> List(0, 1, 2, 3, 4, 5, 6, 7))
-        ))
+        emitted must beEqualTo(
+          List(
+            "window-0" -> List(0, 1, 2, 3, 4, 5, 6, 7)
+          )
+        )
       }
 
-      piped must have size(numKeys * recordsPerWindow * itemsPerKeyPerRecord)
+      piped must have size (numKeys * recordsPerWindow * itemsPerKeyPerRecord)
     }
 
   }
@@ -126,15 +129,16 @@ object PartitionedSpec {
     }
 
   /**
-   * Stream of windowed key-value paris based on stream of natural numbers
-   * Window starts at 0 and has wSize kv (only last one can be smaller)
-   * Key is random number between 1 and kSize (inclusive)
-   * Value starts at 0 and ever growing
+   * Stream of windowed key-value paris based on stream of natural numbers Window starts at 0 and
+   * has wSize kv (only last one can be smaller) Key is random number between 1 and kSize
+   * (inclusive) Value starts at 0 and ever growing
    */
-  def wkvStream[F[_]: Sync](windows: Int = 2,
-                            keys: Int = 2,
-                            recordsPerWindow: Int = 2,
-                            itemsPerKeyPerRecord: Int = 1): Stream[F, Record[Window, List[(Key, Value)], Data]] =
+  def wkvStream[F[_]: Sync](
+    windows: Int = 2,
+    keys: Int = 2,
+    recordsPerWindow: Int = 2,
+    itemsPerKeyPerRecord: Int = 1
+  ): Stream[F, Record[Window, List[(Key, Value)], Data]] =
     Stream
       .range(0, windows)
       .flatMap { w =>

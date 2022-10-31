@@ -22,6 +22,9 @@ jobs:
         run: sbt 'testOnly *WiderowParquetProcessingSpec'
       - name: Run tests
         run: sbt coverage 'testOnly * -- -l WiderowParquetProcessingSpec' coverageReport
+      - name: Check Scala formatting
+        if: ${{ always() }}
+        run: sbt scalafmtCheckAll
       - name: Aggregate coverage data
         if: ${{ always() }}
         run: sbt coverageAggregate

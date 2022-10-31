@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Show
-import cats.data.{ValidatedNel, NonEmptyList}
+import cats.data.{NonEmptyList, ValidatedNel}
 
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
@@ -34,8 +34,8 @@ object LoaderError {
   }
 
   /**
-   * Error representing failure on events (or types, or JSONPaths) discovery
-   * Contains multiple step failures
+   * Error representing failure on events (or types, or JSONPaths) discovery Contains multiple step
+   * failures
    */
   final case class DiscoveryError(failures: NonEmptyList[DiscoveryFailure]) extends LoaderError
   object DiscoveryError {
@@ -47,8 +47,8 @@ object LoaderError {
   }
 
   /**
-   * Error representing failure on database loading (or executing any statements)
-   * These errors have short-circuit semantics (as in `scala.Either`)
+   * Error representing failure on database loading (or executing any statements) These errors have
+   * short-circuit semantics (as in `scala.Either`)
    */
   final case class StorageTargetError(message: String) extends LoaderError
 

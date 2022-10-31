@@ -35,64 +35,67 @@ object LoadAuthService {
   sealed trait LoadAuthMethod
 
   object LoadAuthMethod {
+
     /**
-     * Specifies auth method that doesn't use credentials
-     * Destination should be already configured with some other mean
-     * for copying from transformer output bucket
+     * Specifies auth method that doesn't use credentials Destination should be already configured
+     * with some other mean for copying from transformer output bucket
      */
     final case object NoCreds extends LoadAuthMethod
 
     /**
      * Specifies auth method that pass temporary credentials to COPY INTO statement
      */
-    final case class TempCreds(awsAccessKey: String, awsSecretKey: String, awsSessionToken: String) extends LoadAuthMethod
+    final case class TempCreds(
+      awsAccessKey: String,
+      awsSecretKey: String,
+      awsSessionToken: String
+    ) extends LoadAuthMethod
   }
 
   /**
-   * Get load auth method according to value specified in the config
-   * If temporary credentials method is specified in the config, it will get temporary credentials
-   * with sending request to STS service then return credentials.
+   * Get load auth method according to value specified in the config If temporary credentials method
+   * is specified in the config, it will get temporary credentials with sending request to STS
+   * service then return credentials.
    */
-  def aws[F[_]: Concurrent: ContextShift](region: String,
-                                          sessionDuration: FiniteDuration): Resource[F, LoadAuthService[F]] = {
+  def aws[F[_]: Concurrent: ContextShift](region: String, sessionDuration: FiniteDuration): Resource[F, LoadAuthService[F]] =
     for {
       stsAsyncClient <- Resource.fromAutoCloseable(
-          Concurrent[F].delay(
-            StsAsyncClient.builder()
-              .region(Region.of(region))
-              .build()
-          )
-        )
+                          Concurrent[F].delay(
+                            StsAsyncClient
+                              .builder()
+                              .region(Region.of(region))
+                              .build()
+                          )
+                        )
       authService = new LoadAuthService[F] {
-        override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] =
-          authMethodConfig match {
-            case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
-            case StorageTarget.LoadAuthMethod.TempCreds(roleArn, roleSessionName) =>
-              for {
-                assumeRoleRequest <- Concurrent[F].delay(
-                  AssumeRoleRequest.builder()
-                    .durationSeconds(sessionDuration.toSeconds.toInt)
-                    .roleArn(roleArn)
-                    .roleSessionName(roleSessionName)
-                    .build()
-                )
-                response <- CloudUtils.fromCompletableFuture(
-                  Concurrent[F].delay(stsAsyncClient.assumeRole(assumeRoleRequest))
-                )
-                creds = response.credentials()
-              } yield LoadAuthMethod.TempCreds(creds.accessKeyId(), creds.secretAccessKey(), creds.sessionToken())
-          }
-      }
+                      override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] =
+                        authMethodConfig match {
+                          case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
+                          case StorageTarget.LoadAuthMethod.TempCreds(roleArn, roleSessionName) =>
+                            for {
+                              assumeRoleRequest <- Concurrent[F].delay(
+                                                     AssumeRoleRequest
+                                                       .builder()
+                                                       .durationSeconds(sessionDuration.toSeconds.toInt)
+                                                       .roleArn(roleArn)
+                                                       .roleSessionName(roleSessionName)
+                                                       .build()
+                                                   )
+                              response <- CloudUtils.fromCompletableFuture(
+                                            Concurrent[F].delay(stsAsyncClient.assumeRole(assumeRoleRequest))
+                                          )
+                              creds = response.credentials()
+                            } yield LoadAuthMethod.TempCreds(creds.accessKeyId(), creds.secretAccessKey(), creds.sessionToken())
+                        }
+                    }
     } yield authService
-  }
 
   def noop[F[_]: Concurrent]: Resource[F, LoadAuthService[F]] =
     Resource.pure[F, LoadAuthService[F]](new LoadAuthService[F] {
-      override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] = {
+      override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] =
         authMethodConfig match {
           case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
           case _ => Concurrent[F].raiseError(new Exception("No auth service is given to resolve credentials."))
         }
-      }
     })
 }

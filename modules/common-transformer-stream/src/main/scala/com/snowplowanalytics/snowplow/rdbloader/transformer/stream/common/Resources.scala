@@ -56,8 +56,7 @@ object Resources {
 
   implicit private def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: ConcurrentEffect : ContextShift: Clock: InitSchemaCache: InitListCache: Timer,
-         C: Checkpointer[F, *]](
+  def mk[F[_]: ConcurrentEffect: ContextShift: Clock: InitSchemaCache: InitListCache: Timer, C: Checkpointer[F, *]](
     igluConfig: Json,
     config: Config,
     buildName: String,
@@ -69,70 +68,71 @@ object Resources {
     checkpointer: Queue.Consumer.Message[F] => C
   ): Resource[F, Resources[F, C]] =
     for {
-      producer        <- mkQueue(config.queue)
-      resolverConfig  <- mkResolverConfig(igluConfig)
-      resolver        <- mkResolver(resolverConfig)
+      producer <- mkQueue(config.queue)
+      resolverConfig <- mkResolverConfig(igluConfig)
+      resolver <- mkResolver(resolverConfig)
       propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
-      atomicLengths   <- mkAtomicFieldLengthLimit(resolver)
-      instanceId      <- mkTransformerInstanceId
-      blocker         <- Blocker[F]
-      metrics         <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
-      httpClient      <- BlazeClientBuilder[F](executionContext).resource
-      telemetry       <- Telemetry.build[F](
-        config.telemetry,
-        buildName,
-        buildVersion,
-        httpClient,
-        AppId.appId,
-        getRegionFromConfig(config),
-        getCloudFromConfig(config)
-      )
-      inputStream   <- mkSource(blocker, config.input, config.monitoring)
-      blobStorage   <- mkSink(blocker, config.output)
-    } yield
-      Resources(
-        resolver,
-        propertiesCache,
-        atomicLengths,
-        producer,
-        instanceId.toString,
-        blocker,
-        metrics,
-        telemetry,
-        inputStream,
-        checkpointer,
-        blobStorage
-      )
+      atomicLengths <- mkAtomicFieldLengthLimit(resolver)
+      instanceId <- mkTransformerInstanceId
+      blocker <- Blocker[F]
+      metrics <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      httpClient <- BlazeClientBuilder[F](executionContext).resource
+      telemetry <- Telemetry.build[F](
+                     config.telemetry,
+                     buildName,
+                     buildVersion,
+                     httpClient,
+                     AppId.appId,
+                     getRegionFromConfig(config),
+                     getCloudFromConfig(config)
+                   )
+      inputStream <- mkSource(blocker, config.input, config.monitoring)
+      blobStorage <- mkSink(blocker, config.output)
+    } yield Resources(
+      resolver,
+      propertiesCache,
+      atomicLengths,
+      producer,
+      instanceId.toString,
+      blocker,
+      metrics,
+      telemetry,
+      inputStream,
+      checkpointer,
+      blobStorage
+    )
 
   private def mkResolverConfig[F[_]: Sync](igluConfig: Json): Resource[F, ResolverConfig] = Resource.eval {
     Resolver.parseConfig(igluConfig) match {
       case Right(resolverConfig) => Sync[F].pure(resolverConfig)
-      case Left(error) => Sync[F].raiseError[ResolverConfig](new RuntimeException(s"Error while parsing Iglu resolver config: ${error.getMessage()}"))
+      case Left(error) =>
+        Sync[F].raiseError[ResolverConfig](new RuntimeException(s"Error while parsing Iglu resolver config: ${error.getMessage()}"))
     }
   }
-  
-  private def mkResolver[F[_]: Sync: InitSchemaCache: InitListCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] = Resource.eval {
-    Resolver.fromConfig[F](resolverConfig)
-      .leftMap(e => new RuntimeException(s"Error while parsing Iglu resolver config: ${e.getMessage()}"))
-      .value
-      .flatMap {
-        case Right(init) => Sync[F].pure(init)
-        case Left(error) => Sync[F].raiseError[Resolver[F]](error)
-      }
-  }
+
+  private def mkResolver[F[_]: Sync: InitSchemaCache: InitListCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] =
+    Resource.eval {
+      Resolver
+        .fromConfig[F](resolverConfig)
+        .leftMap(e => new RuntimeException(s"Error while parsing Iglu resolver config: ${e.getMessage()}"))
+        .value
+        .flatMap {
+          case Right(init) => Sync[F].pure(init)
+          case Left(error) => Sync[F].raiseError[Resolver[F]](error)
+        }
+    }
 
   private def mkAtomicFieldLengthLimit[F[_]: Sync: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] = Resource.eval {
     EventUtils.getAtomicLengths(igluResolver).flatMap {
       case Right(valid) => Sync[F].pure(valid)
-      case Left(error)  => Sync[F].raiseError[Map[String, Int]](error)
+      case Left(error) => Sync[F].raiseError[Map[String, Int]](error)
     }
   }
 
-  private def mkTransformerInstanceId[F[_]: Sync] = {
+  private def mkTransformerInstanceId[F[_]: Sync] =
     Resource
       .eval(Sync[F].delay(UUID.randomUUID()))
       .evalTap(id => logger.info(s"Instantiated $id shredder instance"))
-  }
 
   private def getRegionFromConfig(config: Config): Option[String] =
     config.input match {

@@ -17,29 +17,31 @@ import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, SchemaPro
 
 object NonAtomicFieldsProvider {
 
-  def build[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F],
-                                                types: List[WideRow.Type]): EitherT[F, LoaderIgluError, NonAtomicFields] = {
-    latestByModel(types)
-      .sorted
+  def build[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F],
+    types: List[WideRow.Type]
+  ): EitherT[F, LoaderIgluError, NonAtomicFields] =
+    latestByModel(types).sorted
       .traverse(createTypedField(resolver))
       .map(NonAtomicFields)
-  }
 
-  private def createTypedField[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F])
-                                                                  (`type`: WideRow.Type): EitherT[F, LoaderIgluError, TypedField] = {
+  private def createTypedField[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F]
+  )(
+    `type`: WideRow.Type
+  ): EitherT[F, LoaderIgluError, TypedField] =
     fieldFromType[F](resolver, `type`)
       .map(field => TypedField(field, `type`))
-  }
 
-  private def fieldFromType[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F],
-                                                                `type`: WideRow.Type): EitherT[F, LoaderIgluError, Field] = {
+  private def fieldFromType[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F],
+    `type`: WideRow.Type
+  ): EitherT[F, LoaderIgluError, Field] =
     SchemaProvider
       .getSchema[F](resolver, `type`.schemaKey)
       .map(fieldFromSchema(`type`))
-  }
-    
-  private def fieldFromSchema(`type`: WideRow.Type)
-                             (schema: Schema): Field = {
+
+  private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Field = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)
 
     `type`.snowplowEntity match {

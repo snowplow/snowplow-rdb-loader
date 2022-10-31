@@ -31,14 +31,14 @@ class WideRowJsonSpec extends Specification with ShredJobSpec {
     "transform the enriched event to wide row json" in {
       val Some((lines, _)) = readPartFile(dirs.goodRows)
       val expected = readResourceFile(ResourceFile("/widerow/json/output-widerows"))
-      lines.toSet mustEqual(expected.toSet)
+      lines.toSet mustEqual (expected.toSet)
     }
 
     "write bad rows" in {
       val Some((lines, _)) = readPartFile(dirs.badRows)
       val expected = readResourceFile(ResourceFile("/widerow/json/output-badrows"))
         .map(_.replace(VersionPlaceholder, BuildInfo.version))
-      lines.toSet mustEqual(expected.toSet)
+      lines.toSet mustEqual (expected.toSet)
     }
   }
 }

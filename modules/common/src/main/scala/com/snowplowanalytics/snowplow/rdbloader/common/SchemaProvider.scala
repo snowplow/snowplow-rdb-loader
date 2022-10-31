@@ -12,8 +12,10 @@ import com.snowplowanalytics.snowplow.badrows.FailureDetails
 
 object SchemaProvider {
 
-  def getSchema[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F], 
-                                                    schemaKey: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, Schema] =
+  def getSchema[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F],
+    schemaKey: SchemaKey
+  ): EitherT[F, FailureDetails.LoaderIgluError, Schema] =
     for {
       json <- EitherT(resolver.lookupSchema(schemaKey)).leftMap(resolverBadRow(schemaKey))
       schema <- EitherT.fromOption[F](Schema.parse(json), parseSchemaBadRow(schemaKey))

@@ -17,6 +17,7 @@ import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.CreateTabl
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
 object AtomicDef {
+
   /**
    * List of columns for enriched event
    */
@@ -107,9 +108,9 @@ object AtomicDef {
     // Ecommerce
     Column("tr_orderid", Varchar(Some(255))),
     Column("tr_affiliation", Varchar(Some(255))),
-    Column("tr_total", Number(18,2)),
-    Column("tr_tax", Number(18,2)),
-    Column("tr_shipping", Number(18,2)),
+    Column("tr_total", Number(18, 2)),
+    Column("tr_tax", Number(18, 2)),
+    Column("tr_shipping", Number(18, 2)),
     Column("tr_city", Varchar(Some(255))),
     Column("tr_state", Varchar(Some(255))),
     Column("tr_country", Varchar(Some(255))),
@@ -117,7 +118,7 @@ object AtomicDef {
     Column("ti_sku", Varchar(Some(255))),
     Column("ti_name", Varchar(Some(255))),
     Column("ti_category", Varchar(Some(255))),
-    Column("ti_price", Number(18,2)),
+    Column("ti_price", Number(18, 2)),
     Column("ti_quantity", Integer),
 
     // Page ping
@@ -169,11 +170,11 @@ object AtomicDef {
 
     // Currency
     Column("tr_currency", Char(3)),
-    Column("tr_total_base", Number(18,2)),
-    Column("tr_tax_base", Number(18,2)),
-    Column("tr_shipping_base", Number(18,2)),
+    Column("tr_total_base", Number(18, 2)),
+    Column("tr_tax_base", Number(18, 2)),
+    Column("tr_shipping_base", Number(18, 2)),
     Column("ti_currency", Char(3)),
-    Column("ti_price_base", Number(18,2)),
+    Column("ti_price_base", Number(18, 2)),
     Column("base_currency", Char(3)),
 
     // Geolocation

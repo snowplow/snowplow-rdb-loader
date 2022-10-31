@@ -28,47 +28,48 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder
 
 object GCS {
 
-  def blobStorage[F[_] : ConcurrentEffect : ContextShift](blocker: Blocker): Resource[F, BlobStorage[F]] =
+  def blobStorage[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker): Resource[F, BlobStorage[F]] =
     for {
       client <- getClient(blocker)
       blobStorage <- Resource.pure[F, BlobStorage[F]](
-        new BlobStorage[F] {
+                       new BlobStorage[F] {
 
-          override def list(folder: Folder, recursive: Boolean): fs2.Stream[F, BlobStorage.BlobObject] = {
-            val (bucket, path) = BlobStorage.splitPath(folder)
-            client.list(GcsPath(BlobInfo.newBuilder(bucket, path).build()), recursive)
-              .map { gcsPath =>
-                val root = gcsPath.root.getOrElse("")
-                val pathFromRoot = gcsPath.pathFromRoot.toList.mkString("/")
-                val filename = gcsPath.fileName.getOrElse("")
-                val key = BlobStorage.Key.coerce(s"gs://$root/$pathFromRoot/$filename")
-                BlobStorage.BlobObject(key, gcsPath.size.getOrElse(0L))
-              }
-          }
+                         override def list(folder: Folder, recursive: Boolean): fs2.Stream[F, BlobStorage.BlobObject] = {
+                           val (bucket, path) = BlobStorage.splitPath(folder)
+                           client
+                             .list(GcsPath(BlobInfo.newBuilder(bucket, path).build()), recursive)
+                             .map { gcsPath =>
+                               val root = gcsPath.root.getOrElse("")
+                               val pathFromRoot = gcsPath.pathFromRoot.toList.mkString("/")
+                               val filename = gcsPath.fileName.getOrElse("")
+                               val key = BlobStorage.Key.coerce(s"gs://$root/$pathFromRoot/$filename")
+                               BlobStorage.BlobObject(key, gcsPath.size.getOrElse(0L))
+                             }
+                         }
 
-          override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
-            val (bucket, path) = BlobStorage.splitKey(key)
-            client.put(GcsPath(BlobInfo.newBuilder(bucket, path).build()), overwrite)
-          }
+                         override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
+                           val (bucket, path) = BlobStorage.splitKey(key)
+                           client.put(GcsPath(BlobInfo.newBuilder(bucket, path).build()), overwrite)
+                         }
 
-          override def get(key: Key): F[Either[Throwable, String]] = {
-            val (bucket, path) = BlobStorage.splitKey(key)
-            client
-              .get(GcsPath(BlobInfo.newBuilder(bucket, path).build()), 1024)
-              .compile
-              .to(Array)
-              .map(array => new String(array))
-              .attempt
-          }
+                         override def get(key: Key): F[Either[Throwable, String]] = {
+                           val (bucket, path) = BlobStorage.splitKey(key)
+                           client
+                             .get(GcsPath(BlobInfo.newBuilder(bucket, path).build()), 1024)
+                             .compile
+                             .to(Array)
+                             .map(array => new String(array))
+                             .attempt
+                         }
 
-          override def keyExists(key: Key): F[Boolean] = {
-            val (bucket, path) = BlobStorage.splitKey(key)
-            client.list(GcsPath(BlobInfo.newBuilder(bucket, path).build())).compile.toList.map(_.nonEmpty)
-          }
-        }
-      )
+                         override def keyExists(key: Key): F[Boolean] = {
+                           val (bucket, path) = BlobStorage.splitKey(key)
+                           client.list(GcsPath(BlobInfo.newBuilder(bucket, path).build())).compile.toList.map(_.nonEmpty)
+                         }
+                       }
+                     )
     } yield blobStorage
 
-  def getClient[F[_] : ConcurrentEffect : ContextShift](blocker: Blocker): Resource[F, GcsStore[F]] =
+  def getClient[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker): Resource[F, GcsStore[F]] =
     Resource.pure[F, GcsStore[F]](GcsStore(StorageOptions.getDefaultInstance.getService, blocker))
 }

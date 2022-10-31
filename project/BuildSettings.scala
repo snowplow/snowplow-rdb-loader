@@ -33,6 +33,8 @@ import scoverage.ScoverageKeys._
 
 import sbtdynver.DynVerPlugin.autoImport._
 
+import org.scalafmt.sbt.ScalafmtPlugin.autoImport._
+
 /**
  * Common settings-patterns for Snowplow apps and libraries.
  * To enable any of these you need to explicitly add Settings value to build.sbt
@@ -54,7 +56,7 @@ object BuildSettings {
     addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full),
 
     resolvers ++= Dependencies.resolutionRepos
-  )
+  ) ++ formattingSettings
 
   // sbt-assembly settings
   lazy val jarName = assembly / assemblyJarName := { name.value + "-" + version.value + ".jar" }
@@ -83,6 +85,11 @@ object BuildSettings {
 
     }
   ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
+
+  lazy val formattingSettings = Seq(
+    scalafmtConfig := file(".scalafmt.conf"),
+    scalafmtOnCompile := false
+  )
 
   lazy val transformerAssemblySettings = Seq(
     jarName,

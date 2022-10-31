@@ -22,14 +22,12 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Proces
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication.TestProcessor
 import fs2.Stream
 
-
 object InputEventsProvider {
 
-  def eventStream(inputEventsPath: String)
-                 (implicit cs: ContextShift[IO]): Stream[IO, ParsedC[Unit]] = {
-    FileUtils.resourceFileStream(testBlocker, inputEventsPath)
+  def eventStream(inputEventsPath: String)(implicit cs: ContextShift[IO]): Stream[IO, ParsedC[Unit]] =
+    FileUtils
+      .resourceFileStream(testBlocker, inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines
       .map(f => (Processing.parseEvent(f, TestProcessor), ()))
-  }
 }

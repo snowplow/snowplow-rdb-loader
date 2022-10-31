@@ -65,8 +65,8 @@ class ConfigSpec extends Specification {
 
     "give error when unknown region given" in {
       val result = getConfig("/test.config1.hocon", Config.fromString[IO])
-      result must beLeft.like {
-        case err => err must contain("unknown-region-1")
+      result must beLeft.like { case err =>
+        err must contain("unknown-region-1")
       }
     }
   }

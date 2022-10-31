@@ -72,7 +72,6 @@ class LoaderMessageSpec extends Specification {
   }
 }
 
-
 object LoaderMessageSpec {
   val ShreddedMessageJson = json"""{
     "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
@@ -149,7 +148,11 @@ object LoaderMessageSpec {
     base,
     TypesInfo.Shredded(
       List(
-        TypesInfo.Shredded.Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), TypesInfo.Shredded.ShreddedFormat.TSV, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
+        TypesInfo.Shredded.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          TypesInfo.Shredded.ShreddedFormat.TSV,
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
+        )
       )
     ),
     timestamps,
@@ -163,8 +166,10 @@ object LoaderMessageSpec {
     TypesInfo.WideRow(
       TypesInfo.WideRow.WideRowFormat.JSON,
       List(
-        TypesInfo.WideRow.Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.SnowplowEntity.SelfDescribingEvent),
-        TypesInfo.WideRow.Type(SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(2, 0, 0)), LoaderMessage.SnowplowEntity.Context),
+        TypesInfo.WideRow
+          .Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        TypesInfo.WideRow
+          .Type(SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(2, 0, 0)), LoaderMessage.SnowplowEntity.Context)
       )
     ),
     timestamps,

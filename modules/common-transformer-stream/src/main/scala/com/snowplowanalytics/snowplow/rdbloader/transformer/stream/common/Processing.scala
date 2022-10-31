@@ -27,7 +27,7 @@ import fs2.text.utf8Encode
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
-import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Payload}
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload, Processor}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -43,22 +43,21 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.generic.{Partitioned, Record}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, Parsed, ParsedC}
 
-
 object Processing {
 
   final case class SuccessfulTransformation(original: Event, output: List[Transformed])
-  
+
   type Windowed[A, C] = Record[Window, A, C]
   type TransformationResult = Either[BadRow, SuccessfulTransformation]
   type TransformationResults[C] = (List[TransformationResult], C)
   type SerializationResults[C] = (List[(SinkPath, Transformed.Data)], State[C])
 
-  def run[F[_] : ConcurrentEffect : ContextShift : Clock : Timer : Parallel : BlobStorage, C: Checkpointer[F, *]](
-   resources: Resources[F, C],
-   config: Config,
-   processor: Processor
+  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel: BlobStorage, C: Checkpointer[F, *]](
+    resources: Resources[F, C],
+    config: Config,
+    processor: Processor
   ): Stream[F, Unit] = {
-    val source = resources.inputStream.read.map { m => (parseEvent(m.content, processor), resources.checkpointer(m))}
+    val source = resources.inputStream.read.map(m => (parseEvent(m.content, processor), resources.checkpointer(m)))
     runFromSource(source, resources, config, processor)
   }
 
@@ -75,7 +74,7 @@ object Processing {
         Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
 
-     val messageProcessorVersion = Semver
+    val messageProcessorVersion = Semver
       .decodeSemver(processor.version)
       .fold(e => throw new IllegalStateException(s"Cannot parse project version $e"), identity)
     val messageProcessor: LoaderMessage.Processor =
@@ -84,17 +83,17 @@ object Processing {
     def windowing[A]: Pipe[F, (List[A], State[C]), Windowed[List[A], State[C]]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
 
-    val onComplete: ((Window, State[C])) => F[Unit] = {
-      case (window, state) =>
-        Completion.seal[F, C](
-          config.output.compression,
-          transformer.typesInfo,
-          config.output.path,
-          resources.producer,
-          config.featureFlags.legacyMessageFormat,
-          messageProcessor,
-          window,
-          state)
+    val onComplete: ((Window, State[C])) => F[Unit] = { case (window, state) =>
+      Completion.seal[F, C](
+        config.output.compression,
+        transformer.typesInfo,
+        config.output.path,
+        resources.producer,
+        config.featureFlags.legacyMessageFormat,
+        messageProcessor,
+        window,
+        state
+      )
     }
 
     val transformedSource: Stream[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]]] =
@@ -106,9 +105,10 @@ object Processing {
 
     val sink: Pipe[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]], Unit] =
       _.through(getSink(resources, config.output, config.formats))
-       .evalMap(onComplete)
+        .evalMap(onComplete)
 
-    Shutdown.run(transformedSource, sink)
+    Shutdown
+      .run(transformedSource, sink)
       .concurrently(resources.metrics.report)
       .concurrently(resources.telemetry.report)
   }
@@ -119,16 +119,19 @@ object Processing {
     config: Config.Output,
     formats: Formats
   ): Grouping[F, C] = {
-    
-    val parquetSink = (w: Window) => (s: State[C]) => (k: SinkPath) =>
-      ParquetSink.parquetSink[F, C](resources, config.compression, config.path, w, s.types.toList, k)
-    val nonParquetSink = (w: Window) => (_: State[C]) => (k: SinkPath) =>
-      getBlobStorageSink(BlobStorage.Folder.coerce(config.path.toString), config.compression, w, k)
 
-    val parquetCombinedSink = (w: Window) => (s: State[C]) => (k: SinkPath) => k.pathType match {
-      case PathType.Good => parquetSink(w)(s)(k)
-      case PathType.Bad => nonParquetSink(w)(s)(k)
-    }
+    val parquetSink = (w: Window) =>
+      (s: State[C]) => (k: SinkPath) => ParquetSink.parquetSink[F, C](resources, config.compression, config.path, w, s.types.toList, k)
+    val nonParquetSink = (w: Window) =>
+      (_: State[C]) => (k: SinkPath) => getBlobStorageSink(BlobStorage.Folder.coerce(config.path.toString), config.compression, w, k)
+
+    val parquetCombinedSink = (w: Window) =>
+      (s: State[C]) =>
+        (k: SinkPath) =>
+          k.pathType match {
+            case PathType.Good => parquetSink(w)(s)(k)
+            case PathType.Bad => nonParquetSink(w)(s)(k)
+          }
 
     val dataSink = formats match {
       case Formats.WideRow.PARQUET => parquetCombinedSink
@@ -138,7 +141,7 @@ object Processing {
     Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink, config.bufferSize)
   }
 
-  def getBlobStorageSink[F[_] : ConcurrentEffect: BlobStorage](
+  def getBlobStorageSink[F[_]: ConcurrentEffect: BlobStorage](
     outputPath: BlobStorage.Folder,
     compression: Compression,
     window: Window,
@@ -161,47 +164,53 @@ object Processing {
   }
 
   /** Chunk-wise transforms incoming events into either a BadRow or a list of transformed outputs */
-  def transform[F[_]: Concurrent: Parallel,
-                C: Checkpointer[F, *]](transformer: Transformer[F],
-                                       validations: TransformerConfig.Validations,
-                                       processor: Processor): Pipe[F, ParsedC[C], TransformationResults[C]] =
+  def transform[F[_]: Concurrent: Parallel, C: Checkpointer[F, *]](
+    transformer: Transformer[F],
+    validations: TransformerConfig.Validations,
+    processor: Processor
+  ): Pipe[F, ParsedC[C], TransformationResults[C]] =
     _.chunks
       .flatMap { chunk =>
         val checkpoint = Checkpointer[F, C].combineAll(chunk.toList.map(_._2))
         Stream.eval {
-          chunk
-            .toList
+          chunk.toList
             .map(_._1)
             .map(transformSingle(transformer, validations, processor))
             .parSequenceN(100)
             .map(results => (results, checkpoint))
         }
-     }
+      }
 
   /** Transform a single event into either a BadRow or a list of transformed outputs */
-  def transformSingle[F[_]: Monad](transformer: Transformer[F],
-                                   validations: TransformerConfig.Validations,
-                                   processor: Processor)
-                                   (parsed: Parsed): F[TransformationResult] = {
+  def transformSingle[F[_]: Monad](
+    transformer: Transformer[F],
+    validations: TransformerConfig.Validations,
+    processor: Processor
+  )(
+    parsed: Parsed
+  ): F[TransformationResult] = {
     val eitherT = for {
-      event       <- EitherT.fromEither[F](parsed)
-      _           <- EitherT.fromEither[F](ShredderValidations(processor, event, validations).toLeft(()))
+      event <- EitherT.fromEither[F](parsed)
+      _ <- EitherT.fromEither[F](ShredderValidations(processor, event, validations).toLeft(()))
       transformed <- transformer.goodTransform(event)
     } yield SuccessfulTransformation(original = event, output = transformed)
 
     eitherT.value
   }
 
-
-  /** Unifies a stream of {Either of BadRow or Transformed outputs} into a stream of data with a path
-   *  to where it should sink. Processes in batches for efficiency. */
-  def handleTransformResult[F[_], C: Checkpointer[F, *]](transformer: Transformer[F]): Pipe[F, TransformationResults[C], SerializationResults[C]] =
+  /**
+   * Unifies a stream of {Either of BadRow or Transformed outputs} into a stream of data with a path
+   * to where it should sink. Processes in batches for efficiency.
+   */
+  def handleTransformResult[F[_], C: Checkpointer[F, *]](
+    transformer: Transformer[F]
+  ): Pipe[F, TransformationResults[C], SerializationResults[C]] =
     _.map { case (items, checkpointer) =>
       val state = State.fromEvents(items).withCheckpointer(checkpointer)
       val mapped = items.flatMap(
         _.fold(
-          { bad => transformer.badTransform(bad).split :: Nil },
-          { success => success.output.map(_.split) }
+          bad => transformer.badTransform(bad).split :: Nil,
+          success => success.output.map(_.split)
         )
       )
       (mapped, state)

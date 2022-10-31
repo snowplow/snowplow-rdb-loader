@@ -49,7 +49,8 @@ class StorageTargetSpec extends Specification {
         "ADD HERE",
         StorageTarget.PasswordConfig.PlainText("ADD HERE"),
         1,
-        None)
+        None
+      )
 
       config.as[StorageTarget] must beRight(expected)
     }
@@ -82,7 +83,7 @@ class StorageTargetSpec extends Specification {
       "optimizeEvents": "",
       "optimizeManifest": "*/3 * * ? * *"
     }"""
-      val impl =  Config.implicits()
+      val impl = Config.implicits()
       import impl._
 
       val expected: Config.Schedules = Config.Schedules(
@@ -151,7 +152,7 @@ class StorageTargetSpec extends Specification {
 
   "Databricks " should {
     "parse full config correctly" in {
-        val input = json"""{
+      val input = json"""{
       "host": "databricks.com",
       "schema": "snowplow",
       "port": 443,
@@ -178,7 +179,7 @@ class StorageTargetSpec extends Specification {
         eventsOptimizePeriod = 2.days
       )
 
-        input.as[StorageTarget.Databricks] must beRight(expected)
+      input.as[StorageTarget.Databricks] must beRight(expected)
     }
   }
 

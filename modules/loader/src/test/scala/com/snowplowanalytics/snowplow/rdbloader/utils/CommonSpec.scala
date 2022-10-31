@@ -16,7 +16,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 
 import org.specs2.Specification
 
-class CommonSpec extends Specification { def is = s2"""
+class CommonSpec extends Specification {
+  def is = s2"""
   Sanitize message $e1
   Sanitize message that contains invalid regular expression $e2
   """

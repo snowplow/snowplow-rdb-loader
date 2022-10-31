@@ -37,7 +37,10 @@ object Queue {
   }
 
   object Consumer {
-    /** If we extend for exact VisibilityTimeout it could be too late and service returns an error */
+
+    /**
+     * If we extend for exact VisibilityTimeout it could be too late and service returns an error
+     */
     val ExtendAllowance: FiniteDuration = 30.seconds
 
     def apply[F[_]](implicit ev: Consumer[F]): Consumer[F] = ev
@@ -54,27 +57,30 @@ object Queue {
     }
 
     /**
-     * Entity that adds additional capabilities to message processing.
-     * These are auto deadline extension and acking the message if processing
-     * completed successfully.
+     * Entity that adds additional capabilities to message processing. These are auto deadline
+     * extension and acking the message if processing completed successfully.
      */
     def postProcess[F[_]: ConcurrentEffect: Timer: Logger]: PostProcess[F] =
       new PostProcess[F] {
         override def process(msg: Message[F], extension: Option[MessageDeadlineExtension[F]]): Stream[F, Message[F]] = {
           val stream = extension match {
             case None => Stream.emit(msg)
-            case Some(e) => Stream.emit(msg)
-              .concurrently {
-                val awakePeriod: FiniteDuration = e.messageVisibility - ExtendAllowance
-                Stream.awakeEvery[F](awakePeriod).evalMap { _ =>
-                  Logger[F].info(s"Approaching end of message visibility. Extending visibility by ${e.messageVisibility}.") *>
-                    e.extend(e.messageVisibility)
+            case Some(e) =>
+              Stream
+                .emit(msg)
+                .concurrently {
+                  val awakePeriod: FiniteDuration = e.messageVisibility - ExtendAllowance
+                  Stream
+                    .awakeEvery[F](awakePeriod)
+                    .evalMap { _ =>
+                      Logger[F].info(s"Approaching end of message visibility. Extending visibility by ${e.messageVisibility}.") *>
+                        e.extend(e.messageVisibility)
+                    }
+                    .handleErrorWith { t =>
+                      Stream.eval(Logger[F].error(t)("Error extending message visibility"))
+                    }
+                    .drain
                 }
-                  .handleErrorWith { t =>
-                    Stream.eval(Logger[F].error(t)("Error extending message visibility"))
-                  }
-                  .drain
-              }
           }
           stream
             .onFinalizeCase {

@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark
 import java.util.UUID
 import java.time.Instant
 
-import com.snowplowanalytics.iglu.core.{SelfDescribingData, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Transformed}
@@ -68,7 +68,7 @@ object Serialization {
     Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
     Class.forName("scala.math.Ordering$Reverse"),
     classOf[org.apache.spark.sql.catalyst.InternalRow],
-    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils$$anonfun$1"),  // Ordering
+    Class.forName("com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils$$anonfun$1"), // Ordering
     classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
     classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
     classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],

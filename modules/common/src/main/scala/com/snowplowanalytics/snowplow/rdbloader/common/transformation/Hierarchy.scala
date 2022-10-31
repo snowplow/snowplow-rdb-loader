@@ -23,7 +23,11 @@ import com.snowplowanalytics.iglu.core.SelfDescribingData
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
-case class Hierarchy(eventId: UUID, collectorTstamp: Instant, entity: SelfDescribingData[Json]) { self =>
+case class Hierarchy(
+  eventId: UUID,
+  collectorTstamp: Instant,
+  entity: SelfDescribingData[Json]
+) { self =>
   def dumpJson: String = self.asJson.noSpaces
 }
 
@@ -51,4 +55,3 @@ object Hierarchy {
   def fromEvent(event: Event): List[Hierarchy] =
     EventUtils.getEntities(event).map(json => Hierarchy(event.event_id, event.collector_tstamp, json))
 }
-

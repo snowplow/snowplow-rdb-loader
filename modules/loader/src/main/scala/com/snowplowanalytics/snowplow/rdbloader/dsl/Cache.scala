@@ -18,6 +18,7 @@ import cats.effect.concurrent.Ref
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 trait Cache[F[_]] {
+
   /** Put value into cache (stored in interpreter) */
   def putCache(key: String, value: Option[BlobStorage.Key]): F[Unit]
 
@@ -34,7 +35,6 @@ object Cache {
         cache.get.map(_.get(key))
 
       def putCache(key: String, value: Option[BlobStorage.Key]): F[Unit] =
-        cache.update { c => c ++ Map(key -> value) }
+        cache.update(c => c ++ Map(key -> value))
     }
 }
-
