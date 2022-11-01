@@ -15,6 +15,6 @@ jobs:
       uses: snyk/actions/scala@master
       with:
         command: monitor
-        args: --project-name=snowplow-rdb-loader
+        args: --prune-repeated-subdependencies --project-name=snowplow-rdb-loader
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
