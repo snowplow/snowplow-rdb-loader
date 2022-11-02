@@ -12,23 +12,20 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import java.net.URI
-
 import cats.Parallel
 import cats.implicits._
 
 import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
+import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Timer}
 
 import doobie.ConnectionIO
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
-import io.sentry.{Sentry, SentryClient, SentryOptions}
-
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
@@ -77,9 +74,6 @@ class Environment[F[_]](
 
 object Environment {
 
-  private implicit val LoggerName =
-    Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
-
   val appId = java.util.UUID.randomUUID.toString
 
   case class CloudServices[F[_]](
@@ -104,7 +98,7 @@ object Environment {
       implicit0(logging: Logging[F]) =
         Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
-      sentry <- initSentry[F](cli.config.monitoring.sentry.map(_.dsn))
+      sentry <- Sentry.init[F](cli.config.monitoring.sentry.map(_.dsn))
       statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
       cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
@@ -142,21 +136,6 @@ object Environment {
       control,
       telemetry
     )
-
-  def initSentry[F[_]: Logging: Sync](dsn: Option[URI]): Resource[F, Option[SentryClient]] =
-    dsn match {
-      case Some(uri) =>
-        val acquire = Sync[F].delay(Sentry.init(SentryOptions.defaults(uri.toString)))
-        Resource
-          .make(acquire)(client => Sync[F].delay(client.closeConnection()))
-          .map(_.some)
-          .evalTap { _ =>
-            Logging[F].info(s"Sentry has been initialised at $uri")
-          }
-
-      case None =>
-        Resource.pure[F, Option[SentryClient]](none[SentryClient])
-    }
 
   def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](
     config: Config[StorageTarget],
