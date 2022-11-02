@@ -214,7 +214,8 @@ object Dependencies {
     scalaTracker,
     scalaTrackerEmit,
     http4sClient,
-    slf4jApi
+    slf4jApi,
+    sentry
   )
 
   val loaderDependencies = Seq(
@@ -223,7 +224,6 @@ object Dependencies {
     aws2sts,
     dynamodb,
     jSch,
-    sentry,
     scalaTracker,
     scalaTrackerEmit,
     fs2Cron,
@@ -256,7 +256,6 @@ object Dependencies {
     sns,
     dynamodb,
     slf4jSimple,
-    sentry,
     eventsManifest,
     sparkCore,
     sparkSQL,

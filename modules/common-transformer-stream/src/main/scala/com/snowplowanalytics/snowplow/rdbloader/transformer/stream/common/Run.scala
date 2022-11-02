@@ -47,16 +47,21 @@ object Run {
                    .use { resources =>
                      import resources._
                      val processor = Processor(buildName, buildVersion)
-                     logger[F].info(s"Starting RDB Shredder with ${cliConfig.config} config") *>
-                       logger[F].info(s"RDB Shredder app id is  ${AppId.appId}") *>
+                     logger[F].info(s"Starting transformer with ${cliConfig.config} config") *>
+                       logger[F].info(s"Transformer app id is  ${AppId.appId}") *>
                        Processing
                          .run[F, C](resources, cliConfig.config, processor)
                          .compile
                          .drain
+                         .onError { case error =>
+                           logger[F].error("Transformer shutting down") *>
+                             resources.sentry.fold(Sync[F].unit)(s => Sync[F].delay(s.sendException(error)))
+                         }
                          .as(ExitCode.Success)
                    }
                case Left(e) =>
                  logger[F].error(s"Configuration error: $e").as(InvalidConfig)
              }
     } yield res
+
 }
