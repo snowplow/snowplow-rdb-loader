@@ -30,14 +30,12 @@ lazy val common: Project = project
   .in(file("modules/common"))
   .settings(BuildSettings.commonBuildSettings)
   .settings(libraryDependencies ++= Dependencies.commonDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
   .enablePlugins(BuildInfoPlugin)
 
 lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsBuildSettings)
   .settings(libraryDependencies ++= Dependencies.awsDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 
@@ -45,7 +43,6 @@ lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpBuildSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 
@@ -63,7 +60,6 @@ lazy val loader = project
   .settings(BuildSettings.loaderBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.loaderDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(aws % "compile->compile;test->test", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
@@ -120,7 +116,6 @@ lazy val transformerBatch = project
   .in(file("modules/transformer-batch"))
   .settings(BuildSettings.transformerBatchBuildSettings)
   .settings(libraryDependencies ++= Dependencies.batchTransformerDependencies)
-  .settings(excludeDependencies ++= Dependencies.exclusions)
   .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 

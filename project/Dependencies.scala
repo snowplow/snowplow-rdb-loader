@@ -50,7 +50,7 @@ object Dependencies {
     val hadoopClient     = "3.3.4"
     val parquetHadoop    = "1.12.3"
 
-    val slf4j            = "1.7.32"
+    val slf4j            = "2.0.3"
     val redshiftJdbc     = "1.2.55.1083"
     val snowflakeJdbc    = "3.13.9"
     val enumeratum       = "1.7.0"
@@ -136,7 +136,8 @@ object Dependencies {
                           .exclude("software.amazon.glue", "schema-registry-serde")
 
   // Java (Loader)
-  val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
+  val slf4jApi          = "org.slf4j"             % "slf4j-api"                 % V.slf4j
+  val slf4jSimple       = "org.slf4j"             % "slf4j-simple"              % V.slf4j
   val redshift          = "com.amazon.redshift"   % "redshift-jdbc42-no-awssdk" % V.redshiftJdbc
   val jSch              = "com.github.mwiede"     % "jsch"                      % V.jSch
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
@@ -212,11 +213,12 @@ object Dependencies {
     fs2BlobstoreCore,
     scalaTracker,
     scalaTrackerEmit,
-    http4sClient
+    http4sClient,
+    slf4jApi
   )
 
   val loaderDependencies = Seq(
-    slf4j,
+    slf4jSimple,
     ssm,
     aws2sts,
     dynamodb,
@@ -253,7 +255,7 @@ object Dependencies {
     sqs,
     sns,
     dynamodb,
-    slf4j,
+    slf4jSimple,
     sentry,
     eventsManifest,
     sparkCore,
@@ -269,7 +271,7 @@ object Dependencies {
 
   val commonStreamTransformerDependencies = Seq(
     dynamodb,
-    slf4j,
+    slf4jSimple,
     protobuf,
     log4cats,
     catsEffectLaws,
@@ -283,13 +285,8 @@ object Dependencies {
     scalaCheck
   )
 
-  // exclusions
-  val exclusions = Seq(
-    ExclusionRule(organization = "org.slf4j", name = "slf4j-log4j12")
-  )
-
-  val commonStreamTransformerExclusions = {
-    exclusions ++ Seq(
+  val commonStreamTransformerExclusions =
+    Seq(
       ExclusionRule(organization = "ch.qos.logback"),
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-client"),
@@ -297,5 +294,4 @@ object Dependencies {
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-hdfs-client"),
       ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7"),
     )
-  }
 }
