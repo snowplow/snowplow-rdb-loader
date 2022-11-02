@@ -206,6 +206,7 @@ object Dependencies {
     fs2BlobstoreCore,
     scalaTracker,
     scalaTrackerEmit,
+    sentry,
     http4sClient
   )
 
@@ -215,7 +216,6 @@ object Dependencies {
     aws2sts,
     dynamodb,
     jSch,
-    sentry,
     scalaTracker,
     scalaTrackerEmit,
     fs2Cron,
@@ -248,7 +248,6 @@ object Dependencies {
     sns,
     dynamodb,
     slf4j,
-    sentry,
     eventsManifest,
     sparkCore,
     sparkSQL,

@@ -26,10 +26,13 @@ import cats.effect._
 
 import org.http4s.client.blaze.BlazeClientBuilder
 
+import io.sentry.SentryClient
+
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
+import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
@@ -45,6 +48,7 @@ case class Resources[F[_], C](
   blocker: Blocker,
   metrics: Metrics[F],
   telemetry: Telemetry[F],
+  sentry: Option[SentryClient],
   inputStream: Queue.Consumer[F],
   checkpointer: Queue.Consumer.Message[F] => C,
   blobStorage: BlobStorage[F]
@@ -76,6 +80,7 @@ object Resources {
       instanceId <- mkTransformerInstanceId
       blocker <- Blocker[F]
       metrics <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      sentry <- Sentry.init[F](config.monitoring.sentry.map(_.dsn))
       httpClient <- BlazeClientBuilder[F](executionContext).resource
       telemetry <- Telemetry.build[F](
                      config.telemetry,
@@ -97,6 +102,7 @@ object Resources {
       blocker,
       metrics,
       telemetry,
+      sentry,
       inputStream,
       checkpointer,
       blobStorage
