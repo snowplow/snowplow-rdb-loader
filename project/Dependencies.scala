@@ -33,6 +33,7 @@ object Dependencies {
     val fs2Cron          = "0.5.0"
     val fs2PubSub        = "0.18.1"
     val secretManager    = "2.3.9"
+    val gcpStorage       = "2.14.0"
     val doobie           = "0.13.4"
     val monocle          = "2.0.3"
     val catsRetry        = "2.1.0"
@@ -99,6 +100,7 @@ object Dependencies {
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val fs2PubSub         = "com.permutive"              %% "fs2-google-pubsub-grpc"            % V.fs2PubSub
   val secretManager     = "com.google.cloud"           % "google-cloud-secretmanager"         % V.secretManager
+  val gcpStorage        = "com.google.cloud"           % "google-cloud-storage"               % V.gcpStorage
   val doobie            = "org.tpolecat"               %% "doobie-core"                       % V.doobie
   val doobieHikari      = "org.tpolecat"               %% "doobie-hikari"                     % V.doobie
   val analyticsSdk      = "com.snowplowanalytics"      %% "snowplow-scala-analytics-sdk"      % V.analyticsSdk
@@ -178,7 +180,8 @@ object Dependencies {
   val gcpDependencies = Seq(
     fs2BlobstoreGCS,
     fs2PubSub,
-    secretManager
+    secretManager,
+    gcpStorage
   )
 
   val commonDependencies = Seq(
