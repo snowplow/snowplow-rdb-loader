@@ -1,3 +1,13 @@
+Version 5.1.1 (2022-11-02)
+--------------------------
+Transformer Kinesis: include hadoop-aws runtime dependency (#1121)
+Bump aws sdk to 2.18.8 (#1123)
+Bump slf4j to 2.0.3 (#1119)
+Bump hadoop-client to 3.3.4 (#1117)
+Bump amazon-kinesis-client to 2.4.3 (#1116)
+Bump google-cloud-storage to 2.14.0 (#1115)
+Common: fix snyk monitoring (#1114)
+
 Version 5.1.0 (2022-10-26)
 --------------------------
 Transformer Batch: make in-batch natural deduplication optional (#1108)
