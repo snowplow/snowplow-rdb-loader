@@ -47,7 +47,7 @@ object Dependencies {
     val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.13.2.2"
     val parquet4s        = "1.9.4"
-    val hadoopClient     = "3.3.3"
+    val hadoopClient     = "3.3.4"
     val parquetHadoop    = "1.12.3"
 
     val slf4j            = "1.7.32"
@@ -59,7 +59,6 @@ object Dependencies {
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
-    val commons          = "2.7"    // Fix CVE
     val kinesisClient    = "2.4.3"
 
     // Scala (test only)
@@ -158,7 +157,6 @@ object Dependencies {
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
   val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
-  val commons           = "commons-io"             % "commons-io"               % V.commons
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
@@ -273,7 +271,6 @@ object Dependencies {
     dynamodb,
     slf4j,
     protobuf,
-    commons,
     log4cats,
     catsEffectLaws,
     circeOptics,
