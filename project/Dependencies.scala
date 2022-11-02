@@ -60,7 +60,7 @@ object Dependencies {
     val sentry           = "1.7.30"
     val protobuf         = "3.16.1" // Fix CVE
     val commons          = "2.7"    // Fix CVE
-    val kafkaClients     = "2.7.2"  // Fix CVE
+    val kinesisClient    = "2.4.3"
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -93,7 +93,9 @@ object Dependencies {
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
   val cron4sCirce       = "com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
-  val fs2Aws            = "io.laserdisc"               %% "fs2-aws"                           % V.fs2Aws
+  val fs2Aws            = ("io.laserdisc"              %% "fs2-aws"                           % V.fs2Aws)
+                          .exclude("com.amazonaws", "amazon-kinesis-producer")
+                          .exclude("software.amazon.kinesis", "amazon-kinesis-client")
   val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
   val fs2BlobstoreS3    = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val fs2BlobstoreGCS   = "com.github.fs2-blobstore"   %% "gcs"                               % V.fs2Blobstore
@@ -130,6 +132,9 @@ object Dependencies {
   val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
+  val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
+                          .exclude("software.amazon.glue", "schema-registry-common")
+                          .exclude("software.amazon.glue", "schema-registry-serde")
 
   // Java (Loader)
   val slf4j             = "org.slf4j"             % "slf4j-simple"              % V.slf4j
@@ -154,7 +159,6 @@ object Dependencies {
   val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val commons           = "commons-io"             % "commons-io"               % V.commons
-  val kafkaClients      = "org.apache.kafka"       % "kafka-clients"            % V.kafkaClients
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
@@ -175,6 +179,7 @@ object Dependencies {
     aws2kinesis,
     fs2BlobstoreS3,
     fs2Aws,
+    kinesisClient
   )
 
   val gcpDependencies = Seq(
@@ -269,7 +274,6 @@ object Dependencies {
     slf4j,
     protobuf,
     commons,
-    kafkaClients,
     log4cats,
     catsEffectLaws,
     circeOptics,
