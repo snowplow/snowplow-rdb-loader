@@ -124,7 +124,7 @@ lazy val transformerKinesis = project
   .settings(BuildSettings.transformerKinesisBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream % "compile->compile;test->test", aws % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesisDistroless = project
@@ -133,7 +133,7 @@ lazy val transformerKinesisDistroless = project
   .settings(BuildSettings.transformerKinesisDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream, aws)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerPubsub = project
@@ -141,7 +141,7 @@ lazy val transformerPubsub = project
   .settings(BuildSettings.transformerPubsubBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream % "compile->compile;test->test", gcp % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerPubsubDistroless = project
@@ -150,5 +150,5 @@ lazy val transformerPubsubDistroless = project
   .settings(BuildSettings.transformerPubsubDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream, gcp)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
