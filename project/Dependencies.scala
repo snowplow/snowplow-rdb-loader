@@ -48,6 +48,7 @@ object Dependencies {
     val jacksonDatabind  = "2.13.2.2"
     val parquet4s        = "1.9.4"
     val hadoopClient     = "3.3.4"
+    val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
 
     val slf4j            = "2.0.3"
@@ -131,6 +132,7 @@ object Dependencies {
   val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
+  val hadoopGcp         = "com.google.cloud.bigdataoss"      % "gcs-connector"             % V.hadoopGcpClient % Runtime
   val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
@@ -269,7 +271,6 @@ object Dependencies {
   )
 
   val commonStreamTransformerDependencies = Seq(
-    dynamodb,
     slf4jSimple,
     protobuf,
     log4cats,
@@ -277,11 +278,20 @@ object Dependencies {
     circeOptics,
     parquet4s,
     hadoop,
-    hadoopAws,
     parquetHadoop,
     specs2,
     specs2ScalaCheck,
     scalaCheck
+  )
+
+
+  val transformerKinesisDependencies = Seq(
+    dynamodb, // This dependency is required by hadoop-aws. It throws exception when it is not added.
+    hadoopAws
+  )
+
+  val transformerPubsubDependencies = Seq(
+    hadoopGcp
   )
 
   val commonStreamTransformerExclusions =
