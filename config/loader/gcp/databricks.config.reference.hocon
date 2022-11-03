@@ -1,12 +1,9 @@
 {
-  # Data Lake (S3) region
-  # This field is optional if it can be resolved with AWS region provider chain.
-  # It checks places like env variables, system properties, AWS profile file.
-  # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
-  "region": "us-east-1",
-
-  # SQS topic name used by Transformer and Loader to communicate
-  "messageQueue": "test-queue",
+  # Pubsub subscription used by Transformer and Loader to communicate
+  "messageQueue": {
+    "type": "pubsub"
+    "subscription": "projects/project-id/subscriptions/subscription-id"
+  },
 
   # Warehouse connection details
   "storage" : {
@@ -31,30 +28,7 @@
     "userAgent": "snowplow-rdbloader-oss"
 
     # Optimize period per table, that will be used as predicate for the OPTIMIZE command.
-    "eventsOptimizePeriod": "2 days",
-
-    # Optional, default method is 'NoCreds'
-    # Specifies the auth method to use with 'COPY INTO' statement.
-    "loadAuthMethod": {
-      # With 'NoCreds', no credentials will be passed to 'COPY INTO' statement.
-      # Databricks cluster needs to have permission to access transformer
-      # output S3 bucket. More information can be found here:
-      # https://docs.databricks.com/administration-guide/cloud-configurations/aws/instance-profiles.html
-      "type": "NoCreds"
-    }
-    #"loadAuthMethod": {
-    #  # With 'TempCreds', temporary credentials will be created for every
-    #  # load operation and these temporary credentials will be passed to
-    #  # 'COPY INTO' statement. With this way, Databricks cluster doesn't need
-    #  # permission to access to transformer output S3 bucket.
-    #  # This access will be provided by temporary credentials.
-    #  "type": "TempCreds"
-    #  # IAM role that is used while creating temporary credentials
-    #  # Created credentials will allow to access resources specified in the given role
-    #  # In our case, “s3:GetObject*”, “s3:ListBucket”, and “s3:GetBucketLocation” permissions
-    #  # for transformer output S3 bucket should be specified in the role.
-    #  "roleArn": "arn:aws:iam::123456789:role/role_name"
-    #}
+    "eventsOptimizePeriod": "2 days"
   },
 
   "schedules": {
@@ -133,7 +107,7 @@
     "folders": {
       # Path where Loader could store auxiliary logs
       # Loader should be able to write here, Redshift should be able to load from here
-      "staging": "s3://acme-snowplow/loader/logs/",
+      "staging": "gs://acme-snowplow/loader/logs/",
       # How often to check
       "period": "1 hour"
       # Specifies since when folder monitoring will check
@@ -141,7 +115,7 @@
       # Specifies until when folder monitoring will check
       "until": "7 days"
       # Path to transformer archive (must be same as Transformer's `output.path`)
-      "transformerOutput": "s3://acme-snowplow/loader/transformed/"
+      "transformerOutput": "gs://acme-snowplow/loader/transformed/"
       # How many times the check can fail before generating an alarm instead of warning
       "failBeforeAlarm": 3
     },
@@ -221,14 +195,6 @@
     # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
     # before considering Redshift unhealthy
     "nonLoading": "10 minutes"
-
-    # SQS visibility timeout is the time window in which a message must be
-    # deleted (acknowledged). Otherwise it is considered abandoned.
-    # If a message has been pulled, but hasn't been deleted, the next time
-    # it will re-appear in another consumer is equal to the visibility timeout
-    # Another consequence is that if Loader has failed on a message processing,
-    # the next time it will get this (or anything) from a queue has this delay
-    "sqsVisibility": "5 minutes"
   }
 
   # Optional. Configure telemetry

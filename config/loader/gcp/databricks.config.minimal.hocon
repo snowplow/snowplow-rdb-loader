@@ -1,0 +1,13 @@
+{
+  "messageQueue": {
+    "type": "pubsub"
+    "subscription": "projects/project-id/subscriptions/subscription-id"
+  },
+  "storage" : {
+    "host": "abc.cloud.databricks.com"
+    "password": "Supersecret1"
+    "schema": "atomic",
+    "port": 443,
+    "httpPath": "/databricks/http/path",
+  }
+}

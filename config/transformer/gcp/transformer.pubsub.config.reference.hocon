@@ -35,6 +35,12 @@
     "topic": "projects/project-id/topics/topic-id"
   }
 
+  "formats": {
+    # Optional. Denotes output file format.
+    # Possible values are 'json' and 'parquet'. Default value 'json'.
+    "fileFormat": "json"
+  }
+
   # Events will be validated against given criterias and
   # bad row will be created if validation is not successful
   "validations": {
