@@ -259,15 +259,6 @@ object Config {
 
   private def validateConfig(config: Config): List[String] =
     List(
-      TransformerConfig.formatsCheck(config.formats).swap.map(List(_)).getOrElse(List.empty),
-      gcpFormatCheck(config)
+      TransformerConfig.formatsCheck(config.formats).swap.map(List(_)).getOrElse(List.empty)
     ).flatten
-
-  private def gcpFormatCheck(config: Config): List[String] =
-    (config.input, config.formats) match {
-      case (_: Config.StreamInput.Pubsub, TransformerConfig.Formats.WideRow.PARQUET) =>
-        List("Parquet file format can't be used with transformer-pubsub")
-      case _ => Nil
-    }
-
 }
