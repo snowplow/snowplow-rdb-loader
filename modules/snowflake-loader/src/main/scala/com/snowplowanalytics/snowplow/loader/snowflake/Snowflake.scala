@@ -12,12 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.loader.snowflake
 
+import cats.implicits._
+import cats.Monad
 import cats.data.NonEmptyList
 
 import doobie.Fragment
 import doobie.implicits._
 
 import io.circe.syntax._
+import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
 
@@ -39,6 +42,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
+import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
 object Snowflake {
 
@@ -47,11 +51,11 @@ object Snowflake {
   val AlertingTempTableName = "rdb_folder_monitoring"
   val TempTableColumn = "enriched_data"
 
-  def build(config: Config[StorageTarget]): Either[String, Target] = {
+  def build(config: Config[StorageTarget]): Either[String, Target[InitQueryResult]] = {
     config.storage match {
       case tgt: StorageTarget.Snowflake =>
         val schema = tgt.schema
-        val result = new Target {
+        val result = new Target[InitQueryResult] {
 
           override val requiresEventsColumns: Boolean = false
 
@@ -73,7 +77,8 @@ object Snowflake {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod
+            loadAuthMethod: LoadAuthMethod,
+            initQueryResult: InitQueryResult
           ): LoadStatements = {
             val columnsToCopy = ColumnsToCopy.fromDiscoveredData(discovery)
             loadAuthMethod match {
@@ -85,7 +90,8 @@ object Snowflake {
                     columnsToCopy,
                     ColumnsToSkip.none,
                     discovery.typesInfo,
-                    loadAuthMethod
+                    loadAuthMethod,
+                    initQueryResult
                   )
                 )
               case c: LoadAuthMethod.TempCreds =>
@@ -102,6 +108,12 @@ object Snowflake {
                 )
             }
           }
+
+          override def initQuery[F[_]: DAO: Monad]: F[InitQueryResult] =
+            for {
+              transformedStagePath <- getStagePath(tgt.transformedStage)
+              folderMonitoringStagePath <- getStagePath(tgt.folderMonitoringStage)
+            } yield InitQueryResult(transformedStagePath, folderMonitoringStagePath)
 
           // Technically, Snowflake Loader cannot create new tables
           override def createTable(schemas: SchemaList): Block = {
@@ -127,7 +139,7 @@ object Snowflake {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, loadAuthMethod) =>
+              case Statement.FoldersCopy(source, loadAuthMethod, initQueryResult: InitQueryResult) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frPath = loadAuthMethod match {
                   case LoadAuthMethod.NoCreds =>
@@ -135,7 +147,7 @@ object Snowflake {
                     val stage = tgt.folderMonitoringStage.getOrElse(
                       throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided")
                     )
-                    val afterStage = findPathAfterStage(stage, source)
+                    val afterStage = findPathAfterStage(stage, initQueryResult.folderMonitoringStagePath, source)
                     Fragment.const0(s"@${qualify(stage.name)}/$afterStage")
                   case _: LoadAuthMethod.TempCreds =>
                     Fragment.const0(source)
@@ -145,12 +157,15 @@ object Snowflake {
                       |FROM $frPath $frCredentials
                       |FILE_FORMAT = (TYPE = CSV)""".stripMargin
 
-              case Statement.EventsCopy(path, _, columns, _, typesInfo, _) =>
+              case Statement.FoldersCopy(_, _, _) =>
+                throw new IllegalStateException("Init query result has wrong format in FoldersCopy")
+
+              case Statement.EventsCopy(path, _, columns, _, typesInfo, _, initQueryResult: InitQueryResult) =>
                 // This is validated on config decoding stage
                 val stage = tgt.transformedStage.getOrElse(
                   throw new IllegalStateException("Transformed stage is tried to be used without being provided")
                 )
-                val afterStage = findPathAfterStage(stage, path)
+                val afterStage = findPathAfterStage(stage, initQueryResult.transformedStagePath, path)
                 val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
@@ -162,6 +177,12 @@ object Snowflake {
                       |)
                       |$frFileFormat
                       |$frOnError""".stripMargin
+
+              case Statement.EventsCopy(_, _, _, _, _, _, _) =>
+                throw new IllegalStateException("Init query result has wrong format in EventsCopy")
+
+              case Statement.StagePath(stage) =>
+                Fragment.const0(s"DESC STAGE ${qualify(stage)}")
 
               case Statement.CreateTempEventTable(table) =>
                 val frTableName = Fragment.const(qualify(table))
@@ -322,13 +343,54 @@ object Snowflake {
         )
     }
 
-  private def findPathAfterStage(stage: StorageTarget.Snowflake.Stage, pathToLoad: BlobStorage.Folder): String =
-    stage.location match {
+  private def findPathAfterStage(
+    stage: StorageTarget.Snowflake.Stage,
+    queriedStagePath: Option[BlobStorage.Folder],
+    pathToLoad: BlobStorage.Folder
+  ): String = {
+    val stagePath = stage.location.orElse(queriedStagePath)
+    stagePath match {
       case Some(loc) =>
         pathToLoad.diff(loc) match {
           case Some(diff) => diff
-          case None => throw new IllegalStateException(s"The stage's path and the path to load don't match: $pathToLoad")
+          case None => throw new IllegalStateException(s"The stage path and the path to load don't match: $pathToLoad")
         }
-      case None => pathToLoad.folderName
+      case None => throw new IllegalStateException(s"The stage path cannot be empty")
     }
+  }
+
+  private def getStagePath[F[_]: DAO: Monad](stage: Option[StorageTarget.Snowflake.Stage]): F[Option[Folder]] =
+    stage match {
+      case Some(s) => DAO[F].executeQueryList[StageDescRow](Statement.StagePath(s.name)).map(StageDescRow.path)
+      case None => Monad[F].pure(None)
+    }
+
+  /**
+   * Contains results of the queries sent to warehouse when application is initialized. The queries
+   * sent with Snowflake Loader is 'DESC STAGE'. They are sent to find out paths of transformed and
+   * folder monitoring stages. And during the load operation, stage path is compared with the load
+   * path to make sure the data can be load with given stage.
+   */
+  case class InitQueryResult(transformedStagePath: Option[BlobStorage.Folder], folderMonitoringStagePath: Option[BlobStorage.Folder])
+
+  /**
+   * Represents one row of DESC STAGE result. Every row contains info about different property of
+   * the stage.
+   */
+  case class StageDescRow(
+    parent_property: String,
+    property: String,
+    property_type: String,
+    property_value: String,
+    property_default: String
+  )
+
+  object StageDescRow {
+    def path(l: List[StageDescRow]): Option[BlobStorage.Folder] =
+      for {
+        loc <- l.find(_.parent_property == "STAGE_LOCATION")
+        l <- parse(loc.property_value).flatMap(_.as[List[String]]).toOption
+        p <- l.headOption
+      } yield BlobStorage.Folder.coerce(p)
+  }
 }

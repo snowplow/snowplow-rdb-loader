@@ -52,8 +52,8 @@ class DatabricksSpec extends Specification {
 
       val discovery = DataDiscovery(baseFolder, shreddedTypes, Compression.Gzip, TypesInfo.WideRow(PARQUET, List.empty))
 
-      target.getLoadStatements(discovery, eventsColumns, LoadAuthMethod.NoCreds) should be like {
-        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _), Nil) =>
+      target.getLoadStatements(discovery, eventsColumns, LoadAuthMethod.NoCreds, ()) should be like {
+        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>
           path must beEqualTo(baseFolder)
           compression must beEqualTo(Compression.Gzip)
 
@@ -96,7 +96,15 @@ class DatabricksSpec extends Specification {
         )
       )
       val statement =
-        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), LoadAuthMethod.NoCreds)
+        Statement.EventsCopy(
+          baseFolder,
+          Compression.Gzip,
+          toCopy,
+          toSkip,
+          TypesInfo.WideRow(PARQUET, List.empty),
+          LoadAuthMethod.NoCreds,
+          ()
+        )
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain(
@@ -121,7 +129,7 @@ class DatabricksSpec extends Specification {
       )
       val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken")
       val statement =
-        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod)
+        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain(
@@ -137,7 +145,7 @@ object DatabricksSpec {
   val baseFolder: BlobStorage.Folder =
     BlobStorage.Folder.coerce("s3://somewhere/path")
 
-  val target: Target = Databricks
+  val target: Target[Unit] = Databricks
     .build(
       Config(
         StorageTarget.Databricks(

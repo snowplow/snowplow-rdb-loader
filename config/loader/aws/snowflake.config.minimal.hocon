@@ -11,9 +11,6 @@
     "schema": "atomic",
     "database": "snowplow",
 
-    "transformedStage": {
-      "name": "snowplow_stage"
-      "location": "s3://bucket/transformed/"
-    }
+    "transformedStage": "snowplow_stage"
   }
 }

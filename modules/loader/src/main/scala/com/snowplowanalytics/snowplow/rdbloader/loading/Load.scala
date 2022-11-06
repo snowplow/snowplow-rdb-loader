@@ -23,7 +23,7 @@ import cats.effect.{Clock, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Control, Manifest, Migration}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Control, Manifest, Migration, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Monitoring, Transaction}
@@ -70,24 +70,34 @@ object Load {
    *   RDB Loader app configuration
    * @param setStage
    *   function setting a stage in global state
+   * @param incrementAttempt
+   *   effect that increases the number of load attempts
    * @param discovery
    *   discovered folder to load
+   * @param loadAuthMethod
+   *   auth method used for load operation
+   * @param initQueryResult
+   *   results of the queries sent to warehouse when application is initialized
+   * @param target
+   *   storage target object
    * @return
    *   either alert payload in case of duplicate event or ingestion timestamp in case of success
    */
-  def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C], C[_]: MonadThrow: Logging: DAO](
+  def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C], C[_]: MonadThrow: Logging: DAO, I](
     config: Config[StorageTarget],
     setStage: Stage => C[Unit],
     incrementAttempt: F[Unit],
     discovery: DataDiscovery.WithOrigin,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: I,
+    target: Target[I]
   ): F[Either[AlertPayload, Option[Instant]]] =
     for {
       _ <- TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)
-      migrations <- Migration.build[F, C](discovery.discovery)
+      migrations <- Migration.build[F, C, I](discovery.discovery, target)
       _ <- Transaction[F, C].run(setStage(Stage.MigrationPre))
       _ <- migrations.preTransaction.traverse_(Transaction[F, C].run_)
-      transaction = getTransaction[C](setStage, discovery, loadAuthMethod)(migrations.inTransaction)
+      transaction = getTransaction[C, I](setStage, discovery, loadAuthMethod, initQueryResult, target)(migrations.inTransaction)
       result <- Retry.retryLoad(config.retries, incrementAttempt, Transaction[F, C].transact(transaction))
     } yield result
 
@@ -95,20 +105,29 @@ object Load {
    * Run a transaction with all load statements and with in-transaction migrations if necessary and
    * acknowledge the discovery message after transaction is successful. If the main transaction
    * fails it will be retried several times by a caller
+   *
    * @param setStage
    *   function to report current loading status to global state
    * @param discovery
    *   metadata about batch
+   * @param loadAuthMethod
+   *   auth method used for load operation
+   * @param initQueryResult
+   *   results of the queries sent to warehouse when application is initialized
+   * @param target
+   *   storage target object
    * @param inTransactionMigrations
    *   sequence of migration actions such as ALTER TABLE that have to run before the batch is loaded
    * @return
    *   either alert payload in case of an existing folder or ingestion timestamp of the current
    *   folder
    */
-  def getTransaction[F[_]: Logging: Monad: DAO](
+  def getTransaction[F[_]: Logging: Monad: DAO, I](
     setStage: Stage => F[Unit],
     discovery: DataDiscovery.WithOrigin,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: I,
+    target: Target[I]
   )(
     inTransactionMigrations: F[Unit]
   ): F[Either[AlertPayload, Option[Instant]]] =
@@ -128,7 +147,7 @@ object Load {
                     Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
                       setStage(Stage.MigrationIn) *>
                       inTransactionMigrations *>
-                      run[F](setLoading, discovery.discovery, loadAuthMethod) *>
+                      run[F, I](setLoading, discovery.discovery, loadAuthMethod, initQueryResult, target) *>
                       setStage(Stage.Committing) *>
                       Manifest.add[F](discovery.origin.toManifestItem) *>
                       Manifest
@@ -140,20 +159,30 @@ object Load {
   /**
    * Run loading actions for atomic and shredded data
    *
+   * @param setLoading
+   *   function to report that application is in loading state currently
    * @param discovery
    *   batch discovered from message queue
+   * @param loadAuthMethod
+   *   auth method used for load operation
+   * @param initQueryResult
+   *   results of the queries sent to warehouse when application is initialized
+   * @param target
+   *   storage target object
    * @return
    *   block of VACUUM and ANALYZE statements to execute them out of a main transaction
    */
-  def run[F[_]: Monad: Logging: DAO](
+  def run[F[_]: Monad: Logging: DAO, I](
     setLoading: String => F[Unit],
     discovery: DataDiscovery,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: I,
+    target: Target[I]
   ): F[Unit] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
-      existingEventTableColumns <- if (DAO[F].target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
-      _ <- DAO[F].target.getLoadStatements(discovery, existingEventTableColumns, loadAuthMethod).traverse_ { statement =>
+      existingEventTableColumns <- if (target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
+      _ <- target.getLoadStatements(discovery, existingEventTableColumns, loadAuthMethod, initQueryResult).traverse_ { statement =>
              Logging[F].info(statement.title) *>
                setLoading(statement.table) *>
                DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void

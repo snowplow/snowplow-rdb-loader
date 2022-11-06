@@ -41,7 +41,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
  * Container for most of interepreters to be used in Main JDBC will be instantiated only when
  * necessary, and as a `Reousrce`
  */
-class Environment[F[_]](
+class Environment[F[_], I](
   cache: Cache[F],
   logging: Logging[F],
   monitoring: Monitoring[F],
@@ -51,7 +51,7 @@ class Environment[F[_]](
   loadAuthService: LoadAuthService[F],
   jsonPathDiscovery: JsonPathDiscovery[F],
   transaction: Transaction[F, ConnectionIO],
-  target: Target,
+  target: Target[I],
   timeouts: Config.Timeouts,
   control: Control[F],
   telemetry: Telemetry[F]
@@ -70,6 +70,7 @@ class Environment[F[_]](
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
   val controlF: Control[F] = control
   val telemetryF: Telemetry[F] = telemetry
+  val dbTarget: Target[I] = target
 }
 
 object Environment {
@@ -84,12 +85,12 @@ object Environment {
     secretStore: SecretStore[F]
   )
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](
+  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel, I](
     cli: CliConfig,
-    statementer: Target,
+    statementer: Target[I],
     appName: String,
     appVersion: String
-  ): Resource[F, Environment[F]] =
+  ): Resource[F, Environment[F, I]] =
     for {
       blocker <- Blocker[F]
       implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
@@ -121,7 +122,7 @@ object Environment {
                      getRegionForTelemetry(cli.config),
                      getCloudForTelemetry(cli.config)
                    )
-    } yield new Environment[F](
+    } yield new Environment[F, I](
       cache,
       logging,
       monitoring,

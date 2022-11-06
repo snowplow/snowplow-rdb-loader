@@ -37,20 +37,10 @@
     # DB name
     "database": "snowplow",
     # A stage where the data is stored. Must be provided if 'NoCreds' is chosen as load auth method.
-    "transformedStage":  {
-      # The name of the stage
-      "name": "snowplow_stage"
-      # The S3 path used as stage location
-      "location": "s3://bucket/transformed/"
-    }
+    "transformedStage": "snowplow_stage"
     # A stage where the data for monitoring.folders is stored.
     # Must be provided iff monitoring.folders is configured and 'NoCreds' is chosen as load auth method.
-    "folderMonitoringStage": {
-      # The name of the stage
-      "name": "snowplow_folders_stage"
-      # The S3 path used as stage location
-      "location": "s3://bucket/monitoring/"
-    }
+    "folderMonitoringStage": "snowplow_folders_stage"
     # An optional host name that will take a priority over automatically derived
     "jdbcHost": "acme.eu-central-1.snowflake.com"
     # Optional, default method is 'NoCreds'

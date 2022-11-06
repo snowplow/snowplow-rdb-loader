@@ -96,7 +96,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure, Pure](input).run
+      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget).run
 
       state.getLog must beEqualTo(expected)
       value must beRight.like { case Migration(preTransaction, inTransaction) =>
@@ -164,7 +164,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure, Pure](input).run
+      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget).run
       state.getLog must beEqualTo(expected)
       value must beRight.like { case Migration(preTransaction, inTransaction) =>
         preTransaction must beEmpty

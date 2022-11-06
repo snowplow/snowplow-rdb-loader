@@ -29,11 +29,12 @@ object Manifest {
     "shredded_cardinality"
   ).map(ColumnName)
 
-  def initialize[F[_]: MonadThrow: Logging: Timer, C[_]: DAO: Monad](
-    target: StorageTarget
+  def initialize[F[_]: MonadThrow: Logging: Timer, C[_]: DAO: Monad, I](
+    config: StorageTarget,
+    target: Target[I]
   )(implicit F: Transaction[F, C]
   ): F[Unit] =
-    F.transact(setup[C](target.schema, target)).attempt.flatMap {
+    F.transact(setup[C, I](config.schema, config, target)).attempt.flatMap {
       case Right(InitStatus.Created) =>
         Logging[F].info("The manifest table has been created")
       case Right(InitStatus.Migrated) =>
@@ -47,8 +48,12 @@ object Manifest {
           MonadError[F, Throwable].raiseError(new IllegalStateException(error.toString))
     }
 
-  def setup[F[_]: Monad: DAO](schema: String, target: StorageTarget): F[InitStatus] = target match {
-    case _: Databricks => create[F].as(InitStatus.Created)
+  def setup[F[_]: Monad: DAO, I](
+    schema: String,
+    config: StorageTarget,
+    target: Target[I]
+  ): F[InitStatus] = config match {
+    case _: Databricks => create[F, I](target).as(InitStatus.Created)
     case _ =>
       for {
         exists <- Control.tableExists[F](Name)
@@ -57,14 +62,14 @@ object Manifest {
                     legacy = existingTableColumns.toSet === LegacyColumns.toSet
                     status <- if (legacy)
                                 Control.renameTable[F](Name, LegacyName) *>
-                                  create[F].as[InitStatus](InitStatus.Migrated)
+                                  create[F, I](target).as[InitStatus](InitStatus.Migrated)
                               else
                                 Monad[F].pure[InitStatus](InitStatus.NoChanges)
                   } yield status
-                  else create[F].as(InitStatus.Created)
+                  else create[F, I](target).as(InitStatus.Created)
         _ <- status match {
                case InitStatus.Migrated | InitStatus.Created =>
-                 target match {
+                 config match {
                    case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"), DAO.Purpose.NonLoading)
                    case _ => Monad[F].unit
                  }
@@ -81,8 +86,8 @@ object Manifest {
     DAO[F].executeQueryOption[Entry](Statement.ManifestGet(base))(Entry.entryRead)
 
   /** Create manifest table */
-  def create[F[_]: DAO: Functor]: F[Unit] =
-    DAO[F].executeUpdate(DAO[F].target.getManifest, DAO.Purpose.NonLoading).void
+  def create[F[_]: DAO: Functor, I](target: Target[I]): F[Unit] =
+    DAO[F].executeUpdate(target.getManifest, DAO.Purpose.NonLoading).void
 
   case class Entry(ingestion: Instant, meta: LoaderMessage.ManifestItem)
 

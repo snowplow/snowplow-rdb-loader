@@ -51,16 +51,21 @@ object Statement {
   case object CreateAlertingTempTable extends Statement
   case object DropAlertingTempTable extends Statement
   case object FoldersMinusManifest extends Statement
-  case class FoldersCopy(source: BlobStorage.Folder, loadAuthMethod: LoadAuthMethod) extends Statement
+  case class FoldersCopy[T](
+    source: BlobStorage.Folder,
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: T
+  ) extends Statement
 
   // Loading
-  case class EventsCopy(
+  case class EventsCopy[T](
     path: BlobStorage.Folder,
     compression: Compression,
     columnsToCopy: ColumnsToCopy,
     columnsToSkip: ColumnsToSkip,
     typesInfo: TypesInfo,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: T
   ) extends Statement
       with Loading {
     def table: String = EventsTable.MainName
@@ -113,4 +118,6 @@ object Statement {
   // Optimize (housekeeping i.e. vacuum in redshift, optimize in databricks)
   case object VacuumManifest extends Statement
   case object VacuumEvents extends Statement
+
+  case class StagePath(stage: String) extends Statement
 }

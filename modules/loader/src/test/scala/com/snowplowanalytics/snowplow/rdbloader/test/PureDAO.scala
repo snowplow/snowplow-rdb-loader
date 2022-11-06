@@ -12,13 +12,17 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
+import cats.Monad
 import cats.data.NonEmptyList
 import cats.implicits._
+
 import doobie.{Fragment, Read}
+
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => SchemaMigration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
+
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -68,7 +72,7 @@ object PureDAO {
 
   val init: PureDAO = custom(getResult)
 
-  def interpreter(results: PureDAO, tgt: Target = DummyTarget): DAO[Pure] = new DAO[Pure] {
+  def interpreter(results: PureDAO): DAO[Pure] = new DAO[Pure] {
     def executeUpdate(sql: Statement, purpose: DAO.Purpose): Pure[Int] =
       results.executeUpdate(sql)
 
@@ -80,18 +84,17 @@ object PureDAO {
 
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): Pure[Option[A]] =
       results.executeQuery.asInstanceOf[Statement => Pure[Option[A]]](query)
-
-    def target: Target = tgt
   }
 
-  val DummyTarget = new Target {
+  val DummyTarget = new Target[Unit] {
     def toFragment(statement: Statement): Fragment =
       Fragment.const0(statement.toString)
 
     def getLoadStatements(
       discovery: DataDiscovery,
       eventTableColumns: EventTableColumns,
-      loadAuthMethod: LoadAuthMethod
+      loadAuthMethod: LoadAuthMethod,
+      i: Unit
     ): LoadStatements =
       NonEmptyList(
         Statement.EventsCopy(
@@ -100,12 +103,15 @@ object PureDAO {
           ColumnsToCopy(List.empty),
           ColumnsToSkip(List.empty),
           TypesInfo.Shredded(List.empty),
-          loadAuthMethod
+          loadAuthMethod,
+          i
         ),
         discovery.shreddedTypes.map { shredded =>
           Statement.ShreddedCopy(shredded, Compression.Gzip)
         }
       )
+
+    def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
     def getManifest: Statement =
       Statement.CreateTable(Fragment.const0("CREATE manifest"))

@@ -38,9 +38,6 @@ trait DAO[C[_]] {
 
   /** Execute query and parse results into 0 or one `A` */
   def executeQueryOption[A](query: Statement)(implicit A: Read[A]): C[Option[A]]
-
-  /** Get the DB interpreter */
-  def target: Target
 }
 
 object DAO {
@@ -53,7 +50,7 @@ object DAO {
 
   def apply[F[_]](implicit ev: DAO[F]): DAO[F] = ev
 
-  def connectionIO(dbTarget: Target, timeouts: Config.Timeouts): DAO[ConnectionIO] = new DAO[ConnectionIO] {
+  def connectionIO[I](dbTarget: Target[I], timeouts: Config.Timeouts): DAO[ConnectionIO] = new DAO[ConnectionIO] {
 
     /** Execute single SQL statement (against target in interpreter) */
     def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] = {
@@ -81,8 +78,5 @@ object DAO {
       dbTarget.toFragment(query).execWith {
         HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.getOption))
       }
-
-    def target: Target =
-      dbTarget
   }
 }
