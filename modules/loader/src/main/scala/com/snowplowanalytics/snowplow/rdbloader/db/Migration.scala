@@ -147,7 +147,10 @@ object Migration {
   }
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu, C[_]: MonadThrow: Logging: DAO](discovery: DataDiscovery): F[Migration[C]] = {
+  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu, C[_]: MonadThrow: Logging: DAO, I](
+    discovery: DataDiscovery,
+    target: Target[I]
+  ): F[Migration[C]] = {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
@@ -165,7 +168,7 @@ object Migration {
           // Duplicate schemas cause migration vector to double failing the second migration. Therefore deduplication
           // with toSet.toList
           schemaList.toSet.toList
-            .traverseFilter(buildBlock[C])
+            .traverseFilter(buildBlock[C, I](_, target))
             .flatMap(blocks => Migration.fromBlocks[C](blocks))
         case Left(error) =>
           MonadThrow[C].raiseError[Migration[C]](error)
@@ -178,8 +181,7 @@ object Migration {
   def empty[F[_]: Applicative]: Migration[F] =
     Migration[F](Nil, Applicative[F].unit)
 
-  def buildBlock[F[_]: MonadThrow: DAO](description: Description): F[Option[Block]] = {
-    val target = DAO[F].target
+  def buildBlock[F[_]: MonadThrow: DAO, I](description: Description, target: Target[I]): F[Option[Block]] =
     description match {
       case Description.Table(schemas) =>
         val tableName = StringUtils.getTableName(schemas.latest)
@@ -203,10 +205,9 @@ object Migration {
       case Description.NoMigration =>
         Monad[F].pure(none[Block])
     }
-  }
 
-  def migrateTable(
-    target: Target,
+  def migrateTable[I](
+    target: Target[I],
     current: SchemaKey,
     columns: List[ColumnName],
     schemaList: SchemaList

@@ -63,7 +63,8 @@ class LoadSpec extends Specification {
             ColumnsToCopy(List.empty),
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
-            LoadAuthMethod.NoCreds
+            LoadAuthMethod.NoCreds,
+            ()
           )
         ),
         LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip)),
@@ -73,12 +74,14 @@ class LoadSpec extends Specification {
       )
 
       val result = Load
-        .load[Pure, Pure](
+        .load[Pure, Pure, Unit](
           SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds
+          LoadAuthMethod.NoCreds,
+          (),
+          PureDAO.DummyTarget
         )
         .runS
 
@@ -104,12 +107,14 @@ class LoadSpec extends Specification {
       )
 
       val result = Load
-        .load[Pure, Pure](
+        .load[Pure, Pure, Unit](
           SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds
+          LoadAuthMethod.NoCreds,
+          (),
+          PureDAO.DummyTarget
         )
         .runS
 
@@ -142,7 +147,8 @@ class LoadSpec extends Specification {
             ColumnsToCopy(List.empty),
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
-            LoadAuthMethod.NoCreds
+            LoadAuthMethod.NoCreds,
+            ()
           )
         ),
         LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip)),
@@ -157,7 +163,8 @@ class LoadSpec extends Specification {
             ColumnsToCopy(List.empty),
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
-            LoadAuthMethod.NoCreds
+            LoadAuthMethod.NoCreds,
+            ()
           )
         ),
         LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip)),
@@ -166,12 +173,14 @@ class LoadSpec extends Specification {
         PureTransaction.CommitMessage
       )
       val result = Load
-        .load[Pure, Pure](
+        .load[Pure, Pure, Unit](
           SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds
+          LoadAuthMethod.NoCreds,
+          (),
+          PureDAO.DummyTarget
         )
         .runS
 
@@ -206,12 +215,14 @@ class LoadSpec extends Specification {
         //       to throw an ad-hoc exception within a transaction
       )
       val result = Load
-        .load[Pure, Pure](
+        .load[Pure, Pure, Unit](
           SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds
+          LoadAuthMethod.NoCreds,
+          (),
+          PureDAO.DummyTarget
         )
         .runS
 

@@ -19,7 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.Runner
 object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] =
-    Runner.run[IO](
+    Runner.run[IO, Unit](
       args,
       Databricks.build,
       "rdb-loader-databricks"

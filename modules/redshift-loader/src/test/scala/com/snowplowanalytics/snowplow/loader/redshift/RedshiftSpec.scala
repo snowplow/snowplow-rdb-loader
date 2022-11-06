@@ -71,6 +71,6 @@ class RedshiftSpec extends Specification {
 }
 
 object RedshiftSpec {
-  val redshift: Target =
+  val redshift: Target[Unit] =
     Redshift.build(validConfig).getOrElse(throw new RuntimeException("Invalid config"))
 }
