@@ -40,7 +40,7 @@ class FolderMonitoringSpec extends Specification {
         List(
           PureTransaction.CommitMessage,
           TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
+          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
           TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
           TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
           PureTransaction.StartMessage,
@@ -60,7 +60,7 @@ class FolderMonitoringSpec extends Specification {
       )
 
       val (state, result) =
-        FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
+        FolderMonitoring.check[Pure, Pure, Unit](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds, ()).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -81,7 +81,7 @@ class FolderMonitoringSpec extends Specification {
         List(
           PureTransaction.CommitMessage,
           TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds)),
+          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
           TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
           TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
           PureTransaction.StartMessage,
@@ -101,7 +101,7 @@ class FolderMonitoringSpec extends Specification {
       )
 
       val (state, result) =
-        FolderMonitoring.check[Pure, Pure](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds).run
+        FolderMonitoring.check[Pure, Pure, Unit](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds, ()).run
 
       state must beEqualTo(expectedState)
       result must beRight.like {

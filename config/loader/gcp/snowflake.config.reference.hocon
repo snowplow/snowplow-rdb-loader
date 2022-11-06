@@ -31,20 +31,10 @@
     # DB name
     "database": "snowplow",
     # A stage where the data is stored.
-    "transformedStage":  {
-      # The name of the stage
-      "name": "snowplow_stage"
-      # The GCS path used as stage location
-      "location": "gs://bucket/transformed/"
-    }
+    "transformedStage": "snowplow_stage"
     # A stage where the data for monitoring.folders is stored.
     # Must be provided iff monitoring.folders is configured.
-    "folderMonitoringStage": {
-      # The name of the stage
-      "name": "snowplow_folders_stage"
-      # The GCS path used as stage location
-      "location": "gs://bucket/monitoring/"
-    }
+    "folderMonitoringStage": "snowplow_folders_stage"
     # An optional host name that will take a priority over automatically derived
     "jdbcHost": "acme.eu-central-1.snowflake.com"
   },

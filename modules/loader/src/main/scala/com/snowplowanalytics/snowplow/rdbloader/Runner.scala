@@ -26,12 +26,20 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 
-/** Generic starting point for all loaders */
 object Runner {
 
-  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel](
+  /**
+   * Generic starting point for all loaders
+   *
+   * @tparam F
+   *   primary application's effect (usually `IO`)
+   * @tparam I
+   *   type of the query result which is sent to the warehouse during initialization of the
+   *   application
+   */
+  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel, I](
     argv: List[String],
-    buildStatements: BuildTarget,
+    buildStatements: BuildTarget[I],
     appName: String
   ): F[ExitCode] = {
     val result = for {
@@ -39,18 +47,18 @@ object Runner {
       statements <- EitherT.fromEither[F](buildStatements(parsed.config))
       application =
         Environment
-          .initialize[F](
+          .initialize[F, I](
             parsed,
             statements,
             appName,
             generated.BuildInfo.version
           )
-          .use { env: Environment[F] =>
+          .use { env: Environment[F, I] =>
             import env._
 
             Logging[F]
               .info(s"RDB Loader ${generated.BuildInfo.version} has started.") *>
-              Loader.run[F, ConnectionIO](parsed.config, env.controlF, env.telemetryF).as(ExitCode.Success)
+              Loader.run[F, ConnectionIO, I](parsed.config, env.controlF, env.telemetryF, env.dbTarget).as(ExitCode.Success)
           }
       exitCode <- EitherT.liftF[F, String, ExitCode](application)
     } yield exitCode

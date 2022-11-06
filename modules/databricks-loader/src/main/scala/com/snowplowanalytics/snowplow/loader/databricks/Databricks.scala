@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.loader.databricks
 
+import cats.Monad
 import cats.data.NonEmptyList
 
 import doobie.Fragment
@@ -28,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
@@ -38,10 +40,10 @@ object Databricks {
   val UnstructPrefix = "unstruct_event_"
   val ContextsPrefix = "contexts_"
 
-  def build(config: Config[StorageTarget]): Either[String, Target] = {
+  def build(config: Config[StorageTarget]): Either[String, Target[Unit]] = {
     config.storage match {
       case tgt: StorageTarget.Databricks =>
-        val result = new Target {
+        val result = new Target[Unit] {
 
           override val requiresEventsColumns: Boolean = true
 
@@ -53,15 +55,18 @@ object Databricks {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod
+            loadAuthMethod: LoadAuthMethod,
+            i: Unit
           ): LoadStatements = {
             val toCopy = ColumnsToCopy.fromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
 
             NonEmptyList.one(
-              Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod)
+              Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod, i)
             )
           }
+
+          override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
           override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
 
@@ -99,7 +104,7 @@ object Databricks {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, loadAuthMethod) =>
+              case Statement.FoldersCopy(source, loadAuthMethod, _) =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frPath = Fragment.const0(source)
                 val frAuth = loadAuthMethodFragment(loadAuthMethod)
@@ -107,7 +112,7 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
-              case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod) =>
+              case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _) =>
                 val frTableName = Fragment.const(qualify(EventsTable.MainName))
                 val frPath = Fragment.const0(path.append("output=good"))
                 val nonNulls = toCopy.names.map(_.value)
@@ -177,6 +182,8 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyToTempTable statement")
               case _: Statement.EventsCopyFromTempTable =>
                 throw new IllegalStateException("Databricks Loader does not use EventsCopyFromTempTable statement")
+              case Statement.StagePath(_) =>
+                throw new IllegalStateException("Databricks Loader does not use StagePath statement")
               case Statement.VacuumEvents => sql"""
                   OPTIMIZE ${Fragment.const0(qualify(EventsTable.MainName))}
                   WHERE collector_tstamp_date >= current_timestamp() - INTERVAL ${tgt.eventsOptimizePeriod.toSeconds} second"""

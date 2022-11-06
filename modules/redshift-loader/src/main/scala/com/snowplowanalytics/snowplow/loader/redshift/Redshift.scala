@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.loader.redshift
 
 import java.sql.Timestamp
 
+import cats.Monad
 import cats.data.NonEmptyList
 
 import doobie.Fragment
@@ -38,6 +39,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Ite
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
 object Redshift {
@@ -46,14 +48,14 @@ object Redshift {
 
   val AlertingTempTableName = "rdb_folder_monitoring"
 
-  def build(config: Config[StorageTarget]): Either[String, Target] = {
+  def build(config: Config[StorageTarget]): Either[String, Target[Unit]] = {
     (config.cloud, config.storage) match {
       case (c: Config.Cloud.AWS, storage: StorageTarget.Redshift) =>
         val region = c.region
         val roleArn = storage.roleArn
         val schema = storage.schema
         val maxError = storage.maxError
-        val result = new Target {
+        val result = new Target[Unit] {
 
           override val requiresEventsColumns: Boolean = false
 
@@ -82,7 +84,8 @@ object Redshift {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod
+            loadAuthMethod: LoadAuthMethod,
+            i: Unit
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
@@ -94,10 +97,13 @@ object Redshift {
               ColumnsToCopy(AtomicColumns.Columns),
               ColumnsToSkip.none,
               discovery.typesInfo,
-              loadAuthMethod
+              loadAuthMethod,
+              i
             )
             NonEmptyList(atomic, shreddedStatements)
           }
+
+          override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
           override def createTable(schemas: SchemaList): Block = {
             val subschemas = FlatSchema.extractProperties(schemas)
@@ -124,12 +130,12 @@ object Redshift {
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frManifest = Fragment.const(s"${schema}.manifest")
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, _) =>
+              case Statement.FoldersCopy(source, _, _) =>
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
                 val frPath = Fragment.const0(source)
                 sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, _, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
@@ -258,6 +264,8 @@ object Redshift {
                 throw new IllegalStateException("Redshift Loader does not use vacuum events table statement")
               case Statement.VacuumManifest =>
                 throw new IllegalStateException("Redshift Loader does not use vacuum manifest statement")
+              case Statement.StagePath(_) =>
+                throw new IllegalStateException("Redshift Loader does not use StagePath statement")
             }
 
           private def qualify(tableName: String): String =

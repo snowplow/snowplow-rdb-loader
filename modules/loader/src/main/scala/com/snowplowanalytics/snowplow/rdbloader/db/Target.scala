@@ -12,12 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import cats.Monad
+
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.EventTableColumns
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import doobie.Fragment
 
 /**
@@ -25,8 +28,12 @@ import doobie.Fragment
  * perform something DB-specific, e.g. get DDL for a manifest (which can be different for every DB)
  * or transform agnostic `Statement` into DB-specific SQL dialect, it uses the `Target` which is
  * typically tightly coupled with `DAO`
+ *
+ * @tparam I
+ *   type of the query result which is sent to the warehouse during initialization of the
+ *   application
  */
-trait Target {
+trait Target[I] {
 
   /** Transform DB-agnostic, generic `Statement` into a concrete SQL statement */
   def toFragment(statement: Statement): Fragment
@@ -42,7 +49,8 @@ trait Target {
   def getLoadStatements(
     discovery: DataDiscovery,
     eventTableColumns: EventTableColumns,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: I
   ): LoadStatements
 
   /** Get DDL of a manifest table */
@@ -53,6 +61,9 @@ trait Target {
 
   /** Create a table with columns dervived from list of Iglu schemas */
   def createTable(schemas: SchemaList): Block
+
+  /** Query to get necessary bits from the warehouse during initialization of the application */
+  def initQuery[F[_]: DAO: Monad]: F[I]
 
   /**
    * Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates

@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
-import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Control => DbControl, HealthCheck, Manifest, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Control => DbControl, HealthCheck, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{
   Cache,
@@ -67,20 +67,27 @@ object Loader {
    *   auxiliary effect for communicating with database (usually `ConnectionIO`) Unlike `F` it
    *   cannot pull `A` out of DB (perform a transaction), but just claim `A` is needed and `C[A]`
    *   later can be materialized into `F[A]`
+   * @tparam I
+   *   type of the query result which is sent to the warehouse during initialization of the
+   *   application
    */
   def run[
     F[_]: Transaction[
       *[_],
       C
     ]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-    C[_]: DAO: MonadThrow: Logging
+    C[_]: DAO: MonadThrow: Logging,
+    I
   ](
     config: Config[StorageTarget],
     control: Control[F],
-    telemetry: Telemetry[F]
+    telemetry: Telemetry[F],
+    target: Target[I]
   ): F[Unit] = {
-    val folderMonitoring: Stream[F, Unit] =
-      FolderMonitoring.run[F, C](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy)
+    val folderMonitoring: Stream[F, Unit] = for {
+      initQueryResult <- initQuery[F, C, I](target)
+      _ <- FolderMonitoring.run[F, C, I](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy, initQueryResult)
+    } yield ()
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
@@ -89,7 +96,10 @@ object Loader {
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
     val loading: Stream[F, Unit] =
-      loadStream[F, C](config, control)
+      for {
+        initQueryResult <- initQuery[F, C, I](target)
+        _ <- loadStream[F, C, I](config, control, initQueryResult, target)
+      } yield ()
     val stateLogging: Stream[F, Unit] =
       Stream
         .awakeDelay[F](StateLoggingFrequency)
@@ -104,7 +114,7 @@ object Loader {
       Logging[F].info("Target check is completed")
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
-    val manifestInit = initRetry(Manifest.initialize[F, C](config.storage)) *>
+    val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)) *>
       Logging[F].info("Manifest initialization is completed")
     val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
       Logging[F].info("Adding load_tstamp column is completed")
@@ -135,10 +145,13 @@ object Loader {
       *[_],
       C
     ]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-    C[_]: DAO: MonadThrow: Logging
+    C[_]: DAO: MonadThrow: Logging,
+    I
   ](
     config: Config[StorageTarget],
-    control: Control[F]
+    control: Control[F],
+    initQueryResult: I,
+    target: Target[I]
   ): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
       DataDiscovery.discover[F](config, control.incrementMessages)
@@ -148,7 +161,7 @@ object Loader {
 
     discovery
       .pauseWhen[F](control.isBusy)
-      .evalMap(processDiscovery[F, C](config, control))
+      .evalMap(processDiscovery[F, C, I](config, control, initQueryResult, target))
   }
 
   /**
@@ -158,10 +171,13 @@ object Loader {
    */
   private def processDiscovery[
     F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift: LoadAuthService,
-    C[_]: DAO: MonadThrow: Logging
+    C[_]: DAO: MonadThrow: Logging,
+    I
   ](
     config: Config[StorageTarget],
-    control: Control[F]
+    control: Control[F],
+    initQueryResult: I,
+    target: Target[I]
   )(
     discovery: DataDiscovery.WithOrigin
   ): F[Unit] = {
@@ -180,7 +196,7 @@ object Loader {
         start <- Clock[F].instantNow
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
         loadAuth <- LoadAuthService[F].getLoadAuthMethod(config.storage.eventsLoadAuthMethod)
-        result <- Load.load[F, C](config, setStageC, control.incrementAttempts, discovery, loadAuth)
+        result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, loadAuth, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Right(ingested) =>
@@ -231,6 +247,10 @@ object Loader {
     eventTableColumns
       .map(_.value.toLowerCase)
       .contains(AtomicColumns.ColumnsWithDefault.LoadTstamp.value)
+
+  /** Query to get necessary bits from the warehouse during initialization of the application */
+  private def initQuery[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow, I](target: Target[I]): Stream[F, I] =
+    Stream.eval(Transaction[F, C].run(target.initQuery))
 
   /**
    * Handle a failure during loading. `Load.getTransaction` can fail only in one "expected" way - if

@@ -163,19 +163,28 @@ object FolderMonitoring {
    * `shredding_complete.json` and turned into corresponding `AlertPayload`
    * @param loadFrom
    *   list shredded folders
+   * @param readyCheck
+   *   config for retry logic
+   * @param storageTarget
+   *   target storage config
+   * @param loadAuthMethod
+   *   auth method used for load operation
+   * @param initQueryResult
+   *   results of the queries sent to warehouse when application is initialized
    * @return
    *   potentially empty list of alerts
    */
-  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad](
+  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad, I](
     loadFrom: BlobStorage.Folder,
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    initQueryResult: I
   ): F[List[AlertPayload]] = {
     val getBatches = for {
       _ <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
       _ <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
-      _ <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod), DAO.Purpose.NonLoading)
+      _ <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod, initQueryResult), DAO.Purpose.NonLoading)
       onlyS3Batches <- DAO[C].executeQueryList[BlobStorage.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
 
@@ -214,16 +223,18 @@ object FolderMonitoring {
    */
   def run[
     F[_]: Concurrent: Timer: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
-    C[_]: DAO: Monad
+    C[_]: DAO: Monad,
+    I
   ](
     foldersCheck: Option[Config.Folders],
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
-    isBusy: Stream[F, Boolean]
+    isBusy: Stream[F, Boolean],
+    initQueryResult: I
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C](folders, readyCheck, storageTarget, isBusy)
+        stream[F, C, I](folders, readyCheck, storageTarget, isBusy, initQueryResult)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -232,21 +243,28 @@ object FolderMonitoring {
    * Same as [[run]], but without parsing preparation The stream ignores a first failure just
    * printing an error, hoping it's transient, but second failure in row makes the whole stream to
    * crash
+   *
    * @param folders
    *   configuration for folders monitoring
    * @param readyCheck
    *   configuration for target ready check
+   * @param storageTarget
+   *   target storage config
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
+   * @param initQueryResult
+   *   results of the queries sent to warehouse when application is initialized
    */
   def stream[
     F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
-    C[_]: DAO: Monad
+    C[_]: DAO: Monad,
+    I
   ](
     folders: Config.Folders,
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
-    isBusy: Stream[F, Boolean]
+    isBusy: Stream[F, Boolean],
+    initQueryResult: I
   ): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
@@ -259,7 +277,7 @@ object FolderMonitoring {
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
                       loadAuth <- LoadAuthService[F].getLoadAuthMethod(storageTarget.foldersLoadAuthMethod)
-                      alerts <- check[F, C](outputFolder, readyCheck, storageTarget, loadAuth)
+                      alerts <- check[F, C, I](outputFolder, readyCheck, storageTarget, loadAuth, initQueryResult)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")

@@ -31,12 +31,8 @@ class ConfigSpec extends Specification {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
-        .copy(folderMonitoringStage =
-          Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("s3://bucket/monitoring/"))))
-        )
-        .copy(transformedStage =
-          Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/"))))
-        )
+        .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
+        .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
       val result = getConfig("/loader/aws/snowflake.config.reference.hocon", Config.fromString[IO])
       val expected = Config(
         storage,
@@ -59,12 +55,8 @@ class ConfigSpec extends Specification {
       val storage = exampleSnowflake
         .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
-        .copy(folderMonitoringStage =
-          Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", Some(BlobStorage.Folder.coerce("gs://bucket/monitoring/"))))
-        )
-        .copy(transformedStage =
-          Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("gs://bucket/transformed/"))))
-        )
+        .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
+        .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
       val result = getConfig("/loader/gcp/snowflake.config.reference.hocon", Config.fromString[IO])
       val gcpCloud = Config.Cloud.GCP(
         Config.Cloud.GCP.Pubsub(
@@ -105,8 +97,7 @@ class ConfigSpec extends Specification {
       val expected = Config(
         exampleSnowflake
           .copy(
-            transformedStage =
-              Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("s3://bucket/transformed/"))))
+            transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
           ),
         Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue),
         None,
@@ -136,8 +127,7 @@ class ConfigSpec extends Specification {
       val expected = Config(
         exampleSnowflake
           .copy(
-            transformedStage =
-              Some(StorageTarget.Snowflake.Stage("snowplow_stage", Some(BlobStorage.Folder.coerce("gs://bucket/transformed/"))))
+            transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
           ),
         gcpCloud,
         None,
