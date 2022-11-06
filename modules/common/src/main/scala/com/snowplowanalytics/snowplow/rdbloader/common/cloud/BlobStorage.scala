@@ -203,6 +203,7 @@ object BlobStorage {
   private def fixPrefix(s: String): String =
     if (s.startsWith("s3n")) "s3" + s.stripPrefix("s3n")
     else if (s.startsWith("s3a")) "s3" + s.stripPrefix("s3a")
+    else if (s.startsWith("gcs")) "gs" + s.stripPrefix("gcs")
     else s
 
   def noop[F[_]: MonadThrow]: BlobStorage[F] = new BlobStorage[F] {
