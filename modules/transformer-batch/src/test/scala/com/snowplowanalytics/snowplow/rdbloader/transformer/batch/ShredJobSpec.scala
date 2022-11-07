@@ -16,7 +16,10 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.schemaddl.parquet.Field
+import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.ParquetKey
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
@@ -503,7 +506,9 @@ trait ShredJobSpec extends SparkSpec {
             val resolver = IgluSingleton.get(resolverConfig)
             val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
 
-            val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).value.right.get
+            val parquetFieldsCache = CreateLruMap[Id, ParquetKey, Field].create(resolverConfig.cacheSize)
+            val nonAtomicFields =
+              NonAtomicFieldsProvider.build[Id](resolver, parquetFieldsCache, allTypesForRun).value.right.get
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
 

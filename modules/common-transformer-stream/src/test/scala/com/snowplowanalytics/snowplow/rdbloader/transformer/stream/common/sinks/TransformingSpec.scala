@@ -27,11 +27,18 @@ import io.circe.parser.{parse => parseCirce}
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.schemaddl.parquet.Field
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{
+  ParquetFieldCache,
+  ParquetKey,
+  PropertiesCache,
+  PropertiesKey,
+  Transformed
+}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication.TestProcessor
@@ -133,13 +140,14 @@ object TransformingSpec {
   val dummyTransformedData = Transformed.Data.DString("")
 
   def propertiesCache: PropertiesCache[IO] = CreateLruMap[IO, PropertiesKey, Properties].create(100).unsafeRunSync()
+  def parquetFieldsCache: ParquetFieldCache[IO] = CreateLruMap[IO, ParquetKey, Field].create(100).unsafeRunSync()
 
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, defaultAtomicLengths, TestProcessor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
+        Transformer.WideRowTransformer(defaultIgluResolver, f, parquetFieldsCache, TestProcessor)
     }
 
   def transformTestEvents(

@@ -5,9 +5,11 @@ import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.Nullability.{Nullable, Required}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
+import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity.{Context, SelfDescribingEvent}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.ParquetKey
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.NonAtomicFieldsProvider
 import io.circe.literal.JsonStringContext
 import org.specs2.mutable.{Specification, Tables}
@@ -18,6 +20,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 
   // using com.snowplowanalytics.snowplow/test_schema/jsonSchema/... with different versions from test resources
   private val resolver = embeddedIgluClient.resolver
+  private val cache = CreateLruMap[Id, ParquetKey, Field].create(0)
 
   "Parquet non-atomic fields provider" should {
     "produce only one field from latest type when versions are compatible" >> {
@@ -62,7 +65,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val context200 = getType(SchemaVer.Full(2, 0, 0), Context)
         val inputTypes = List(context100, context200)
 
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+        val result = NonAtomicFieldsProvider.build(resolver, cache, inputTypes).value.right.get
 
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(
@@ -79,7 +82,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val unstruct100 = getType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
         val inputTypes = List(context100, unstruct100)
 
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+        val result = NonAtomicFieldsProvider.build(resolver, cache, inputTypes).value.right.get
 
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(
@@ -110,7 +113,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
     val inputTypes = inputTypesVersions.map { case (model, revision, addition) =>
       getType(SchemaVer.Full(model, revision, addition), entity)
     }
-    val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+    val result = NonAtomicFieldsProvider.build(resolver, cache, inputTypes).value.right.get
 
     result.value.size mustEqual 1
     result.value.head.field mustEqual expectedField

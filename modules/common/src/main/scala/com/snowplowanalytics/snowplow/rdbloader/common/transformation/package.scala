@@ -15,11 +15,13 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import com.snowplowanalytics.iglu.client.resolver.Resolver.SchemaListKey
+import com.snowplowanalytics.iglu.core.SchemaKey
 
 import java.time.{Instant, ZoneOffset}
 import java.time.format.DateTimeFormatter
 import com.snowplowanalytics.lrumap.LruMap
 import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.schemaddl.parquet.Field
 
 package object transformation {
 
@@ -33,7 +35,9 @@ package object transformation {
    */
   type SchemaListCachingTime = Int
   type PropertiesKey = (SchemaListKey, SchemaListCachingTime)
+  type ParquetKey = (SchemaKey, Int)
   type PropertiesCache[F[_]] = LruMap[F, PropertiesKey, Properties]
+  type ParquetFieldCache[F[_]] = LruMap[F, ParquetKey, Field]
 
   implicit class InstantOps(time: Instant) {
     def formatted: String =

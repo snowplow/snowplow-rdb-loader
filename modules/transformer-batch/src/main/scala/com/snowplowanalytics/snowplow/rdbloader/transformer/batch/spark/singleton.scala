@@ -22,12 +22,11 @@ import cats.syntax.show._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
-
+import com.snowplowanalytics.iglu.schemaddl.parquet.Field
 import com.snowplowanalytics.lrumap.CreateLruMap
 
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ParquetFieldCache, ParquetKey, PropertiesCache, PropertiesKey}
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -103,6 +102,21 @@ object singleton {
         synchronized {
           if (instance == null) {
             instance = CreateLruMap[Id, PropertiesKey, Properties].create(resolverConfig.cacheSize)
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object ParquetFieldsCacheSingleton {
+    @volatile private var instance: ParquetFieldCache[Id] = _
+
+    def get(resolverConfig: ResolverConfig): ParquetFieldCache[Id] = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = CreateLruMap[Id, ParquetKey, Field].create(resolverConfig.cacheSize)
           }
         }
       }

@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ParquetFieldCache, PropertiesCache, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{
   AtomicFieldsProvider,
@@ -79,6 +79,7 @@ object Transformer {
   case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](
     igluResolver: Resolver[F],
     format: Formats.WideRow,
+    ddlFieldCache: ParquetFieldCache[F],
     processor: Processor
   ) extends Transformer[F] {
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] = {
@@ -111,7 +112,7 @@ object Transformer {
       val allTypesFromEvent = event.inventory.map(TypesInfo.WideRow.Type.from)
 
       NonAtomicFieldsProvider
-        .build(igluResolver, allTypesFromEvent.toList)
+        .build(igluResolver, ddlFieldCache, allTypesFromEvent.toList)
         .leftMap(error => igluBadRow(event, error))
         .flatMap { nonAtomicFields =>
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)

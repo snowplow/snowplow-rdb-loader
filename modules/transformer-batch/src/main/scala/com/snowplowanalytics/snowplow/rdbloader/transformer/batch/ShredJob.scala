@@ -21,6 +21,7 @@ import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.ParquetFieldsCacheSingleton
 import io.circe.Json
 
 import java.util.UUID
@@ -248,7 +249,7 @@ object ShredJob {
           val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
 
           val nonAtomicFields = NonAtomicFieldsProvider
-            .build[Id](resolver, allTypesForRun)
+            .build[Id](resolver, ParquetFieldsCacheSingleton.get(resolverConfig), allTypesForRun)
             .fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)

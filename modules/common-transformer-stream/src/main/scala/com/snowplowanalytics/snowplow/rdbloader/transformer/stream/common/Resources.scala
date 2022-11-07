@@ -31,17 +31,25 @@ import io.sentry.SentryClient
 import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.schemaddl.parquet.Field
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{
+  EventUtils,
+  ParquetFieldCache,
+  ParquetKey,
+  PropertiesCache,
+  PropertiesKey
+}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 case class Resources[F[_], C](
   igluResolver: Resolver[F],
   propertiesCache: PropertiesCache[F],
+  ddlParquetFieldsCache: ParquetFieldCache[F],
   atomicLengths: Map[String, Int],
   producer: Queue.Producer[F],
   instanceId: String,
@@ -76,6 +84,7 @@ object Resources {
       resolverConfig <- mkResolverConfig(igluConfig)
       resolver <- mkResolver(resolverConfig)
       propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
+      ddlParquetFieldsCache <- Resource.eval(CreateLruMap[F, ParquetKey, Field].create(resolverConfig.cacheSize))
       atomicLengths <- mkAtomicFieldLengthLimit(resolver)
       instanceId <- mkTransformerInstanceId
       blocker <- Blocker[F]
@@ -96,6 +105,7 @@ object Resources {
     } yield Resources(
       resolver,
       propertiesCache,
+      ddlParquetFieldsCache,
       atomicLengths,
       producer,
       instanceId.toString,

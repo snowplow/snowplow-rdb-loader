@@ -70,7 +70,7 @@ object ParquetSink {
     types: List[Data.ShreddedType]
   ): EitherT[F, FailureDetails.LoaderIgluError, MessageType] =
     for {
-      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.igluResolver, types.map(WideRow.Type.from))
+      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.igluResolver, resources.ddlParquetFieldsCache, types.map(WideRow.Type.from))
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
 

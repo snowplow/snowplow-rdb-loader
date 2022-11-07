@@ -71,7 +71,7 @@ object Processing {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(resources.igluResolver, f, processor)
+        Transformer.WideRowTransformer(resources.igluResolver, f, resources.ddlParquetFieldsCache, processor)
     }
 
     val messageProcessorVersion = Semver
