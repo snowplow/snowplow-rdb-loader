@@ -14,11 +14,15 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats.Monad
 import cats.implicits._
+
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+
 import com.snowplowanalytics.iglu.core.SchemaCriterion
+
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStep
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage}
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Cache
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.toSnakeCase
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -105,10 +109,8 @@ object ShreddedType {
     def getName: String =
       s"${toSnakeCase(vendor)}_${toSnakeCase(name)}_$model"
 
-    def getNameFull: String = {
-      val isContext = entity == SnowplowEntity.Context
-      (if (isContext) "contexts_" else "unstruct_event_") ++ getName
-    }
+    def getNameFull: String =
+      SnowplowEvent.transformSchema(entity.toSdkProperty, vendor, name, model)
   }
 
   /**
