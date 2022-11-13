@@ -93,14 +93,45 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         )
       }
     }
-  }
+    "create a recovery columns with broken schema migrations" >> {
+      import ParquetFieldsProviderSpec.DdlTypes._
 
-  private def nullableArrayWithRequiredElement(name: String, elementType: Type) =
-    Field(
-      name,
-      fieldType = Type.Array(elementType, nullability = Required),
-      nullability = Nullable
-    )
+      "schema broken from 100 to 101 to 110 should generate 3 column if all 100-101-110-111 are seen" in {
+        val inputTypes = List(context100, context101, context110, context111)
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 3
+        forall(
+          result.value
+            .map(s => (s.field, s.matchingKeys))
+            .zip(List(expectedContext100_110, expectedContext101, expectedContext111))
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+      "schema broken from 100 to 101 to 110 should generate 1 column if only 100 is seen" in {
+        val inputTypes = List(context100)
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 1
+        forall(
+          result.value
+            .map(s => (s.field, s.matchingKeys))
+            .zip(List(expectedContext100))
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+
+      "schema broken from 100 to 101 to 110 should generate 1 column if only 110 is seen" in {
+        val inputTypes = List(context110)
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 1
+        forall(
+          result.value
+            .map(s => (s.field, s.matchingKeys))
+            .zip(List(expectedContext100_110))
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+    }
+  }
 
   private def assertOneField(
     inputTypesVersions: List[(Int, Int, Int)],
@@ -116,12 +147,22 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
     result.value.head.field mustEqual expectedField
   }
 
-  private def getType(version: SchemaVer.Full, entity: SnowplowEntity) =
-    WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema", format = "jsonschema", version), entity)
-
 }
 
 object ParquetFieldsProviderSpec {
+  private def getType(version: SchemaVer.Full, entity: SnowplowEntity) =
+    WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema", format = "jsonschema", version), entity)
+
+  private def getBrokenType(version: SchemaVer.Full, entity: SnowplowEntity) =
+    WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema_broken", format = "jsonschema", version), entity)
+
+  private def nullableArrayWithRequiredElement(name: String, elementType: Type) =
+    Field(
+      name,
+      fieldType = Type.Array(elementType, nullability = Required),
+      nullability = Nullable
+    )
+
   val igluConfig =
     json"""
         {
@@ -280,6 +321,50 @@ object ParquetFieldsProviderSpec {
         Field("e_field", Type.String, Required),
         Field("f_field", Type.Long, Required)
       )
+    )
+
+    val brokenSchema100 = Type.Struct(fields = List(Field("b_field", Type.Long, Nullable)))
+    val brokenSchema101 = Type.Struct(fields = List(Field("b_field", Type.String, Nullable)))
+    val brokenSchema110 = Type.Struct(fields =
+      List(
+        Field("a_field", Type.Long, Nullable),
+        Field("b_field", Type.Long, Nullable)
+      )
+    )
+    val brokenSchema111 = Type.Struct(fields = List(Field("a_field", Type.String, Nullable)))
+
+    val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
+    val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context) // breaking
+    val context110 = getBrokenType(SchemaVer.Full(1, 1, 0), Context) // 1-1-0 is compatible with 1-0-0
+    val context111 = getBrokenType(SchemaVer.Full(1, 1, 1), Context) // breaking
+
+    val expectedContext100 = (
+      nullableArrayWithRequiredElement(
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+        elementType = DdlTypes.brokenSchema100
+      ),
+      Set(context100.schemaKey)
+    )
+    val expectedContext100_110 = (
+      nullableArrayWithRequiredElement(
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+        elementType = DdlTypes.brokenSchema110
+      ),
+      Set(context100.schemaKey, context110.schemaKey)
+    )
+    val expectedContext111 = (
+      nullableArrayWithRequiredElement(
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_1312137517",
+        elementType = DdlTypes.brokenSchema111
+      ),
+      Set(context111.schemaKey)
+    )
+    val expectedContext101 = (
+      nullableArrayWithRequiredElement(
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
+        elementType = DdlTypes.brokenSchema101
+      ),
+      Set(context101.schemaKey)
     )
   }
 }

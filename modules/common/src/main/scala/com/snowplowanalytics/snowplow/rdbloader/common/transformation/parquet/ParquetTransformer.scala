@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet
 
 import cats.data.NonEmptyList
-import cats.implicits._
+import cats.syntax.all._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{CastError, Field, FieldValue}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -64,7 +64,7 @@ object ParquetTransformer {
 
   private def forUnstruct(typedField: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] =
     event.unstruct_event.data match {
-      case Some(SelfDescribingData(schemaKey, unstructData)) if keysMatch(schemaKey, typedField.`type`.schemaKey) =>
+      case Some(SelfDescribingData(schemaKey, unstructData)) if isSchemaKeyInField(schemaKey, typedField) =>
         provideValue(typedField.field, unstructData)
       case _ =>
         Right(FieldWithValue(typedField.field, FieldValue.NullValue))
@@ -73,7 +73,7 @@ object ParquetTransformer {
   private def forContexts(typedField: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
     val allContexts = event.contexts.data ::: event.derived_contexts.data
     val matchingContexts = allContexts
-      .filter(context => keysMatch(context.schema, typedField.`type`.schemaKey))
+      .filter(context => isSchemaKeyInField(context.schema, typedField))
 
     if (matchingContexts.nonEmpty) {
       val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(_.data).toVector)
@@ -89,8 +89,8 @@ object ParquetTransformer {
       .toEither
       .map(value => FieldWithValue(field, value))
 
-  private def keysMatch(k1: SchemaKey, k2: SchemaKey): Boolean =
-    k1.vendor === k2.vendor && k1.name === k2.name && k1.version.model === k2.version.model
+  private def isSchemaKeyInField(schemaKey: SchemaKey, typedField: TypedField): Boolean =
+    typedField.matchingKeys.contains(schemaKey)
 
   private def castingBadRow(
     event: Event,
