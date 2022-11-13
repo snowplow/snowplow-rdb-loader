@@ -64,7 +64,8 @@ class MigrationSpec extends Specification {
             BlobStorage.Key.coerce("s3://shredded/jsonpaths")
           )
         )
-      val input = DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
+      val input =
+        DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty), Nil)
 
       val create = CreateTable(
         "public.com_acme_some_context_2",
@@ -132,7 +133,8 @@ class MigrationSpec extends Specification {
             )
           )
         )
-      val input = DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty))
+      val input =
+        DataDiscovery(BlobStorage.Folder.coerce("s3://shredded/archive"), types, Compression.Gzip, TypesInfo.Shredded(List.empty), Nil)
 
       val create = CreateTable(
         "public.com_acme_some_event_1",

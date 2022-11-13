@@ -14,16 +14,11 @@ package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.Monad
 import cats.data.NonEmptyList
-
 import doobie.Fragment
 import doobie.implicits._
-
 import io.circe.syntax._
-
 import com.snowplowanalytics.iglu.core.SchemaKey
-
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
-
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
