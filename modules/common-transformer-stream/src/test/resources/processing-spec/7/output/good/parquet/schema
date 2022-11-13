@@ -1,0 +1,151 @@
+message snowplow {
+  optional binary app_id (UTF8);
+  optional binary platform (UTF8);
+  optional int64 etl_tstamp (TIMESTAMP_MICROS);
+  required int64 collector_tstamp (TIMESTAMP_MICROS);
+  optional int64 dvce_created_tstamp (TIMESTAMP_MICROS);
+  optional binary event (UTF8);
+  required binary event_id (UTF8);
+  optional int32 txn_id;
+  optional binary name_tracker (UTF8);
+  optional binary v_tracker (UTF8);
+  required binary v_collector (UTF8);
+  required binary v_etl (UTF8);
+  optional binary user_id (UTF8);
+  optional binary user_ipaddress (UTF8);
+  optional binary user_fingerprint (UTF8);
+  optional binary domain_userid (UTF8);
+  optional int32 domain_sessionidx;
+  optional binary network_userid (UTF8);
+  optional binary geo_country (UTF8);
+  optional binary geo_region (UTF8);
+  optional binary geo_city (UTF8);
+  optional binary geo_zipcode (UTF8);
+  optional double geo_latitude;
+  optional double geo_longitude;
+  optional binary geo_region_name (UTF8);
+  optional binary ip_isp (UTF8);
+  optional binary ip_organization (UTF8);
+  optional binary ip_domain (UTF8);
+  optional binary ip_netspeed (UTF8);
+  optional binary page_url (UTF8);
+  optional binary page_title (UTF8);
+  optional binary page_referrer (UTF8);
+  optional binary page_urlscheme (UTF8);
+  optional binary page_urlhost (UTF8);
+  optional int32 page_urlport;
+  optional binary page_urlpath (UTF8);
+  optional binary page_urlquery (UTF8);
+  optional binary page_urlfragment (UTF8);
+  optional binary refr_urlscheme (UTF8);
+  optional binary refr_urlhost (UTF8);
+  optional int32 refr_urlport;
+  optional binary refr_urlpath (UTF8);
+  optional binary refr_urlquery (UTF8);
+  optional binary refr_urlfragment (UTF8);
+  optional binary refr_medium (UTF8);
+  optional binary refr_source (UTF8);
+  optional binary refr_term (UTF8);
+  optional binary mkt_medium (UTF8);
+  optional binary mkt_source (UTF8);
+  optional binary mkt_term (UTF8);
+  optional binary mkt_content (UTF8);
+  optional binary mkt_campaign (UTF8);
+  optional binary se_category (UTF8);
+  optional binary se_action (UTF8);
+  optional binary se_label (UTF8);
+  optional binary se_property (UTF8);
+  optional double se_value;
+  optional binary tr_orderid (UTF8);
+  optional binary tr_affiliation (UTF8);
+  optional int64 tr_total (DECIMAL(18,2));
+  optional int64 tr_tax (DECIMAL(18,2));
+  optional int64 tr_shipping (DECIMAL(18,2));
+  optional binary tr_city (UTF8);
+  optional binary tr_state (UTF8);
+  optional binary tr_country (UTF8);
+  optional binary ti_orderid (UTF8);
+  optional binary ti_sku (UTF8);
+  optional binary ti_name (UTF8);
+  optional binary ti_category (UTF8);
+  optional int64 ti_price (DECIMAL(18,2));
+  optional int32 ti_quantity;
+  optional int32 pp_xoffset_min;
+  optional int32 pp_xoffset_max;
+  optional int32 pp_yoffset_min;
+  optional int32 pp_yoffset_max;
+  optional binary useragent (UTF8);
+  optional binary br_name (UTF8);
+  optional binary br_family (UTF8);
+  optional binary br_version (UTF8);
+  optional binary br_type (UTF8);
+  optional binary br_renderengine (UTF8);
+  optional binary br_lang (UTF8);
+  optional boolean br_features_pdf;
+  optional boolean br_features_flash;
+  optional boolean br_features_java;
+  optional boolean br_features_director;
+  optional boolean br_features_quicktime;
+  optional boolean br_features_realplayer;
+  optional boolean br_features_windowsmedia;
+  optional boolean br_features_gears;
+  optional boolean br_features_silverlight;
+  optional boolean br_cookies;
+  optional binary br_colordepth (UTF8);
+  optional int32 br_viewwidth;
+  optional int32 br_viewheight;
+  optional binary os_name (UTF8);
+  optional binary os_family (UTF8);
+  optional binary os_manufacturer (UTF8);
+  optional binary os_timezone (UTF8);
+  optional binary dvce_type (UTF8);
+  optional boolean dvce_ismobile;
+  optional int32 dvce_screenwidth;
+  optional int32 dvce_screenheight;
+  optional binary doc_charset (UTF8);
+  optional int32 doc_width;
+  optional int32 doc_height;
+  optional binary tr_currency (UTF8);
+  optional int64 tr_total_base (DECIMAL(18,2));
+  optional int64 tr_tax_base (DECIMAL(18,2));
+  optional int64 tr_shipping_base (DECIMAL(18,2));
+  optional binary ti_currency (UTF8);
+  optional int64 ti_price_base (DECIMAL(18,2));
+  optional binary base_currency (UTF8);
+  optional binary geo_timezone (UTF8);
+  optional binary mkt_clickid (UTF8);
+  optional binary mkt_network (UTF8);
+  optional binary etl_tags (UTF8);
+  optional int64 dvce_sent_tstamp (TIMESTAMP_MICROS);
+  optional binary refr_domain_userid (UTF8);
+  optional int64 refr_dvce_tstamp (TIMESTAMP_MICROS);
+  optional binary domain_sessionid (UTF8);
+  optional int64 derived_tstamp (TIMESTAMP_MICROS);
+  optional binary event_vendor (UTF8);
+  optional binary event_name (UTF8);
+  optional binary event_format (UTF8);
+  optional binary event_version (UTF8);
+  optional binary event_fingerprint (UTF8);
+  optional int64 true_tstamp (TIMESTAMP_MICROS);
+  optional group contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_0_802892230 (LIST) {
+    repeated group list {
+      required group element {
+        optional int64 b_field;
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720 (LIST) {
+    repeated group list {
+      required group element {
+        optional binary b_field (STRING);
+      }
+    }
+  }
+  optional group contexts_com_snowplowanalytics_snowplow_test_schema_broken_1 (LIST) {
+    repeated group list {
+      required group element {
+        optional int64 b_field;
+      }
+    }
+  }
+}
