@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline          = "2.1.0"
-    val igluClient       = "1.2.0"
+    val igluClient       = "1.3.0-rc2"
     val igluCore         = "1.0.0"
     val badrows          = "2.1.0"
     val analyticsSdk     = "3.0.1"
@@ -43,7 +43,7 @@ object Dependencies {
 
     val spark            = "3.1.2"
     val eventsManifest   = "0.3.0"
-    val schemaDdl        = "0.15.0"
+    val schemaDdl        = "0.16.0-rc13"
     val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.13.2.2"
     val parquet4s        = "1.9.4"

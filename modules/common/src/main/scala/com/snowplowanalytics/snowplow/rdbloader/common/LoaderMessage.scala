@@ -126,11 +126,11 @@ object LoaderMessage {
         case object PARQUET extends WideRowFormat
       }
 
-      def latestByModel(types: List[WideRow.Type]): List[WideRow.Type] =
-        types
-          .groupBy { case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
+      def latestByBreakingChangesAndModel(types: List[WideRow.Type]): List[WideRow.Type] =
+        types.groupBy {
+          case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
             (vendor, name, model, snowplowEntity)
-          }
+        }
           .toList
           .flatMap { case (_, grouped) =>
             grouped.sorted.lastOption
