@@ -247,7 +247,8 @@ object LoadSpec {
       )
     ),
     Compression.Gzip,
-    TypesInfo.Shredded(List.empty)
+    TypesInfo.Shredded(List.empty),
+    Nil
   )
 
   val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"

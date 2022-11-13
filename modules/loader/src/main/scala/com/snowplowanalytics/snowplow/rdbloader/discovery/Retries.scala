@@ -24,7 +24,7 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, FolderMonitoring, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, FolderMonitoring, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
 
@@ -102,7 +102,7 @@ object Retries {
    * failures are unique, they can be re-sent into SQS as well as re-pulled by retry stream. It's
    * expected that DB manifest handles such duplicates
    */
-  def run[F[_]: BlobStorage: Cache: Logging: Timer: Concurrent: JsonPathDiscovery](
+  def run[F[_]: BlobStorage: Cache: Iglu: Logging: Timer: Concurrent: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder],
     config: Option[Config.RetryQueue],
     failures: F[Failures]
@@ -116,7 +116,7 @@ object Retries {
         Stream.empty
     }
 
-  def get[F[_]: BlobStorage: Cache: Logging: Timer: MonadThrow: JsonPathDiscovery](
+  def get[F[_]: BlobStorage: Cache: Iglu: Logging: Timer: MonadThrow: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder],
     config: Config.RetryQueue,
     failures: F[Failures]
@@ -130,7 +130,7 @@ object Retries {
       .through(readMessages[F](assets))
 
   /** Confert S3 paths to respective discoveries */
-  def readMessages[F[_]: BlobStorage: Cache: Logging: MonadThrow: JsonPathDiscovery](
+  def readMessages[F[_]: BlobStorage: Cache: Iglu: Logging: MonadThrow: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder]
   ): Pipe[F, BlobStorage.Folder, DataDiscovery.WithOrigin] =
     folders =>
@@ -138,7 +138,7 @@ object Retries {
         .evalMap(readShreddingComplete[F])
         .evalMapFilter(fromLoaderMessage[F](assets))
 
-  def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: JsonPathDiscovery](
+  def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: Iglu: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder]
   )(
     message: LoaderMessage.ShreddingComplete

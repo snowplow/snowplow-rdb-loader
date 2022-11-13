@@ -33,6 +33,8 @@ class DatabricksSpec extends Specification {
 
   "getLoadStatements" should {
 
+    // The essence of this test (column name generation) is now handled by the NonAtomicFieldProvider, which has
+    // its own tests. Refer to `NonAtomicFieldProviderSpec.scala` in `common`
     "create LoadStatements with columns to copy and columns to skip" in {
 
       val eventsColumns = List(
@@ -50,7 +52,18 @@ class DatabricksSpec extends Specification {
         ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", 1, SnowplowEntity.Context))
       )
 
-      val discovery = DataDiscovery(baseFolder, shreddedTypes, Compression.Gzip, TypesInfo.WideRow(PARQUET, List.empty))
+      val discovery = DataDiscovery(
+        baseFolder,
+        shreddedTypes,
+        Compression.Gzip,
+        TypesInfo.WideRow(PARQUET, List.empty),
+        List(
+          "unstruct_event_com_acme_aaa_1",
+          "unstruct_event_com_acme_ccc_1",
+          "contexts_com_acme_yyy_1",
+          "contexts_com_acme_zzz_1"
+        )
+      )
 
       target.getLoadStatements(discovery, eventsColumns, LoadAuthMethod.NoCreds, ()) should be like {
         case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>

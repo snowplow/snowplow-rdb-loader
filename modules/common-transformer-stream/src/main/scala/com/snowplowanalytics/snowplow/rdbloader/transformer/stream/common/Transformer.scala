@@ -124,7 +124,6 @@ object Transformer {
       val payload = Payload.LoaderPayload(event)
       BadRow.LoaderIgluError(processor, failure, payload)
     }
-
   }
 
 }

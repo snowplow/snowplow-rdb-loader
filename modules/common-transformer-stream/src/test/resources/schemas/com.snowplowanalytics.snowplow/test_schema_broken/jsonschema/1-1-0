@@ -1,0 +1,17 @@
+{
+    "$schema": "http://iglucentral.com/schemas/com.snowplowanalytics.self-desc/schema/jsonschema/1-0-0#",
+    "description": "Test schema",
+    "self": {
+        "vendor": "com.snowplowanalytics.snowplow",
+        "name": "test_schema_broken",
+        "format": "jsonschema",
+        "version": "1-1-0"
+    },
+
+    "type": "object",
+    "properties": {
+      "b_field": {
+        "type": "integer"
+      }
+    }
+}
