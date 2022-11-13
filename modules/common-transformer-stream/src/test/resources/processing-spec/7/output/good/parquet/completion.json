@@ -1,0 +1,38 @@
+{
+  "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+  "data": {
+    "base": "output_path_placeholder/run=1970-01-01-10-30-00/",
+    "typesInfo": {
+      "transformation": "WIDEROW",
+      "fileFormat": "PARQUET",
+      "types": [
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/test_schema_broken/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/test_schema_broken/jsonschema/1-0-1",
+          "snowplowEntity": "CONTEXT"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/test_schema_broken/jsonschema/1-1-0",
+          "snowplowEntity": "CONTEXT"
+        }
+      ]
+    },
+    "timestamps": {
+      "jobStarted": "1970-01-01T10:30:00Z",
+      "jobCompleted": "1970-01-01T10:30:00Z",
+      "min": "2022-02-01T22:32:41.069Z",
+      "max": "2022-02-02T01:01:01.648Z"
+    },
+    "compression": "NONE",
+    "processor": {
+      "artifact": "snowplow-transformer-kinesis",
+      "version": "version_placeholder"
+    },
+    "count": {
+      "good": 3
+    }
+  }
+}

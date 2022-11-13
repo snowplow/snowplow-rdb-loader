@@ -146,6 +146,49 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         }
         .unsafeRunSync()
     }
+    "Recover from the broken schema migrations" in {
+      temporaryDirectory
+        .use { outputDirectory =>
+          val inputStream = InputEventsProvider.eventStream(
+            inputEventsPath =
+              "/processing-spec/7/input/events" // the same events as in resource file used in WideRowParquetSpec for batch transformer
+          )
+
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+
+          for {
+            output <- process(inputStream, config)
+            expectedParquetColumns <- readParquetColumnsFromResource(
+                                        "/processing-spec/7/output/good/parquet/schema"
+                                      ) // the same schema as in resource file used in WideRowParquetSpec for batch transformer
+            actualParquetRows <- readParquetRowsFrom(goodPath, expectedParquetColumns)
+            actualParquetColumns = readParquetColumns(goodPath)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/7/output/good/parquet/completion.json", outputDirectory)
+          } yield {
+
+            actualParquetRows.size must beEqualTo(3)
+            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.checkpointed must beEqualTo(1)
+
+            forall(
+              actualParquetRows
+                .map(_.toString())
+                .zip(
+                  List(
+                    """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
+                    """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
+                    """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+                  )
+                )
+            ) { case (actual, expected) =>
+              actual must beMatching(expected)
+            }
+            assertParquetColumnsInAllFiles(actualParquetColumns, expectedParquetColumns)
+          }
+        }
+        .unsafeRunSync()
+    }
   }
 
   private def readGoodParquetEventsFromResource(resource: String, columnToAdjust: Option[String]) =

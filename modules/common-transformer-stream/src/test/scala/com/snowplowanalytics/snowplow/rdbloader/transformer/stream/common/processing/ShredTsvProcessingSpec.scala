@@ -21,7 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.proces
 import java.nio.file.Path
 
 class ShredTsvProcessingSpec extends BaseProcessingSpec {
-
+  sequential
   "Streaming transformer" should {
     "process items correctly in shred tsv format" in {
       temporaryDirectory
