@@ -27,7 +27,7 @@ object NonAtomicFieldsProvider {
     resolver: Resolver[F],
     types: List[WideRow.Type]): EitherT[F, LoaderIgluError, NonAtomicFields] = {
   types
-    .sortBy(_.schemaKey)
+    .sorted
     // collapse subversions of the same schema. This will avoid listing the earlier schema versions multiple times.
     .foldRight(List.empty[WideRow.Type])((it, acc) => acc match {
       case Nil => List(it)
