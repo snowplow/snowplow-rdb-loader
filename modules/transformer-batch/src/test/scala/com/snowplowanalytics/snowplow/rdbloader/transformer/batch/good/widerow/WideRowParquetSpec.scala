@@ -132,6 +132,33 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
     }
   }
 
+  "Recover from the broken schema migrations" in {
+    val testOutputDirs = OutputDirs(randomFile("output"))
+    runShredJob(
+      events = ResourceFile("/widerow/parquet/events_with_corrupted_migrations"),
+      wideRow = Some(WideRow.PARQUET),
+      outputDirs = Some(testOutputDirs)
+    )
+
+    val lines = readParquetFile(spark, testOutputDirs.goodRows)
+      .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
+
+    lines.size must beEqualTo(3)
+    forall(
+      lines
+        .map(_.toString())
+        .zip(
+          List(
+            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
+            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_0_802892230\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
+            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+          )
+        )
+    ) { case (actual, expected) =>
+      actual must beMatching(expected)
+    }
+  }
+
   // This test case uses events which contains unstruct events with
   // different versions of test schema.
   "A job which is configured for wide row parquet output" should {
