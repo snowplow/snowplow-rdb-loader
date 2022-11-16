@@ -18,13 +18,13 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Check Scala formatting
+        if: ${{ always() }}
+        run: sbt scalafmtCheckAll
       - name: Run flaky tests separetly
         run: sbt 'testOnly *WiderowParquetProcessingSpec'
       - name: Run tests
         run: sbt coverage 'testOnly * -- -l WiderowParquetProcessingSpec' coverageReport
-      - name: Check Scala formatting
-        if: ${{ always() }}
-        run: sbt scalafmtCheckAll
       - name: Aggregate coverage data
         if: ${{ always() }}
         run: sbt coverageAggregate

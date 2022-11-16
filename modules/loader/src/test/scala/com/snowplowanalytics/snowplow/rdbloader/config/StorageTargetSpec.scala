@@ -36,7 +36,11 @@ class StorageTargetSpec extends Specification {
         "schema": "atomic",
         "maxError": 1,
         "compRows": 20000,
-        "purpose": "ENRICHED_EVENTS"
+        "purpose": "ENRICHED_EVENTS",
+        "loadAuthMethod": {
+          "type": "NoCreds",
+          "roleSessionName": "rdb_loader"
+         }
       }"""
 
       val expected = StorageTarget.Redshift(
@@ -44,12 +48,13 @@ class StorageTargetSpec extends Specification {
         "ADD HERE",
         5439,
         StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true)),
-        "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+        Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
         "atomic",
         "ADD HERE",
         StorageTarget.PasswordConfig.PlainText("ADD HERE"),
         1,
-        None
+        None,
+        StorageTarget.LoadAuthMethod.NoCreds
       )
 
       config.as[StorageTarget] must beRight(expected)

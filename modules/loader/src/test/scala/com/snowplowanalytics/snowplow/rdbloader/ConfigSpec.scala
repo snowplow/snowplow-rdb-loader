@@ -127,12 +127,13 @@ object ConfigSpec {
     "snowplow",
     5439,
     StorageTarget.RedshiftJdbc(None, None, None, None, None, None, None, Some(true), None, None, None, None),
-    "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+    Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
     "atomic",
     "admin",
     StorageTarget.PasswordConfig.PlainText("Supersecret1"),
     10,
-    None
+    None,
+    StorageTarget.LoadAuthMethod.NoCreds
   )
   val exampleSnowflake = StorageTarget.Snowflake(
     Some("us-west-2"),

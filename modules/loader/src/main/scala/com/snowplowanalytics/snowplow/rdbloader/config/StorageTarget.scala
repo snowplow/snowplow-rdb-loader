@@ -78,12 +78,13 @@ object StorageTarget {
     database: String,
     port: Int,
     jdbc: RedshiftJdbc,
-    roleArn: String,
+    roleArn: Option[String],
     schema: String,
     username: String,
     password: PasswordConfig,
     maxError: Int,
-    sshTunnel: Option[TunnelConfig]
+    sshTunnel: Option[TunnelConfig],
+    loadAuthMethod: LoadAuthMethod
   ) extends StorageTarget {
     override def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
@@ -100,8 +101,8 @@ object StorageTarget {
       props
     }
 
-    override def eventsLoadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
-    override def foldersLoadAuthMethod: LoadAuthMethod = LoadAuthMethod.NoCreds
+    override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+    override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
   }
 
   final case class Databricks(
