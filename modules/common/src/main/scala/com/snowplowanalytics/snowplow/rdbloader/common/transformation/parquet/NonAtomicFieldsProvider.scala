@@ -21,13 +21,20 @@ import scala.math.Ordered.orderingToOrdered
 import scala.math.abs
 
 object NonAtomicFieldsProvider {
-  
 
+  /**
+   * Builds a `NonAtomicFields`. 
+   * @param resolver Iglu resolver, that would be used to fetch the schema list and their content for the `types`.
+   * @param types list of schemas types (SchemaKey and Struct/Unstruct flag) for the single event
+   * @tparam F - IO
+   * @return List of unique TypedFields. See `extractEndSchemas` docstring for explanation of TypedFields.
+   */
   def build[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     types: List[WideRow.Type]): EitherT[F, LoaderIgluError, NonAtomicFields] = {
   types
-    .sorted
+    // for the purposes of collapsing schemas from contexts and unstructs events should be together
+    .sortBy(_.schemaKey)
     // collapse subversions of the same schema. This will avoid listing the earlier schema versions multiple times.
     .foldRight(List.empty[WideRow.Type])((it, acc) => acc match {
       case Nil => List(it)
@@ -40,12 +47,51 @@ object NonAtomicFieldsProvider {
         else
           it::acc
     })
+    // after schemas were collapsed they could be reordered according to the context/unstruct
+    .sorted
     .flatTraverse(fieldFromType(resolver))
     .map(NonAtomicFields)
   }
 
+  /**
+   * Extract TypedFields for the `type`. It could produce multiple TypedFields for the same `type`.schema. If output 
+   * is longer than one item, it means that user created a broken migration. 
+   * Broken migration constitutes a illegal type casting and defined in schema-dll package accessed by 
+   * `isSchemaMigrationBreaking`.
+   * 
+   * 
+   * For example, changing field type from integer to string between 1-0-0 and 1-0-1 versions. That example, would
+   * produce two Fields (in pseudocode):
+   *    - TypedField(
+   *        `type`=(
+   *            schemaKey = iglu://my_iglu_schema/1-0-0
+   *        ),
+   *        lowerBound = None, 
+   *        Field=(
+   *            name="my_iglu_schema_1",
+   *            type={"field": INT64}
+   *        )
+   *    - TypedField(
+   *        `type`=(
+   *            schemaKey = iglu://my_iglu_schema/1-0-1
+   *        ),
+   *        lowerBound = iglu://my_iglu_schema/1-0-0, 
+   *        Field=(
+   *            name="my_iglu_schema_1_recovered_1_0_1_9999999",
+   *            type={"field": STRING}
+   *        )
+   *        
+   * Where 9999999 is standard scala (murmur2) hash of the field type.
+   * 
+   * @param `type` consists of schema key and entity(one of unstuct/contexts)
+   * @param schemas List of schemas with the same vendor/name/format/model as the one provided in `type`
+   * @return TypedFields, which contains fields for casting, and schema key interval for matching between lowerBound (None
+   *         for open interval) `type`.schema as upperBound
+   */
   private def extractEndSchemas(`type`: WideRow.Type)(schemas: List[SchemaWithKey]):  List[TypedField] = {
 
+    // schema keys must be preserved after Field transformation. Keys would be used for filtering, and fields for 
+    // casting. 
     case class FieldWithKey(schemaKey: SchemaKey, field: Field){
       def isBreaking(other: FieldWithKey): Boolean = isSchemaMigrationBreaking(other.field, field)
 
