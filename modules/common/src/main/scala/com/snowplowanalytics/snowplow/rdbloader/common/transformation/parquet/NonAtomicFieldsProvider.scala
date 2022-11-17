@@ -9,9 +9,9 @@ import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
+import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.isSchemaMigrationBreaking
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
-import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.isSchemaMigrationBreaking
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.{NonAtomicFields, TypedField}
 import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider._
