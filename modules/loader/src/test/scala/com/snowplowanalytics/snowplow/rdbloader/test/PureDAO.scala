@@ -107,7 +107,7 @@ object PureDAO {
           i
         ),
         discovery.shreddedTypes.map { shredded =>
-          Statement.ShreddedCopy(shredded, Compression.Gzip)
+          Statement.ShreddedCopy(shredded, Compression.Gzip, LoadAuthMethod.NoCreds)
         }
       )
 

@@ -309,7 +309,8 @@ object Config {
   def validateConfig(config: Config[StorageTarget]): List[String] =
     List(
       authMethodValidation(config),
-      targetSnowflakeValidation(config)
+      targetSnowflakeValidation(config),
+      targetRedshiftValidation(config)
     ).flatten
 
   private def authMethodValidation(config: Config[StorageTarget]): List[String] =
@@ -352,6 +353,21 @@ object Config {
         }
         List(monitoringError, hostError, authMethodConsistencyCheck).flatten
 
+      case _ => Nil
+    }
+
+  def targetRedshiftValidation(config: Config[StorageTarget]): List[String] =
+    config.storage match {
+      case storage: StorageTarget.Redshift =>
+        val authMethodConsistencyCheck = storage.loadAuthMethod match {
+          case _: StorageTarget.LoadAuthMethod.TempCreds => None
+          case StorageTarget.LoadAuthMethod.NoCreds =>
+            storage.roleArn match {
+              case None => Some("roleArn needs to be provided with 'NoCreds' auth method")
+              case Some(_) => None
+            }
+        }
+        List(authMethodConsistencyCheck).flatten
       case _ => Nil
     }
 }

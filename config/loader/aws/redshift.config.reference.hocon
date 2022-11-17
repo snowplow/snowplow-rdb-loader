@@ -24,6 +24,7 @@
     # Database port. Optional, default value 5439
     "port": 5439,
     # AWS Role ARN allowing Redshift to load data from S3
+    # Must be provided if 'NoCreds' is chosen as load auth method.
     "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
     # DB schema name
     "schema": "atomic",
@@ -35,6 +36,29 @@
     "jdbc": { "ssl": true },
     # MAXERROR, amount of acceptable loading errors. Optional, default value 10
     "maxError": 10
+    # Optional, default method is 'NoCreds'
+    # Specifies the auth method to use with 'COPY' statement.
+    "loadAuthMethod": {
+      # With 'NoCreds', no credentials will be passed to 'COPY' statement.
+      # Redshift cluster needs to be configured AWS Role ARN allowing Redshift to load data from S3
+      # and this Role ARN needs to be passed field 'roleArn' above.
+      # More information can be found here:
+      # https://docs.aws.amazon.com/redshift/latest/dg/copy-usage_notes-access-permissions.html
+      "type": "NoCreds"
+    }
+    #"loadAuthMethod": {
+    #  # With 'TempCreds', temporary credentials will be created for every
+    #  # load operation and these temporary credentials will be passed to
+    #  # 'COPY' statement. With this way, Redshift cluster doesn't have to be
+    #  # configured beforehand.
+    #  # This access will be provided by temporary credentials.
+    #  "type": "TempCreds"
+    #  # IAM role that is used while creating temporary credentials
+    #  # Created credentials will allow to access resources specified in the given role
+    #  # In our case, “s3:GetObject*”, “s3:ListBucket”, and “s3:GetBucketLocation” permissions
+    #  # for transformer output S3 bucket should be specified in the role.
+    #  "roleArn": "arn:aws:iam::123456789:role/role_name"
+    #}
   },
 
   "schedules": {
