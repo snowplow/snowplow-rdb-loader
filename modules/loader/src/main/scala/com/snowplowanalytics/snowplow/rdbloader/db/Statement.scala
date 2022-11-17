@@ -71,7 +71,12 @@ object Statement {
     def table: String = EventsTable.MainName
     def title = s"COPY $table FROM $path"
   }
-  case class ShreddedCopy(shreddedType: ShreddedType, compression: Compression) extends Statement with Loading {
+  case class ShreddedCopy(
+    shreddedType: ShreddedType,
+    compression: Compression,
+    loadAuthMethod: LoadAuthMethod
+  ) extends Statement
+      with Loading {
     def table: String = shreddedType.info.getName
     def path: String = shreddedType.getLoadPath
     def title = s"COPY $table FROM $path"

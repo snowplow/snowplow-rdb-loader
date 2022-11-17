@@ -52,7 +52,6 @@ object Redshift {
     (config.cloud, config.storage) match {
       case (c: Config.Cloud.AWS, storage: StorageTarget.Redshift) =>
         val region = c.region
-        val roleArn = storage.roleArn
         val schema = storage.schema
         val maxError = storage.maxError
         val result = new Target[Unit] {
@@ -89,7 +88,7 @@ object Redshift {
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
-              .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression))
+              .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression, loadAuthMethod))
 
             val atomic = Statement.EventsCopy(
               discovery.base,
@@ -130,23 +129,23 @@ object Redshift {
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frManifest = Fragment.const(s"${schema}.manifest")
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, _, _) =>
+              case Statement.FoldersCopy(source, loadAuthMethod, _) =>
                 val frTableName = Fragment.const(AlertingTempTableName)
-                val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+                val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frPath = Fragment.const0(source)
-                sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frRoleArn' DELIMITER '$EventFieldSeparator'"
-              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, _, _) =>
+                sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frCredentials' DELIMITER '$EventFieldSeparator'"
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, loadAuthMethod, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
                 val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
-                val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+                val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
                 val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
 
                 sql"""COPY $frTableName ($frColumns) FROM '$frPath'
-                     | CREDENTIALS '$frRoleArn'
+                     | CREDENTIALS '$frCredentials'
                      | REGION '$frRegion'
                      | MAXERROR $frMaxError
                      | TIMEFORMAT 'auto'
@@ -157,10 +156,10 @@ object Redshift {
                      | ACCEPTINVCHARS
                      | $frCompression""".stripMargin
 
-              case Statement.ShreddedCopy(shreddedType, compression) =>
+              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod) =>
                 val frTableName = Fragment.const0(qualify(shreddedType.info.getName))
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
-                val frRoleArn = Fragment.const0(s"aws_iam_role=$roleArn")
+                val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
@@ -170,7 +169,7 @@ object Redshift {
                     val frJsonPathsFile = Fragment.const0(jsonPathsFile)
                     sql"""COPY $frTableName FROM '$frPath'
                          | JSON AS '$frJsonPathsFile'
-                         | CREDENTIALS '$frRoleArn'
+                         | CREDENTIALS '$frCredentials'
                          | REGION AS '$frRegion'
                          | MAXERROR $frMaxError
                          | TIMEFORMAT 'auto'
@@ -180,7 +179,7 @@ object Redshift {
                   case ShreddedType.Tabular(_) =>
                     sql"""COPY $frTableName FROM '$frPath'
                          | DELIMITER '$EventFieldSeparator'
-                         | CREDENTIALS '$frRoleArn'
+                         | CREDENTIALS '$frCredentials'
                          | REGION AS '$frRegion'
                          | MAXERROR $frMaxError
                          | TIMEFORMAT 'auto'
@@ -284,6 +283,17 @@ object Redshift {
       case Compression.None => Fragment.empty
     }
 
+  private def loadAuthMethodFragment(loadAuthMethod: LoadAuthMethod, roleArnOpt: Option[String]): Fragment =
+    loadAuthMethod match {
+      case LoadAuthMethod.NoCreds =>
+        val roleArn = roleArnOpt.getOrElse(throw new IllegalStateException("roleArn needs to be provided with 'NoCreds' auth method"))
+        Fragment.const0(s"aws_iam_role=$roleArn")
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+        Fragment.const0(
+          s"aws_access_key_id=$awsAccessKey;aws_secret_access_key=$awsSecretKey;token=$awsSessionToken"
+        )
+    }
+
   val ManifestColumns = List(
     Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull), KeyConstaint(PrimaryKey))),
     Column("types", RedshiftVarchar(65535), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
@@ -299,7 +309,7 @@ object Redshift {
   )
 
   /** Add `schema` to otherwise static definition of manifest table */
-  def getManifestDef(schema: String): CreateTable =
+  private def getManifestDef(schema: String): CreateTable =
     CreateTable(
       s"$schema.${Manifest.Name}",
       ManifestColumns,

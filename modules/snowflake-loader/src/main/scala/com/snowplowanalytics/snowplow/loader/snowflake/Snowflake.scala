@@ -211,7 +211,7 @@ object Snowflake {
                 sql"""|INSERT INTO $frCopy
                       |SELECT $frSelectColumns FROM $frTableName""".stripMargin
 
-              case Statement.ShreddedCopy(_, _) =>
+              case _: Statement.ShreddedCopy =>
                 throw new IllegalStateException("Snowflake Loader does not support loading shredded data")
 
               case Statement.CreateTransient =>
