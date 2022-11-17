@@ -1,6 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.Id
+import cats.syntax.all._
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.Nullability.{Nullable, Required}
@@ -93,6 +94,161 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         )
       }
     }
+    "create a recovery columns with broken schema migrations" >> {
+      "schema broken from 100 to 101 to 110 should generate 3 column if only 110 is seen" in {
+        val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
+        val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context)
+        val context110 = getBrokenType(SchemaVer.Full(1, 1, 0), Context)
+        val inputTypes = List(context110)
+
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 3
+        forall(
+          result.value
+            .map(s => (s.field, s.lowerExclSchemaBound))
+            .zip(
+              List(
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    elementType = DdlTypes.brokenSchema100
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
+                    elementType = DdlTypes.brokenSchema101
+                  ),
+                  context100.schemaKey.some
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_0_802892230",
+                    elementType = DdlTypes.brokenSchema110
+                  ),
+                  context101.schemaKey.some
+                )
+              ).reverse
+            )
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+
+      "schema broken from 100 to 101 to 110 should generate 2 column if only 101 is seen" in {
+        val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
+        val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context)
+        val inputTypes = List(context101)
+
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 2
+        forall(
+          result.value
+            .map(s => (s.field, s.lowerExclSchemaBound))
+            .zip(
+              List(
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    elementType = DdlTypes.brokenSchema100
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
+                    elementType = DdlTypes.brokenSchema101
+                  ),
+                  context100.schemaKey.some
+                )
+              ).reverse
+            )
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+
+      "schema broken from 100 to 101 to 110 should generate 2 column for context and 1 for unstruct, when 101 is seen as context and 100 in unstuct" in {
+        val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
+        val unstuct100 = getBrokenType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
+        val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context)
+        val inputTypes = List(context101, unstuct100)
+
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 3
+        forall(
+          result.value
+            .map(s => (s.field, s.lowerExclSchemaBound))
+            .zip(
+              List(
+                (
+                  Field(
+                    name = "unstruct_event_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    fieldType = DdlTypes.brokenSchema100,
+                    nullability = Nullable
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    elementType = DdlTypes.brokenSchema100
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
+                    elementType = DdlTypes.brokenSchema101
+                  ),
+                  context100.schemaKey.some
+                )
+              ).reverse
+            )
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+
+      "schema broken from 100 to 101 to 110 should generate 2 column for context and 1 for unstruct, when 101 is seen as context and 100 in unstuct" in {
+        val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
+        val unstuct100 = getBrokenType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
+        val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context)
+        val inputTypes = List(context101, unstuct100)
+
+        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.size mustEqual 3
+        forall(
+          result.value
+            .map(s => (s.field, s.lowerExclSchemaBound))
+            .zip(
+              List(
+                (
+                  Field(
+                    name = "unstruct_event_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    fieldType = DdlTypes.brokenSchema100,
+                    nullability = Nullable
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+                    elementType = DdlTypes.brokenSchema100
+                  ),
+                  None
+                ),
+                (
+                  nullableArrayWithRequiredElement(
+                    name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
+                    elementType = DdlTypes.brokenSchema101
+                  ),
+                  context100.schemaKey.some
+                )
+              ).reverse
+            )
+        ) { case (actual, expected) => actual mustEqual expected }
+      }
+    }
   }
 
   private def nullableArrayWithRequiredElement(name: String, elementType: Type) =
@@ -119,6 +275,8 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
   private def getType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema", format = "jsonschema", version), entity)
 
+  private def getBrokenType(version: SchemaVer.Full, entity: SnowplowEntity) =
+    WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema_broken", format = "jsonschema", version), entity)
 }
 
 object ParquetFieldsProviderSpec {
@@ -281,5 +439,9 @@ object ParquetFieldsProviderSpec {
         Field("f_field", Type.Long, Required)
       )
     )
+
+    val brokenSchema100 = Type.Struct(fields = List(Field("b_field", Type.Long, Nullable)))
+    val brokenSchema101 = Type.Struct(fields = List(Field("b_field", Type.String, Nullable)))
+    val brokenSchema110 = brokenSchema100
   }
 }

@@ -76,7 +76,7 @@ object ParquetTransformer {
   private def forContexts(typedField: TypedField, event: Event): Either[NonEmptyList[CastError], FieldWithValue] = {
     val allContexts = event.contexts.data ::: event.derived_contexts.data
     val matchingContexts = allContexts
-      .filter(context => isSchemaKeyInField(context.schema, typedField) )
+      .filter(context => isSchemaKeyInField(context.schema, typedField))
 
     if (matchingContexts.nonEmpty) {
       val jsonArrayWithContexts = Json.fromValues(matchingContexts.map(_.data).toVector)
@@ -92,8 +92,7 @@ object ParquetTransformer {
       .toEither
       .map(value => FieldWithValue(field, value))
 
-
-  private def isSchemaKeyInField(schemaKey: SchemaKey, typedField: TypedField ): Boolean =
+  private def isSchemaKeyInField(schemaKey: SchemaKey, typedField: TypedField): Boolean =
     schemaKey.vendor === typedField.`type`.schemaKey.vendor &
       schemaKey.name === typedField.`type`.schemaKey.name &
       schemaKey.version.model === typedField.`type`.schemaKey.version.model &
