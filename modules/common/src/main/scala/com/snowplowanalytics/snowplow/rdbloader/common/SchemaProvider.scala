@@ -19,39 +19,38 @@ object SchemaProvider {
 
   implicit val orderingSchemaWithKey: Ordering[SchemaWithKey] = Ordering.by { key: SchemaWithKey => key.schemaKey }
 
-  def getSchema[F[_]: Clock: Monad: RegistryLookup](resolver: Resolver[F],
-                                                    schemaKey: SchemaKey): EitherT[F, FailureDetails.LoaderIgluError, Schema] =
+  def getSchema[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F],
+    schemaKey: SchemaKey
+  ): EitherT[F, FailureDetails.LoaderIgluError, Schema] =
     for {
       json <- EitherT(resolver.lookupSchema(schemaKey)).leftMap(resolverBadRow(schemaKey))
       schema <- EitherT.fromOption[F](Schema.parse(json), parseSchemaBadRow(schemaKey))
     } yield schema
 
-
-
   def fetchSchemasWithSameModel[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     schemaKey: SchemaKey
-   ): EitherT[F, FailureDetails.LoaderIgluError, List[SchemaWithKey]] = {
+  ): EitherT[F, FailureDetails.LoaderIgluError, List[SchemaWithKey]] =
     EitherT(resolver.listSchemas(schemaKey.vendor, schemaKey.name, schemaKey.version.model))
       .leftMap(resolverFetchBadRow(schemaKey.vendor, schemaKey.name, schemaKey.format, schemaKey.version.model))
       .map(_.schemas)
       .flatMap(schemaKeys =>
         schemaKeys.traverse(schemaKey =>
           getSchema(resolver, schemaKey)
-          .map(schema => SchemaWithKey(schemaKey, schema) ))
+            .map(schema => SchemaWithKey(schemaKey, schema))
+        )
       )
-  }
 
   private def resolverFetchBadRow(
-           vendor: String,
-           name: String,
-           format: String,
-           model: Int)(e: ClientError.ResolutionError): FailureDetails.LoaderIgluError =
-    FailureDetails.LoaderIgluError.SchemaListNotFound(SchemaCriterion(
-      vendor=vendor,
-      name=name,
-      format=format,
-      model=model), e)
+    vendor: String,
+    name: String,
+    format: String,
+    model: Int
+  )(
+    e: ClientError.ResolutionError
+  ): FailureDetails.LoaderIgluError =
+    FailureDetails.LoaderIgluError.SchemaListNotFound(SchemaCriterion(vendor = vendor, name = name, format = format, model = model), e)
 
   private def resolverBadRow(schemaKey: SchemaKey)(e: ClientError.ResolutionError): FailureDetails.LoaderIgluError =
     FailureDetails.LoaderIgluError.IgluError(schemaKey, e)
