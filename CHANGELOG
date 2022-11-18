@@ -1,3 +1,15 @@
+Version 5.2.0 (2022-11-18)
+--------------------------
+Redshift: Use STS tokens for copying from S3 (#998)
+Snowflake Loader: auto-configure staging location paths (#1059)
+Transformer Pubsub: support Parquet output option (#1124)
+Common Stream Transformer: add Sentry (#881)
+Common: add code format check as CI/CD step (#1089)
+Loader: Improve minimum_age_of_loaded_data metric (#1111)
+Transformer: cache result of flattening schema (#1086)
+Databricks loader: Performance degradation for long running application (#1029)
+Kinesis tranformer: flaky wide row test (#1030)
+
 Version 5.1.2 (2022-11-14)
 --------------------------
 Snowflake Loader: create column name with same method in everywhere (#1128)
