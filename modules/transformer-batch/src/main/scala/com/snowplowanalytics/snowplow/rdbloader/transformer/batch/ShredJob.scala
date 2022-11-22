@@ -88,8 +88,6 @@ class ShredJob[T](
       }
       .setName("common")
 
-    common.cache()
-
     val parsedGood = common.flatMap(_.toOption)
 
     // Events that could not be parsed
