@@ -253,7 +253,7 @@ object ShredJob {
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
 
-          Transformer.WideRowParquetTransformer(allFields, schema)
+          Transformer.WideRowParquetTransformer(allFields, schema, config.featureFlags.storageLevel)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)

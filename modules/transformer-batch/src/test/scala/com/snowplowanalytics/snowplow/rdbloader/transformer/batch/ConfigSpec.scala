@@ -139,7 +139,7 @@ object TransformerConfigSpec {
     Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
     Some(Config.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None)
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, None)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
 

@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fi
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
+import org.apache.spark.storage.StorageLevel
 
 // Spark
 import org.apache.spark.SparkContext
@@ -153,7 +154,11 @@ object Transformer {
     }
   }
 
-  case class WideRowParquetTransformer(allFields: AllFields, schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
+  case class WideRowParquetTransformer(
+    allFields: AllFields,
+    schema: StructType,
+    storageLevel: Option[Int]
+  ) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
@@ -182,10 +187,16 @@ object Transformer {
       transformed: RDD[Transformed],
       outFolder: Folder
     ): Unit = {
-      // If it is not cached, events will be processed two times since
-      // data is output in both wide row json and parquet format.
-      Sink.writeWideRowed(spark, compression, transformed.flatMap(_.wideRow), outFolder)
-      Sink.writeParquet(spark, schema, transformed.flatMap(_.parquet), outFolder.append("output=good"))
+      val transformedCached = storageLevel match {
+        case Some(1) => transformed.persist(StorageLevel.MEMORY_ONLY)
+        case Some(2) => transformed.persist(StorageLevel.MEMORY_ONLY_SER)
+        case Some(3) => transformed.persist(StorageLevel.MEMORY_AND_DISK)
+        case Some(4) => transformed.persist(StorageLevel.MEMORY_AND_DISK_SER)
+        case Some(5) => transformed.persist(StorageLevel.DISK_ONLY)
+        case _ => transformed
+      }
+      Sink.writeWideRowed(spark, compression, transformedCached.flatMap(_.wideRow), outFolder)
+      Sink.writeParquet(spark, schema, transformedCached.flatMap(_.parquet), outFolder.append("output=good"))
     }
 
     def register(sc: SparkContext): Unit = {

@@ -441,7 +441,7 @@ object ShredJobSpec {
       Config.Monitoring(None),
       deduplication,
       Config.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false, None),
+      TransformerConfig.FeatureFlags(false, None, None),
       TransformerConfig.Validations(None)
     )
   }
@@ -507,7 +507,7 @@ trait ShredJobSpec extends SparkSpec {
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
 
-            Transformer.WideRowParquetTransformer(allFields, schema)
+            Transformer.WideRowParquetTransformer(allFields, schema, cli.config.featureFlags.storageLevel)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
