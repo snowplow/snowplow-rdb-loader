@@ -83,7 +83,7 @@ jobs:
           java-version: 11
       - name: Get the latest Databricks JDBC driver
         run: |
-          curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.25/DatabricksJDBC42-2.6.25.1044.zip --output DatabricksJDBC42.jar.zip
+          curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.29/DatabricksJDBC42-2.6.29.1051.zip --output DatabricksJDBC42.jar.zip
           unzip DatabricksJDBC42.jar.zip
           cp DatabricksJDBC42-2.6.25.1044/DatabricksJDBC42.jar DatabricksJDBC42.jar
       - name: Docker login
@@ -176,7 +176,6 @@ jobs:
       run: |
         curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.25/DatabricksJDBC42-2.6.25.1044.zip --output DatabricksJDBC42.jar.zip
         unzip DatabricksJDBC42.jar.zip
-        cp DatabricksJDBC42-2.6.25.1044/DatabricksJDBC42.jar DatabricksJDBC42.jar
     - name: Build jar files
       env:
         SKIP_TEST: true
