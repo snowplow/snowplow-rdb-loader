@@ -32,7 +32,7 @@ object SchemaProvider {
     resolver: Resolver[F],
     schemaKey: SchemaKey
   ): EitherT[F, FailureDetails.LoaderIgluError, List[SchemaWithKey]] =
-    EitherT(resolver.listSchemas(schemaKey.vendor, schemaKey.name, schemaKey.version.model))
+    EitherT(resolver.listSchemasLike(schemaKey))
       .leftMap(resolverFetchBadRow(schemaKey.vendor, schemaKey.name, schemaKey.format, schemaKey.version.model))
       .map(_.schemas)
       .flatMap(schemaKeys =>
