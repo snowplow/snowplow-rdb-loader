@@ -3,13 +3,13 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet
 import cats.Monad
 import cats.data.EitherT
 import cats.effect.Clock
-import cats.implicits.toTraverseOps
+import cats.syntax.all._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
-import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.isSchemaMigrationBreaking
+import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.mergeSchemas
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
@@ -62,15 +62,18 @@ object NonAtomicFieldsProvider {
    * Extract TypedFields for the `type`. It could produce multiple TypedFields for the same
    * `type`.schema. If output is longer than one item, it means that user created a broken
    * migration. Broken migration constitutes a illegal type casting and defined in schema-dll
-   * package accessed by `isSchemaMigrationBreaking`.
+   * package accessed by `mergeSchema`.
    *
    * For example, changing field type from integer to string between 1-0-0 and 1-0-1 versions. That
    * example, would produce two Fields (in pseudocode):
-   *   - TypedField( `type`=( schemaKey = iglu://my_iglu_schema/1-0-0 ), lowerBound = None, Field=(
-   *     name="my_iglu_schema_1", type={"field": INT64} )
-   *   - TypedField( `type`=( schemaKey = iglu://my_iglu_schema/1-0-1 ), lowerBound =
-   *     iglu://my_iglu_schema/1-0-0, Field=( name="my_iglu_schema_1_recovered_1_0_1_9999999",
-   *     type={"field": STRING} )
+   *
+   *   - TypedField( * field ("my_iglu_schema_1", type={"field": INT64}), * type contexts *
+   *     matchingKeys = List(1-0-0) )
+   *   - TypedField( * field ("my_iglu_schema_1_recovered_1_0_1_9999999", type={"field": STRING}), *
+   *     type contexts * matchingKeys = List(1-0-1)
+   *
+   * Algorithm will eagerly merge all events into the base `my_iglu_schema_1` column, creating the
+   * `recovered` column per each divergent schema.
    *
    * Where 9999999 is standard scala (murmur2) hash of the field type.
    *
@@ -79,57 +82,39 @@ object NonAtomicFieldsProvider {
    * @param schemas
    *   List of schemas with the same vendor/name/format/model as the one provided in `type`
    * @return
-   *   TypedFields, which contains fields for casting, and schema key interval for matching between
-   *   lowerBound (None for open interval) `type`.schema as upperBound
+   *   TypedFields, which contains fields for casting, and schema key list for matching
    */
   private def extractEndSchemas(`type`: WideRow.Type)(schemas: List[SchemaWithKey]): List[TypedField] = {
 
     // schema keys must be preserved after Field transformation. Keys would be used for filtering, and fields for
     // casting.
-    case class FieldWithKey(schemaKey: SchemaKey, field: Field) {
-      def isBreaking(other: FieldWithKey): Boolean = isSchemaMigrationBreaking(other.field, field)
+    case class FieldWithKey(schemaKey: SchemaKey, field: Field)
 
-      def toTypedField(lowerBound: Option[TypedField]): TypedField =
-        TypedField(
-          field = field,
-          `type` = `type`.copy(
-            schemaKey = schemaKey
-          ),
-          lowerExclSchemaBound = lowerBound.map(_.`type`.schemaKey)
-        )
-    }
-
-    // Schemas need to be ordered to detect schema changes.
-    schemas.sorted.reverse
+    // Schemas need to be ordered by key to merge in correct order.
+    schemas.sorted
       // Create fields, since the schema-ddl's `isSchemaMigrationBreaking` is operating on the `Field` rather then
       // schemas. Schema keys must be preserved to filter out the Event schemas later.
-      // Descending order was required to preserve latest schema in the first list item.
       .map(schemaWithKey => FieldWithKey(schemaWithKey.schemaKey, fieldFromSchema(`type`)(schemaWithKey.schema)))
-      // drop the non breaking schemas from the list
-      .foldLeft(List.empty[FieldWithKey])((prevSchemaKeyList, fieldWithKey) =>
-        prevSchemaKeyList match {
-          case Nil => List(fieldWithKey)
-          case head :: _ if head isBreaking fieldWithKey => fieldWithKey :: prevSchemaKeyList
-          case _ => prevSchemaKeyList
-        }
-      )
-      // Build `TypedField` from `FieldWithKey`, using next element in list as lower bound. Because list had descending
-      // sort.
-      .foldLeft(List.empty[TypedField])((prevSchemaKeyList, fieldWithKey) =>
-        prevSchemaKeyList match {
-          case Nil => fieldWithKey.toTypedField(None) :: prevSchemaKeyList
-          case head :: _ =>
-            fieldWithKey
-              .toTypedField(Some(head))
-              .copy(field = {
-                // hash ensures that loading does not break if user creates a new broken version of the same SchemaKey
+      // Accumulating vector would contain base column as first element and broken migrations in others
+      .foldLeft(Vector.empty[TypedField])((endFields, fieldWithKey) =>
+        endFields.headOption match {
+          case Some(rootField) =>
+            mergeSchemas(rootField.field, fieldWithKey.field) match {
+              // Failed merge Left contains the reason, which could be discarded
+              case Left(_) =>
                 val hash = abs(fieldWithKey.field.hashCode())
                 val recoverPoint = fieldWithKey.schemaKey.version.asString.replaceAll("-", "_")
                 val newName = s"${fieldWithKey.field.name}_recovered_${recoverPoint}_$hash"
-                fieldWithKey.field.copy(name = newName)
-              }) :: prevSchemaKeyList
+                // broken migrations go to the end of Vector
+                endFields :+ TypedField(fieldWithKey.field.copy(name = newName), `type`, Set(fieldWithKey.schemaKey))
+              case Right(mergedField) =>
+                // keep on updating first element (base schema) in the vector with the merged schemas
+                endFields.updated(0, TypedField(mergedField, `type`, rootField.matchingKeys + fieldWithKey.schemaKey))
+            }
+          case None => Vector(TypedField(fieldWithKey.field, `type`, Set(fieldWithKey.schemaKey)))
         }
       )
+      .toList
   }
 
   private def fieldFromType[F[_]: Clock: Monad: RegistryLookup](

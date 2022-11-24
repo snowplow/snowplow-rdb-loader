@@ -2,7 +2,6 @@ package com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet
 
 import cats.data.NonEmptyList
 import cats.syntax.all._
-import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{CastError, Field, FieldValue}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -14,8 +13,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transforme
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.ParquetData.FieldWithValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields._
 import io.circe.Json
-
-import scala.math.Ordered.orderingToOrdered
 
 object ParquetTransformer {
 
@@ -93,11 +90,7 @@ object ParquetTransformer {
       .map(value => FieldWithValue(field, value))
 
   private def isSchemaKeyInField(schemaKey: SchemaKey, typedField: TypedField): Boolean =
-    schemaKey.vendor === typedField.`type`.schemaKey.vendor &
-      schemaKey.name === typedField.`type`.schemaKey.name &
-      schemaKey.version.model === typedField.`type`.schemaKey.version.model &
-      (schemaKey <= typedField.`type`.schemaKey) &
-      typedField.lowerExclSchemaBound.forall(schemaKey > _)
+    typedField.matchingKeys.contains(schemaKey)
 
   private def castingBadRow(
     event: Event,

@@ -15,7 +15,7 @@ object fields {
   final case class TypedField(
     field: Field,
     `type`: WideRow.Type,
-    lowerExclSchemaBound: Option[SchemaKey]
+    matchingKeys: Set[SchemaKey]
   )
 
 }
