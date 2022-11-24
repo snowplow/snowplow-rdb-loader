@@ -5,13 +5,13 @@
         "vendor": "com.snowplowanalytics.snowplow",
         "name": "test_schema_broken",
         "format": "jsonschema",
-        "version": "1-1-0"
+        "version": "1-1-1"
     },
 
     "type": "object",
     "properties": {
       "a_field": {
-          "type": "integer"
+          "type": "string"
         }
     }
 }
