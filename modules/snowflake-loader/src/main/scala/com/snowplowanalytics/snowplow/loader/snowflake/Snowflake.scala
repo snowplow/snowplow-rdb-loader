@@ -124,6 +124,11 @@ object Snowflake {
           override def getManifest: Statement =
             Statement.CreateTable(SnowflakeManifest.getManifestDef(schema).toFragment)
 
+          override def getEventTable: Statement =
+            Statement.CreateTable(
+              Fragment.const0(SnowflakeEventsTable.statement(qualify(EventsTable.MainName)))
+            )
+
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1" // OK

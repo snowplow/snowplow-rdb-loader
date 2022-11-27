@@ -114,6 +114,11 @@ object Redshift {
           override def getManifest: Statement =
             Statement.CreateTable(Fragment.const0(getManifestDef(schema).render))
 
+          override def getEventTable: Statement =
+            Statement.CreateTable(
+              Fragment.const0(RedshiftEventsTable.statement(qualify(EventsTable.MainName)))
+            )
+
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
