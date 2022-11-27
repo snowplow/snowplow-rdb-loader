@@ -116,6 +116,9 @@ object PureDAO {
     def getManifest: Statement =
       Statement.CreateTable(Fragment.const0("CREATE manifest"))
 
+    override def getEventTable: Statement =
+      Statement.CreateTable(Fragment.const0("CREATE events"))
+
     def updateTable(migration: SchemaMigration): Migration.Block =
       throw LoaderError.RuntimeError("Not implemented in test suite")
 

@@ -114,12 +114,14 @@ object Loader {
       Logging[F].info("Target check is completed")
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
+    val eventsTableInit = initRetry(createEventsTable[F, C](target)) *>
+      Logging[F].info("Events table initialization is completed")
     val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)) *>
       Logging[F].info("Manifest initialization is completed")
     val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
       Logging[F].info("Adding load_tstamp column is completed")
 
-    val init: F[Unit] = blockUntilReady *> noOperationPrepare *> manifestInit *> addLoadTstamp
+    val init: F[Unit] = blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp
 
     val process = Stream.eval(init).flatMap { _ =>
       loading
@@ -251,6 +253,9 @@ object Loader {
   /** Query to get necessary bits from the warehouse during initialization of the application */
   private def initQuery[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow, I](target: Target[I]): Stream[F, I] =
     Stream.eval(Transaction[F, C].run(target.initQuery))
+
+  private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: Monad](target: Target[_]): F[Unit] =
+    Transaction[F, C].transact(DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void)
 
   /**
    * Handle a failure during loading. `Load.getTransaction` can fail only in one "expected" way - if

@@ -56,6 +56,8 @@ trait Target[I] {
   /** Get DDL of a manifest table */
   def getManifest: Statement
 
+  def getEventTable: Statement
+
   /** Generate a DB-specification migration Block for updating a *separate* table */
   def updateTable(migration: SchemaMigration): Block
 

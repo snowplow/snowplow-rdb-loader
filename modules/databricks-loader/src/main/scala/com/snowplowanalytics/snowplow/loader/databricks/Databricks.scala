@@ -83,6 +83,11 @@ object Databricks {
                                  |""".stripMargin)
             )
 
+          override def getEventTable: Statement =
+            Statement.CreateTable(
+              Fragment.const0(DatabricksEventsTable.statement(qualify(EventsTable.MainName)))
+            )
+
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
