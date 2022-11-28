@@ -13,15 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats._
+import cats.data.EitherT
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.IgluError
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
 /**
@@ -37,7 +40,8 @@ case class DataDiscovery(
   base: BlobStorage.Folder,
   shreddedTypes: List[ShreddedType],
   compression: Compression,
-  typesInfo: TypesInfo
+  typesInfo: TypesInfo,
+  columns: List[String]
 ) {
 
   /** ETL id */
@@ -77,7 +81,7 @@ object DataDiscovery {
    * @param config
    *   generic storage target configuration
    */
-  def discover[F[_]: MonadThrow: BlobStorage: Cache: Queue.Consumer: Logging: JsonPathDiscovery](
+  def discover[F[_]: MonadThrow: BlobStorage: Iglu: Cache: Queue.Consumer: Logging: JsonPathDiscovery](
     config: Config[_],
     incrementMessages: F[State]
   ): DiscoveryStream[F] =
@@ -100,8 +104,6 @@ object DataDiscovery {
 
   /**
    * Get `DataDiscovery` or log an error and drop the message actionable `DataDiscovery`
-   * @param region
-   *   AWS region to discover JSONPaths
    * @param assets
    *   optional bucket with custom JSONPaths
    * @param message
@@ -109,7 +111,7 @@ object DataDiscovery {
    * @tparam F
    *   effect type to perform AWS interactions
    */
-  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery](
+  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery: Iglu](
     assets: Option[BlobStorage.Folder],
     message: LoaderMessage.ShreddingComplete
   ): F[Option[WithOrigin]] =
@@ -134,7 +136,7 @@ object DataDiscovery {
    * @tparam F
    *   effect type to perform AWS interactions
    */
-  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery](
+  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery: Iglu](
     assets: Option[BlobStorage.Folder],
     message: LoaderMessage.ShreddingComplete
   ): LoaderAction[F, DataDiscovery] = {
@@ -143,9 +145,21 @@ object DataDiscovery {
       .map { steps =>
         LoaderError.DiscoveryError.fromValidated(steps.traverse(_.toValidatedNel))
       }
-    LoaderAction[F, List[ShreddedType]](types).map { types =>
-      DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo)
-    }
+
+    for {
+      types <- LoaderAction[F, List[ShreddedType]](types)
+      columns <- message.typesInfo match {
+                   case TypesInfo.Shredded(_) => EitherT.pure[F, LoaderError](List.empty[String])
+                   case TypesInfo.WideRow(fileFormat, types) =>
+                     fileFormat match {
+                       case WideRowFormat.JSON => EitherT.pure[F, LoaderError](List.empty[String])
+                       case WideRowFormat.PARQUET =>
+                         types
+                           .flatTraverse(Iglu[F].fieldNameFromType)
+                           .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
+                     }
+                 }
+    } yield DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo, columns)
   }
 
   def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =

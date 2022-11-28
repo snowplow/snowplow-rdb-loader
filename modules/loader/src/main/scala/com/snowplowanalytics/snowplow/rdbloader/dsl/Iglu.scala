@@ -12,25 +12,22 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import cats.data.EitherT
 import cats.~>
 import cats.implicits._
-
 import cats.effect.{Async, Clock, Resource}
-
 import io.circe.Json
 import io.circe.syntax._
-
 import org.http4s.client.Client
-
 import com.snowplowanalytics.iglu.client.resolver.{Resolver, ResolverCache}
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
-
 import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList
-
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Flattening
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.NonAtomicFieldsProvider
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 trait Iglu[F[_]] { self =>
@@ -42,8 +39,20 @@ trait Iglu[F[_]] { self =>
     model: Int
   ): F[Either[LoaderError, SchemaList]]
 
-  def mapK[G[_]](arrow: F ~> G): Iglu[G] =
-    (vendor: String, name: String, model: Int) => arrow(self.getSchemas(vendor, name, model))
+  def fieldNameFromType(`type`: WideRow.Type): EitherT[F, LoaderIgluError, List[String]]
+
+  def mapK[G[_]](arrow: F ~> G): Iglu[G] = new Iglu[G] {
+
+    /** Retrieve list of schemas from Iglu Server */
+    override def getSchemas(
+      vendor: String,
+      name: String,
+      model: Int
+    ): G[Either[LoaderError, SchemaList]] = arrow(self.getSchemas(vendor, name, model))
+
+    override def fieldNameFromType(`type`: WideRow.Type): EitherT[G, LoaderIgluError, List[String]] =
+      self.fieldNameFromType(`type`).mapK(arrow)
+  }
 }
 
 object Iglu {
@@ -62,19 +71,28 @@ object Iglu {
         }
         .rethrow
 
-    Resource.eval[F, Resolver[F]](buildResolver).map[F, Iglu[F]] { resolver => (vendor: String, name: String, model: Int) =>
-      {
-        val attempt = Flattening.getOrdered[F](resolver, vendor, name, model)
-        attempt
-          .recoverWith {
-            case LoaderIgluError.SchemaListNotFound(_, error) if isInputError(error) =>
-              attempt
-          }
-          .leftMap { resolutionError =>
-            val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*  ${resolutionError.asJson.noSpaces}"
-            LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
-          }
-          .value
+    Resource.eval(buildResolver).map { resolver =>
+      new Iglu[F] {
+        def getSchemas(
+          vendor: String,
+          name: String,
+          model: Int
+        ): F[Either[LoaderError, SchemaList]] = {
+          val attempt = Flattening.getOrdered[F](resolver, vendor, name, model)
+          attempt
+            .recoverWith {
+              case LoaderIgluError.SchemaListNotFound(_, error) if isInputError(error) =>
+                attempt
+            }
+            .leftMap { resolutionError =>
+              val message = s"Cannot get schemas for iglu:$vendor/$name/jsonschema/$model-*-*  ${resolutionError.asJson.noSpaces}"
+              LoaderError.DiscoveryError(DiscoveryFailure.IgluError(message))
+            }
+            .value
+        }
+
+        def fieldNameFromType(`type`: WideRow.Type): EitherT[F, LoaderIgluError, List[String]] =
+          NonAtomicFieldsProvider.fieldFromType(resolver)(`type`).map(_.map(_.field.name))
       }
     }
   }
