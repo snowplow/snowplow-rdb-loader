@@ -23,12 +23,12 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat.{JSON, TSV}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Logging}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureLogging, PureOps}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureIglu, PureLogging, PureOps}
 
 class DataDiscoverySpec extends Specification {
   "show" should {
@@ -57,7 +57,13 @@ class DataDiscoverySpec extends Specification {
       )
 
       val discovery =
-        DataDiscovery(BlobStorage.Folder.coerce("s3://my-bucket/my-path"), shreddedTypes, Compression.Gzip, TypesInfo.Shredded(List.empty))
+        DataDiscovery(
+          BlobStorage.Folder.coerce("s3://my-bucket/my-path"),
+          shreddedTypes,
+          Compression.Gzip,
+          TypesInfo.Shredded(List.empty),
+          Nil
+        )
       discovery.show must beEqualTo("""|my-path with following shredded types:
            |  * iglu:com.acme/event/jsonschema/2-*-* (s3://assets/event_1.json)
            |  * iglu:com.acme/context/jsonschema/2-*-* (s3://assets/context_1.json)""".stripMargin)
@@ -67,6 +73,7 @@ class DataDiscoverySpec extends Specification {
   "fromLoaderMessage" should {
     "not repeat schema criterions if there are different revisions/additions" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
@@ -94,7 +101,8 @@ class DataDiscoverySpec extends Specification {
               LoaderMessage.SnowplowEntity.SelfDescribingEvent
             )
           )
-        )
+        ),
+        Nil
       ).asRight
 
       val result = DataDiscovery.fromLoaderMessage[Pure](None, DataDiscoverySpec.shreddingCompleteWithSameModel).value.runA
@@ -104,6 +112,7 @@ class DataDiscoverySpec extends Specification {
 
     "aggregate errors" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
@@ -125,6 +134,7 @@ class DataDiscoverySpec extends Specification {
   "handle" should {
     "return discovery errors if JSONPath cannot be found" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
@@ -149,6 +159,7 @@ class DataDiscoverySpec extends Specification {
 
     "return discovered data if it can be handled" >> {
       implicit val cache: Cache[Pure] = PureCache.interpreter
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
@@ -187,7 +198,8 @@ class DataDiscoverySpec extends Specification {
             TypesInfo.Shredded
               .Type(SchemaKey("com.acme", "event-b", "jsonschema", Full(1, 0, 0)), JSON, LoaderMessage.SnowplowEntity.SelfDescribingEvent)
           )
-        )
+        ),
+        Nil
       )
 
       val (state, result) = DataDiscovery.handle[Pure](None, message).run

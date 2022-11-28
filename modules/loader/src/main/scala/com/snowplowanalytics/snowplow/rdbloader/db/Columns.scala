@@ -12,8 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 
 object Columns {
 
@@ -24,16 +23,8 @@ object Columns {
 
   object ColumnsToCopy {
     def fromDiscoveredData(discovery: DataDiscovery): ColumnsToCopy = {
-      val shredTypeColumns = discovery.shreddedTypes
-        .filterNot(_.isAtomic)
-        .map(getShredTypeColumn)
+      val shredTypeColumns = discovery.columns.map(ColumnName.apply)
       ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
-    }
-
-    private def getShredTypeColumn(shreddedType: ShreddedType): ColumnName = {
-      val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
-      val info = shreddedType.info
-      ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model))
     }
   }
 

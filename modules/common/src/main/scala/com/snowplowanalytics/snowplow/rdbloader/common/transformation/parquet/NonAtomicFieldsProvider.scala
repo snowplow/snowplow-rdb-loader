@@ -117,7 +117,7 @@ object NonAtomicFieldsProvider {
       .toList
   }
 
-  private def fieldFromType[F[_]: Clock: Monad: RegistryLookup](
+  def fieldFromType[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F]
   )(
     `type`: WideRow.Type
