@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import scala.concurrent.duration.FiniteDuration
+
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
@@ -21,12 +23,11 @@ import cats.effect.implicits._
 
 import doobie._
 import doobie.implicits._
-import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 import doobie.hikari._
 
 import java.sql.SQLException
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
@@ -117,21 +118,26 @@ object Transaction {
    */
   def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: SecretStore](
     target: StorageTarget,
+    timeouts: Config.Timeouts,
     blocker: Blocker
   ): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, xa))
+    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, timeouts, xa))
 
-  /**
-   * Surprisingly, for statements disallowed in transaction block we need to set autocommit
-   * @see
-   *   https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
-   */
-  val NoCommitStrategy: Strategy =
-    Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
+  def defaultStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = {
+    val timeoutSeconds = rollbackCommitTimeout.toSeconds.toInt
+    val rollback = fr"ROLLBACK".execWith {
+      HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
+    }.void
+    val commit = fr"COMMIT".execWith {
+      HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
+    }.void
+    Strategy.default.copy(after = commit, oops = rollback)
+  }
 
   /** Real-world (opposed to dry-run) interpreter */
   def jdbcRealInterpreter[F[_]: ConcurrentEffect: ContextShift](
     target: StorageTarget,
+    timeouts: Config.Timeouts,
     conn: Transactor[F]
   ): Transaction[F, ConnectionIO] = {
 
@@ -139,7 +145,7 @@ object Transaction {
       conn.copy(strategy0 = target.doobieNoCommitStrategy)
 
     val DefaultTransactor: Transactor[F] =
-      conn.copy(strategy0 = target.doobieCommitStrategy)
+      conn.copy(strategy0 = target.doobieCommitStrategy(timeouts.rollbackCommit))
 
     new Transaction[F, ConnectionIO] {
 

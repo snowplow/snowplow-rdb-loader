@@ -112,7 +112,7 @@ object Environment {
       implicit0(monitoring: Monitoring[F]) =
         Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
-      transaction <- Transaction.interpreter[F](cli.config.storage, blocker)
+      transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts, blocker)
       telemetry <- Telemetry.build[F](
                      cli.config.telemetry,
                      appName,

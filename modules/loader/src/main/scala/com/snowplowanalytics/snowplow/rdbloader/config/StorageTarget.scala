@@ -26,6 +26,7 @@ import doobie.util.transactor.Strategy
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Transaction
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
@@ -38,7 +39,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
-  def doobieCommitStrategy: Strategy = Strategy.default
+  def doobieCommitStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = Transaction.defaultStrategy(rollbackCommitTimeout)
 
   /**
    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
@@ -124,7 +125,7 @@ object StorageTarget {
 
     override def connectionUrl: String = s"jdbc:databricks://$host:$port"
 
-    override def doobieCommitStrategy: Strategy = Strategy.void
+    override def doobieCommitStrategy(t: FiniteDuration): Strategy = Strategy.void
     override def doobieNoCommitStrategy: Strategy = Strategy.void
     override def withAutoCommit = true
 

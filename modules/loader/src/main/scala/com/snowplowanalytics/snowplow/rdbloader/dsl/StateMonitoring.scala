@@ -128,6 +128,8 @@ object StateMonitoring {
   ): Boolean = {
     val lastUpdated = state.updated
     val passed = (now.toEpochMilli - lastUpdated.toEpochMilli).milli
-    if (isLoading(state.loading)) passed > timeouts.loading else passed > timeouts.nonLoading
+    val timeout = if (isLoading(state.loading)) timeouts.loading else timeouts.nonLoading
+    // Rollback/Commit can be used in all statements therefore their timeout should be added in all cases
+    passed > (timeout + timeouts.rollbackCommit)
   }
 }

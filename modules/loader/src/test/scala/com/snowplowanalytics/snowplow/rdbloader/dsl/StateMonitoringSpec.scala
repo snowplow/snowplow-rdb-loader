@@ -46,7 +46,7 @@ class StateMonitoringSpec extends Specification {
         state => state.copy(loading = Load.Status.Loading(BlobStorage.Folder.coerce("s3://folder"), Stage.MigrationIn))
       val (error, _) = StateMonitoringSpec.checkRun(setMigrationIn)
 
-      error must beSome("Loader is stuck. Ongoing processing of s3://folder/ at in-transaction migrations. Spent 15 minutes at this stage")
+      error must beSome("Loader is stuck. Ongoing processing of s3://folder/ at in-transaction migrations. Spent 35 minutes at this stage")
     }
   }
 
@@ -55,7 +55,9 @@ class StateMonitoringSpec extends Specification {
       val (error, _, isBusy) = StateMonitoringSpec.checkInBackground { (state, timer) =>
         timer.sleep(1.milli) *> // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
-          timer.sleep(StateMonitoringSpec.Timeouts.sqsVisibility * 3)
+          timer.sleep(
+            StateMonitoringSpec.Timeouts.nonLoading + StateMonitoringSpec.Timeouts.rollbackCommit + StateMonitoringSpec.Timeouts.sqsVisibility
+          )
       }
 
       isBusy must beFalse // dealocation runs even if it fails
@@ -105,7 +107,7 @@ class StateMonitoringSpec extends Specification {
 
 object StateMonitoringSpec {
 
-  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes)
+  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes, 20.minutes)
 
   def checkRun(init: State => State) = {
     implicit val ec: TestContext =

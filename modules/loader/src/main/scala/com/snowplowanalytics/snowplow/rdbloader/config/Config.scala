@@ -118,7 +118,8 @@ object Config {
   final case class Timeouts(
     loading: FiniteDuration,
     nonLoading: FiniteDuration,
-    sqsVisibility: FiniteDuration
+    sqsVisibility: FiniteDuration,
+    rollbackCommit: FiniteDuration
   )
   final case class Retries(
     strategy: Strategy,
