@@ -1,16 +1,16 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet
 
 import cats.Monad
-import cats.data.EitherT
+import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
 import cats.syntax.all._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.mergeSchemas
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.{NonAtomicFields, TypedField}
@@ -36,33 +36,13 @@ object NonAtomicFieldsProvider {
   def build[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     types: List[WideRow.Type]
-  ): EitherT[F, LoaderIgluError, NonAtomicFields] =
-    types.sorted
-      // collapse subversions of the same schema. This will avoid listing the earlier schema versions multiple times.
-      .foldRight(List.empty[WideRow.Type])((it, acc) =>
-        acc match {
-          case Nil => List(it)
-          case head :: _ =>
-            if (
-              head.snowplowEntity == it.snowplowEntity &
-                head.schemaKey.vendor == it.schemaKey.vendor &
-                head.schemaKey.name == it.schemaKey.name &
-                head.schemaKey.format == it.schemaKey.format &
-                head.schemaKey.version.model == it.schemaKey.version.model
-            )
-              acc
-            else
-              it :: acc
-        }
-      )
-      .flatTraverse(fieldFromType(resolver))
-      .map(NonAtomicFields)
+  ): EitherT[F, LoaderIgluError, NonAtomicFields] = fieldsFromTypes(resolver, types).map(NonAtomicFields.apply)
 
   /**
-   * Extract TypedFields for the `type`. It could produce multiple TypedFields for the same
-   * `type`.schema. If output is longer than one item, it means that user created a broken
-   * migration. Broken migration constitutes a illegal type casting and defined in schema-dll
-   * package accessed by `mergeSchema`.
+   * Extract TypedFields for the types of the same family in event. It could produce multiple
+   * TypedFields. If output is longer than one item, it means that user created a broken migration.
+   * Broken migration constitutes a illegal type casting and defined in schema-dll package accessed
+   * by `mergeSchema`.
    *
    * For example, changing field type from integer to string between 1-0-0 and 1-0-1 versions. That
    * example, would produce two Fields (in pseudocode):
@@ -77,56 +57,75 @@ object NonAtomicFieldsProvider {
    *
    * Where 9999999 is standard scala (murmur2) hash of the field type.
    *
-   * @param `type`
-   *   consists of schema key and entity(one of unstuct/contexts)
+   * @param types
+   *   All schema key and entity(one of unstuct/contexts) in event for the same family
    * @param schemas
    *   List of schemas with the same vendor/name/format/model as the one provided in `type`
    * @return
    *   TypedFields, which contains fields for casting, and schema key list for matching
    */
-  private def extractEndSchemas(`type`: WideRow.Type)(schemas: List[SchemaWithKey]): List[TypedField] = {
+  private def extractEndSchemas(types: Set[WideRow.Type])(schemas: NonEmptyList[SchemaWithKey]): List[TypedField] = {
 
-    // schema keys must be preserved after Field transformation. Keys would be used for filtering, and fields for
-    // casting.
-    case class FieldWithKey(schemaKey: SchemaKey, field: Field)
+    val schemasSorted = schemas.sorted
 
     // Schemas need to be ordered by key to merge in correct order.
-    schemas.sorted
-      // Create fields, since the schema-ddl's `isSchemaMigrationBreaking` is operating on the `Field` rather then
-      // schemas. Schema keys must be preserved to filter out the Event schemas later.
-      .map(schemaWithKey => FieldWithKey(schemaWithKey.schemaKey, fieldFromSchema(`type`)(schemaWithKey.schema)))
+    schemasSorted
+      // `types` are all of the same family, so it does not matter which element is passed to fieldFromSchema
+      .map(schemaWithKey => TypedField(fieldFromSchema(types.head)(schemaWithKey.schema), types.head, Set(schemaWithKey.schemaKey)))
       // Accumulating vector would contain base column as first element and broken migrations in others
-      .foldLeft(Vector.empty[TypedField])((endFields, fieldWithKey) =>
+      .foldLeft(Vector.empty[TypedField])((endFields, typedField) =>
         endFields.headOption match {
           case Some(rootField) =>
-            mergeSchemas(rootField.field, fieldWithKey.field) match {
+            mergeSchemas(rootField.field, typedField.field) match {
               // Failed merge Left contains the reason, which could be discarded
               case Left(_) =>
-                val hash = abs(fieldWithKey.field.hashCode())
-                val recoverPoint = fieldWithKey.schemaKey.version.asString.replaceAll("-", "_")
-                val newName = s"${fieldWithKey.field.name}_recovered_${recoverPoint}_$hash"
+                val hash = abs(typedField.field.hashCode())
+                // typedField always has a single element in matchingKeys
+                val recoverPoint = typedField.matchingKeys.head.version.asString.replaceAll("-", "_")
+                val newName = s"${typedField.field.name}_recovered_${recoverPoint}_$hash"
                 // broken migrations go to the end of Vector
-                endFields :+ TypedField(fieldWithKey.field.copy(name = newName), `type`, Set(fieldWithKey.schemaKey))
+                if (types.map(_.schemaKey).contains(typedField.matchingKeys.head))
+                  endFields :+ typedField.copy(field = typedField.field.copy(name = newName))
+                else
+                  // do not create a recovered column if that type were not in the event
+                  endFields
               case Right(mergedField) =>
                 // keep on updating first element (base schema) in the vector with the merged schemas
-                endFields.updated(0, TypedField(mergedField, `type`, rootField.matchingKeys + fieldWithKey.schemaKey))
+                endFields.updated(0, TypedField(mergedField, types.max, rootField.matchingKeys ++ typedField.matchingKeys))
             }
-          case None => Vector(TypedField(fieldWithKey.field, `type`, Set(fieldWithKey.schemaKey)))
+          case None => Vector(typedField)
         }
       )
       .toList
   }
 
-  def fieldFromType[F[_]: Clock: Monad: RegistryLookup](
-    resolver: Resolver[F]
-  )(
-    `type`: WideRow.Type
+  def fieldsFromTypes[F[_]: Clock: Monad: RegistryLookup](
+    resolver: Resolver[F],
+    types: List[WideRow.Type]
   ): EitherT[F, LoaderIgluError, List[TypedField]] =
-    SchemaProvider
-      .fetchSchemasWithSameModel[F](resolver, `type`.schemaKey)
-      // Preserve the historic behaviour by dropping the schemas newer then max in this batch
-      .map(listOfSchemas => listOfSchemas.filter(_.schemaKey <= `type`.schemaKey))
-      .map(extractEndSchemas(`type`))
+    types
+      .groupBy(it => (it.snowplowEntity, it.schemaKey.vendor, it.schemaKey.name, it.schemaKey.format, it.schemaKey.version.model))
+      .toList
+      .sortBy { case (_, vals) => vals.head }
+      .map(_._2.toSet)
+      .flatTraverse(typeSet =>
+        SchemaProvider
+          .fetchSchemasWithSameModel[F](resolver, typeSet.max.schemaKey)
+          // Preserve the historic behaviour by dropping the schemas newer then max in this batch
+          .map(listOfSchemas => listOfSchemas.filter(_.schemaKey <= typeSet.max.schemaKey))
+          .flatMap(schemaList =>
+            EitherT
+              .fromOption[F][LoaderIgluError, NonEmptyList[SchemaWithKey]](
+                NonEmptyList.fromList(schemaList),
+                FailureDetails.LoaderIgluError.InvalidSchema(
+                  typeSet.max.schemaKey,
+                  "Iglu list did not return the schemaKey that was requested. Possible reason would be multiple iglu" +
+                    " servers in resolver with the same schema family."
+                )
+              )
+              .map(extractEndSchemas(typeSet))
+          )
+      )
 
   private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Field = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)

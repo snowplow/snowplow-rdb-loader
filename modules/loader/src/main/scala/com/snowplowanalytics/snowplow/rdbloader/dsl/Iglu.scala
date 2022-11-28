@@ -39,7 +39,7 @@ trait Iglu[F[_]] { self =>
     model: Int
   ): F[Either[LoaderError, SchemaList]]
 
-  def fieldNameFromType(`type`: WideRow.Type): EitherT[F, LoaderIgluError, List[String]]
+  def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[F, LoaderIgluError, List[String]]
 
   def mapK[G[_]](arrow: F ~> G): Iglu[G] = new Iglu[G] {
 
@@ -50,8 +50,8 @@ trait Iglu[F[_]] { self =>
       model: Int
     ): G[Either[LoaderError, SchemaList]] = arrow(self.getSchemas(vendor, name, model))
 
-    override def fieldNameFromType(`type`: WideRow.Type): EitherT[G, LoaderIgluError, List[String]] =
-      self.fieldNameFromType(`type`).mapK(arrow)
+    override def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[G, LoaderIgluError, List[String]] =
+      self.fieldNamesFromTypes(types).mapK(arrow)
   }
 }
 
@@ -91,8 +91,8 @@ object Iglu {
             .value
         }
 
-        def fieldNameFromType(`type`: WideRow.Type): EitherT[F, LoaderIgluError, List[String]] =
-          NonAtomicFieldsProvider.fieldFromType(resolver)(`type`).map(_.map(_.field.name))
+        def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[F, LoaderIgluError, List[String]] =
+          NonAtomicFieldsProvider.fieldsFromTypes(resolver, types).map(_.map(_.field.name))
       }
     }
   }

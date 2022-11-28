@@ -27,15 +27,16 @@ object PureIglu {
         .sequence[Pure, Either[String, DSchemaList]]
         .map(e => e.flatten.leftMap(x => LoaderError.RuntimeError(x)))
 
-    override def fieldNameFromType(`type`: WideRow.Type): EitherT[Pure, FailureDetails.LoaderIgluError, List[String]] = {
-      val context = `type`.snowplowEntity match {
-        case SnowplowEntity.Context => "context"
-        case SnowplowEntity.SelfDescribingEvent => "unstruct"
+    override def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[Pure, FailureDetails.LoaderIgluError, List[String]] =
+      types.traverse { `type` =>
+        val context = `type`.snowplowEntity match {
+          case SnowplowEntity.Context => "context"
+          case SnowplowEntity.SelfDescribingEvent => "unstruct"
+        }
+        val k = `type`.schemaKey
+        val name = s"${context}_${k.vendor}_${k.name}_${k.version.model}"
+        EitherT.pure[Pure, FailureDetails.LoaderIgluError](name)
       }
-      val k = `type`.schemaKey
-      val name = s"${context}_${k.vendor}_${k.name}_${k.version.model}"
-      EitherT.pure[Pure, FailureDetails.LoaderIgluError](List(name))
-    }
   }
 
   private def fetch(key: SchemaKey): EitherT[Pure, String, IgluSchema] = {

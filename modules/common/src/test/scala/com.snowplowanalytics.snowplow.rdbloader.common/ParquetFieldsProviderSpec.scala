@@ -119,15 +119,15 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         ) { case (actual, expected) => actual mustEqual expected }
       }
 
-      "schema broken from 100 to 101 to 110 should generate 2 column if only 110 is seen" in {
+      "schema broken from 100 to 101 to 110 should generate 1 column if only 110 is seen" in {
         val inputTypes = List(context110)
         val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
-        result.value.size mustEqual 2
+        result.value.size mustEqual 1
         forall(
           result.value
             .map(s => (s.field, s.matchingKeys))
-            .zip(List(expectedContext100_110, expectedContext101))
+            .zip(List(expectedContext100_110))
         ) { case (actual, expected) => actual mustEqual expected }
       }
     }

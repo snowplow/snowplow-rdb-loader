@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import cats.Monad
+import cats.{Monad, Order}
 import cats.data.EitherT
 import cats.effect.Clock
 import cats.syntax.all._
@@ -19,6 +19,8 @@ object SchemaProvider {
 
   implicit val orderingSchemaWithKey: Ordering[SchemaWithKey] = Ordering.by { key: SchemaWithKey => key.schemaKey }
 
+  implicit val catsOrder: Order[SchemaWithKey] = Order.fromOrdering(Ordering[SchemaWithKey])
+
   def getSchema[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     schemaKey: SchemaKey
@@ -36,10 +38,11 @@ object SchemaProvider {
       .leftMap(resolverFetchBadRow(schemaKey.vendor, schemaKey.name, schemaKey.format, schemaKey.version.model))
       .map(_.schemas)
       .flatMap(schemaKeys =>
-        schemaKeys.traverse(schemaKey =>
-          getSchema(resolver, schemaKey)
-            .map(schema => SchemaWithKey(schemaKey, schema))
-        )
+        schemaKeys
+          .traverse(schemaKey =>
+            getSchema(resolver, schemaKey)
+              .map(schema => SchemaWithKey(schemaKey, schema))
+          )
       )
 
   private def resolverFetchBadRow(

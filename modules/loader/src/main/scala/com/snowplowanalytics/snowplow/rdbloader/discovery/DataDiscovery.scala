@@ -154,8 +154,8 @@ object DataDiscovery {
                      fileFormat match {
                        case WideRowFormat.JSON => EitherT.pure[F, LoaderError](List.empty[String])
                        case WideRowFormat.PARQUET =>
-                         types
-                           .flatTraverse(Iglu[F].fieldNameFromType)
+                         Iglu[F]
+                           .fieldNamesFromTypes(types)
                            .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
                      }
                  }
