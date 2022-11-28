@@ -22,7 +22,7 @@ import io.circe.{Json, JsonObject}
 import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
-//import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -74,13 +74,13 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
       }
     }
 
-//    "write bad rows" in {
-//      val Some((lines, _)) = readPartFile(testOutputDirs.badRows)
-//      val expected = readResourceFile(ResourceFile("/widerow/parquet/output-badrows"))
-//        .map(_.replace(VersionPlaceholder, BuildInfo.version))
-//      lines.size must beEqualTo(4)
-//      lines.toSet mustEqual (expected.toSet)
-//    }
+    "write bad rows" in {
+      val Some((lines, _)) = readPartFile(testOutputDirs.badRows)
+      val expected = readResourceFile(ResourceFile("/widerow/parquet/output-badrows"))
+        .map(_.replace(VersionPlaceholder, BuildInfo.version))
+      lines.size must beEqualTo(4)
+      lines.toSet mustEqual (expected.toSet)
+    }
 
     "have SparkConf with outputTimestampType property is set to TIMESTAMP_MICROS" in {
       Main.sparkConfig.get("spark.sql.parquet.outputTimestampType") must beEqualTo("TIMESTAMP_MICROS")

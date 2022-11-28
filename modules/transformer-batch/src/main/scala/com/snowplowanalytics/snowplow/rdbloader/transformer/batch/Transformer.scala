@@ -20,10 +20,13 @@ import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{
+  IgluSingleton,
+  ParquetBadrowsAccumulator,
+  PropertiesCacheSingleton
+}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.storage.StorageLevel
 
 // Spark
 import org.apache.spark.SparkContext
@@ -154,10 +157,14 @@ object Transformer {
     }
   }
 
+  type BadrowsFileName = String
+  type BadrowsContent = String
+  type SaveBadrows = (BadrowsFileName, BadrowsContent) => Either[Throwable, Unit]
+
   case class WideRowParquetTransformer(
     allFields: AllFields,
     schema: StructType,
-    storageLevel: Option[Int]
+    saveBadrows: SaveBadrows
   ) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
@@ -170,12 +177,17 @@ object Transformer {
           eventsCounter.add(1L)
           List(transformed)
         case Left(badRow) =>
-          List(badTransform(badRow))
+          badTransform(badRow)
+          List.empty
       }
 
-    def badTransform(badRow: BadRow): Transformed = {
-      val data = Transformed.Data.DString(badRow.compact)
-      Transformed.WideRow(false, data)
+    def badTransform(badRow: BadRow): Transformed.WideRow = {
+      val compact = badRow.compact
+      ParquetBadrowsAccumulator.addBadrow(compact, saveBadrows)
+
+      val data = Transformed.Data.DString(compact)
+      val wideRow = Transformed.WideRow(false, data)
+      wideRow
     }
 
     def typesInfo: TypesInfo =
@@ -186,18 +198,8 @@ object Transformer {
       compression: TransformerConfig.Compression,
       transformed: RDD[Transformed],
       outFolder: Folder
-    ): Unit = {
-      val transformedCached = storageLevel match {
-        case Some(1) => transformed.persist(StorageLevel.MEMORY_ONLY)
-        case Some(2) => transformed.persist(StorageLevel.MEMORY_ONLY_SER)
-        case Some(3) => transformed.persist(StorageLevel.MEMORY_AND_DISK)
-        case Some(4) => transformed.persist(StorageLevel.MEMORY_AND_DISK_SER)
-        case Some(5) => transformed.persist(StorageLevel.DISK_ONLY)
-        case _ => transformed
-      }
-      Sink.writeWideRowed(spark, compression, transformedCached.flatMap(_.wideRow), outFolder)
-      Sink.writeParquet(spark, schema, transformedCached.flatMap(_.parquet), outFolder.append("output=good"))
-    }
+    ): Unit =
+      Sink.writeParquet(spark, schema, transformed.flatMap(_.parquet), outFolder.append("output=good"))
 
     def register(sc: SparkContext): Unit = {
       sc.register(typesAccumulator)
