@@ -21,8 +21,7 @@ import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Transformer.SaveBadrows
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.ParquetBadrowsAccumulator
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{ParquetBadrowsAccumulator, SaveBadrows}
 import io.circe.Json
 
 import java.util.UUID
@@ -251,6 +250,8 @@ object ShredJob {
         putToS3(bucket, key, content)
       }
 
+      ParquetBadrowsAccumulator.init(saveBadrows)
+
       val transformer = config.formats match {
         case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
@@ -264,12 +265,12 @@ object ShredJob {
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
 
-          Transformer.WideRowParquetTransformer(allFields, schema, saveBadrows)
+          Transformer.WideRowParquetTransformer(allFields, schema)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
 
-      ParquetBadrowsAccumulator.flushPending(saveBadrows)
+      ParquetBadrowsAccumulator.flushPending()
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }
 

@@ -157,14 +157,9 @@ object Transformer {
     }
   }
 
-  type BadrowsFileName = String
-  type BadrowsContent = String
-  type SaveBadrows = (BadrowsFileName, BadrowsContent) => Either[Throwable, Unit]
-
   case class WideRowParquetTransformer(
     allFields: AllFields,
-    schema: StructType,
-    saveBadrows: SaveBadrows
+    schema: StructType
   ) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
@@ -183,7 +178,7 @@ object Transformer {
 
     def badTransform(badRow: BadRow): Transformed.WideRow = {
       val compact = badRow.compact
-      ParquetBadrowsAccumulator.addBadrow(compact, saveBadrows)
+      ParquetBadrowsAccumulator.addBadrow(compact)
 
       val data = Transformed.Data.DString(compact)
       val wideRow = Transformed.WideRow(false, data)

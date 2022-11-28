@@ -20,8 +20,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Transformer.SaveBadrows
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, ParquetBadrowsAccumulator}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, ParquetBadrowsAccumulator, SaveBadrows}
 
 import java.io.{BufferedWriter, File, FileWriter, IOException, PrintWriter}
 import java.util.Base64
@@ -511,6 +510,8 @@ trait ShredJobSpec extends SparkSpec {
           }
         }
 
+        ParquetBadrowsAccumulator.init(saveBadrows)
+
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
@@ -522,11 +523,12 @@ trait ShredJobSpec extends SparkSpec {
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
 
-            Transformer.WideRowParquetTransformer(allFields, schema, saveBadrows)
+            Transformer.WideRowParquetTransformer(allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
-        ParquetBadrowsAccumulator.flushPending(saveBadrows)
+
+        ParquetBadrowsAccumulator.flushPending()
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>

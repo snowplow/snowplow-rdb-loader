@@ -28,7 +28,6 @@ import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Transformer.SaveBadrows
 
 import java.util.UUID
 import scala.collection.mutable
@@ -114,30 +113,40 @@ object singleton {
     }
   }
 
+  type BadrowsFileName = String
+  type BadrowsContent = String
+  type SaveBadrows = (BadrowsFileName, BadrowsContent) => Either[Throwable, Unit]
+
   object ParquetBadrowsAccumulator {
-    private val uuid = UUID.randomUUID().toString
+    private var saveBadrows: SaveBadrows = _
+    private var uuid: String = _
     private val maxPerFile = 1000
 
     @volatile private var fileCounter: Long = 0L
     private val badrows: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-    def addBadrow(badRow: String, saveBadrows: SaveBadrows): Unit =
+    def init(saveBadrows: SaveBadrows): Unit = {
+      this.saveBadrows = saveBadrows
+      this.uuid = UUID.randomUUID().toString
+    }
+
+    def addBadrow(badRow: String): Unit =
       synchronized {
         if (badrows.size >= maxPerFile) {
-          flush(saveBadrows)
+          flush()
         }
         badrows += badRow
         ()
       }
 
-    def flushPending(saveBadrows: SaveBadrows): Unit =
+    def flushPending(): Unit =
       synchronized {
         if (badrows.nonEmpty) {
-          flush(saveBadrows)
+          flush()
         }
       }
 
-    private def flush(saveBadrows: SaveBadrows): Unit = {
+    private def flush(): Unit = {
       val content = badrows.mkString("\n")
       saveBadrows(s"part-$fileCounter-$uuid", content)
       fileCounter += 1
