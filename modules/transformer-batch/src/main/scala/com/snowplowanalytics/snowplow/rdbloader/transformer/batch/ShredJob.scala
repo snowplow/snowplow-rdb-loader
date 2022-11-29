@@ -19,9 +19,9 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{ParquetBadrowsAccumulator, SaveBadrows}
 import io.circe.Json
 
 import java.util.UUID
@@ -242,16 +242,6 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
 
-      val outFolder: BlobStorage.Folder =
-        BlobStorage.Folder.coerce(config.output.path.toString).append(folder.folderName).append("output=bad")
-
-      val saveBadrows: SaveBadrows = (fileName, content) => {
-        val (bucket, key) = BlobStorage.splitKey(outFolder.withKey(fileName))
-        putToS3(bucket, key, content)
-      }
-
-      ParquetBadrowsAccumulator.init(saveBadrows)
-
       val transformer = config.formats match {
         case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
@@ -270,7 +260,16 @@ object ShredJob {
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
 
-      ParquetBadrowsAccumulator.flushPending()
+      config.formats match {
+        case Formats.WideRow.PARQUET =>
+          val outFolder: BlobStorage.Folder =
+            BlobStorage.Folder.coerce(config.output.path.toString).append(folder.folderName).append("output=bad")
+          val (bucket, key) = BlobStorage.splitKey(outFolder.withKey(s"part-0-${UUID.randomUUID().toString}"))
+          val badrowsContent = transformer.badRows.mkString("\n")
+          putToS3(bucket, key, badrowsContent)
+        case _ => () // do nothing for non-parquet
+      }
+
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }
 

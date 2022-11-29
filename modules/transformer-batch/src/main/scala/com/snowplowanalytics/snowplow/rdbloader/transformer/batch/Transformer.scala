@@ -20,11 +20,7 @@ import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{
-  IgluSingleton,
-  ParquetBadrowsAccumulator,
-  PropertiesCacheSingleton
-}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
@@ -54,6 +50,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
 sealed trait Transformer[T] extends Product with Serializable {
   def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed]
   def badTransform(badRow: BadRow): Transformed
+  def badRows: List[String] = List.empty
   def typesAccumulator: TypesAccumulator[T]
   def timestampsAccumulator: TimestampsAccumulator
   def typesInfo: TypesInfo
@@ -163,6 +160,7 @@ object Transformer {
   ) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
+    val badrowsAccumulator: BadrowsAccumulator = new BadrowsAccumulator
 
     def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
       ParquetTransformer.transform(event, allFields, ShredJob.BadRowsProcessor) match {
@@ -177,13 +175,14 @@ object Transformer {
       }
 
     def badTransform(badRow: BadRow): Transformed.WideRow = {
-      val compact = badRow.compact
-      ParquetBadrowsAccumulator.addBadrow(compact)
-
-      val data = Transformed.Data.DString(compact)
+      val compactBadrow = badRow.compact
+      badrowsAccumulator.add(compactBadrow)
+      val data = Transformed.Data.DString(compactBadrow)
       val wideRow = Transformed.WideRow(false, data)
       wideRow
     }
+
+    override def badRows: List[String] = badrowsAccumulator.value.toList
 
     def typesInfo: TypesInfo =
       TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, typesAccumulator.value.toList)
@@ -199,6 +198,7 @@ object Transformer {
     def register(sc: SparkContext): Unit = {
       sc.register(typesAccumulator)
       sc.register(timestampsAccumulator)
+      sc.register(badrowsAccumulator)
     }
   }
 

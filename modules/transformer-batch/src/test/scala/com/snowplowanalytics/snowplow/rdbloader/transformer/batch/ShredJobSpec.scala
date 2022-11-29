@@ -20,10 +20,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, ParquetBadrowsAccumulator, SaveBadrows}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
 
 import java.io.{BufferedWriter, File, FileWriter, IOException, PrintWriter}
-import java.util.Base64
+import java.util.{Base64, UUID}
 import java.net.URI
 import scala.collection.JavaConverters._
 import scala.io.Source
@@ -497,21 +497,6 @@ trait ShredJobSpec extends SparkSpec {
           .parseConfig(cli.igluConfig)
           .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
 
-        val outFolder: File = new File(BlobStorage.Folder.coerce(cli.config.output.path.getPath).append("output=bad"))
-        outFolder.mkdirs()
-
-        val saveBadrows: SaveBadrows = (fileName, content) => {
-          val file = new File(outFolder, fileName)
-          val bw = new PrintWriter(file)
-
-          Either.catchNonFatal {
-            bw.write(content)
-            bw.close()
-          }
-        }
-
-        ParquetBadrowsAccumulator.init(saveBadrows)
-
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
@@ -528,7 +513,19 @@ trait ShredJobSpec extends SparkSpec {
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
 
-        ParquetBadrowsAccumulator.flushPending()
+        cli.config.formats match {
+          case TransformerConfig.Formats.WideRow.PARQUET =>
+            val outFolder: File = new File(BlobStorage.Folder.coerce(cli.config.output.path.getPath).append("output=bad"))
+            outFolder.mkdirs()
+
+            val file = new File(outFolder, s"part-0-${UUID.randomUUID().toString}")
+            val writer = new PrintWriter(file)
+            val badrowsContent = transformer.badRows.mkString("\n")
+
+            writer.write(badrowsContent)
+            writer.close()
+          case _ => ()
+        }
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>

@@ -29,9 +29,6 @@ import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsMani
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
 
-import java.util.UUID
-import scala.collection.mutable
-
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
 
@@ -110,47 +107,6 @@ object singleton {
         }
       }
       instance
-    }
-  }
-
-  type BadrowsFileName = String
-  type BadrowsContent = String
-  type SaveBadrows = (BadrowsFileName, BadrowsContent) => Either[Throwable, Unit]
-
-  object ParquetBadrowsAccumulator {
-    private var saveBadrows: SaveBadrows = _
-    private var uuid: String = _
-    private val maxPerFile = 1000
-
-    @volatile private var fileCounter: Long = 0L
-    private val badrows: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-
-    def init(saveBadrows: SaveBadrows): Unit = {
-      this.saveBadrows = saveBadrows
-      this.uuid = UUID.randomUUID().toString
-    }
-
-    def addBadrow(badRow: String): Unit =
-      synchronized {
-        if (badrows.size >= maxPerFile) {
-          flush()
-        }
-        badrows += badRow
-        ()
-      }
-
-    def flushPending(): Unit =
-      synchronized {
-        if (badrows.nonEmpty) {
-          flush()
-        }
-      }
-
-    private def flush(): Unit = {
-      val content = badrows.mkString("\n")
-      saveBadrows(s"part-$fileCounter-$uuid", content)
-      fileCounter += 1
-      badrows.clear()
     }
   }
 }
