@@ -18,7 +18,7 @@ import cats.effect.{IO, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureDAO, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
@@ -60,7 +60,16 @@ class FolderMonitoringSpec extends Specification {
       )
 
       val (state, result) =
-        FolderMonitoring.check[Pure, Pure, Unit](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds, ()).run
+        FolderMonitoring
+          .check[Pure, Pure, Unit](
+            loadFrom,
+            exampleReadyCheckConfig,
+            exampleDatabricks,
+            LoadAuthMethod.NoCreds,
+            (),
+            Target.defaultPrepareAlertTable
+          )
+          .run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
@@ -101,7 +110,16 @@ class FolderMonitoringSpec extends Specification {
       )
 
       val (state, result) =
-        FolderMonitoring.check[Pure, Pure, Unit](loadFrom, exampleReadyCheckConfig, exampleDatabricks, LoadAuthMethod.NoCreds, ()).run
+        FolderMonitoring
+          .check[Pure, Pure, Unit](
+            loadFrom,
+            exampleReadyCheckConfig,
+            exampleDatabricks,
+            LoadAuthMethod.NoCreds,
+            (),
+            Target.defaultPrepareAlertTable
+          )
+          .run
 
       state must beEqualTo(expectedState)
       result must beRight.like {
