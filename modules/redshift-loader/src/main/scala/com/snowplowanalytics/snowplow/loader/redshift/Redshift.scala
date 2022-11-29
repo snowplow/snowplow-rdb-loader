@@ -119,12 +119,9 @@ object Redshift {
               case Statement.Select1 => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
 
-              case Statement.CreateAlertingTempTable =>
+              case Statement.CreateOrReplaceAlertingTempTable =>
                 val frTableName = Fragment.const(AlertingTempTableName)
-                sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
-              case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(AlertingTempTableName)
-                sql"DROP TABLE IF EXISTS $frTableName"
+                sql"DROP TABLE IF EXISTS $frTableName; CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR(512) )"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frManifest = Fragment.const(s"${schema}.manifest")

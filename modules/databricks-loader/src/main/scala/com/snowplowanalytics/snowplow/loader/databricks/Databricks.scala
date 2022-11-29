@@ -93,13 +93,10 @@ object Databricks {
               case Statement.Select1 => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
 
-              case Statement.CreateAlertingTempTable =>
+              case Statement.CreateOrReplaceAlertingTempTable =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 // It is not possible to create temp table in Databricks
-                sql"CREATE TABLE IF NOT EXISTS $frTableName ( run_id VARCHAR(512) )"
-              case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                sql"DROP TABLE IF EXISTS $frTableName"
+                sql"CREATE OR REPLACE TABLE $frTableName ( run_id VARCHAR(512) )"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))

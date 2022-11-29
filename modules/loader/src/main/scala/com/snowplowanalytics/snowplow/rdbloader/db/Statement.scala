@@ -48,8 +48,7 @@ object Statement {
   case object ReadyCheck extends Statement
 
   // Alerting
-  case object CreateAlertingTempTable extends Statement
-  case object DropAlertingTempTable extends Statement
+  case object CreateOrReplaceAlertingTempTable extends Statement
   case object FoldersMinusManifest extends Statement
   case class FoldersCopy[T](
     source: BlobStorage.Folder,

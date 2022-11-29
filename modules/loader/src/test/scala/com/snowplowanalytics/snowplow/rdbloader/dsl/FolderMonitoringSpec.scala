@@ -41,8 +41,7 @@ class FolderMonitoringSpec extends Specification {
           PureTransaction.CommitMessage,
           TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
           TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
-          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+          TestState.LogEntry.Sql(Statement.CreateOrReplaceAlertingTempTable),
           PureTransaction.StartMessage,
           TestState.LogEntry.Sql(Statement.ReadyCheck),
           PureTransaction.NoTransactionMessage
@@ -82,8 +81,7 @@ class FolderMonitoringSpec extends Specification {
           PureTransaction.CommitMessage,
           TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
           TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
-          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+          TestState.LogEntry.Sql(Statement.CreateOrReplaceAlertingTempTable),
           PureTransaction.StartMessage,
           TestState.LogEntry.Sql(Statement.ReadyCheck),
           PureTransaction.NoTransactionMessage

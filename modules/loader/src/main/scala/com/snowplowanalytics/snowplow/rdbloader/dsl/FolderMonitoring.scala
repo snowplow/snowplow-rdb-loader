@@ -182,8 +182,7 @@ object FolderMonitoring {
     initQueryResult: I
   ): F[List[AlertPayload]] = {
     val getBatches = for {
-      _ <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
-      _ <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
+      _ <- DAO[C].executeUpdate(CreateOrReplaceAlertingTempTable, DAO.Purpose.NonLoading)
       _ <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod, initQueryResult), DAO.Purpose.NonLoading)
       onlyS3Batches <- DAO[C].executeQueryList[BlobStorage.Folder](FoldersMinusManifest)
     } yield onlyS3Batches

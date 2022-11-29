@@ -129,12 +129,9 @@ object Snowflake {
               case Statement.Select1 => sql"SELECT 1" // OK
               case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(tgt.warehouse)} RESUME IF SUSPENDED"
 
-              case Statement.CreateAlertingTempTable => // OK
+              case Statement.CreateOrReplaceAlertingTempTable => // OK
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                sql"CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR )"
-              case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                sql"DROP TABLE IF EXISTS $frTableName"
+                sql"DROP TABLE IF EXISTS $frTableName; CREATE TEMPORARY TABLE $frTableName ( run_id VARCHAR )"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
