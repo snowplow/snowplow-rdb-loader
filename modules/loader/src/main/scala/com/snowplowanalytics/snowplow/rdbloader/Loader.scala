@@ -83,7 +83,14 @@ object Loader {
   ): F[Unit] = {
     val folderMonitoring: Stream[F, Unit] = for {
       initQueryResult <- initQuery[F, C, I](target)
-      _ <- FolderMonitoring.run[F, C, I](config.monitoring.folders, config.readyCheck, config.storage, control.isBusy, initQueryResult)
+      _ <- FolderMonitoring.run[F, C, I](
+             config.monitoring.folders,
+             config.readyCheck,
+             config.storage,
+             control.isBusy,
+             initQueryResult,
+             target.prepareAlertTable
+           )
     } yield ()
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))

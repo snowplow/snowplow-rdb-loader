@@ -88,6 +88,13 @@ object Databricks {
               Fragment.const0(DatabricksEventsTable.statement(qualify(EventsTable.MainName)))
             )
 
+          /**
+           * Overrides the default by omitting the `DROP TABLE` step and instead use `CREATE OR
+           * REPLACE`
+           */
+          override def prepareAlertTable: List[Statement] =
+            List(Statement.CreateAlertingTempTable)
+
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1"
@@ -96,10 +103,9 @@ object Databricks {
               case Statement.CreateAlertingTempTable =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 // It is not possible to create temp table in Databricks
-                sql"CREATE TABLE IF NOT EXISTS $frTableName ( run_id VARCHAR(512) )"
+                sql"CREATE OR REPLACE TABLE $frTableName ( run_id VARCHAR(512) )"
               case Statement.DropAlertingTempTable =>
-                val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                sql"DROP TABLE IF EXISTS $frTableName"
+                throw new IllegalStateException("Databricks Loader does not use DropAlertingTempTable statement")
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))

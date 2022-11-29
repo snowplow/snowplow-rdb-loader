@@ -27,6 +27,7 @@ import fs2.Stream
 import fs2.text.utf8Encode
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
@@ -171,6 +172,8 @@ object FolderMonitoring {
    *   auth method used for load operation
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
+   * @param prepareAlertTable
+   *   statements to prepare the alert table ready for the folder monitoring task
    * @return
    *   potentially empty list of alerts
    */
@@ -179,11 +182,11 @@ object FolderMonitoring {
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
     loadAuthMethod: LoadAuthMethod,
-    initQueryResult: I
+    initQueryResult: I,
+    prepareAlertTable: List[Statement]
   ): F[List[AlertPayload]] = {
     val getBatches = for {
-      _ <- DAO[C].executeUpdate(DropAlertingTempTable, DAO.Purpose.NonLoading)
-      _ <- DAO[C].executeUpdate(CreateAlertingTempTable, DAO.Purpose.NonLoading)
+      _ <- prepareAlertTable.traverse(st => DAO[C].executeUpdate(st, DAO.Purpose.NonLoading))
       _ <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod, initQueryResult), DAO.Purpose.NonLoading)
       onlyS3Batches <- DAO[C].executeQueryList[BlobStorage.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
@@ -230,11 +233,12 @@ object FolderMonitoring {
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
-    initQueryResult: I
+    initQueryResult: I,
+    prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, readyCheck, storageTarget, isBusy, initQueryResult)
+        stream[F, C, I](folders, readyCheck, storageTarget, isBusy, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -254,6 +258,8 @@ object FolderMonitoring {
    *   discrete stream signalling when folders monitoring should not work
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
+   * @param prepareAlertTable
+   *   statements to prepare the alert table ready for the folder monitoring task
    */
   def stream[
     F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
@@ -264,7 +270,8 @@ object FolderMonitoring {
     readyCheck: Config.Retries,
     storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
-    initQueryResult: I
+    initQueryResult: I,
+    prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     Stream.eval((Semaphore[F](1), Ref.of(0)).tupled).flatMap { case (lock, failed) =>
       getOutputKeys[F](folders)
@@ -277,7 +284,7 @@ object FolderMonitoring {
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
                       loadAuth <- LoadAuthService[F].getLoadAuthMethod(storageTarget.foldersLoadAuthMethod)
-                      alerts <- check[F, C, I](outputFolder, readyCheck, storageTarget, loadAuth, initQueryResult)
+                      alerts <- check[F, C, I](outputFolder, readyCheck, storageTarget, loadAuth, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")

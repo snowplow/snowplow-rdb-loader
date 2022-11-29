@@ -73,6 +73,21 @@ trait Target[I] {
    */
   def extendTable(info: ShreddedType.Info): Option[Block]
 
+  /**
+   * Prepare a temporary table to be used for folder monitoring
+   *
+   * The default is to drop (if exists) and re-create in two separate steps
+   */
+  def prepareAlertTable: List[Statement] =
+    Target.defaultPrepareAlertTable
+
   /** Whether the target needs to know existing columns in the events table */
   def requiresEventsColumns: Boolean
+}
+
+object Target {
+
+  def defaultPrepareAlertTable: List[Statement] =
+    List(Statement.DropAlertingTempTable, Statement.CreateAlertingTempTable)
+
 }
