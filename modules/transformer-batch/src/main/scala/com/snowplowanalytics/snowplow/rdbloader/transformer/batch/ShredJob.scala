@@ -19,7 +19,6 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
@@ -255,20 +254,10 @@ object ShredJob {
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
 
-          Transformer.WideRowParquetTransformer(allFields, schema)
+          Transformer.WideRowParquetTransformer(allFields, schema, config, folder.folderName)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
-
-      config.formats match {
-        case Formats.WideRow.PARQUET =>
-          val outFolder: BlobStorage.Folder =
-            BlobStorage.Folder.coerce(config.output.path.toString).append(folder.folderName).append("output=bad")
-          val (bucket, key) = BlobStorage.splitKey(outFolder.withKey(s"part-0-${UUID.randomUUID().toString}"))
-          val badrowsContent = transformer.badRows.mkString("\n")
-          putToS3(bucket, key, badrowsContent)
-        case _ => () // do nothing for non-parquet
-      }
 
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }

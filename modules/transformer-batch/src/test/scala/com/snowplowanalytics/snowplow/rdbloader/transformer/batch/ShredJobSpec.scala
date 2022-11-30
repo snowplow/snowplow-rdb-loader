@@ -17,13 +17,12 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 import cats.Id
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
 
-import java.io.{BufferedWriter, File, FileWriter, IOException, PrintWriter}
-import java.util.{Base64, UUID}
+import java.io.{BufferedWriter, File, FileWriter, IOException}
+import java.util.Base64
 import java.net.URI
 import scala.collection.JavaConverters._
 import scala.io.Source
@@ -470,6 +469,9 @@ trait ShredJobSpec extends SparkSpec {
     outputDirs: Option[OutputDirs] = None,
     deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
   ): LoaderMessage.ShreddingComplete = {
+
+    System.setProperty("experimental.parquet.badrows.maxPerFile", "1")
+
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication)
     val config = Array(
       "--iglu-config",
@@ -508,24 +510,11 @@ trait ShredJobSpec extends SparkSpec {
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
 
-            Transformer.WideRowParquetTransformer(allFields, schema)
+            Transformer.WideRowParquetTransformer(allFields, schema, cli.config, "")
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
 
-        cli.config.formats match {
-          case TransformerConfig.Formats.WideRow.PARQUET =>
-            val outFolder: File = new File(BlobStorage.Folder.coerce(cli.config.output.path.getPath).append("output=bad"))
-            outFolder.mkdirs()
-
-            val file = new File(outFolder, s"part-0-${UUID.randomUUID().toString}")
-            val writer = new PrintWriter(file)
-            val badrowsContent = transformer.badRows.mkString("\n")
-
-            writer.write(badrowsContent)
-            writer.close()
-          case _ => ()
-        }
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>
