@@ -193,8 +193,8 @@ object Databricks {
             }
 
           private def qualify(tableName: String): String = tgt.catalog match {
-            case Some(catalog) => s"${catalog}.${tgt.schema}.$tableName"
-            case None => s"${tgt.schema}.$tableName"
+            case Some(catalog) => s"`${catalog}`.`${tgt.schema}`.$tableName"
+            case None => s"`${tgt.schema}`.$tableName"
           }
         }
         Right(result)

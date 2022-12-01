@@ -39,7 +39,7 @@ object EventsTable {
 
   def withSchema(dbSchema: String, tableName: String): String =
     if (dbSchema.isEmpty) tableName
-    else dbSchema + "." + tableName
+    else s""""$dbSchema".$tableName"""
 
   def withSchema(dbSchema: String): String =
     withSchema(dbSchema, EventsTable.MainName)

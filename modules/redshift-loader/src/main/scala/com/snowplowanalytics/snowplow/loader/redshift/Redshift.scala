@@ -220,7 +220,7 @@ object Redshift {
                 Fragment.const0(str)
               case Statement.GetColumns(tableName) =>
                 sql"""SELECT column_name FROM information_schema.columns 
-                      WHERE table_name = $tableName and table_schema = $schema"""
+                      WHERE table_name = $tableName and table_schema = '$schema'"""
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
                 val types = message.types.asJson.noSpaces
@@ -268,7 +268,7 @@ object Redshift {
             }
 
           private def qualify(tableName: String): String =
-            s"$schema.$tableName"
+            s""""$schema".$tableName"""
         }
 
         Right(result)
@@ -311,7 +311,7 @@ object Redshift {
   /** Add `schema` to otherwise static definition of manifest table */
   private def getManifestDef(schema: String): CreateTable =
     CreateTable(
-      s"$schema.${Manifest.Name}",
+      s""""$schema".${Manifest.Name}""",
       ManifestColumns,
       Set.empty,
       Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None, NonEmptyList.one("ingestion_tstamp")))
