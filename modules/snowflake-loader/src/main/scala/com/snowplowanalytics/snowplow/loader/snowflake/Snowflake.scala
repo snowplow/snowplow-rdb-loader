@@ -229,7 +229,7 @@ object Snowflake {
                 sql"""|SELECT EXISTS (
                       |  SELECT 1
                       |  FROM   information_schema.tables
-                      |  WHERE  TABLE_SCHEMA = ${schema.toUpperCase}
+                      |  WHERE  TABLE_SCHEMA = '${schema.toUpperCase}'
                       |  AND    TABLE_NAME = ${tableName.toUpperCase})""".stripMargin
               case Statement.GetVersion(_) =>
                 throw new IllegalStateException("Snowflake Loader does not support table versioning")
@@ -282,7 +282,7 @@ object Snowflake {
             }
 
           private def qualify(tableName: String): String =
-            s"$schema.$tableName"
+            s""""$schema".$tableName"""
 
           private def columnsForCopy(columns: ColumnsToCopy): String = {
             val columnNames = columns.names.map(_.value).mkString(",")
