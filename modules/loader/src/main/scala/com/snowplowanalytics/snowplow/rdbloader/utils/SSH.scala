@@ -14,10 +14,11 @@ package com.snowplowanalytics.snowplow.rdbloader.utils
 
 import cats.Monad
 import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, Resource, Sync}
-import cats.effect.concurrent.Semaphore
+import cats.effect.concurrent.{Ref, Semaphore}
 import cats.syntax.all._
 import cats.effect.syntax.all._
 import doobie.Transactor
+import fs2.Hotswap
 import com.jcraft.jsch.{JSch, Logger => JLogger, Session}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 import org.typelevel.log4cats.Logger
@@ -45,31 +46,41 @@ object SSH {
     for {
       _ <- Resource.eval(configureLogging)
       identity <- Resource.eval(getIdentity(config))
-      session <- Resource.make(createSession(config, identity))(s => Sync[F].delay(s.disconnect()))
-      _ <- setPortForwarding(config, session)
+      hs <- Hotswap.create[F, Session]
+      ref <- Resource.eval(Ref.of[F, Option[Session]](None))
       sem <- Resource.eval(Semaphore[F](1))
-    } yield inner.copy(connect0 = a => Resource.eval(ensureTunnel(session, blocker, sem)) *> inner.connect(a))
+    } yield inner.copy(connect0 =
+      a => Resource.eval(ensureTunnel(ref, sem, hs, connectedSession(blocker, config, identity))) *> inner.connect(a)
+    )
 
   /**
-   * Ensure the SSH tunnel is connected.
+   * Ensure an SSH tunnel is connected.
    *
-   * Uses a semaphore to prevent multiple fibers trying to connect the session at the same time
+   * Uses a semaphore to prevent multiple fibers trying to connect a session at the same time
    */
   def ensureTunnel[F[_]: Sync: ContextShift](
-    session: Session,
-    blocker: Blocker,
-    sem: Semaphore[F]
+    state: Ref[F, Option[Session]],
+    sem: Semaphore[F],
+    hs: Hotswap[F, Session],
+    sessionResource: Resource[F, Session]
   ): F[Unit] =
     sem.withPermit {
-      Sync[F]
-        .delay(session.isConnected())
-        .ifM(
-          Logger[F].debug("SSH session is already connected"),
-          blocker.delay(session.connect())
-        )
-        .adaptError { case t: Throwable =>
-          new SSHException(t)
-        }
+      state.get.flatMap {
+        case Some(session) if session.isConnected =>
+          Logger[F].debug("SSH session is already connected")
+        case _ =>
+          hs.clear *>
+            Sync[F]
+              .uncancelable {
+                for {
+                  session <- hs.swap(sessionResource)
+                  _ <- state.set(Some(session))
+                } yield ()
+              }
+              .adaptError { case t: Throwable =>
+                new SSHException(t)
+              }
+      }
     }
 
   def configureLogging[F[_]: Effect]: F[Unit] =
@@ -92,6 +103,19 @@ object SSH {
       .map(_.parameterName)
       .traverse(SecretStore[F].getValue)
       .map(key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)))
+
+  def connectedSession[F[_]: Sync: ContextShift](
+    blocker: Blocker,
+    config: TunnelConfig,
+    identity: Identity
+  ): Resource[F, Session] =
+    for {
+      _ <- Resource.eval(Logger[F].info("Creating new SSH session"))
+      session <- Resource.make(createSession(config, identity))(s => Sync[F].delay(s.disconnect()))
+      _ <- setPortForwarding(config, session)
+      _ <- Resource.eval(blocker.delay(session.connect()))
+      _ <- Resource.make(Sync[F].unit)(_ => Logger[F].info("Closing SSH session"))
+    } yield session
 
   /**
    * Create a SSH session configured for the bastion host.
@@ -118,14 +142,9 @@ object SSH {
    * Start the Session listening on the local port
    */
   def setPortForwarding[F[_]: Sync](config: TunnelConfig, session: Session): Resource[F, Unit] = {
-    val acquire = Sync[F]
-      .delay {
-        session.setPortForwardingL(config.localPort, config.destination.host, config.destination.port)
-      }
-      .adaptError { case t: Throwable =>
-        new SSHException(t)
-      }
-      .void
+    val acquire = Sync[F].delay {
+      session.setPortForwardingL(config.localPort, config.destination.host, config.destination.port)
+    }.void
     val release = Sync[F].delay {
       session.delPortForwardingL(config.localPort)
     }
