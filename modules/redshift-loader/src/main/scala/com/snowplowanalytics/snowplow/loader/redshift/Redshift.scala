@@ -219,8 +219,9 @@ object Redshift {
                 val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
                 Fragment.const0(str)
               case Statement.GetColumns(tableName) =>
+                val quotedSchema = s"""'$schema'"""
                 sql"""SELECT column_name FROM information_schema.columns 
-                      WHERE table_name = $tableName and table_schema = '$schema'"""
+                      WHERE table_name = $tableName and table_schema = $quotedSchema"""
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
                 val types = message.types.asJson.noSpaces
