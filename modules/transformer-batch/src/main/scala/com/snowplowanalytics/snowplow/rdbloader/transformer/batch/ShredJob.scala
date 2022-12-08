@@ -19,10 +19,18 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
+import org.apache.hadoop.fs.Path
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.rdd.RDD
+import org.apache.spark.util.SerializableConfiguration
 
+import java.io.{BufferedWriter, OutputStreamWriter}
+import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.time.Instant
 import scala.concurrent.{Await, TimeoutException}
@@ -136,6 +144,7 @@ class ShredJob[T](
     val result: Deduplication.Result = Deduplication.sytheticDeduplication(config.deduplication, good)
 
     val syntheticDupesBroadcasted = sc.broadcast(result.duplicates)
+    val configBroadcasted = sc.broadcast(new SerializableConfiguration(spark.sparkContext.hadoopConfiguration))
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
@@ -147,8 +156,17 @@ class ShredJob[T](
       case Left(badRow) => List(transformer.badTransform(badRow))
     }
 
+    // We don't want to use Spark sink for badrows when parquet format is configured
+    // to avoid double RDD processing or be forced to use Spark caching.
+    // We can filter them out and flush explicitly using hadoop API.
+    val finalRdd: RDD[Transformed] = config.formats match {
+      case Formats.WideRow.PARQUET =>
+        leaveOnlyGoodData(transformed, folderName, configBroadcasted)
+      case _ => transformed
+    }
+
     // Final output
-    transformer.sink(spark, config.output.compression, transformed, outFolder)
+    transformer.sink(spark, config.output.compression, finalRdd, outFolder)
 
     val batchTimestamps = transformer.timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
@@ -161,6 +179,42 @@ class ShredJob[T](
       MessageProcessor,
       Some(LoaderMessage.Count(eventsCounter.value))
     )
+  }
+
+  private def leaveOnlyGoodData(
+    transformed: RDD[Transformed],
+    folderName: String,
+    hadoopConfiguration: Broadcast[SerializableConfiguration]
+  ): RDD[Transformed] =
+    transformed.mapPartitionsWithIndex { case (partitionIndex, data) =>
+      val (good, badRows) = data.partition {
+        case Transformed.WideRow(isGood, _) => isGood
+        case _ => true
+      }
+
+      val badRowsContent = badRows
+        .collect { case Transformed.WideRow(false, dString) => dString.value }
+        .mkString("\n")
+
+      if (badRowsContent.nonEmpty) {
+        flushBadrows(folderName, hadoopConfiguration, partitionIndex, badRowsContent)
+      }
+
+      // Continuing only with 'good' iterator, badrows are no longer needed in RDD as they (if exist) have been already saved to filesystem
+      good
+    }
+
+  private def flushBadrows(
+    folderName: String,
+    hadoopConfiguration: Broadcast[SerializableConfiguration],
+    partitionIndex: Int,
+    badRowsContent: String
+  ): Unit = {
+    val path = new Path(s"${config.output.path.toString}/$folderName/output=bad", s"part-$partitionIndex.txt")
+    val stream = path.getFileSystem(hadoopConfiguration.value.value).create(path, false)
+    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))
+    bufferedWriter.write(badRowsContent)
+    bufferedWriter.close()
   }
 }
 
@@ -240,7 +294,6 @@ object ShredJob {
 
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
-
       val transformer = config.formats match {
         case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
@@ -254,11 +307,10 @@ object ShredJob {
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
           val schema = SparkSchema.build(allFields)
 
-          Transformer.WideRowParquetTransformer(allFields, schema, config, folder.folderName)
+          Transformer.WideRowParquetTransformer(allFields, schema)
       }
       val job = new ShredJob(spark, transformer, config)
       val completed = job.run(folder.folderName, eventsManifest)
-
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }
 

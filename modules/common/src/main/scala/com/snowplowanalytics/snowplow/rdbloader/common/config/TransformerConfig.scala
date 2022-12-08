@@ -145,11 +145,7 @@ object TransformerConfig {
       deriveDecoder[Sentry]
   }
 
-  final case class FeatureFlags(
-    legacyMessageFormat: Boolean,
-    sparkCacheEnabled: Option[Boolean],
-    storageLevel: Option[Int]
-  )
+  final case class FeatureFlags(legacyMessageFormat: Boolean, sparkCacheEnabled: Option[Boolean])
 
   object FeatureFlags {
     implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =

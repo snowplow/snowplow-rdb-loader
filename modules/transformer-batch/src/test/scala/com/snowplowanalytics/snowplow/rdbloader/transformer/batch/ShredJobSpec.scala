@@ -441,7 +441,7 @@ object ShredJobSpec {
       Config.Monitoring(None),
       deduplication,
       Config.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false, None, None),
+      TransformerConfig.FeatureFlags(false, None),
       TransformerConfig.Validations(None)
     )
   }
@@ -469,9 +469,6 @@ trait ShredJobSpec extends SparkSpec {
     outputDirs: Option[OutputDirs] = None,
     deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
   ): LoaderMessage.ShreddingComplete = {
-
-    System.setProperty("experimental.parquet.badrows.maxPerFile", "1")
-
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication)
     val config = Array(
       "--iglu-config",
@@ -510,11 +507,10 @@ trait ShredJobSpec extends SparkSpec {
             val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
             val schema = SparkSchema.build(allFields)
 
-            Transformer.WideRowParquetTransformer(allFields, schema, cli.config, "")
+            Transformer.WideRowParquetTransformer(allFields, schema)
         }
         val job = new ShredJob(spark, transformer, cli.config)
         val result = job.run("", dedupeConfig)
-
         deleteRecursively(new File(cli.config.input))
         result
       case Left(e) =>

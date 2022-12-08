@@ -20,11 +20,7 @@ import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{
-  IgluSingleton,
-  ParquetBadrowsAccumulator,
-  PropertiesCacheSingleton
-}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
@@ -157,12 +153,7 @@ object Transformer {
     }
   }
 
-  case class WideRowParquetTransformer(
-    allFields: AllFields,
-    schema: StructType,
-    config: Config,
-    folderName: String
-  ) extends Transformer[TypesInfo.WideRow.Type] {
+  case class WideRowParquetTransformer(allFields: AllFields, schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
@@ -174,17 +165,12 @@ object Transformer {
           eventsCounter.add(1L)
           List(transformed)
         case Left(badRow) =>
-          badTransform(badRow)
-          List.empty
+          List(badTransform(badRow))
       }
 
-    def badTransform(badRow: BadRow): Transformed.WideRow = {
-      val compactBadrow = badRow.compact
-      ParquetBadrowsAccumulator.addBadrow(compactBadrow, config, folderName)
-
-      val data = Transformed.Data.DString(compactBadrow)
-      val wideRow = Transformed.WideRow(false, data)
-      wideRow
+    def badTransform(badRow: BadRow): Transformed = {
+      val data = Transformed.Data.DString(badRow.compact)
+      Transformed.WideRow(false, data)
     }
 
     def typesInfo: TypesInfo =
