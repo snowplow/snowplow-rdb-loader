@@ -42,7 +42,7 @@ object Statements {
     datatype: SnowflakeDatatype
   ) {
     def toFragment: Fragment = {
-      val frTableName = Fragment.const0(s"""""$schema".$table""")
+      val frTableName = Fragment.const0(s""""$schema".$table""")
       val frColumn = Fragment.const0(column)
       sql"ALTER TABLE $frTableName ADD COLUMN $frColumn ${datatype.toDdl}"
     }
