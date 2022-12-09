@@ -30,6 +30,7 @@ object Main {
     .setIfMissing("spark.master", "local[*]")
     .set("spark.serializer", classOf[KryoSerializer].getName)
     .set("spark.sql.parquet.outputTimestampType", "TIMESTAMP_MICROS")
+    .set("spark.sql.legacy.parquet.datetimeRebaseModeInWrite", "CORRECTED")
     .registerKryoClasses(Serialization.classesToRegister)
 
   def main(args: Array[String]): Unit =
