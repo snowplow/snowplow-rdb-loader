@@ -211,15 +211,30 @@ class ShredJob[T](
     partitionIndex: Int,
     badRowsContent: String
   ): Unit = {
-    val path = new Path(s"${config.output.path.toString}/$folderName/output=bad", s"part-$partitionIndex")
-    val outputStream = path.getFileSystem(hadoopConfiguration.value.value).create(path, false)
-    val compressedStream = config.output.compression match {
-      case Compression.None => outputStream
-      case Compression.Gzip => new GzipCodec().createOutputStream(outputStream)
+    val outputStream = config.output.compression match {
+      case Compression.None =>
+        getBadrowsFileStream(folderName, hadoopConfiguration, partitionIndex, extension = "txt")
+      case Compression.Gzip =>
+        val gzipCodec = new GzipCodec()
+        gzipCodec.setConf(hadoopConfiguration.value.value)
+        gzipCodec.createOutputStream(getBadrowsFileStream(folderName, hadoopConfiguration, partitionIndex, extension = "txt.gz"))
     }
-    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(compressedStream, StandardCharsets.UTF_8))
+
+    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
     bufferedWriter.write(badRowsContent)
     bufferedWriter.close()
+  }
+
+  private def getBadrowsFileStream(
+    folderName: String,
+    hadoopConfiguration: Broadcast[SerializableConfiguration],
+    partitionIndex: Int,
+    extension: String
+  ) = {
+    val directory = s"${config.output.path.toString}/$folderName/output=bad"
+    val fileName = s"part-$partitionIndex.$extension"
+    val path = new Path(directory, fileName)
+    path.getFileSystem(hadoopConfiguration.value.value).create(path, false)
   }
 }
 
