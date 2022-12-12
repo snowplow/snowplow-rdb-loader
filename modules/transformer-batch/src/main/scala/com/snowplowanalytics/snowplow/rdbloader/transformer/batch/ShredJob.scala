@@ -193,13 +193,7 @@ class ShredJob[T](
         case _ => true
       }
 
-      val badRowsContent = badRows
-        .collect { case Transformed.WideRow(false, dString) => dString.value }
-        .mkString("\n")
-
-      if (badRowsContent.nonEmpty) {
-        flushBadrows(folderName, hadoopConfiguration, partitionIndex, badRowsContent)
-      }
+      flushBadrows(folderName, hadoopConfiguration, partitionIndex, badRows)
 
       // Continuing only with 'good' iterator, badrows are no longer needed in RDD as they (if exist) have been already saved to filesystem
       good
@@ -209,7 +203,7 @@ class ShredJob[T](
     folderName: String,
     hadoopConfiguration: Broadcast[SerializableConfiguration],
     partitionIndex: Int,
-    badRowsContent: String
+    badRows: Iterator[Transformed]
   ): Unit = {
     val outputStream = config.output.compression match {
       case Compression.None =>
@@ -220,9 +214,16 @@ class ShredJob[T](
         gzipCodec.createOutputStream(getBadrowsFileStream(folderName, hadoopConfiguration, partitionIndex, extension = "txt.gz"))
     }
 
-    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
-    bufferedWriter.write(badRowsContent)
-    bufferedWriter.close()
+    val writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
+
+    badRows
+      .collect { case Transformed.WideRow(false, dString) => dString.value }
+      .foreach { badRow =>
+        writer.write(badRow)
+        writer.newLine()
+      }
+
+    writer.close()
   }
 
   private def getBadrowsFileStream(
