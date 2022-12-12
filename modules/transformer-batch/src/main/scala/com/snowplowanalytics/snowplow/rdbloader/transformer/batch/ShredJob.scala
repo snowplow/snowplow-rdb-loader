@@ -19,12 +19,13 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Compression, Formats}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
 import org.apache.hadoop.fs.Path
+import org.apache.hadoop.io.compress.GzipCodec
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SerializableConfiguration
@@ -210,9 +211,13 @@ class ShredJob[T](
     partitionIndex: Int,
     badRowsContent: String
   ): Unit = {
-    val path = new Path(s"${config.output.path.toString}/$folderName/output=bad", s"part-$partitionIndex.txt")
-    val stream = path.getFileSystem(hadoopConfiguration.value.value).create(path, false)
-    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(stream, StandardCharsets.UTF_8))
+    val path = new Path(s"${config.output.path.toString}/$folderName/output=bad", s"part-$partitionIndex")
+    val outputStream = path.getFileSystem(hadoopConfiguration.value.value).create(path, false)
+    val compressedStream = config.output.compression match {
+      case Compression.None => outputStream
+      case Compression.Gzip => new GzipCodec().createOutputStream(outputStream)
+    }
+    val bufferedWriter: BufferedWriter = new BufferedWriter(new OutputStreamWriter(compressedStream, StandardCharsets.UTF_8))
     bufferedWriter.write(badRowsContent)
     bufferedWriter.close()
   }
