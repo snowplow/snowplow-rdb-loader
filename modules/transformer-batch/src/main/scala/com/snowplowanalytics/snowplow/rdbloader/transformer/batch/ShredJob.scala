@@ -24,13 +24,13 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transforme
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
-import org.apache.hadoop.fs.Path
+import org.apache.hadoop.fs.{FSDataOutputStream, Path}
 import org.apache.hadoop.io.compress.GzipCodec
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SerializableConfiguration
 
-import java.io.{BufferedWriter, OutputStreamWriter}
+import java.io.{BufferedWriter, OutputStream, OutputStreamWriter}
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.time.Instant
@@ -187,35 +187,37 @@ class ShredJob[T](
     folderName: String,
     hadoopConfiguration: Broadcast[SerializableConfiguration]
   ): RDD[Transformed] =
-    transformed.mapPartitionsWithIndex { case (partitionIndex, data) =>
-      val (good, badRows) = data.partition {
-        case Transformed.WideRow(isGood, _) => isGood
-        case _ => true
-      }
+    transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
+      val (good, badRows) = extractBadRowsFromPartition(partitionData)
 
-      flushBadrows(folderName, hadoopConfiguration, partitionIndex, badRows)
+      if (badRows.hasNext) {
+        handleBadrowsFromPartition(folderName, hadoopConfiguration, partitionIndex, badRows)
+      }
 
       // Continuing only with 'good' iterator, badrows are no longer needed in RDD as they (if exist) have been already saved to filesystem
       good
     }
 
-  private def flushBadrows(
+  private def extractBadRowsFromPartition(data: Iterator[Transformed]): (Iterator[Transformed], Iterator[Transformed]) =
+    data.partition {
+      case Transformed.WideRow(isGood, _) => isGood
+      case _ => true
+    }
+
+  private def handleBadrowsFromPartition(
     folderName: String,
     hadoopConfiguration: Broadcast[SerializableConfiguration],
     partitionIndex: Int,
     badRows: Iterator[Transformed]
   ): Unit = {
-    val outputStream = config.output.compression match {
-      case Compression.None =>
-        getBadrowsFileStream(folderName, hadoopConfiguration, partitionIndex, extension = "txt")
-      case Compression.Gzip =>
-        val gzipCodec = new GzipCodec()
-        gzipCodec.setConf(hadoopConfiguration.value.value)
-        gzipCodec.createOutputStream(getBadrowsFileStream(folderName, hadoopConfiguration, partitionIndex, extension = "txt.gz"))
-    }
-
+    val outputStream = createOutputStream(folderName, hadoopConfiguration, partitionIndex)
     val writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
 
+    flushBadrowsToFile(badRows, writer)
+    writer.close()
+  }
+
+  private def flushBadrowsToFile(badRows: Iterator[Transformed], writer: BufferedWriter): Unit =
     badRows
       .collect { case Transformed.WideRow(false, dString) => dString.value }
       .foreach { badRow =>
@@ -223,15 +225,26 @@ class ShredJob[T](
         writer.newLine()
       }
 
-    writer.close()
-  }
+  private def createOutputStream(
+    folderName: String,
+    hadoopConfiguration: Broadcast[SerializableConfiguration],
+    partitionIndex: Int
+  ): OutputStream =
+    config.output.compression match {
+      case Compression.None =>
+        openFile(folderName, hadoopConfiguration, partitionIndex, extension = "txt")
+      case Compression.Gzip =>
+        val gzipCodec = new GzipCodec()
+        gzipCodec.setConf(hadoopConfiguration.value.value)
+        gzipCodec.createOutputStream(openFile(folderName, hadoopConfiguration, partitionIndex, extension = "txt.gz"))
+    }
 
-  private def getBadrowsFileStream(
+  private def openFile(
     folderName: String,
     hadoopConfiguration: Broadcast[SerializableConfiguration],
     partitionIndex: Int,
     extension: String
-  ) = {
+  ): FSDataOutputStream = {
     val directory = s"${config.output.path.toString}/$folderName/output=bad"
     val fileName = s"part-$partitionIndex.$extension"
     val path = new Path(directory, fileName)
