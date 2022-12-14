@@ -181,13 +181,8 @@ object Transformer {
       compression: TransformerConfig.Compression,
       transformed: RDD[Transformed],
       outFolder: Folder
-    ): Unit = {
-      // If it is not cached, events will be processed two times since
-      // data is output in both wide row json and parquet format.
-      val transformedCache = transformed.cache()
-      Sink.writeWideRowed(spark, compression, transformedCache.flatMap(_.wideRow), outFolder)
-      Sink.writeParquet(spark, schema, transformedCache.flatMap(_.parquet), outFolder.append("output=good"))
-    }
+    ): Unit =
+      Sink.writeParquet(spark, schema, transformed.flatMap(_.parquet), outFolder.append("output=good"))
 
     def register(sc: SparkContext): Unit = {
       sc.register(typesAccumulator)
