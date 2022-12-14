@@ -19,9 +19,13 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import io.circe.Json
+import org.apache.spark.rdd.RDD
+import org.apache.spark.util.SerializableConfiguration
 
 import java.util.UUID
 import java.time.Instant
@@ -136,6 +140,7 @@ class ShredJob[T](
     val result: Deduplication.Result = Deduplication.sytheticDeduplication(config.deduplication, good)
 
     val syntheticDupesBroadcasted = sc.broadcast(result.duplicates)
+    val hadoopConfigBroadcasted = sc.broadcast(new SerializableConfiguration(spark.sparkContext.hadoopConfiguration))
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
@@ -147,8 +152,26 @@ class ShredJob[T](
       case Left(badRow) => List(transformer.badTransform(badRow))
     }
 
+    // We don't want to use Spark sink for bad data when parquet format is configured, as it requires either:
+    // - using Spark cache OR
+    // - processing whole dataset twice
+    // Both options could affect performance, therefore we filter badrows out of Spark RDD for each partition (leaving only good data) and persist them 'manually'.
+    val readyToSinkRDD: RDD[Transformed] = config.formats match {
+      case Formats.WideRow.PARQUET =>
+        transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
+          PartitionDataFilter.extractGoodAndPersistBad(
+            partitionData,
+            partitionIndex,
+            folderName,
+            hadoopConfigBroadcasted.value.value,
+            config.output
+          )
+        }
+      case _ => transformed
+    }
+
     // Final output
-    transformer.sink(spark, config.output.compression, transformed, outFolder)
+    transformer.sink(spark, config.output.compression, readyToSinkRDD, outFolder)
 
     val batchTimestamps = transformer.timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
