@@ -72,6 +72,9 @@ object Monitoring {
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
+  /** Restrict the length of an alert message to be compliant with alert iglu schema */
+  private val MaxAlertPayloadLength = 4096
+
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 0))
@@ -214,13 +217,14 @@ object Monitoring {
       def periodicMetrics: Metrics.PeriodicMetrics[F] = pm
 
       def alert(payload: AlertPayload): F[Unit] = {
-        val webhookRequest = viaWebhook[AlertPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
+        val trimmedPayload = payload.copy(message = payload.message.take(MaxAlertPayloadLength))
+        val webhookRequest = viaWebhook[AlertPayload](trimmedPayload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
           case None => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
         }
 
         val snowplowRequest = tracker match {
-          case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(payload))
+          case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(trimmedPayload))
           case None => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
         }
 

@@ -53,9 +53,6 @@ object Loader {
   /** How often Loader should print its internal state */
   private val StateLoggingFrequency: FiniteDuration = 5.minutes
 
-  /** Restrict the length of an alert message to be compliant with alert iglu schema */
-  private val MaxAlertPayloadLength = 4096
-
   /**
    * Primary application's entry-point, responsible for launching all processes (such as discovery,
    * loading, monitoring etc), managing global state and handling failures
@@ -275,8 +272,7 @@ object Loader {
     error: Throwable
   ): F[Unit] = {
     val message = getErrorMessage(error)
-    val trimmedMessage = message.take(MaxAlertPayloadLength)
-    val alert = Monitoring.AlertPayload.warn(trimmedMessage, discovery.origin.base)
+    val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
     val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
 
