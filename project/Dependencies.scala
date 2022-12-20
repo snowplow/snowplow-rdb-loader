@@ -61,6 +61,7 @@ object Dependencies {
     val sentry           = "1.7.30"
     val protobuf         = "3.21.7" // Fix CVE
     val kinesisClient    = "2.4.3"
+    val nettyCodec       = "4.1.86.Final" // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.10.5"
@@ -160,6 +161,7 @@ object Dependencies {
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
   val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
+  val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
@@ -181,7 +183,8 @@ object Dependencies {
     fs2BlobstoreS3,
     fs2Aws,
     kinesisClient,
-    protobuf
+    protobuf,
+    nettyCodec
   )
 
   val gcpDependencies = Seq(
