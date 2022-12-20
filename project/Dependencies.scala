@@ -59,7 +59,7 @@ object Dependencies {
     val aws2             = "2.18.8"
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
-    val protobuf         = "3.16.1" // Fix CVE
+    val protobuf         = "3.21.7" // Fix CVE
     val kinesisClient    = "2.4.3"
 
     // Scala (test only)
@@ -180,7 +180,8 @@ object Dependencies {
     aws2kinesis,
     fs2BlobstoreS3,
     fs2Aws,
-    kinesisClient
+    kinesisClient,
+    protobuf
   )
 
   val gcpDependencies = Seq(
