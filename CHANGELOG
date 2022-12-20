@@ -1,3 +1,18 @@
+Version 5.2.1 (2022-12-20)
+--------------------------
+Loader: trim the alert error message for loader shutting down (#1079)
+Loader: add timeout to rollback and commit statements (#1161)
+Transformer Batch: set datetimeRebaseModeInWrite Spark config property (#1154)
+Common: bump 'actions/setup-python' to v4 (#1153)
+Loader: Create the events table on startup (#1034)
+Loader: Destroy and create new SSH tunnel after errors (#1148)
+Bump Databricks JDBC to 2.6.29 (#1163)
+Bump Snowflake JDBC to 3.13.25 (#1163)
+Bump schema-ddl to 0.15.2 (#1134)
+Bump Iglu Scala Client to 1.3.0 (#1163)
+Bump protobuf-java to 3.21.7 (#1163)
+Bump netty-codec to 4.1.86.Final (#1163)
+
 Version 5.2.0 (2022-11-18)
 --------------------------
 Redshift: Use STS tokens for copying from S3 (#998)
