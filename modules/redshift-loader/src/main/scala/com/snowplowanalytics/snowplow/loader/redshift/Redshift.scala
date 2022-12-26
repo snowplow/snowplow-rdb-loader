@@ -138,7 +138,11 @@ object Redshift {
                 val frTableName = Fragment.const(AlertingTempTableName)
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frPath = Fragment.const0(source)
-                sql"COPY $frTableName FROM '$frPath' CREDENTIALS '$frCredentials' DELIMITER '$EventFieldSeparator'"
+                val frRegion = Fragment.const0(region.name)
+                sql"""COPY $frTableName FROM '$frPath'
+                     | CREDENTIALS '$frCredentials'
+                     | REGION '$frRegion'
+                     | DELIMITER '$EventFieldSeparator'""".stripMargin
               case Statement.EventsCopy(path, compression, columnsToCopy, _, _, loadAuthMethod, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))

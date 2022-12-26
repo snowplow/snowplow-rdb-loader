@@ -149,7 +149,13 @@ object Environment {
           implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](c.region.name)
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <-
-            SQS.consumer[F](c.messageQueue.queueName, config.timeouts.sqsVisibility, c.region.name, control.isBusy, Some(postProcess))
+            SQS.consumer[F](
+              c.messageQueue.queueName,
+              config.timeouts.sqsVisibility,
+              c.messageQueue.region.getOrElse(c.region).name,
+              control.isBusy,
+              Some(postProcess)
+            )
           loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore <- EC2ParameterStore.secretStore[F]

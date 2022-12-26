@@ -83,7 +83,7 @@ class ConfigSpec extends Specification {
         catalog = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
-      val cloud = ConfigSpec.exampleAWSCloud.copy(region = RegionSpec.DefaultTestRegion)
+      val cloud = Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion)))
       val retries = exampleRetries.copy(cumulativeBound = None)
       val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
@@ -146,7 +146,7 @@ object ConfigSpec {
     StorageTarget.LoadAuthMethod.NoCreds,
     2.days
   )
-  val exampleAWSCloud = Config.Cloud.AWS(Region("us-east-1"), Config.Cloud.AWS.SQS("test-queue"))
+  val exampleAWSCloud = Config.Cloud.AWS(Region("us-east-1"), Config.Cloud.AWS.SQS("test-queue", Some(Region("us-east-1"))))
   val exampleGCPCloud = Config.Cloud.GCP(
     Config.Cloud.GCP.Pubsub(
       subscription = "projects/project-id/subscriptions/subscription-id",

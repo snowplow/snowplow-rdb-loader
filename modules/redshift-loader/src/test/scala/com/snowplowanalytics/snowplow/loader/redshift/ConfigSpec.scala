@@ -48,7 +48,7 @@ class ConfigSpec extends Specification {
       val result = getConfig("/loader/aws/redshift.config.minimal.hocon", testParseConfig)
       val expected = Config(
         exampleRedshift,
-        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue),
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion))),
         None,
         defaultMonitoring,
         None,

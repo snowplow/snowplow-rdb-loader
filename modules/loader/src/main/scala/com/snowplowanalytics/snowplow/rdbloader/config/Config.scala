@@ -144,7 +144,7 @@ object Config {
     final case class AWS(region: Region, messageQueue: AWS.SQS) extends Cloud
 
     object AWS {
-      final case class SQS(queueName: String)
+      final case class SQS(queueName: String, region: Option[Region])
     }
 
     final case class GCP(messageQueue: GCP.Pubsub) extends Cloud
@@ -276,7 +276,7 @@ object Config {
           case Right(q) =>
             // If type of the 'messageQueue' field is string, it means that this config is for version <5.x.
             // Therefore, it should be decoded as SQS.
-            cur.up.downField("region").as[Region].map(r => Cloud.AWS(r, Cloud.AWS.SQS(q)))
+            cur.up.downField("region").as[Region].map(r => Cloud.AWS(r, Cloud.AWS.SQS(q, Some(r))))
           case _ =>
             messageQueueCursor.downField("type").as[String].map(_.toLowerCase) match {
               case Right("sqs") =>

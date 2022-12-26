@@ -99,7 +99,7 @@ class ConfigSpec extends Specification {
           .copy(
             transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
           ),
-        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue),
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion))),
         None,
         defaultMonitoring,
         None,

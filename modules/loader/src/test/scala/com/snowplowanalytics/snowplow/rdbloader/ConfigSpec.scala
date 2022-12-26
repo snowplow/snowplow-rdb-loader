@@ -119,7 +119,7 @@ object ConfigSpec {
     Some(Config.HealthCheck(20.minutes, 15.seconds))
   )
   val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
-  val exampleMessageQueue = Config.Cloud.AWS.SQS("test-queue")
+  val exampleMessageQueue = Config.Cloud.AWS.SQS("test-queue", Some(exampleRegion))
   val exampleFolderMonitoringStage = StorageTarget.Snowflake.Stage("test_folder_monitoring_stage", None)
   val exampleTransformedStage = StorageTarget.Snowflake.Stage("test_transformed_stage", None)
   val exampleRedshift = StorageTarget.Redshift(
