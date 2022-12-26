@@ -50,6 +50,7 @@ object Dependencies {
     val hadoopClient     = "3.3.4"
     val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
+    val commonsText      = "1.10.0" // Fix CVE
 
     val slf4j            = "2.0.3"
     val redshiftJdbc     = "1.2.55.1083"
@@ -137,6 +138,7 @@ object Dependencies {
   val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
+  val commonsText       = "org.apache.commons"               % "commons-text"              % V.commonsText
 
   // Java (Loader)
   val slf4jApi          = "org.slf4j"             % "slf4j-api"                 % V.slf4j
@@ -265,6 +267,8 @@ object Dependencies {
     eventsManifest,
     sparkCore,
     sparkSQL,
+    protobuf,
+    commonsText,
     jacksonModule,
     jacksonDatabind,
     jacksonCbor,
