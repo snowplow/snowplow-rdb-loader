@@ -51,6 +51,7 @@ object Dependencies {
     val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
     val commonsText      = "1.10.0" // Fix CVE
+    val ivy              = "2.5.1" // Fix CVE
 
     val slf4j            = "2.0.3"
     val redshiftJdbc     = "1.2.55.1083"
@@ -139,6 +140,7 @@ object Dependencies {
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
   val commonsText       = "org.apache.commons"               % "commons-text"              % V.commonsText
+  val ivy               = "org.apache.ivy"                   % "ivy"                       % V.ivy
 
   // Java (Loader)
   val slf4jApi          = "org.slf4j"             % "slf4j-api"                 % V.slf4j
@@ -269,6 +271,7 @@ object Dependencies {
     sparkSQL,
     protobuf,
     commonsText,
+    ivy,
     jacksonModule,
     jacksonDatabind,
     jacksonCbor,
