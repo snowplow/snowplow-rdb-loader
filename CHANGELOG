@@ -1,3 +1,12 @@
+Version 5.3.0 (2023-01-02)
+--------------------------
+Bump ivy to 2.5.1 (#1166)
+Bump commons-text to 1.10.0 (#1166)
+Bump spark to 3.3.1 (#1166)
+Databricks Loader: fix creation of rdb_folder_monitoring table (#1141)
+Redshift Loader: add support for buckets in different regions (#705)
+Loader Databricks: recover from broken schema migrations (#1132)
+
 Version 5.2.1 (2022-12-20)
 --------------------------
 Loader: trim the alert error message for loader shutting down (#1079)
