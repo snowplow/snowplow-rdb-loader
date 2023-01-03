@@ -106,9 +106,10 @@ object TransformerConfigSpec {
   val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
-    Region("eu-central-1")
+    Region("eu-central-1"),
+    Config.Output.BadSink.Kinesis("bad", Region("eu-central-1"), 500, 5242880)
   )
-  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
+  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion, bad = Config.Output.BadSink.File)
   val exampleSQSConfig = Config.QueueConfig.SQS(
     "test-sqs",
     Region("eu-central-1")

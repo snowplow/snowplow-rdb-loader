@@ -157,6 +157,7 @@ object Dependencies {
   val sns               = "com.amazonaws"         % "aws-java-sdk-sns"          % V.aws
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
+  val kinesis           = "com.amazonaws"         % "aws-java-sdk-kinesis"      % V.aws
 
   val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
@@ -264,6 +265,7 @@ object Dependencies {
   val batchTransformerDependencies = Seq(
     sqs,
     sns,
+    kinesis,
     dynamodb,
     slf4jSimple,
     eventsManifest,

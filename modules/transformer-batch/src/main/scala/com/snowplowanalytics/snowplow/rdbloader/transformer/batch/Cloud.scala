@@ -28,6 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import BlobStorage.Folder
+import com.amazonaws.services.kinesis.{AmazonKinesis, AmazonKinesisClientBuilder}
 
 object Cloud {
 
@@ -149,6 +150,14 @@ object Cloud {
   /** Create S3 client with built-in retry mechanism (jitter) */
   def createS3Client(region: Region): AmazonS3 =
     AmazonS3ClientBuilder
+      .standard()
+      .withRegion(region.name)
+      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
+      .build()
+
+  /** Create Kinesis client with built-in retry mechanism (jitter) */
+  def createKinesisClient(region: Region): AmazonKinesis =
+    AmazonKinesisClientBuilder
       .standard()
       .withRegion(region.name)
       .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))

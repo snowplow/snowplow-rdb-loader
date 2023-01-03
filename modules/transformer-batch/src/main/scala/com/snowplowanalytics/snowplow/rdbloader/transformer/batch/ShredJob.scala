@@ -23,7 +23,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{FileSink, KinesisSink, PartitionDataFilter}
 import io.circe.Json
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SerializableConfiguration
 
@@ -159,12 +162,10 @@ class ShredJob[T](
     val readyToSinkRDD: RDD[Transformed] = config.formats match {
       case Formats.WideRow.PARQUET =>
         transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
-          PartitionDataFilter.extractGoodAndPersistBad(
+          PartitionDataFilter.extractGoodAndSinkBad(
             partitionData,
             partitionIndex,
-            folderName,
-            hadoopConfigBroadcasted.value.value,
-            config.output
+            createBadrowsSink(folderName, hadoopConfigBroadcasted)
           )
         }
       case _ => transformed
@@ -185,6 +186,14 @@ class ShredJob[T](
       Some(LoaderMessage.Count(eventsCounter.value))
     )
   }
+
+  private def createBadrowsSink(folderName: String, hadoopConfigBroadcasted: Broadcast[SerializableConfiguration]) =
+    config.output.bad match {
+      case config: BadSink.Kinesis =>
+        KinesisSink.createFrom(config)
+      case BadSink.File =>
+        new FileSink(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
+    }
 }
 
 class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends Serializable {

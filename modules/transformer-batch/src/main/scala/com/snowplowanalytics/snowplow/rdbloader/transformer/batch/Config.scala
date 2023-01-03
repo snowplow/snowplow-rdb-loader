@@ -55,8 +55,23 @@ object Config {
   final case class Output(
     path: URI,
     compression: Compression,
-    region: Region
+    region: Region,
+    bad: Output.BadSink
   )
+
+  object Output {
+
+    sealed trait BadSink
+    object BadSink {
+      final case class Kinesis(
+        streamName: String,
+        region: Region,
+        recordLimit: Int,
+        byteLimit: Int
+      ) extends BadSink
+      case object File extends BadSink
+    }
+  }
 
   sealed trait QueueConfig extends Product with Serializable
 
@@ -154,6 +169,23 @@ object Config {
     implicit val sqsConfigDecoder: Decoder[QueueConfig.SQS] =
       deriveDecoder[QueueConfig.SQS]
 
+    implicit val kinesisConfigDecoder: Decoder[Output.BadSink.Kinesis] =
+      deriveDecoder[Output.BadSink.Kinesis]
+
+    implicit val badSinkConfigDecoder: Decoder[Output.BadSink] =
+      Decoder.instance { cur =>
+        val typeCur = cur.downField("type")
+        typeCur.as[String].map(_.toLowerCase) match {
+          case Right("kinesis") =>
+            cur.as[Output.BadSink.Kinesis]
+          case Right("file") =>
+            Right(Output.BadSink.File)
+          case Right(other) =>
+            Left(DecodingFailure(s"Bad output type '$other' is not supported yet. Supported types: 'kinesis', 'file'", typeCur.history))
+          case Left(other) =>
+            Left(other)
+        }
+      }
     implicit val configDecoder: Decoder[Config] =
       deriveDecoder[Config]
 
