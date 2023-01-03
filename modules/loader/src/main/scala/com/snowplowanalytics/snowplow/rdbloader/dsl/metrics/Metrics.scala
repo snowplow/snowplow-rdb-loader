@@ -49,6 +49,11 @@ object Metrics {
       val value = v.toString
       val metricType = MetricType.Count
     }
+    final case class CountBad(v: Long) extends KVMetric {
+      val key = "count_bad"
+      val value = v.toString
+      val metricType = MetricType.Count
+    }
     final case class CollectorLatencyMin(v: Long) extends KVMetric {
       val key = "latency_collector_to_load_min"
       val value = v.toString
@@ -155,8 +160,8 @@ object Metrics {
 
   sealed trait KVMetrics {
     def toList: List[KVMetric] = this match {
-      case KVMetrics.LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
-        List(Some(count), minTstamp, maxTstamp, Some(shredderStart), Some(shredderEnd)).unite
+      case KVMetrics.LoadingCompleted(countGood, countBad, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
+        List(Some(countGood), Some(countBad), minTstamp, maxTstamp, Some(shredderStart), Some(shredderEnd)).unite
       case KVMetrics.PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
         List(minAgeOfLoadedData)
       case KVMetrics.HealthCheck(healthy) =>
@@ -168,6 +173,7 @@ object Metrics {
 
     final case class LoadingCompleted(
       countGood: KVMetric.CountGood,
+      countBad: KVMetric.CountBad,
       collectorLatencyMin: Option[KVMetric.CollectorLatencyMin],
       collectorLatencyMax: Option[KVMetric.CollectorLatencyMax],
       shredderStartLatency: KVMetric.ShredderLatencyStart,
@@ -182,8 +188,9 @@ object Metrics {
 
     implicit val kvMetricsShow: Show[KVMetrics] =
       Show.show {
-        case LoadingCompleted(count, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
-          s"""${count.value} good events were loaded.
+        case LoadingCompleted(countGood, countBad, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
+          s"""${countGood.value} good events were loaded.
+            | ${countBad.value} bad events were in this batch.
             | It took minimum ${minTstamp.map(_.value).getOrElse("unknown")} seconds and maximum
             | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and warehouse for these events.
             | It took ${shredderStart.value} seconds between the start of transformer and warehouse
@@ -200,6 +207,7 @@ object Metrics {
     Clock[F].instantNow.map { now =>
       KVMetrics.LoadingCompleted(
         KVMetric.CountGood(loaded.count.map(_.good).getOrElse(0)),
+        KVMetric.CountBad(loaded.count.flatMap(_.bad).getOrElse(0)),
         loaded.timestamps.max.map(max => Duration.between(max, now).toSeconds()).map(l => KVMetric.CollectorLatencyMin(l)),
         loaded.timestamps.min.map(min => Duration.between(min, now).toSeconds()).map(l => KVMetric.CollectorLatencyMax(l)),
         KVMetric.ShredderLatencyStart(Duration.between(loaded.timestamps.jobStarted, now).toSeconds()),

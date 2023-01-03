@@ -135,7 +135,8 @@ class ShredJob[T](
     // The events counter
     // Using accumulators for counting is unreliable, but we don't
     // need a precise value and chance of retry is very small
-    val eventsCounter = sc.longAccumulator("events")
+    val goodEventsCounter = sc.longAccumulator("good-events")
+    val badEventsCounter = sc.longAccumulator("bad-events")
 
     val result: Deduplication.Result = Deduplication.sytheticDeduplication(config.deduplication, good)
 
@@ -148,8 +149,8 @@ class ShredJob[T](
       case Right(event) =>
         val isSyntheticDupe = syntheticDupesBroadcasted.value.contains(event.event_id)
         val withDupeContext = if (isSyntheticDupe) Deduplication.withSynthetic(event) else event
-        transformer.goodTransform(withDupeContext, eventsCounter)
-      case Left(badRow) => List(transformer.badTransform(badRow))
+        transformer.goodTransform(withDupeContext, goodEventsCounter, badEventsCounter)
+      case Left(badRow) => List(transformer.badTransform(badRow, badEventsCounter))
     }
 
     // We don't want to use Spark sink for bad data when parquet format is configured, as it requires either:
@@ -182,7 +183,7 @@ class ShredJob[T](
       timestamps,
       config.output.compression,
       MessageProcessor,
-      Some(LoaderMessage.Count(eventsCounter.value))
+      Some(LoaderMessage.Count(goodEventsCounter.value, Some(badEventsCounter.value)))
     )
   }
 }

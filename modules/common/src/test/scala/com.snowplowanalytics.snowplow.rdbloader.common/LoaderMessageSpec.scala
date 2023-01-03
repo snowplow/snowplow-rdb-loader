@@ -74,7 +74,7 @@ class LoaderMessageSpec extends Specification {
 
 object LoaderMessageSpec {
   val ShreddedMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
     "data": {
       "base" : "s3://bucket/folder/",
       "typesInfo": {
@@ -103,7 +103,7 @@ object LoaderMessageSpec {
   }"""
 
   val WideRowMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
     "data": {
       "base" : "s3://bucket/folder/",
       "typesInfo": {
