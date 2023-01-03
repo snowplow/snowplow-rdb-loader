@@ -14,7 +14,47 @@
     # This field is optional if it can be resolved with AWS region provider chain.
     # It checks places like env variables, system properties, AWS profile file.
     # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
-    "region": "eu-central-1"
+    "region": "eu-central-1",
+    
+    # Optional section specifying details about badrows output. When unspecified, badrows are written as files under 'output.path' URI
+    "bad": {
+    
+      # Type of output sink. Either 'kinesis' or 'file'. Optional, default value 'file'. When 'file', badrows are written as files under 'output.path' URI 
+      "type": "kinesis",
+      
+      # Name of the Kinesis stream to write to. Required when Kinesis as output is used 
+      "streamName": "bad"
+      
+      # Optional. Region where the Kinesis stream is located
+      # This field is optional if it can be resolved with AWS region provider chain.
+      # It checks places like env variables, system properties, AWS profile file.
+      # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
+      "region": "eu-central-1"
+      
+      # Optional. Limits the number of events in a single PutRecords Kinesis request.
+      # Several requests are made in parallel
+      # Maximum allowed: 500
+      "recordLimit": 500
+
+      # Optional. Limits the number of bytes in a single PutRecords Kinesis request,
+      # including records and partition keys.
+      # Several requests are made in parallel
+      # Maximum allowed: 5 MB
+      "byteLimit": 5242880
+      
+      # Optional. Policy to retry if writing to kinesis fails with unexepected errors
+      "backoffPolicy": {
+        "minBackoff": 100 milliseconds
+        "maxBackoff": 10 seconds
+        "maxRetries": 10
+      }
+
+      # Optional. Policy to retry if writing to kinesis exceeds the provisioned throughput.
+      "throttledBackoffPolicy": {
+        "minBackoff": 100 milliseconds
+        "maxBackoff": 1 second
+      }
+    }
   }
   
   

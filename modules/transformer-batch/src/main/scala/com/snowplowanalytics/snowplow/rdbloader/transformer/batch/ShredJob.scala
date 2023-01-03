@@ -23,7 +23,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, PartitionDataFilter, WiderowFileSink}
 import io.circe.Json
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SerializableConfiguration
 
@@ -153,23 +156,7 @@ class ShredJob[T](
       case Left(badRow) => List(transformer.badTransform(badRow, badEventsCounter))
     }
 
-    // We don't want to use Spark sink for bad data when parquet format is configured, as it requires either:
-    // - using Spark cache OR
-    // - processing whole dataset twice
-    // Both options could affect performance, therefore we filter badrows out of Spark RDD for each partition (leaving only good data) and persist them 'manually'.
-    val readyToSinkRDD: RDD[Transformed] = config.formats match {
-      case Formats.WideRow.PARQUET =>
-        transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
-          PartitionDataFilter.extractGoodAndPersistBad(
-            partitionData,
-            partitionIndex,
-            folderName,
-            hadoopConfigBroadcasted.value.value,
-            config.output
-          )
-        }
-      case _ => transformed
-    }
+    val readyToSinkRDD: RDD[Transformed] = handleBadData(folderName, hadoopConfigBroadcasted, transformed)
 
     val maxRecordsPerFile =
       if (config.featureFlags.enableMaxRecordsPerFile)
@@ -192,6 +179,56 @@ class ShredJob[T](
       Some(LoaderMessage.Count(goodEventsCounter.value, Some(badEventsCounter.value)))
     )
   }
+
+  private def handleBadData(
+    folderName: String,
+    hadoopConfigBroadcasted: Broadcast[SerializableConfiguration],
+    transformed: RDD[Transformed]
+  ): RDD[Transformed] =
+    config.formats match {
+      case Formats.WideRow.PARQUET =>
+        val badrowSinkProvider = () => createBadrowsSinkForParquet(config.output.bad, folderName, hadoopConfigBroadcasted)
+        sinkBad(transformed, badrowSinkProvider)
+
+      // For JSON - use custom Kinesis sink when configured.
+      // Current custom file sink would work, but as opposed to parquet, it's not really necessary, so we can still rely on classic Spark sink.
+      // For Shred - use custom Kinesis sink when configured.
+      // Current custom file sink doesn't support directory partitioning required by shredded output, so we have to rely on classic Spark sink.
+      case Formats.WideRow.JSON | _: Formats.Shred =>
+        config.output.bad match {
+          case kinesisConfig: BadSink.Kinesis =>
+            val badrowSinkProvider = () => KinesisSink.createFrom(kinesisConfig)
+            sinkBad(transformed, badrowSinkProvider)
+          case BadSink.File =>
+            transformed // do nothing here, use Spark file sink for Json and shredded output format
+        }
+    }
+
+  // We don't want to use Spark sink for bad data when parquet format is configured, as it requires either:
+  // - using Spark cache OR
+  // - processing whole dataset twice
+  // Both options could affect performance, therefore we sink create custom sinks for both: Kinesis and file outputs.
+  // Spark is not used to sink bad data produced by parquet transformation.
+  private def createBadrowsSinkForParquet(
+    badConfig: Config.Output.BadSink,
+    folderName: String,
+    hadoopConfigBroadcasted: Broadcast[SerializableConfiguration]
+  ): BadrowSink =
+    badConfig match {
+      case config: BadSink.Kinesis =>
+        KinesisSink.createFrom(config)
+      case BadSink.File =>
+        new WiderowFileSink(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
+    }
+
+  private def sinkBad(transformed: RDD[Transformed], sinkProvider: () => BadrowSink): RDD[Transformed] =
+    transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
+      PartitionDataFilter.extractGoodAndSinkBad(
+        partitionData,
+        partitionIndex,
+        sinkProvider()
+      )
+    }
 }
 
 class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends Serializable {
