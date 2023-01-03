@@ -107,9 +107,17 @@ object TransformerConfigSpec {
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
     Region("eu-central-1"),
-    maxRecordsPerFile = 10000
+    maxRecordsPerFile = 10000,
+    Config.Output.BadSink.Kinesis(
+      "bad",
+      Region("eu-central-1"),
+      500,
+      5242880,
+      Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 10.seconds, maxRetries = Some(10)),
+      Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None)
+    )
   )
-  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
+  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion, bad = Config.Output.BadSink.File)
   val exampleSQSConfig = Config.QueueConfig.SQS(
     "test-sqs",
     Region("eu-central-1")
