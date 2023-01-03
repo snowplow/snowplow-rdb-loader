@@ -18,6 +18,7 @@ import cats.syntax.either._
 
 import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConfiguration}
 import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
+import com.amazonaws.services.kinesis.{AmazonKinesis, AmazonKinesisClientBuilder}
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.amazonaws.services.s3.model.{ListObjectsV2Request, ListObjectsV2Result, S3ObjectSummary}
 import com.amazonaws.services.sqs.{AmazonSQS, AmazonSQSClientBuilder}
@@ -152,5 +153,11 @@ object Cloud {
       .standard()
       .withRegion(region.name)
       .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
+      .build()
+
+  def createKinesisClient(region: Region): AmazonKinesis =
+    AmazonKinesisClientBuilder
+      .standard()
+      .withRegion(region.name)
       .build()
 }
