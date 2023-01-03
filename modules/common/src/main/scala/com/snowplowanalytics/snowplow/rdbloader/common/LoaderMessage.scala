@@ -47,7 +47,7 @@ object LoaderMessage {
       "com.snowplowanalytics.snowplow.storage.rdbloader",
       "shredding_complete",
       "jsonschema",
-      SchemaVer.Full(2, 0, 0)
+      SchemaVer.Full(2, 0, 1)
     )
 
   /**
@@ -166,7 +166,7 @@ object LoaderMessage {
 
   final case class Processor(artifact: String, version: Semver)
 
-  final case class Count(good: Long)
+  final case class Count(good: Long, bad: Option[Long])
 
   /**
    * Message signalling that shredder has finished and data ready to be loaded

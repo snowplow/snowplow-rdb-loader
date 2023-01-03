@@ -105,8 +105,9 @@ package object rdbloader {
   implicit val getSemver: Get[Semver] =
     Get[String].temap(Semver.decodeSemver)
 
+  // In order to preserve backward compatibility, bad events count is ignored
   implicit val getCount: Get[Count] =
-    Get[Long].tmap(Count)
+    Get[Long].tmap(Count(_, None))
 
   implicit val putCount: Put[Count] =
     Put[Long].contramap(_.good)

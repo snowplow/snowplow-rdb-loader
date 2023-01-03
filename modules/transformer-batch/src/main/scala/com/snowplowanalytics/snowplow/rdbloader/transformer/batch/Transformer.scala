@@ -48,8 +48,12 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark._
  *   Type of items collected in accumulator
  */
 sealed trait Transformer[T] extends Product with Serializable {
-  def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed]
-  def badTransform(badRow: BadRow): Transformed
+  def goodTransform(
+    event: Event,
+    goodEventsCounter: LongAccumulator,
+    badEventsCounter: LongAccumulator
+  ): List[Transformed]
+  def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed
   def typesAccumulator: TypesAccumulator[T]
   def timestampsAccumulator: TimestampsAccumulator
   def typesInfo: TypesInfo
@@ -79,7 +83,11 @@ object Transformer {
       if (isTabular(schemaKey)) TypesInfo.Shredded.ShreddedFormat.TSV
       else TypesInfo.Shredded.ShreddedFormat.JSON
 
-    def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
+    def goodTransform(
+      event: Event,
+      goodEventsCounter: LongAccumulator,
+      badEventsCounter: LongAccumulator
+    ): List[Transformed] =
       Transformed
         .shredEvent[Id](
           IgluSingleton.get(resolverConfig),
@@ -92,15 +100,16 @@ object Transformer {
         case Right(shredded) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.shreddedTypeConverter(findFormat))(event.inventory)
           timestampsAccumulator.add(event)
-          eventsCounter.add(1L)
+          goodEventsCounter.add(1L)
           shredded
         case Left(badRow) =>
-          List(badTransform(badRow))
+          List(badTransform(badRow, badEventsCounter))
       }
 
-    def badTransform(badRow: BadRow): Transformed = {
+    def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
       val data = Transformed.Data.DString(badRow.compact)
+      badEventsCounter.add(1L)
       Transformed.Shredded.Json(false, vendor, name, model, data)
     }
 
@@ -124,15 +133,20 @@ object Transformer {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
-    def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] = {
+    def goodTransform(
+      event: Event,
+      goodEventsCounter: LongAccumulator,
+      badEventsCounter: LongAccumulator
+    ): List[Transformed] = {
       TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.wideRowTypeConverter)(event.inventory)
       timestampsAccumulator.add(event)
-      eventsCounter.add(1L)
+      goodEventsCounter.add(1L)
       List(Transformed.wideRowEvent(event))
     }
 
-    def badTransform(badRow: BadRow): Transformed = {
+    def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed = {
       val data = Transformed.Data.DString(badRow.compact)
+      badEventsCounter.add(1L)
       Transformed.WideRow(false, data)
     }
 
@@ -157,19 +171,24 @@ object Transformer {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
-    def goodTransform(event: Event, eventsCounter: LongAccumulator): List[Transformed] =
+    def goodTransform(
+      event: Event,
+      goodEventsCounter: LongAccumulator,
+      badEventsCounter: LongAccumulator
+    ): List[Transformed] =
       ParquetTransformer.transform(event, allFields, ShredJob.BadRowsProcessor) match {
         case Right(transformed) =>
           TypesAccumulator.recordType(typesAccumulator, TypesAccumulator.wideRowTypeConverter)(event.inventory)
           timestampsAccumulator.add(event)
-          eventsCounter.add(1L)
+          goodEventsCounter.add(1L)
           List(transformed)
         case Left(badRow) =>
-          List(badTransform(badRow))
+          List(badTransform(badRow, badEventsCounter))
       }
 
-    def badTransform(badRow: BadRow): Transformed = {
+    def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed = {
       val data = Transformed.Data.DString(badRow.compact)
+      badEventsCounter.add(1L)
       Transformed.WideRow(false, data)
     }
 

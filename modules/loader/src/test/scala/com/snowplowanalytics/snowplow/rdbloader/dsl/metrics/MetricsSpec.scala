@@ -42,6 +42,7 @@ class MetricsSpec extends Specification {
 
     "compute the metrics" in {
       val countGood = 42L
+      val countBad = 21L
       val collectorLatencyMin = 120L
       val collectorLatencyMax = 200L
       val shredderStartLatency = 50L
@@ -58,11 +59,12 @@ class MetricsSpec extends Specification {
         ),
         TransformerConfig.Compression.Gzip,
         Processor("loader_unit_tests", Semver(0, 0, 0, None)),
-        Some(Count(countGood))
+        Some(Count(countGood, Some(countBad)))
       )
 
       val expected = Metrics.KVMetrics.LoadingCompleted(
         KVMetric.CountGood(countGood),
+        KVMetric.CountBad(countBad),
         Some(KVMetric.CollectorLatencyMin(collectorLatencyMin)),
         Some(KVMetric.CollectorLatencyMax(collectorLatencyMax)),
         KVMetric.ShredderLatencyStart(shredderStartLatency),

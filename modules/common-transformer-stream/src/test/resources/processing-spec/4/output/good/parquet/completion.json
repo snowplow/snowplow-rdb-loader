@@ -1,5 +1,5 @@
 {
-  "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-0",
+  "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
   "data": {
     "base": "output_path_placeholder/run=1970-01-01-10-30-00/",
     "typesInfo": {
@@ -104,7 +104,8 @@
       "version": "version_placeholder"
     },
     "count": {
-      "good": 46
+      "good": 46,
+      "bad":4
     }
   }
 }

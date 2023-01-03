@@ -167,7 +167,5 @@ object DataDiscovery {
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =
-    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message.count.contains(
-      LoaderMessage.Count(0)
-    )
+    message.timestamps.min.isEmpty && message.timestamps.max.isEmpty && message.typesInfo.isEmpty && message.count.forall(_.good == 0)
 }
