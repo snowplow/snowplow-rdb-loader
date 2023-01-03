@@ -78,7 +78,7 @@ object Completion {
                     }
       base = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
       shreddingCompletePath = base.withKey(sealFile)
-      count = LoaderMessage.Count(state.total - state.bad)
+      count = LoaderMessage.Count(state.total - state.bad, Some(state.bad))
       message = LoaderMessage.ShreddingComplete(
                   BlobStorage.Folder.coerce(base),
                   getTypes(state.types),
