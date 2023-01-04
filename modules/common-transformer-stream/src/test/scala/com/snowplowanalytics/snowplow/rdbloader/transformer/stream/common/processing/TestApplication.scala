@@ -125,5 +125,4 @@ object TestApplication {
     }
     config.copy(output = updatedOutput)
   }
-
 }
