@@ -89,7 +89,7 @@ class PartitionDataFilterSpec extends Specification with SparkSpec with TempDire
       partitionIndex = 1,
       folderName = "run=1970-01-01-00-00-00",
       spark.sparkContext.hadoopConfiguration,
-      Config.Output(badRowsRoot.toUri, compression, Region("none"))
+      Config.Output(badRowsRoot.toUri, compression, Region("none"), 0)
     )
 
     goodOutput.collect { case d: WideRow => d.data.value }.toList

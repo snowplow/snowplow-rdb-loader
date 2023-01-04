@@ -106,7 +106,8 @@ object TransformerConfigSpec {
   val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
-    Region("eu-central-1")
+    Region("eu-central-1"),
+    maxRecordsPerFile = 10000
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
   val exampleSQSConfig = Config.QueueConfig.SQS(
@@ -139,7 +140,7 @@ object TransformerConfigSpec {
     Some(Duration.create("14 days").asInstanceOf[FiniteDuration]),
     Some(Config.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None)
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
 

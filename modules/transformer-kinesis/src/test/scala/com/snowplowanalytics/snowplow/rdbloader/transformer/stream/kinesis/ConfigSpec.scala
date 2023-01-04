@@ -49,7 +49,7 @@ class ConfigSpec extends Specification {
         TransformerConfig.Formats.WideRow.JSON,
         exampleMonitoringStream,
         exampleTelemetry,
-        exampleDefaultFeatureFlags,
+        exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
         exampleValidations
       )
       result must beRight(expected)
@@ -65,7 +65,7 @@ class ConfigSpec extends Specification {
         TransformerConfig.Formats.WideRow.JSON,
         exampleDefaultMonitoringStream,
         defaultTelemetry,
-        exampleDefaultFeatureFlags,
+        exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
         emptyValidations
       )
       result must beRight(expected)
@@ -95,7 +95,8 @@ object ConfigSpec {
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
     4096,
-    Region("eu-central-1")
+    Region("eu-central-1"),
+    10000
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
   val exampleSQSConfig = Config.QueueConfig.SQS(
@@ -156,7 +157,7 @@ object ConfigSpec {
       None,
       None
     )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None)
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
   val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
