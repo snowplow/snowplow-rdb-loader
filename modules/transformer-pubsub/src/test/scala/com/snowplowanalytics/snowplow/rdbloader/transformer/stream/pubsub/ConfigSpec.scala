@@ -82,7 +82,8 @@ object ConfigSpec {
   val exampleOutput = Config.Output.GCS(
     URI.create("gs://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
-    4096
+    4096,
+    10000
   )
   val exampleQueueConfig = Config.QueueConfig.Pubsub(
     topic = "projects/project-id/topics/topic-id",
