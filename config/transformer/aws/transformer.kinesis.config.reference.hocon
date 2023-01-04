@@ -56,7 +56,9 @@
     # Optional, default value GZIP
     "compression": "GZIP",
     # Optional if it can be resolved with AWS region provider chain.
-    "region": "eu-central-1"
+    "region": "eu-central-1", 
+    # Max number of events per parquet partition.
+    "maxRecordsPerFile": 10000
   }
 
   # Frequency to emit loading finished message - 5,10,15,20,30,60 etc minutes

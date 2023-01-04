@@ -55,7 +55,8 @@ object Config {
   final case class Output(
     path: URI,
     compression: Compression,
-    region: Region
+    region: Region,
+    maxRecordsPerFile: Long
   )
 
   sealed trait QueueConfig extends Product with Serializable
