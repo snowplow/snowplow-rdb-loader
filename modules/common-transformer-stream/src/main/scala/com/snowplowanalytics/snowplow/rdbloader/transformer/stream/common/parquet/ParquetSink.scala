@@ -42,6 +42,7 @@ object ParquetSink {
   def parquetSink[F[_]: Concurrent: ContextShift: Timer, C](
     resources: Resources[F, C],
     compression: Compression,
+    rowsPerFile: Long,
     uri: URI,
     window: Window,
     types: List[Data.ShreddedType],
@@ -56,7 +57,7 @@ object ParquetSink {
       case Left(error) =>
         Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
       case Right(schema) =>
-        val parquetPipe = writeAsParquet(resources.blocker, compression, targetPath, schema)
+        val parquetPipe = writeAsParquet(resources.blocker, compression, targetPath, rowsPerFile, schema)
 
         transformedData
           .mapFilter(_.fieldValues)
@@ -78,6 +79,7 @@ object ParquetSink {
     blocker: Blocker,
     compression: Compression,
     path: String,
+    rowsPerFile: Long,
     schema: MessageType
   ) = {
     implicit val targetSchema = schema
@@ -89,6 +91,7 @@ object ParquetSink {
 
     viaParquet[F, List[FieldWithValue]]
       .preWriteTransformation(buildParquetRecord)
+      .maxCount(rowsPerFile)
       .options(ParquetWriter.Options(compressionCodecName = compressionCodecName))
       .write(blocker, path)
   }

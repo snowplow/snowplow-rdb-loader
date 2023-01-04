@@ -121,7 +121,7 @@ object Processing {
   ): Grouping[F, C] = {
 
     val parquetSink = (w: Window) =>
-      (s: State[C]) => (k: SinkPath) => ParquetSink.parquetSink[F, C](resources, config.compression, config.path, w, s.types.toList, k)
+      (s: State[C]) => (k: SinkPath) => ParquetSink.parquetSink[F, C](resources, config.compression, config.rowsPerFile, config.path, w, s.types.toList, k)
     val nonParquetSink = (w: Window) =>
       (_: State[C]) => (k: SinkPath) => getBlobStorageSink(BlobStorage.Folder.coerce(config.path.toString), config.compression, w, k)
 
