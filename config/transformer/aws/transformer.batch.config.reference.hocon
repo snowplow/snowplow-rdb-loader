@@ -9,11 +9,16 @@
     # Transformer output compression, GZIP or NONE
     # Optional, default value GZIP
     "compression": "GZIP",
+    # number of events per parquet partition
+    "maxRecordsPerFile": 10000,
     # This field is optional if it can be resolved with AWS region provider chain.
     # It checks places like env variables, system properties, AWS profile file.
     # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
     "region": "eu-central-1"
   }
+  
+  
+
 
   # Queue used to communicate with Loader
   "queue": {
@@ -102,7 +107,11 @@
   "featureFlags": {
     # Read/write in the legacy version 1 shredding complete message format.
     # This should be enabled during upgrade from older versions of the loader.
-    "legacyMessageFormat": false
+    "legacyMessageFormat": false,
+    
+    # When enables `maxRecordsPerFile` configuration parameter is going to be used
+    "enableMaxRecordsPerFile": false
+    
   }
 
   # Observability and reporting options

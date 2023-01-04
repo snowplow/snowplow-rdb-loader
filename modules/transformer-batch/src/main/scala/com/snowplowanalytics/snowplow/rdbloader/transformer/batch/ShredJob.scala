@@ -171,8 +171,14 @@ class ShredJob[T](
       case _ => transformed
     }
 
+    val maxRecordsPerFile =
+      if (config.featureFlags.enableMaxRecordsPerFile)
+        config.output.maxRecordsPerFile
+      else
+        0L
+
     // Final output
-    transformer.sink(spark, config.output.compression, readyToSinkRDD, outFolder)
+    transformer.sink(spark, config.output.compression, readyToSinkRDD, outFolder, maxRecordsPerFile)
 
     val batchTimestamps = transformer.timestampsAccumulator.value
     val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
@@ -265,7 +271,7 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths)
+        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths, maxRecordsPerFile = 0)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
           val resolver = IgluSingleton.get(resolverConfig)

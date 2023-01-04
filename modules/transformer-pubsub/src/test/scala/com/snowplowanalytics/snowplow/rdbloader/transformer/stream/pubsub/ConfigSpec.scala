@@ -82,7 +82,8 @@ object ConfigSpec {
   val exampleOutput = Config.Output.GCS(
     URI.create("gs://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
-    4096
+    4096,
+    10000
   )
   val exampleQueueConfig = Config.QueueConfig.Pubsub(
     topic = "projects/project-id/topics/topic-id",
@@ -131,7 +132,7 @@ object ConfigSpec {
       None,
       None
     )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None)
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, true)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
   val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
