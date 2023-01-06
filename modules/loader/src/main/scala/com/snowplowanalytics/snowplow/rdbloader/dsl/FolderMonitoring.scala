@@ -292,6 +292,11 @@ object FolderMonitoring {
                              }
                              warn *> Monitoring[F].alert(payload)
                            }
+                      _ <- if (alerts.isEmpty) Concurrent[F].unit
+                           else {
+                             val payload = Monitoring.AlertPayload.warn("Folder monitoring detected unloaded folders")
+                             Monitoring[F].alert(payload)
+                           }
                     } yield (),
                     Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
                   ) *> failed.set(0)
