@@ -292,6 +292,11 @@ object FolderMonitoring {
                              }
                              warn *> Monitoring[F].alert(payload)
                            }
+                      _ <- if (alerts.isEmpty) Concurrent[F].unit
+                           else {
+                             val payload = Monitoring.AlertPayload.warn("Folder monitoring detected unloaded folders")
+                             Monitoring[F].alert(payload)
+                           }
                     } yield (),
                     Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
                   ) *> failed.set(0)
@@ -299,10 +304,11 @@ object FolderMonitoring {
               sinkAndCheck.handleErrorWith { error =>
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
                   val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
+                  val withErrorMsg = show"$msg, message: ${error.getMessage}"
                   val payload = Monitoring.AlertPayload.warn(msg)
                   val maxAttempts = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
                   if (failedBefore >= maxAttempts) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
-                  else Logging[F].warning(msg)
+                  else Logging[F].warning(withErrorMsg)
                 }
               } *> lock.release
             } else Logging[F].warning("Attempt to execute parallel folder monitoring, skipping")
