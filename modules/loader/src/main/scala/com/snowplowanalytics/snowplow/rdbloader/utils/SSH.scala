@@ -13,12 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.utils
 
 import cats.Monad
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, Resource, Sync}
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.{Async, Resource, Sync}
+import cats.effect.kernel.{MonadCancel, Ref}
+import cats.effect.std.{Dispatcher, Hotswap, Semaphore}
 import cats.syntax.all._
-import cats.effect.syntax.all._
 import doobie.Transactor
-import fs2.Hotswap
 import com.jcraft.jsch.{JSch, Logger => JLogger, Session}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.TunnelConfig
 import org.typelevel.log4cats.Logger
@@ -38,9 +37,8 @@ object SSH {
    * A doobie transactor that ensures the SSH tunnel is connected before attempting a connection to
    * the warehouse
    */
-  def transactor[F[_]: ConcurrentEffect: ContextShift: SecretStore, A](
+  def transactor[F[_]: Async: SecretStore, A](
     config: TunnelConfig,
-    blocker: Blocker,
     inner: Transactor.Aux[F, A]
   ): Resource[F, Transactor.Aux[F, A]] =
     for {
@@ -49,29 +47,27 @@ object SSH {
       hs <- Hotswap.create[F, Session]
       ref <- Resource.eval(Ref.of[F, Option[Session]](None))
       sem <- Resource.eval(Semaphore[F](1))
-    } yield inner.copy(connect0 =
-      a => Resource.eval(ensureTunnel(ref, sem, hs, connectedSession(blocker, config, identity))) *> inner.connect(a)
-    )
+    } yield inner.copy(connect0 = a => Resource.eval(ensureTunnel(ref, sem, hs, connectedSession(config, identity))) *> inner.connect(a))
 
   /**
    * Ensure an SSH tunnel is connected.
    *
    * Uses a semaphore to prevent multiple fibers trying to connect a session at the same time
    */
-  def ensureTunnel[F[_]: Sync: ContextShift](
+  def ensureTunnel[F[_]: Sync](
     state: Ref[F, Option[Session]],
     sem: Semaphore[F],
     hs: Hotswap[F, Session],
     sessionResource: Resource[F, Session]
   ): F[Unit] =
-    sem.withPermit {
+    sem.permit.use { _ =>
       state.get.flatMap {
         case Some(session) if session.isConnected =>
           Logger[F].debug("SSH session is already connected")
         case _ =>
           hs.clear *>
-            Sync[F]
-              .uncancelable {
+            MonadCancel[F]
+              .uncancelable { _ =>
                 for {
                   session <- hs.swap(sessionResource)
                   _ <- state.set(Some(session))
@@ -83,19 +79,21 @@ object SSH {
       }
     }
 
-  def configureLogging[F[_]: Effect]: F[Unit] =
-    Sync[F].delay(JSch.setLogger(new JLogger {
-      override def isEnabled(level: Int): Boolean = true
+  def configureLogging[F[_]: Async]: F[Unit] =
+    Dispatcher.parallel[F].use { dispatcher =>
+      Sync[F].delay(JSch.setLogger(new JLogger {
+        override def isEnabled(level: Int): Boolean = true
 
-      override def log(level: Int, message: String): Unit = level match {
-        case JLogger.INFO => Logger[F].info("JCsh: " + message).toIO.unsafeRunSync()
-        case JLogger.ERROR => Logger[F].error("JCsh: " + message).toIO.unsafeRunSync()
-        case JLogger.DEBUG => Logger[F].debug("JCsh: " + message).toIO.unsafeRunSync()
-        case JLogger.WARN => Logger[F].warn("JCsh: " + message).toIO.unsafeRunSync()
-        case JLogger.FATAL => Logger[F].error("JCsh: " + message).toIO.unsafeRunSync()
-        case _ => Logger[F].warn("NO LOG LEVEL JCsh: " + message).toIO.unsafeRunSync()
-      }
-    }))
+        override def log(level: Int, message: String): Unit = dispatcher.unsafeRunSync(level match {
+          case JLogger.INFO => Logger[F].info("JCsh: " + message)
+          case JLogger.ERROR => Logger[F].error("JCsh: " + message)
+          case JLogger.DEBUG => Logger[F].debug("JCsh: " + message)
+          case JLogger.WARN => Logger[F].warn("JCsh: " + message)
+          case JLogger.FATAL => Logger[F].error("JCsh: " + message)
+          case _ => Logger[F].warn("NO LOG LEVEL JCsh: " + message)
+        })
+      }))
+    }
 
   /** Convert pure tunnel configuration to configuration with actual key and passphrase */
   def getIdentity[F[_]: Monad: Sync: SecretStore](tunnelConfig: TunnelConfig): F[Identity] =
@@ -104,8 +102,8 @@ object SSH {
       .traverse(SecretStore[F].getValue)
       .map(key => Identity(tunnelConfig.bastion.passphrase.map(_.getBytes), key.map(_.getBytes)))
 
-  def connectedSession[F[_]: Sync: ContextShift](
-    blocker: Blocker,
+  /** It is important to tear down the port forwarding before tearing down the connection */
+  def connectedSession[F[_]: Sync](
     config: TunnelConfig,
     identity: Identity
   ): Resource[F, Session] =
@@ -113,7 +111,7 @@ object SSH {
       _ <- Resource.eval(Logger[F].info("Creating new SSH session"))
       session <- Resource.make(createSession(config, identity))(s => Sync[F].delay(s.disconnect()))
       _ <- setPortForwarding(config, session)
-      _ <- Resource.eval(blocker.delay(session.connect()))
+      _ <- Resource.eval(Sync[F].blocking(session.connect()))
       _ <- Resource.make(Sync[F].unit)(_ => Logger[F].info("Closing SSH session"))
     } yield session
 

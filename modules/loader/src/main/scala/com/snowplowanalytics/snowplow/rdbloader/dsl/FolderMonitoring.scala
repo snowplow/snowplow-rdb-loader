@@ -14,22 +14,22 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.time.{Instant, ZoneId, ZoneOffset}
 import java.time.format.{DateTimeFormatter, DateTimeParseException}
-import java.util.concurrent.TimeUnit
 import scala.concurrent.duration._
 import cats.{Applicative, Functor, Monad, MonadThrow}
 import cats.implicits._
-import cats.effect.{Concurrent, ContextShift, Sync, Timer}
-import cats.effect.concurrent.{Ref, Semaphore}
+import cats.effect.kernel.{Async, Clock, Ref, Sync, Temporal}
+import cats.effect.std.Semaphore
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import doobie.util.Get
 import fs2.Stream
-import fs2.text.utf8Encode
+import fs2.text.utf8
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
+import retry.Sleep
 
 /**
  * A module for automatic discovery of corrupted (half-shredded) and abandoned (unloaded) folders
@@ -116,7 +116,7 @@ object FolderMonitoring {
    * @return
    *   whether the list was non-empty (true) or empty (false)
    */
-  def sinkFolders[F[_]: Sync: Timer: Logging: BlobStorage](
+  def sinkFolders[F[_]: Sync: Logging: BlobStorage](
     since: Option[FiniteDuration],
     until: Option[FiniteDuration],
     input: BlobStorage.Folder,
@@ -124,7 +124,7 @@ object FolderMonitoring {
   ): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
       Stream
-        .eval(Timer[F].clock.instantNow)
+        .eval(Clock[F].realTimeInstant)
         .flatMap { now =>
           BlobStorage[F]
             .list(input, recursive = false)
@@ -134,7 +134,7 @@ object FolderMonitoring {
             .filter(isRecent(since, until, now))
             .evalTap(_ => ref.update(size => size + 1))
             .intersperse("\n")
-            .through(utf8Encode[F])
+            .through(utf8.encode[F])
             .through(BlobStorage[F].put(output.withKey("keys"), true))
             .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
         }
@@ -172,7 +172,7 @@ object FolderMonitoring {
    * @return
    *   potentially empty list of alerts
    */
-  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad: LoadAuthService, I](
+  def check[F[_]: MonadThrow: BlobStorage: Sleep: Transaction[*[_], C]: Logging, C[_]: DAO: Monad: LoadAuthService, I](
     loadFrom: BlobStorage.Folder,
     readyCheck: Config.Retries,
     initQueryResult: I,
@@ -196,10 +196,8 @@ object FolderMonitoring {
   }
 
   /** Get stream of S3 folders emitted with configured interval */
-  def getOutputKeys[F[_]: Timer: Functor](folders: Config.Folders): Stream[F, BlobStorage.Folder] = {
-    val getKey = Timer[F].clock
-      .realTime(TimeUnit.MILLISECONDS)
-      .map(Instant.ofEpochMilli)
+  def getOutputKeys[F[_]: Temporal: Functor](folders: Config.Folders): Stream[F, BlobStorage.Folder] = {
+    val getKey = Clock[F].realTimeInstant
       .map(LogTimeFormatter.format)
       .map { time =>
         val stagingPath =
@@ -218,11 +216,7 @@ object FolderMonitoring {
    * unloaded folders and launches a stream or periodic checks. If some configurations are not
    * provided - just prints a warning. Resulting stream has to be running in background.
    */
-  def run[
-    F[_]: Concurrent: Timer: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
-    C[_]: DAO: LoadAuthService: Monad,
-    I
-  ](
+  def run[F[_]: Async: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     foldersCheck: Option[Config.Folders],
     readyCheck: Config.Retries,
     isBusy: Stream[F, Boolean],
@@ -252,11 +246,7 @@ object FolderMonitoring {
    * @param prepareAlertTable
    *   statements to prepare the alert table ready for the folder monitoring task
    */
-  def stream[
-    F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift,
-    C[_]: DAO: LoadAuthService: Monad,
-    I
-  ](
+  def stream[F[_]: Transaction[*[_], C]: Async: BlobStorage: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     folders: Config.Folders,
     readyCheck: Config.Retries,
     isBusy: Stream[F, Boolean],
@@ -281,7 +271,7 @@ object FolderMonitoring {
                              }
                              warn *> Monitoring[F].alert(payload)
                            }
-                      _ <- if (alerts.isEmpty) Concurrent[F].unit
+                      _ <- if (alerts.isEmpty) Async[F].unit
                            else {
                              val payload = Monitoring.AlertPayload.warn("Folder monitoring detected unloaded folders")
                              Monitoring[F].alert(payload)

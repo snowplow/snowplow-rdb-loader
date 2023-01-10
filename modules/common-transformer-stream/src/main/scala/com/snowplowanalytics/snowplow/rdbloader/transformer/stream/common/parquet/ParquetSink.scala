@@ -15,10 +15,10 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet
 
 import cats.data.EitherT
-import cats.effect.{Blocker, Concurrent, ContextShift, Timer}
+import cats.effect.Async
 import cats.implicits._
+import com.github.mjakubowski84.parquet4s.{ParquetWriter, Path, RowParquetRecord}
 import com.github.mjakubowski84.parquet4s.parquet.viaParquet
-import com.github.mjakubowski84.parquet4s.{ParquetWriter, RowParquetRecord}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
@@ -39,7 +39,7 @@ import java.net.URI
 
 object ParquetSink {
 
-  def parquetSink[F[_]: Concurrent: ContextShift: Timer, C](
+  def parquetSink[F[_]: Async, C](
     resources: Resources[F, C],
     compression: Compression,
     maxRecordsPerFile: Long,
@@ -57,7 +57,7 @@ object ParquetSink {
       case Left(error) =>
         Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
       case Right(schema) =>
-        val parquetPipe = writeAsParquet(resources.blocker, compression, targetPath, maxRecordsPerFile, schema)
+        val parquetPipe = writeAsParquet(compression, targetPath, maxRecordsPerFile, schema)
 
         transformedData
           .mapFilter(_.fieldValues)
@@ -66,7 +66,7 @@ object ParquetSink {
     }
   }
 
-  private def createSchemaFromTypes[F[_]: Concurrent: ContextShift: Timer, C](
+  private def createSchemaFromTypes[F[_]: Async, C](
     resources: Resources[F, C],
     types: List[Data.ShreddedType]
   ): EitherT[F, FailureDetails.LoaderIgluError, MessageType] =
@@ -75,8 +75,7 @@ object ParquetSink {
       allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
     } yield ParquetSchema.build(allFields)
 
-  private def writeAsParquet[F[_]: Concurrent: ContextShift: Timer](
-    blocker: Blocker,
+  private def writeAsParquet[F[_]: Async](
     compression: Compression,
     path: String,
     maxRecordsPerFile: Long,
@@ -89,17 +88,18 @@ object ParquetSink {
       case Compression.Gzip => CompressionCodecName.GZIP
     }
 
-    viaParquet[F, List[FieldWithValue]]
+    viaParquet[F]
+      .of[List[FieldWithValue]]
       .preWriteTransformation(buildParquetRecord)
       .maxCount(maxRecordsPerFile)
       .options(ParquetWriter.Options(compressionCodecName = compressionCodecName))
-      .write(blocker, path)
+      .write(Path(path))
   }
 
   private def buildParquetRecord(fieldsWithValues: List[FieldWithValue]) = Stream.emit {
     fieldsWithValues
-      .foldLeft[RowParquetRecord](RowParquetRecord.empty) { case (acc, fieldWithValue) =>
-        acc.add(fieldWithValue.field.name, fieldWithValue.value, config)
+      .foldLeft[RowParquetRecord](RowParquetRecord()) { case (acc, fieldWithValue) =>
+        acc.updated(fieldWithValue.field.name, fieldWithValue.value, config)
       }
   }
 }

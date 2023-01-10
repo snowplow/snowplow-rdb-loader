@@ -13,14 +13,14 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import scala.concurrent.duration.FiniteDuration
-
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, ExitCase, Resource, Sync, Timer}
+import cats.effect.{Async, Outcome, Resource, Sync}
 import cats.effect.implicits._
-
+import cats.effect.kernel.Spawn
+import cats.effect.std.Dispatcher
 import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
@@ -87,9 +87,8 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def buildPool[F[_]: ConcurrentEffect: ContextShift: Timer: SecretStore](
-    target: StorageTarget,
-    blocker: Blocker
+  def buildPool[F[_]: Async: SecretStore](
+    target: StorageTarget
   ): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
@@ -100,7 +99,7 @@ object Transaction {
                       Resource.eval(SecretStore[F].getValue(parameterName))
                   }
       xa <- HikariTransactor
-              .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce, blocker)
+              .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce)
       _ <- Resource.eval(xa.configure { ds =>
              Sync[F].delay {
                ds.setAutoCommit(target.withAutoCommit)
@@ -108,7 +107,7 @@ object Transaction {
                ds.setDataSourceProperties(target.properties)
              }
            })
-      xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, blocker, xa))
+      xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
     } yield xa
 
   /**
@@ -116,12 +115,11 @@ object Transaction {
    * close a JDBC connection. If connection could not be acquired, it will retry several times
    * according to `retryPolicy`
    */
-  def interpreter[F[_]: ConcurrentEffect: ContextShift: Monitoring: Timer: SecretStore](
+  def interpreter[F[_]: Async: Dispatcher: Monitoring: SecretStore](
     target: StorageTarget,
-    timeouts: Config.Timeouts,
-    blocker: Blocker
+    timeouts: Config.Timeouts
   ): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target, blocker).map(xa => Transaction.jdbcRealInterpreter[F](target, timeouts, xa))
+    buildPool[F](target).map(xa => Transaction.jdbcRealInterpreter[F](target, timeouts, xa))
 
   def defaultStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = {
     val timeoutSeconds = rollbackCommitTimeout.toSeconds.toInt
@@ -135,7 +133,7 @@ object Transaction {
   }
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: ConcurrentEffect: ContextShift: Timer](
+  def jdbcRealInterpreter[F[_]: Async: Dispatcher: Spawn](
     target: StorageTarget,
     timeouts: Config.Timeouts,
     conn: Transactor[F]
@@ -154,10 +152,10 @@ object Transaction {
       implicit class ErrorAdaption[A](f: F[A]) {
         def withErrorAdaption: F[A] =
           f.start
-            .bracketCase(_.join) {
-              case (_, ExitCase.Completed | ExitCase.Error(_)) =>
-                ConcurrentEffect[F].unit
-              case (fiber, ExitCase.Canceled) =>
+            .bracketCase(_.joinWith(Async[F].raiseError(new Exception("Transaction cancelled")))) {
+              case (_, Outcome.Succeeded(_) | Outcome.Errored(_)) =>
+                Async[F].unit
+              case (fiber, Outcome.Canceled()) =>
                 fiber.cancel.timeout(timeouts.rollbackCommit)
             }
             .adaptError {
@@ -186,7 +184,7 @@ object Transaction {
       def arrowBack: F ~> ConnectionIO =
         new FunctionK[F, ConnectionIO] {
           def apply[A](fa: F[A]): ConnectionIO[A] =
-            Effect[F].toIO(fa).to[ConnectionIO]
+            Lift.liftK[F, ConnectionIO].apply(fa)
         }
     }
   }

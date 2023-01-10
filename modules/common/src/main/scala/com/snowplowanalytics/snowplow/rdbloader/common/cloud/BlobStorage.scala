@@ -47,7 +47,7 @@ object BlobStorage {
 
   /**
    * Refined type for blob storage bucket, allowing only valid blob storage paths (with `xx://`
-   * prefix and trailing shash)
+   * prefix and trailing slash)
    */
   type Folder = String @@ BlobStorageFolderTag
 

@@ -12,10 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.Applicative
-import cats.effect.{MonadThrow, Timer}
+import cats.{Applicative, MonadThrow}
 import cats.implicits._
-
 import retry._
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -33,13 +31,13 @@ object TargetCheck {
    * Probe the target database to find out if it is operational. Continue to make this check until
    * it become ready.
    */
-  def blockUntilReady[F[_]: Transaction[*[_], C]: Logging: MonadThrow: Timer, C[_]: DAO](
+  def blockUntilReady[F[_]: MonadThrow: Transaction[*[_], C]: Logging: Sleep, C[_]: DAO](
     readyCheckConfig: Config.Retries
   ): F[Unit] = {
     val onError = (e: Throwable, d: RetryDetails) => log(e, d)
     val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
     val fa: F[Unit] = Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
-    retryingOnSomeErrors(retryPolicy, isWorth, onError)(fa)
+    retryingOnSomeErrors(retryPolicy, { t: Throwable => isWorth(t).pure[F] }, onError)(fa)
   }
 
   def log[F[_]: Logging: Applicative](e: Throwable, d: RetryDetails): F[Unit] =

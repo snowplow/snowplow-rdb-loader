@@ -12,20 +12,19 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
-import cats.effect.laws.util.TestContext
-import cats.effect.{ContextShift, IO, Timer}
+import cats.effect.{Clock, IO}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.WindowedRecordsSpec._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.generic.Record
 import fs2.Stream
 import org.specs2.mutable.Specification
+import cats.effect.testkit.TestControl
+import cats.effect.unsafe.implicits.global
+import org.specs2.matcher.MatchResult
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 class WindowedRecordsSpec extends Specification {
-
-  val globalCS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  val globalTimer: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
   val `00:00` = Window(1970, 1, 1, 0, 0)
   val `00:01` = Window(1970, 1, 1, 0, 1)
@@ -163,19 +162,18 @@ class WindowedRecordsSpec extends Specification {
     windowing: Windowing,
     inputBatches: List[InputBatch],
     expectedOutput: List[Record[Window, Int, String]]
-  ) = {
-    val testContext = TestContext() // for easier time manipulation (manual tick)
-    val inputStream = createInputDataStream(inputBatches)(testContext.ioTimer)
-    val windowingAction = createWindowedStream(inputStream, windowing)(testContext.ioContextShift, testContext.ioTimer)
-    for {
-      windowingRunning <- windowingAction.start(globalCS)
-      _ <- IO.sleep(1.second)(globalTimer)
-      _ <- IO(testContext.tick(windowing.streamingDuration)) // move time to the expected end of streaming
-      records <- windowingRunning.join // wait for windowed records
+  ): IO[MatchResult[List[Record[Window, Int, String]]]] = {
+    val inputStream = createInputDataStream(inputBatches)
+    val windowingAction = createWindowedStream(inputStream, windowing)
+    val program = for {
+      windowingRunning <- windowingAction.start
+      _ <- IO.sleep(1.second)
+      records <- windowingRunning.joinWith(IO(List.empty)) // wait for windowed records
     } yield assertOutput(records, expectedOutput)
+    TestControl.executeEmbed(program)
   }
 
-  private def createInputDataStream(batches: List[InputBatch])(implicit timer: Timer[IO]): Stream[IO, (Int, String)] =
+  private def createInputDataStream(batches: List[InputBatch]): Stream[IO, (Int, String)] =
     Stream(batches: _*).flatMap { batch =>
       val items = batch.produce.map(id => (id, s"state-$id"))
       Stream.sleep[IO](batch.after) >> Stream(items: _*).covary[IO]
@@ -184,8 +182,7 @@ class WindowedRecordsSpec extends Specification {
   private def createWindowedStream(
     inputStream: Stream[IO, (Int, String)],
     windowing: Windowing
-  )(implicit CS: ContextShift[IO],
-    timer: Timer[IO]
+  )(implicit C: Clock[IO]
   ) = {
     val windowProvider = Window.fromNow[IO](windowing.windowRotatingFrequency)
 

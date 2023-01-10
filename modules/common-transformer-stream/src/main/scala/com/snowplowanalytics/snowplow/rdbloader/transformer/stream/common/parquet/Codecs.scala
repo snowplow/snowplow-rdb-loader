@@ -30,7 +30,7 @@ private[parquet] object Codecs {
 
   val config = ValueCodecConfiguration(TimeZone.getTimeZone(ZoneOffset.UTC))
 
-  implicit val valueCodec: ValueCodec[FieldValue] = new ValueCodec[FieldValue] {
+  implicit val valueEncoder: ValueEncoder[FieldValue] = new ValueEncoder[FieldValue] {
 
     override def encode(data: FieldValue, configuration: ValueCodecConfiguration): Value = data match {
       case FieldValue.NullValue =>
@@ -57,8 +57,8 @@ private[parquet] object Codecs {
         as[List[FieldValue]](values)
       case FieldValue.StructValue(values) =>
         values
-          .foldLeft[RowParquetRecord](RowParquetRecord.empty) { case (acc, NamedValue(name, value)) =>
-            acc.add(name, value, config)
+          .foldLeft[RowParquetRecord](RowParquetRecord()) { case (acc, NamedValue(name, value)) =>
+            acc.updated(name, value, config)
           }
     }
 
@@ -92,15 +92,8 @@ private[parquet] object Codecs {
       }
     }
 
-    private def as[T: ValueCodec](value: T) =
-      implicitly[ValueCodec[T]].encode(value, config)
-
-    /**
-     * As transformer is only responsible for writing parquet files, implementing decoder is not
-     * necessary
-     */
-    override def decode(value: Value, configuration: ValueCodecConfiguration): FieldValue =
-      throw new IllegalStateException("Decoding from parquet values is not defined")
+    private def as[T: ValueEncoder](value: T) =
+      implicitly[ValueEncoder[T]].encode(value, config)
   }
 
 }

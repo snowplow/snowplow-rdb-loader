@@ -14,17 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader
 
 import cats.Parallel
 import cats.data.EitherT
-
 import cats.effect._
 import cats.implicits._
-
 import doobie.ConnectionIO
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+import com.snowplowanalytics.snowplow.scalatracker.Tracking
 
 object Runner {
 
@@ -37,7 +34,7 @@ object Runner {
    *   type of the query result which is sent to the warehouse during initialization of the
    *   application
    */
-  def run[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel, I](
+  def run[F[_]: Async: Parallel: Tracking, I](
     argv: List[String],
     buildStatements: BuildTarget[I],
     appName: String
@@ -65,7 +62,7 @@ object Runner {
 
     result.value.flatMap {
       case Right(code) =>
-        ConcurrentEffect[F].pure(code)
+        Sync[F].pure(code)
       case Left(error) =>
         val logger = Slf4jLogger.getLogger[F]
         logger.error(error).as(ExitCode(2))

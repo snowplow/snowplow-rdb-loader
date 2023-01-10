@@ -14,9 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.cloud
 
 import cats.{Applicative, ~>}
 import cats.effect._
-import cats.effect.concurrent.Ref
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Utils => CloudUtils}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sts.StsAsyncClient
@@ -71,7 +69,7 @@ object LoadAuthService {
    * is specified in the config, it will get temporary credentials with sending request to STS
    * service then return credentials.
    */
-  def aws[F[_]: Concurrent: ContextShift: Clock](
+  def aws[F[_]: Async](
     region: String,
     eventsLoadAuthMethodConfig: StorageTarget.LoadAuthMethod,
     foldersLoadAuthMethodConfig: StorageTarget.LoadAuthMethod
@@ -82,7 +80,7 @@ object LoadAuthService {
       case (_, _) =>
         for {
           stsAsyncClient <- Resource.fromAutoCloseable(
-                              Concurrent[F].delay(
+                              Async[F].delay(
                                 StsAsyncClient
                                   .builder()
                                   .region(Region.of(region))
@@ -99,7 +97,7 @@ object LoadAuthService {
         }
     }
 
-  private def awsCreds[F[_]: Concurrent: ContextShift: Clock](
+  private def awsCreds[F[_]: Async](
     client: StsAsyncClient,
     loadAuthConfig: StorageTarget.LoadAuthMethod
   ): F[LoadAuthMethodProvider[F]] =
@@ -126,7 +124,7 @@ object LoadAuthService {
    * @param tempCredsConfig
    *   Configuration required for the STS request.
    */
-  private def awsTempCreds[F[_]: Concurrent: ContextShift: Clock](
+  private def awsTempCreds[F[_]: Async](
     client: StsAsyncClient,
     tempCredsConfig: StorageTarget.LoadAuthMethod.TempCreds
   ): F[LoadAuthMethodProvider[F]] =
@@ -136,7 +134,7 @@ object LoadAuthService {
       override def get: F[LoadAuthMethod] =
         for {
           opt <- ref.get
-          now <- Clock[F].instantNow
+          now <- Clock[F].realTimeInstant
           next <- opt match {
                     case Some(tc) if tc.expires.isAfter(now.plusMillis(tempCredsConfig.credentialsTtl.toMillis)) =>
                       Concurrent[F].pure(tc)
@@ -150,8 +148,8 @@ object LoadAuthService {
                                                  .roleSessionName(tempCredsConfig.roleSessionName)
                                                  .build()
                                              )
-                        response <- CloudUtils.fromCompletableFuture(
-                                      Concurrent[F].delay(client.assumeRole(assumeRoleRequest))
+                        response <- Async[F].fromCompletableFuture(
+                                      Async[F].delay(client.assumeRole(assumeRoleRequest))
                                     )
                         creds = response.credentials()
                       } yield LoadAuthMethod.TempCreds(creds.accessKeyId, creds.secretAccessKey, creds.sessionToken, creds.expiration)

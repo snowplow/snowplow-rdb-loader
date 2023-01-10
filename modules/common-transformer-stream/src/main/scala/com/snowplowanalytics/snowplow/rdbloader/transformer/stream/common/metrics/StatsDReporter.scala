@@ -16,11 +16,8 @@ import cats.implicits._
 
 import java.net.{DatagramPacket, DatagramSocket, InetAddress}
 import java.nio.charset.StandardCharsets.UTF_8
-
-import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
-
+import cats.effect.{Async, Resource, Sync}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.MetricsReporters
 
 /**
@@ -44,22 +41,20 @@ object StatsDReporter {
    * there could be a delay in following a DNS record change. For the Docker image we release the
    * cache time is 30 seconds.
    */
-  def make[F[_]: Sync: ContextShift: Timer](
-    blocker: Blocker,
+  def make[F[_]: Async](
     config: MetricsReporters.StatsD
   ): Resource[F, Reporter[F]] =
-    Resource.fromAutoCloseable(Sync[F].delay(new DatagramSocket)).map(impl[F](blocker, config, _))
+    Resource.fromAutoCloseable(Sync[F].delay(new DatagramSocket)).map(impl[F](config, _))
 
-  private def impl[F[_]: Sync: ContextShift: Timer](
-    blocker: Blocker,
+  private def impl[F[_]: Async](
     config: MetricsReporters.StatsD,
     socket: DatagramSocket
   ): Reporter[F] =
     new Reporter[F] {
       def report(snapshot: Metrics.MetricSnapshot): F[Unit] =
         (for {
-          inetAddr <- blocker.delay(InetAddress.getByName(config.hostname))
-          _ <- serializedMetrics(snapshot, config).traverse_(sendMetric[F](blocker, socket, inetAddr, config.port))
+          inetAddr <- Async[F].blocking(InetAddress.getByName(config.hostname))
+          _ <- serializedMetrics(snapshot, config).traverse_(sendMetric[F](socket, inetAddr, config.port))
         } yield ()).handleErrorWith { t =>
           for {
             logger <- Slf4jLogger.create[F]
@@ -79,8 +74,7 @@ object StatsDReporter {
       Metrics.badCounterName -> snapshot.badCount.toString
     )
 
-  private def sendMetric[F[_]: ContextShift: Sync](
-    blocker: Blocker,
+  private def sendMetric[F[_]: Sync](
     socket: DatagramSocket,
     addr: InetAddress,
     port: Int
@@ -89,7 +83,7 @@ object StatsDReporter {
   ): F[Unit] = {
     val bytes = m.getBytes(UTF_8)
     val packet = new DatagramPacket(bytes, bytes.length, addr, port)
-    blocker.delay(socket.send(packet))
+    Sync[F].blocking(socket.send(packet))
   }
 
   private def statsDFormat(config: MetricsReporters.StatsD)(metric: KeyValueMetric): String = {

@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import cats.data.EitherT
 import cats.~>
 import cats.implicits._
-import cats.effect.{Async, Clock, Resource}
+import cats.effect.{Async, Resource}
 import io.circe.Json
 import io.circe.syntax._
 import org.http4s.client.Client
@@ -58,7 +58,7 @@ trait Iglu[F[_]] { self =>
 object Iglu {
   def apply[F[_]](implicit ev: Iglu[F]): Iglu[F] = ev
 
-  def igluInterpreter[F[_]: Async: Clock](httpClient: Client[F], igluConfig: Json): Resource[F, Iglu[F]] = {
+  def igluInterpreter[F[_]: Async](httpClient: Client[F], igluConfig: Json): Resource[F, Iglu[F]] = {
     implicit val registryLookup: RegistryLookup[F] =
       Http4sRegistryLookup[F](httpClient)
 

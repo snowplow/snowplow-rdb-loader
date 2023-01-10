@@ -13,23 +13,18 @@
 package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import scala.concurrent.duration._
-
-import cats.effect.{Clock, ContextShift, IO}
+import cats.effect.IO
+import cats.effect.std.Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-
-import fs2.concurrent.InspectableQueue
-
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
+
 import java.time.Instant
+import cats.effect.unsafe.implicits.global
 
 class RetriesSpec extends Specification {
-
-  implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  implicit val C: Clock[IO] = Clock.create[IO]
 
   val NotImportantDuration: FiniteDuration = 1.day
 
@@ -137,7 +132,6 @@ class RetriesSpec extends Specification {
       val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
       val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
-      implicit val T = IO.timer(concurrent.ExecutionContext.global)
       implicit val L = Logging.noOp[IO]
 
       val getFailures = IO.pure(
@@ -147,13 +141,13 @@ class RetriesSpec extends Specification {
       )
 
       val result = for {
-        q <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
+        q <- Queue.bounded[IO, BlobStorage.Folder](Size)
 
-        _ <- q.enqueue1(FolderTwo)
+        _ <- q.offer(FolderTwo)
         _ <- Retries.pullFailures[IO](Size, q, getFailures)
-        sizeBefore <- q.getSize
+        sizeBefore <- q.size
         deqeued <- Retries.periodicDequeue(q, 100.millis).compile.toList
-        sizeAfter <- q.getSize
+        sizeAfter <- q.size
       } yield (sizeBefore, deqeued, sizeAfter)
 
       val (sizeBefore, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()
@@ -169,7 +163,6 @@ class RetriesSpec extends Specification {
       val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
       val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
-      implicit val T = IO.timer(concurrent.ExecutionContext.global)
       implicit val L = Logging.noOp[IO]
 
       val getFailures = IO.pure(
@@ -180,12 +173,12 @@ class RetriesSpec extends Specification {
       )
 
       val result = for {
-        q <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
+        q <- Queue.bounded[IO, BlobStorage.Folder](Size)
 
         _ <- Retries.pullFailures[IO](Size, q, getFailures)
-        sizeBefore <- q.getSize
+        sizeBefore <- q.size
         deqeued <- Retries.periodicDequeue(q, 100.millis).compile.toList
-        sizeAfter <- q.getSize
+        sizeAfter <- q.size
       } yield (sizeBefore, deqeued, sizeAfter)
 
       val (sizeBefore, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()
@@ -203,7 +196,6 @@ class RetriesSpec extends Specification {
       val FolderThree = BlobStorage.Folder.coerce("s3://bucket/3/")
       val FolderFour = BlobStorage.Folder.coerce("s3://bucket/4/")
 
-      implicit val T = IO.timer(concurrent.ExecutionContext.global)
       implicit val L = Logging.noOp[IO]
 
       def getFailures = IO.pure(
@@ -216,12 +208,12 @@ class RetriesSpec extends Specification {
       )
 
       val result = for {
-        q <- InspectableQueue.bounded[IO, BlobStorage.Folder](Size)
+        q <- Queue.bounded[IO, BlobStorage.Folder](Size)
 
         exception <- Retries.pullFailures[IO](Size, q, getFailures).timeout(100.millis).attempt
-        sizeBefore <- q.getSize
+        sizeBefore <- q.size
         deqeued <- Retries.periodicDequeue(q, 100.millis).compile.toList
-        sizeAfter <- q.getSize
+        sizeAfter <- q.size
       } yield (sizeBefore, exception, deqeued, sizeAfter)
 
       val (sizeBefore, exception, deqeued, sizeAfter) = result.timeout(1.second).unsafeRunSync()

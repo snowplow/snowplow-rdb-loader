@@ -104,7 +104,7 @@ object State {
 
   /** Initiate state for a fresh app */
   def mk[F[_]: Concurrent: Clock]: F[SignallingRef[F, State]] =
-    Clock[F].instantNow.flatMap { now =>
+    Clock[F].realTimeInstant.flatMap { now =>
       SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, Map.empty, 0, 0))
     }
 }

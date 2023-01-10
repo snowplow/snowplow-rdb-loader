@@ -14,12 +14,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
-import cats.effect.{Blocker, ContextShift, IO, Timer}
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 
-import java.nio.file.Path
 import java.time.Instant
 import cats.implicits._
-import fs2.io.{file => fs2File}
+import fs2.io.file.{Files, Flags, Path}
 import fs2.{Stream, text}
 import io.circe.Json
 import io.circe.optics.JsonPath._
@@ -35,7 +35,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication.TestProcessor
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication._
 import org.specs2.mutable.Specification
 
 class TransformingSpec extends Specification {
@@ -106,9 +106,6 @@ object TransformingSpec {
   type TransformedList = List[(SinkPath, Transformed.Data)]
   type TransformedMap = Map[SinkPath, List[String]]
 
-  implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
-
   implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data)) {
     def getBad: Option[(SinkPath, Transformed.Data)] =
       if (value._1.value.contains(BadPathPrefix)) Some(value) else None
@@ -128,7 +125,6 @@ object TransformingSpec {
   val defaultIgluResolver: Resolver[IO] = Resolver(List(Registry.IgluCentral), None)
   val wideRowFormat = TransformerConfig.Formats.WideRow.JSON
   val shredFormat = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
-  val testBlocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
   val defaultWindow = Window(1, 1, 1, 1, 1)
   val dummyTransformedData = Transformed.Data.DString("")
 
@@ -172,10 +168,10 @@ object TransformingSpec {
       .unsafeRunSync()
 
   def fileStream(resourcePath: String): Stream[IO, String] = {
-    val path = Path.of(getClass.getResource(resourcePath).getPath)
-    fs2File
-      .readAll[IO](path, testBlocker, 4096)
-      .through(text.utf8Decode)
+    val path = Path(getClass.getResource(resourcePath).getPath)
+    Files[IO]
+      .readAll(path, 4096, Flags.Read)
+      .through(text.utf8.decode)
       .through(text.lines)
       .filter(_.nonEmpty)
   }
