@@ -14,36 +14,32 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
-import cats.effect.{Blocker, ContextShift, IO, Resource}
+import cats.effect.{IO, Resource}
+import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
-import fs2.{Stream, text}
-
-import java.nio.file.Path
+import fs2.io.file.{Files, Path}
 
 object FileUtils {
 
-  def createTempDirectory(blocker: Blocker)(implicit cs: ContextShift[IO]): Resource[IO, Path] =
-    fs2.io.file.tempDirectoryResource[IO](blocker, Path.of(System.getProperty("java.io.tmpdir")))
+  def createTempDirectory: Resource[IO, Path] =
+    Files[IO].tempDirectory
 
-  def directoryStream(blocker: Blocker, dir: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] =
-    fs2.io.file.directoryStream[IO](blocker, dir).flatMap(fileStream(blocker, _))
+  def directoryStream(dir: Path): Stream[IO, String] =
+    Files[IO].list(dir).flatMap(fileStream)
 
-  def readLines(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): IO[List[String]] =
-    resourceFileStream(blocker, resourcePath)
+  def readLines(resourcePath: String): IO[List[String]] =
+    resourceFileStream(resourcePath)
       .map(_.replace("version_placeholder", BuildInfo.version))
       .compile
       .toList
 
-  def resourceFileStream(blocker: Blocker, resourcePath: String)(implicit cs: ContextShift[IO]): Stream[IO, String] =
-    fileStream(blocker, Path.of(getClass.getResource(resourcePath).getPath))
+  def resourceFileStream(resourcePath: String): Stream[IO, String] =
+    fileStream(Path(getClass.getResource(resourcePath).getPath))
 
-  def fileStream(blocker: Blocker, filePath: Path)(implicit cs: ContextShift[IO]): Stream[IO, String] =
-    fs2.io.file
-      .readAll[IO](filePath, blocker, 4096)
-      .through(text.utf8Decode)
-      .through(text.lines)
+  def fileStream(filePath: Path): Stream[IO, String] =
+    Files[IO].readUtf8Lines(filePath)
 
-  def pathExists(blocker: Blocker, filePath: Path)(implicit cs: ContextShift[IO]): IO[Boolean] =
-    fs2.io.file.exists[IO](blocker, filePath)
+  def pathExists(filePath: Path): IO[Boolean] =
+    Files[IO].exists(filePath)
 
 }

@@ -19,11 +19,12 @@ import cats.data.EitherT
 import cats.implicits._
 import cats.effect.implicits._
 
-import cats.effect.{Clock, Concurrent, ConcurrentEffect, ContextShift, Sync, Timer}
+import cats.effect.{Async, Concurrent, Sync}
 
 import fs2.{Pipe, Stream}
-import fs2.compression.gzip
-import fs2.text.utf8Encode
+import fs2.text.utf8
+
+import fs2.compression.{Compression => FS2Compression}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
@@ -53,7 +54,7 @@ object Processing {
   type TransformationResults[C] = (List[TransformationResult], C)
   type SerializationResults[C] = (List[(SinkPath, Transformed.Data)], State[C])
 
-  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](
+  def run[F[_]: Async: Parallel, C: Checkpointer[F, *]](
     resources: Resources[F, C],
     config: Config,
     processor: Processor
@@ -62,7 +63,7 @@ object Processing {
     runFromSource(source, resources, config, processor)
   }
 
-  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](
+  def runFromSource[F[_]: Async, C: Checkpointer[F, *]](
     source: Stream[F, ParsedC[C]],
     resources: Resources[F, C],
     config: Config,
@@ -116,7 +117,7 @@ object Processing {
   }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: ConcurrentEffect: ContextShift: Timer, C: Monoid](
+  def getSink[F[_]: Async, C: Monoid](
     resources: Resources[F, C],
     config: Config.Output,
     formats: Formats
@@ -159,7 +160,7 @@ object Processing {
     Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink, config.bufferSize)
   }
 
-  def getBlobStorageSink[F[_]: ConcurrentEffect](
+  def getBlobStorageSink[F[_]: Async: FS2Compression](
     blobStorage: BlobStorage[F],
     outputPath: BlobStorage.Folder,
     compression: Compression,
@@ -168,7 +169,7 @@ object Processing {
   ): Pipe[F, Transformed.Data, Unit] = {
     val (finalPipe, extension) = compression match {
       case Compression.None => (identity[Stream[F, Byte]] _, "txt")
-      case Compression.Gzip => (gzip(), "txt.gz")
+      case Compression.Gzip => (FS2Compression[F].gzip(), "txt.gz")
     }
 
     in =>
@@ -176,7 +177,7 @@ object Processing {
         val fileOutputPath = outputPath.append(window.getDir).append(path.value).withKey(s"sink-$sinkId.$extension")
         in.mapFilter(_.str)
           .intersperse("\n")
-          .through(utf8Encode[F])
+          .through(utf8.encode[F])
           .through(finalPipe)
           .through(blobStorage.put(fileOutputPath, false))
       }

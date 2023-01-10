@@ -52,8 +52,7 @@ object Kinesis {
     override def ack: F[Unit] = record.checkpoint
   }
 
-  def consumer[F[_]: ConcurrentEffect: ContextShift: Timer: Applicative](
-    blocker: Blocker,
+  def consumer[F[_]: Async: Applicative](
     appName: String,
     streamName: String,
     region: Region,
@@ -81,7 +80,6 @@ object Kinesis {
       dynamoClient <- mkDynamoDbClient[F](region, dynamodbCustomEndpoint)
       cloudWatchClient <- mkCloudWatchClient[F](region, cloudwatchCustomEndpoint)
       kinesis = Fs2Kinesis.create(
-                  blocker,
                   scheduler[F](
                     kinesisClient,
                     dynamoClient,

@@ -64,7 +64,7 @@ case class Control[F[_]](private val state: State.Ref[F]) {
     get.map(_.getFailures)
 
   def setStage(stage: Stage)(implicit C: Clock[F], F: Monad[F]): F[Unit] =
-    C.instantNow.flatMap { now =>
+    C.realTimeInstant.flatMap { now =>
       state.update { original =>
         original.loading match {
           case Load.Status.Loading(folder, s) if s != stage =>
@@ -110,9 +110,9 @@ case class Control[F[_]](private val state: State.Ref[F]) {
   ): MakePaused[F] =
     who => {
       val allocate = Logging[F].debug(s"Pausing by $who") *>
-        C.instantNow.flatMap(now => state.update(_.paused(who).setUpdated(now)))
+        C.realTimeInstant.flatMap(now => state.update(_.paused(who).setUpdated(now)))
       val deallocate: F[Unit] = Logging[F].debug(s"Unpausing from $who") *>
-        C.instantNow.flatMap(now => state.update(_.idle.setUpdated(now)))
+        C.realTimeInstant.flatMap(now => state.update(_.idle.setUpdated(now)))
       Resource.make(allocate)(_ => deallocate)
     }
 
@@ -123,9 +123,9 @@ case class Control[F[_]](private val state: State.Ref[F]) {
   ): MakeBusy[F] =
     folder => {
       val allocate = Logging[F].debug("Setting an environment lock") *>
-        C.instantNow.flatMap(now => state.update(_.start(folder).setUpdated(now)))
+        C.realTimeInstant.flatMap(now => state.update(_.start(folder).setUpdated(now)))
       val deallocate: F[Unit] = Logging[F].debug("Releasing an environment lock") *>
-        C.instantNow.flatMap(now => state.update(_.idle.setUpdated(now)))
+        C.realTimeInstant.flatMap(now => state.update(_.idle.setUpdated(now)))
       Resource.make(allocate)(_ => deallocate)
     }
 

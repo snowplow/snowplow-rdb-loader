@@ -16,9 +16,10 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 import cats.{Monad, MonadThrow}
 import cats.implicits._
-import cats.effect.{Clock, Concurrent, Timer}
+import cats.effect.Clock
+import cats.effect.kernel.Temporal
+import cats.effect.std.Queue
 import fs2.{Pipe, Stream}
-import fs2.concurrent.InspectableQueue
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStream
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -50,7 +51,7 @@ object Retries {
    */
   type Failures = Map[BlobStorage.Folder, LoadFailure]
 
-  type RetryQueue[F[_]] = InspectableQueue[F, BlobStorage.Folder]
+  type RetryQueue[F[_]] = Queue[F, BlobStorage.Folder]
 
   implicit val folderOrdering: Ordering[BlobStorage.Folder] =
     Ordering[String].on(_.toString)
@@ -102,7 +103,7 @@ object Retries {
    * failures are unique, they can be re-sent into SQS as well as re-pulled by retry stream. It's
    * expected that DB manifest handles such duplicates
    */
-  def run[F[_]: BlobStorage: Cache: Iglu: Logging: Timer: Concurrent: JsonPathDiscovery](
+  def run[F[_]: Temporal: BlobStorage: Cache: Iglu: Logging: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder],
     config: Option[Config.RetryQueue],
     failures: F[Failures]
@@ -110,13 +111,13 @@ object Retries {
     config match {
       case Some(config) =>
         Stream
-          .eval(InspectableQueue.bounded[F, BlobStorage.Folder](config.size))
+          .eval(Queue.bounded[F, BlobStorage.Folder](config.size))
           .flatMap(get[F](assets, config, failures))
       case None =>
         Stream.empty
     }
 
-  def get[F[_]: BlobStorage: Cache: Iglu: Logging: Timer: MonadThrow: JsonPathDiscovery](
+  def get[F[_]: Temporal: BlobStorage: Cache: Iglu: Logging: MonadThrow: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder],
     config: Config.RetryQueue,
     failures: F[Failures]
@@ -164,20 +165,20 @@ object Retries {
     queue: RetryQueue[F],
     failures: F[Failures]
   ): F[Unit] =
-    queue.getSize.flatMap { size =>
+    queue.size.flatMap { size =>
       if (size == 0) {
         failures.map(_.keys.toList.sorted).flatMap {
           case Nil => Logging[F].debug("No failed folders for retry, skipping the pull")
-          case list => list.take(max).traverse_(queue.enqueue1)
+          case list => list.take(max).traverse_(queue.offer)
         }
       } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull")
     }
 
-  def periodicDequeue[F[_]: Monad: Timer, A](queue: InspectableQueue[F, A], interval: FiniteDuration): Stream[F, A] = {
+  def periodicDequeue[F[_]: Temporal, A](queue: Queue[F, A], interval: FiniteDuration): Stream[F, A] = {
     def go: Stream[F, A] =
-      Stream.eval(queue.getSize).flatMap { size =>
+      Stream.eval(queue.size).flatMap { size =>
         if (size == 0) Stream.empty
-        else Stream.eval(queue.dequeue1 <* Timer[F].sleep(interval)) ++ go
+        else Stream.eval(queue.take <* Temporal[F].sleep(interval)) ++ go
 
       }
 
@@ -199,7 +200,7 @@ object Retries {
     base: BlobStorage.Folder,
     error: Throwable
   ): F[Boolean] =
-    Clock[F].instantNow.flatMap { now =>
+    Clock[F].realTimeInstant.flatMap { now =>
       state.modify { original =>
         if (original.failures.size >= config.size) (original, false)
         else

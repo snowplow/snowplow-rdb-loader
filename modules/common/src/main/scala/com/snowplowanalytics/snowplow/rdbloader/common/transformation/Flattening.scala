@@ -51,7 +51,7 @@ object Flattening {
     } yield ordered
   }
 
-  def getDdlProperties[F[_]: Monad: RegistryLookup: Clock](
+  def getDdlProperties[F[_]: Monad: Clock: RegistryLookup](
     resolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     schemaKey: SchemaKey

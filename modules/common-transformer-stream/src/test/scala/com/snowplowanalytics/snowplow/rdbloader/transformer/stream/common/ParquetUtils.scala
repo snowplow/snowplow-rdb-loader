@@ -30,12 +30,13 @@ import org.apache.parquet.schema.{MessageTypeParser, PrimitiveType}
 
 import java.io.{File, FileFilter}
 import java.math.{BigDecimal => BigDec, MathContext}
-import java.nio.file.Path
 import java.sql.Date
 import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 import java.util.TimeZone
 import scala.jdk.CollectionConverters._
+
+import fs2.io.file.Path
 
 object ParquetUtils {
 
@@ -111,18 +112,20 @@ object ParquetUtils {
       case value: IntValue =>
         convertInt(expectedColumnType, value)
       case value: LongValue =>
-        convertLong(expectedColumnType, value)
+        convertLong(expectedColumnType, value.value)
       case value: DoubleValue =>
         Json.fromDoubleOrNull(value.value)
       case value: BinaryValue =>
         convertBinary(expectedColumnType, value)
+      case value: DateTimeValue =>
+        convertLong(expectedColumnType, value.value)
     }
   }
 
   private def convertInt(expectedColumnType: PrimitiveType, value: IntValue) =
     expectedColumnType.getLogicalTypeAnnotation match {
       case _: DateLogicalTypeAnnotation =>
-        val date = implicitly[ValueCodec[Date]].decode(value, config)
+        val date = implicitly[ValueDecoder[Date]].decode(value, config)
         Json.fromString(date.toString)
       case annotation: DecimalLogicalTypeAnnotation =>
         Json.fromBigDecimal(BigDecimal(BigDec.valueOf(value.value.toLong, annotation.getScale)))
@@ -130,15 +133,15 @@ object ParquetUtils {
         Json.fromInt(value.value)
     }
 
-  private def convertLong(expectedColumnType: PrimitiveType, value: LongValue) =
+  private def convertLong(expectedColumnType: PrimitiveType, value: Long) =
     expectedColumnType.getLogicalTypeAnnotation match {
       case _: TimestampLogicalTypeAnnotation =>
-        val timestamp = Instant.EPOCH.plus(value.value, ChronoUnit.MICROS).truncatedTo(ChronoUnit.MILLIS)
+        val timestamp = Instant.EPOCH.plus(value, ChronoUnit.MICROS).truncatedTo(ChronoUnit.MILLIS)
         Json.fromString(timestamp.toString)
       case annotation: DecimalLogicalTypeAnnotation =>
-        Json.fromBigDecimal(BigDecimal(BigDec.valueOf(value.value, annotation.getScale)))
+        Json.fromBigDecimal(BigDecimal(BigDec.valueOf(value, annotation.getScale)))
       case _ =>
-        Json.fromLong(value.value)
+        Json.fromLong(value)
     }
   private def convertBinary(expectedColumnType: PrimitiveType, value: BinaryValue) =
     expectedColumnType.getLogicalTypeAnnotation match {

@@ -14,23 +14,30 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
-import blobstore.Path
+import java.net.URI
+import java.nio.file.{Path => NioPath}
 import blobstore.fs.FileStore
-import cats.Applicative
+import blobstore.url.Path
 import cats.effect._
-import cats.effect.concurrent.Ref
+import cats.effect.std.Random
+import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 import fs2.{Pipe, Stream}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import cats.effect.unsafe.implicits.global
+import cats.Applicative
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
+import fs2.io.file.Files
+import fs2.io.file.{Path => Fs2Path}
+import scala.concurrent.duration.DurationInt
 
 import java.net.URI
-import java.nio.file.{Path => NioPath, Paths}
 
 object TestApplication {
 
@@ -38,43 +45,61 @@ object TestApplication {
 
   val TestProcessor = Processor("snowplow-transformer-kinesis", BuildInfo.version)
 
+  implicit val rand = Random.scalaUtilRandom[IO].unsafeRunSync()
+
   def run(
     args: Seq[String],
     completionsRef: Ref[IO, Vector[String]],
     checkpointRef: Ref[IO, Int],
     queueBadSink: Ref[IO, Vector[String]],
     sourceRecords: Stream[IO, ParsedC[Unit]]
-  )(implicit CS: ContextShift[IO],
-    T: Timer[IO],
-    C: Clock[IO]
   ): IO[Unit] =
-    for {
-      parsed <- CliConfig.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
-      implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
-      res <- parsed match {
-               case Right(cliConfig) =>
-                 val appConfig = updateOutputURIScheme(cliConfig.config)
-                 Resources
-                   .mk[IO, Unit](
-                     cliConfig.igluConfig,
-                     appConfig,
-                     BuildInfo.name,
-                     BuildInfo.version,
-                     scala.concurrent.ExecutionContext.global,
-                     (_, _, _) => mkSource[IO],
-                     mkSink,
-                     (_, _) => mkBadQueue[IO](queueBadSink),
-                     _ => queueFromRef[IO](completionsRef),
-                     _ => ()
-                   )
-                   .use { resources =>
-                     logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>
-                       Processing.runFromSource[IO, Unit](sourceRecords, resources, appConfig, TestProcessor).compile.drain
-                   }
-               case Left(e) =>
-                 IO.raiseError(new RuntimeException(s"Configuration error: $e"))
-             }
-    } yield res
+    runWithTestControl {
+      for {
+        parsed <- CliConfig.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
+        implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
+        res <- parsed match {
+                 case Right(cliConfig) =>
+                   val appConfig = updateOutputURIScheme(cliConfig.config)
+                   Resources
+                     .mk[IO, Unit](
+                       cliConfig.igluConfig,
+                       appConfig,
+                       BuildInfo.name,
+                       BuildInfo.version,
+                       scala.concurrent.ExecutionContext.global,
+                       (_, _) => mkSource[IO],
+                       mkSink,
+                       _ => mkBadQueue[IO](queueBadSink),
+                       _ => queueFromRef[IO](completionsRef),
+                       _ => ()
+                     )
+                     .use { resources =>
+                       logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>
+                         Processing.runFromSource[IO, Unit](sourceRecords, resources, appConfig, TestProcessor).compile.drain
+                     }
+                 case Left(e) =>
+                   IO.raiseError(new RuntimeException(s"Configuration error: $e - parsed: $parsed"))
+               }
+      } yield res
+    }
+
+  private def runWithTestControl(program: IO[Unit]): IO[Unit] =
+    TestControl
+      .execute(program)
+      .flatMap { control =>
+        for {
+          _ <- control.advance(37800.seconds) // initialize the clock at 1970-01-01-10:30
+          _ <- control.tickAll
+          results <- control.results
+        } yield results
+      }
+      .flatMap {
+        case Some(Outcome.Succeeded(output)) => IO.pure(output)
+        case Some(Outcome.Errored(e)) => IO.raiseError(e)
+        case Some(Outcome.Canceled()) => IO.raiseError(new RuntimeException("Program cancelled"))
+        case None => IO.raiseError(new RuntimeException("Program under test did not complete"))
+      }
 
   private def queueFromRef[F[_]: Concurrent](ref: Ref[F, Vector[String]]): Resource[F, Queue.Producer[F]] =
     Resource.pure[F, Queue.Producer[F]](
@@ -90,16 +115,17 @@ object TestApplication {
     def empty: Unit = ()
   }
 
-  private def mkSource[F[_]: Concurrent: ContextShift]: Resource[F, Queue.Consumer[F]] =
+  private def mkSource[F[_]: Concurrent]: Resource[F, Queue.Consumer[F]] =
     Resource.pure[F, Queue.Consumer[F]](
       new Queue.Consumer[F] {
         def read: Stream[F, Consumer.Message[F]] = Stream.empty
       }
     )
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
+  private def mkSink[F[_]: Files: Async](output: Config.Output): Resource[F, BlobStorage[F]] = {
+    val _ = output
     for {
-      client <- Resource.pure[F, FileStore[F]](FileStore[F](Paths.get(output.path), blocker))
+      client <- Resource.pure[F, FileStore[F]](FileStore[F])
       blobStorage <- Resource.pure[F, BlobStorage[F]](
                        new BlobStorage[F] {
 
@@ -107,7 +133,7 @@ object TestApplication {
                            Stream.empty
 
                          override def put(path: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
-                           val relativePath = Path(NioPath.of(client.absRoot).relativize(NioPath.of(URI.create(path))).toString)
+                           val relativePath = Path(Fs2Path.fromNioPath(NioPath.of(URI.create(path))).toString)
                            client.put(relativePath, false)
                          }
 
@@ -119,6 +145,7 @@ object TestApplication {
                        }
                      )
     } yield blobStorage
+  }
 
   private def mkBadQueue[F[_]: Applicative](badrows: Ref[F, Vector[String]]): Resource[F, Queue.ChunkProducer[F]] =
     Resource.pure {

@@ -31,6 +31,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+
 object Main extends IOApp {
 
   implicit private def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
@@ -41,22 +43,20 @@ object Main extends IOApp {
       BuildInfo.name,
       BuildInfo.version,
       BuildInfo.description,
-      executionContext,
-      (b, s, _) => mkSource(b, s),
+      runtime.compute,
+      (s, _) => mkSource(s),
       mkSink,
-      (_, c) => mkBadQueue(c),
+      mkBadQueue,
       mkQueue,
       PubsubCheckpointer.checkpointer
     )
 
-  private def mkSource[F[_]: ConcurrentEffect: ContextShift: Timer](
-    blocker: Blocker,
+  private def mkSource[F[_]: Async](
     streamInput: Config.StreamInput
   ): Resource[F, Queue.Consumer[F]] =
     streamInput match {
       case conf: Config.StreamInput.Pubsub =>
-        Pubsub.consumer(
-          blocker,
+        Pubsub.consumer[F](
           conf.projectId,
           conf.subscriptionId,
           parallelPullCount = conf.parallelPullCount,
@@ -86,7 +86,7 @@ object Main extends IOApp {
           }
         )
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))
+        Resource.eval(Sync[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))
     }
 
   def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
@@ -124,15 +124,15 @@ object Main extends IOApp {
     }
   }
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer: ContextShift](blocker: Blocker, output: Config.Output): Resource[F, BlobStorage[F]] =
+  private def mkSink[F[_]: Async](output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
       case _: Config.Output.GCS =>
-        GCS.blobStorage[F](blocker)
+        GCS.blobStorage[F]
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
     }
 
-  private def mkBadQueue[F[_]: ConcurrentEffect](output: Config.Output.Bad.Queue): Resource[F, Queue.ChunkProducer[F]] =
+  private def mkBadQueue[F[_]: Async](output: Config.Output.Bad.Queue): Resource[F, Queue.ChunkProducer[F]] =
     output match {
       case config: Config.Output.Bad.Queue.Pubsub =>
         Pubsub
@@ -144,9 +144,10 @@ object Main extends IOApp {
             delayThreshold = config.delayThreshold
           )
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
     }
-  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
+
+  private def mkQueue[F[_]: Async](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
       case p: Config.QueueConfig.Pubsub =>
         Pubsub.producer(
@@ -157,6 +158,6 @@ object Main extends IOApp {
           delayThreshold = p.delayThreshold
         )
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
     }
 }

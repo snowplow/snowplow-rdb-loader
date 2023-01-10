@@ -15,7 +15,6 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
-import cats.effect.Timer
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -39,10 +38,11 @@ import com.snowplowanalytics.snowplow.rdbloader.test.{
   PureLoadAuthService,
   PureLogging,
   PureOps,
-  PureTimer,
+  PureSleep,
   PureTransaction,
   TestState
 }
+import retry.Sleep
 
 class LoadSpec extends Specification {
   import LoadSpec.{failCommit, isBeforeFirstCommit}
@@ -53,7 +53,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
@@ -104,7 +104,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withDuplicateExistingRecord))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
@@ -138,7 +138,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
@@ -171,7 +171,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
@@ -246,7 +246,7 @@ class LoadSpec extends Specification {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(

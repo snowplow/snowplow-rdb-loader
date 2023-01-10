@@ -15,30 +15,22 @@
 package com.snowplowanalytics.snowplow.rdbloader.common.telemetry
 
 import scala.concurrent.duration._
-
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import cats.effect.{ConcurrentEffect, Resource, Sync, Timer}
-
+import cats.effect.{Async, Resource, Sync}
+import cats.effect.std.Random
 import fs2.Stream
-
 import org.http4s.client.{Client => HttpClient}
-
 import io.circe._
 import io.circe.generic.semiauto._
 import io.circe.syntax._
-
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
-
-import com.snowplowanalytics.snowplow.scalatracker.Tracker
+import com.snowplowanalytics.snowplow.scalatracker.{Tracker, Tracking}
 import com.snowplowanalytics.snowplow.scalatracker.Emitter._
 import com.snowplowanalytics.snowplow.scalatracker.Emitter.{Result => TrackerResult}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
-
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 
 trait Telemetry[F[_]] {
@@ -50,7 +42,7 @@ object Telemetry {
   private implicit def unsafeLogger[F[_]: Sync]: Logger[F] =
     Slf4jLogger.getLogger[F]
 
-  def build[F[_]: ConcurrentEffect: Timer](
+  def build[F[_]: Async: Random: Tracking](
     telemetryConfig: Config,
     appName: String,
     appVersion: String,
@@ -83,7 +75,7 @@ object Telemetry {
       }
     }
 
-  private def initTracker[F[_]: ConcurrentEffect: Timer](
+  private def initTracker[F[_]: Async: Random: Tracking](
     config: Config,
     appName: String,
     client: HttpClient[F]

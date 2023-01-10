@@ -25,7 +25,7 @@ case class Window(
 object Window {
 
   def fromNow[F[_]: Clock: Functor](roundMins: Int): F[Window] =
-    Clock[F].instantNow.map(instant => Window.fromInstant(roundMins, instant))
+    Clock[F].realTimeInstant.map(instant => Window.fromInstant(roundMins, instant))
 
   implicit val windowOrder: Order[Window] =
     Order.by[Window, (Int, Int, Int, Int, Int)] { case Window(y, mon, d, h, min) =>

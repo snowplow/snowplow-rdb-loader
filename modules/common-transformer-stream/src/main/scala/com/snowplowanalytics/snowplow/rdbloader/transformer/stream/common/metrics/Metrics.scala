@@ -14,13 +14,10 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metri
 
 import cats.implicits._
 import cats.{Applicative, Monad}
-import cats.effect.concurrent.Ref
-import cats.effect.{Async, Blocker, ConcurrentEffect, ContextShift, Resource, Sync, Timer}
-
+import cats.effect.{Async, Ref, Resource, Sync}
 import fs2.Stream
 
 import scala.concurrent.duration.FiniteDuration
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.MetricsReporters
 
 trait Metrics[F[_]] {
@@ -47,17 +44,15 @@ object Metrics {
     badCount: Int
   )
 
-  def build[F[_]: ContextShift: ConcurrentEffect: Timer](
-    blocker: Blocker,
+  def build[F[_]: Async](
     config: MetricsReporters
   ): F[Metrics[F]] =
     config match {
       case MetricsReporters(None, None, _) => noop[F].pure[F]
-      case MetricsReporters(statsd, stdout, _) => impl[F](blocker, statsd, stdout)
+      case MetricsReporters(statsd, stdout, _) => impl[F](statsd, stdout)
     }
 
-  private def impl[F[_]: ContextShift: ConcurrentEffect: Timer](
-    blocker: Blocker,
+  private def impl[F[_]: Async](
     statsd: Option[MetricsReporters.StatsD],
     stdout: Option[MetricsReporters.Stdout]
   ): F[Metrics[F]] =
@@ -69,7 +64,7 @@ object Metrics {
 
         val rep1 = statsd
           .map { config =>
-            reporterStream(StatsDReporter.make[F](blocker, config), refsStatsd, config.period)
+            reporterStream(StatsDReporter.make[F](config), refsStatsd, config.period)
           }
           .getOrElse(Stream.never[F])
 
@@ -110,7 +105,7 @@ object Metrics {
       } yield MetricSnapshot(goodCount, badCount)
   }
 
-  def reporterStream[F[_]: Sync: Timer: ContextShift](
+  def reporterStream[F[_]: Async](
     reporter: Resource[F, Reporter[F]],
     metrics: MetricRefs[F],
     period: FiniteDuration

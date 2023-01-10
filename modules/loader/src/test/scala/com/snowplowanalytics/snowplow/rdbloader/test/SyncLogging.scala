@@ -13,8 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.test
 
 import cats.Show
-import cats.effect.concurrent.Ref
-
+import cats.effect.kernel.Ref
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 
