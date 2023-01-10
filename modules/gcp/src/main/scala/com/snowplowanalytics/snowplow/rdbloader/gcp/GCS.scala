@@ -19,43 +19,44 @@ import cats.implicits._
 
 import blobstore.gcs._
 
-import com.google.cloud.storage.{BlobInfo, StorageOptions}
+import blobstore.url.exception.Throwables
+import blobstore.url.{Authority, Path, Url}
+import com.google.cloud.storage.StorageOptions
 
-import fs2.Pipe
+import fs2.{Pipe, Stream}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 
 object GCS {
 
-  def blobStorage[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker): Resource[F, BlobStorage[F]] =
+  def blobStorage[F[_]: Async]: Resource[F, BlobStorage[F]] =
     for {
-      client <- getClient(blocker)
+      client <- getClient
       blobStorage <- Resource.pure[F, BlobStorage[F]](
                        new BlobStorage[F] {
 
-                         override def list(folder: Folder, recursive: Boolean): fs2.Stream[F, BlobStorage.BlobObject] = {
+                         override def list(folder: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
                            val (bucket, path) = BlobStorage.splitPath(folder)
                            client
-                             .list(GcsPath(BlobInfo.newBuilder(bucket, path).build()), recursive)
-                             .map { gcsPath =>
-                               val root = gcsPath.root.getOrElse("")
-                               val pathFromRoot = gcsPath.pathFromRoot.toList.mkString("/")
-                               val filename = gcsPath.fileName.getOrElse("")
-                               val key = BlobStorage.Key.coerce(s"gs://$root/$pathFromRoot/$filename")
-                               BlobStorage.BlobObject(key, gcsPath.size.getOrElse(0L))
+                             .list(Url("gs", Authority.unsafe(bucket), Path(path)), recursive)
+                             .map { url: Url[GcsBlob] =>
+                               val bucketName = url.authority.show
+                               val keyPath = url.path.relative.show
+                               val key = BlobStorage.Key.coerce(s"gs://${bucketName}/${keyPath}")
+                               BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
                              }
                          }
 
                          override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
                            val (bucket, path) = BlobStorage.splitKey(key)
-                           client.put(GcsPath(BlobInfo.newBuilder(bucket, path).build()), overwrite)
+                           client.put(Url("gs", Authority.unsafe(bucket), Path(path)), overwrite)
                          }
 
                          override def get(key: Key): F[Either[Throwable, String]] = {
                            val (bucket, path) = BlobStorage.splitKey(key)
                            client
-                             .get(GcsPath(BlobInfo.newBuilder(bucket, path).build()), 1024)
+                             .get(Url("gs", Authority.unsafe(bucket), Path(path)), 1024)
                              .compile
                              .to(Array)
                              .map(array => new String(array))
@@ -64,12 +65,15 @@ object GCS {
 
                          override def keyExists(key: Key): F[Boolean] = {
                            val (bucket, path) = BlobStorage.splitKey(key)
-                           client.list(GcsPath(BlobInfo.newBuilder(bucket, path).build())).compile.toList.map(_.nonEmpty)
+                           client.list(Url("gs", Authority.unsafe(bucket), Path(path))).compile.toList.map(_.nonEmpty)
                          }
                        }
                      )
     } yield blobStorage
 
-  def getClient[F[_]: ConcurrentEffect: ContextShift](blocker: Blocker): Resource[F, GcsStore[F]] =
-    Resource.pure[F, GcsStore[F]](GcsStore(StorageOptions.getDefaultInstance.getService, blocker))
+  def getClient[F[_]: Async]: Resource[F, GcsStore[F]] =
+    GcsStore
+      .builder(StorageOptions.getDefaultInstance.getService)
+      .build
+      .fold(errors => Resource.raiseError(errors.reduce(Throwables.collapsingSemigroup)), Resource.pure)
 }

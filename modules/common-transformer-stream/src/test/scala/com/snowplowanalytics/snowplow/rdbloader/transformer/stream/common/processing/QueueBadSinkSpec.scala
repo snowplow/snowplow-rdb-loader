@@ -14,11 +14,11 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
+import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.QueueBadSinkSpec._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
-
-import java.nio.file.Path
+import fs2.io.file.Path
 
 class QueueBadSinkSpec extends BaseProcessingSpec {
 
@@ -71,7 +71,7 @@ object QueueBadSinkSpec {
         |   "maxAckExtensionPeriod": "1 hours"
         | }
         | "output": {
-        |   "path": "${outputPath.toUri.toString}"
+        |   "path": "${outputPath.toNioPath.toUri.toString}"
         |   "compression": "NONE"
         |   "region": "eu-central-1"
         |   "bad": {

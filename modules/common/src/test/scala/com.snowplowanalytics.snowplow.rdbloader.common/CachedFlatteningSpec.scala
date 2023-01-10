@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.effect.Clock
-import cats.{Id, Monad}
+import cats.{Applicative, Id, Monad}
 import com.snowplowanalytics.iglu.client.resolver.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.{Registry, RegistryError, RegistryLookup}
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaList, SelfDescribingData}
@@ -12,7 +12,9 @@ import io.circe.Json
 import io.circe.literal.JsonStringContext
 import org.specs2.mutable.Specification
 
-import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
+
+import java.util.concurrent.TimeUnit
 
 class CachedFlatteningSpec extends Specification {
 
@@ -57,7 +59,7 @@ class CachedFlatteningSpec extends Specification {
          }
         """
 
-  val cacheTtl = 10 // seconds
+  val cacheTtl = 10.seconds
   val dataToFlatten = json"""{ "field1": "1", "field2": 2 }"""
   val schemaKey = "iglu:com.snowplowanalytics.snowplow/test_schema/jsonschema/1-0-0"
 
@@ -76,7 +78,7 @@ class CachedFlatteningSpec extends Specification {
       result must beEqualTo(List("1"))
 
       // Properties are cached after first call (1 second)
-      propertiesCache.get((propertiesKey, 1)) must beSome
+      propertiesCache.get((propertiesKey, 1.second)) must beSome
     }
 
     "(2) original schema is patched between calls, no delay => original schema is still cached => 1 field flattened" in {
@@ -99,7 +101,7 @@ class CachedFlatteningSpec extends Specification {
       result must beEqualTo(List("1"))
 
       // Properties are cached after first call (1 second)
-      propertiesCache.get((propertiesKey, 1)) must beSome
+      propertiesCache.get((propertiesKey, 1.second)) must beSome
     }
 
     "(3) schema is patched, delay between flatten calls is less than cache TTL => original schema is still cached => 1 field flattened" in {
@@ -122,10 +124,10 @@ class CachedFlatteningSpec extends Specification {
       result must beEqualTo(List("1"))
 
       // Properties are cached after first call (1 second)
-      propertiesCache.get((propertiesKey, 1)) must beSome
+      propertiesCache.get((propertiesKey, 1.second)) must beSome
 
       // Properties are not cached after second call (3 seconds)
-      propertiesCache.get((propertiesKey, 3)) must beNone
+      propertiesCache.get((propertiesKey, 3.second)) must beNone
     }
 
     "(4) schema is patched, delay between flatten calls is greater than cache TTL => original schema is expired => using patched schema => 2 field flattened" in {
@@ -148,10 +150,10 @@ class CachedFlatteningSpec extends Specification {
       result must beEqualTo(List("1", "2"))
 
       // Properties are cached after first call (1 second)
-      propertiesCache.get((propertiesKey, 1)) must beSome
+      propertiesCache.get((propertiesKey, 1.second)) must beSome
 
       // Properties are cached after second call (13 seconds)
-      propertiesCache.get((propertiesKey, 13)) must beSome
+      propertiesCache.get((propertiesKey, 13.second)) must beSome
     }
   }
 
@@ -179,16 +181,16 @@ class CachedFlatteningSpec extends Specification {
     }
 
     val staticClock: Clock[Id] = new Clock[Id] {
-      override def realTime(unit: TimeUnit): Id[Long] =
-        unit.convert(currentTime, MILLISECONDS)
+      override def applicative: Applicative[Id] = Applicative[Id]
 
-      override def monotonic(unit: TimeUnit): Id[Long] =
-        unit.convert(currentTime * 1000000, NANOSECONDS)
+      override def monotonic: Id[FiniteDuration] = FiniteDuration(currentTime * 1000000, TimeUnit.NANOSECONDS)
+
+      override def realTime: Id[FiniteDuration] = FiniteDuration(currentTime, TimeUnit.MILLISECONDS)
     }
 
     val data = SelfDescribingData(schema = SchemaKey.fromUri(schemaKey).right.get, data = dataToFlatten)
 
-    EventUtils.flatten(resolver, propertiesCache, data)(Monad[Id], testRegistryLookup, staticClock).value.right.get
+    EventUtils.flatten(resolver, propertiesCache, data, staticClock)(Monad[Id], testRegistryLookup).value.right.get
   }
 
   private def getCache: PropertiesCache[Id] = CreateLruMap[Id, PropertiesKey, Properties].create(100)

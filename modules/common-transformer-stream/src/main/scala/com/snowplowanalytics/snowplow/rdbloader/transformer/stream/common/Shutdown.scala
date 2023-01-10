@@ -14,14 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import cats.implicits._
 import cats.effect.implicits._
-import cats.effect.{Concurrent, ExitCase, Sync, Timer}
-import cats.effect.concurrent.Deferred
-
+import cats.effect.{Async, Deferred, Sync}
+import cats.effect.kernel.Resource.ExitCase
+import cats.effect.std.Queue
 import fs2.{Pipe, Stream}
-import fs2.concurrent.{NoneTerminatedQueue, Queue}
 
 import scala.concurrent.duration.DurationInt
 
@@ -43,32 +41,32 @@ object Shutdown {
    * + checkpointing. When we receive a SIGINT or exception then we terminate the sink by pushing a
    * `None` to the queue.
    */
-  def run[F[_]: Concurrent: Timer, A](
+  def run[F[_]: Async, A](
     source: Stream[F, A],
     sinkAndCheckpoint: Pipe[F, A, Unit]
   ): Stream[F, Unit] =
     for {
-      queue <- Stream.eval(Queue.synchronousNoneTerminated[F, A])
+      queue <- Stream.eval(Queue.synchronous[F, Option[A]])
       sig <- Stream.eval(Deferred[F, Unit])
       _ <- impl(source, sinkAndCheckpoint, queue, sig)
     } yield ()
 
-  private def impl[F[_]: Concurrent: Timer, A](
+  private def impl[F[_]: Async, A](
     source: Stream[F, A],
     sinkAndCheckpoint: Pipe[F, A, Unit],
-    queue: NoneTerminatedQueue[F, A],
+    queue: Queue[F, Option[A]],
     sig: Deferred[F, Unit]
   ): Stream[F, Unit] =
     Stream
       .eval(sig.get)
       .onFinalizeCase {
-        case ExitCase.Completed =>
+        case ExitCase.Succeeded =>
           // Both the source and sink have completed "naturally", e.g. processed all input files in the directory
           Sync[F].unit
         case ExitCase.Canceled =>
           // SIGINT received. We wait for the transformed events already in the queue to get sunk and checkpointed
           terminateStream(queue, sig)
-        case ExitCase.Error(e) =>
+        case ExitCase.Errored(e) =>
           // Runtime exception either in the source or in the sink.
           // The exception is already logged by the concurrent process.
           // We wait for the transformed events already in the queue to get sunk and checkpointed.
@@ -78,39 +76,46 @@ object Shutdown {
           } *> Sync[F].raiseError[Unit](e)
       }
       .concurrently {
-        Stream.bracket(().pure[F])(_ => sig.complete(())) >>
-          queue.dequeue
+        Stream.bracket(().pure[F])(_ => sig.complete(()).void) >>
+          Stream
+            .fromQueueNoneTerminated(queue)
             .through(sinkAndCheckpoint)
             .onFinalizeCase {
-              case ExitCase.Completed =>
+              case ExitCase.Succeeded =>
                 // The queue has completed "naturally", i.e. a `None` got enqueued.
                 Logger[F].info("Completed sinking and checkpointing events")
               case ExitCase.Canceled =>
                 Logger[F].info("Sinking and checkpointing was cancelled")
-              case ExitCase.Error(e) =>
+              case ExitCase.Errored(e) =>
                 Logger[F].error(e)("Error on sinking and checkpointing events")
             }
       }
       .concurrently {
         source
-          .evalMap(x => queue.enqueue1(Some(x)))
+          .evalMap(x => queue.offer(Some(x)))
           .onFinalizeCase {
-            case ExitCase.Completed =>
+            case ExitCase.Succeeded =>
               // The source has completed "naturally", e.g. processed all input files in the directory
-              Logger[F].info("Reached the end of the source of events")
+              Logger[F].info("Reached the end of the source of events") *>
+                closeQueue(queue)
             case ExitCase.Canceled =>
               Logger[F].info("Source of events was cancelled")
-            case ExitCase.Error(e) =>
-              Logger[F].error(e)("Error in the source of events")
+            case ExitCase.Errored(e) =>
+              Logger[F].error(e)("Error in the source of events") *>
+                terminateStream(queue, sig)
           }
-          .onFinalize(queue.enqueue1(None))
       }
 
-  private def terminateStream[F[_]: Concurrent: Sync: Timer, A](queue: NoneTerminatedQueue[F, A], sig: Deferred[F, Unit]): F[Unit] =
+  // Closing the queue allows the sink to finish once all pending events have been flushed.
+  // We spawn it as a Fiber because `queue.offer(None)` can hang if the queue is already closed.
+  private def closeQueue[F[_]: Async, A](queue: Queue[F, Option[A]]): F[Unit] =
+    queue.offer(None).start.void
+
+  private def terminateStream[F[_]: Async, A](queue: Queue[F, Option[A]], sig: Deferred[F, Unit]): F[Unit] =
     for {
       timeout <- Sync[F].pure(5.minutes)
       _ <- Logger[F].warn(s"Terminating transformed sink. Waiting $timeout for it to complete")
-      _ <- queue.enqueue1(None)
+      _ <- closeQueue(queue)
       _ <- sig.get.timeoutTo(timeout, Logger[F].warn(s"Sink not complete after $timeout, aborting"))
     } yield ()
 }

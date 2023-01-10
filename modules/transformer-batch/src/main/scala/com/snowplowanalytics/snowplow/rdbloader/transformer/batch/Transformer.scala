@@ -96,7 +96,8 @@ object Transformer {
           PropertiesCacheSingleton.get(resolverConfig),
           isTabular,
           atomicLengths,
-          ShredJob.BadRowsProcessor
+          ShredJob.BadRowsProcessor,
+          catsClockIdInstance
         )(event)
         .value match {
         case Right(shredded) =>

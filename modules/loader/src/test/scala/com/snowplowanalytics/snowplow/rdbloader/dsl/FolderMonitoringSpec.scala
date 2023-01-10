@@ -14,15 +14,17 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.time.Instant
 import scala.concurrent.duration._
-import cats.effect.{IO, Timer}
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureDAO, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureDAO, PureLogging, PureOps, PureSleep, PureTransaction, TestState}
 import org.specs2.mutable.Specification
+import retry.Sleep
 
 class FolderMonitoringSpec extends Specification {
   import FolderMonitoringSpec._
@@ -31,7 +33,7 @@ class FolderMonitoringSpec extends Specification {
     "return a single element returned by MINUS statement (shredding_complete doesn't exist)" in {
       implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
@@ -80,7 +82,7 @@ class FolderMonitoringSpec extends Specification {
     "return a single element returned by MINUS statement (shredding_complete does exist)" in {
       implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
@@ -129,7 +131,6 @@ class FolderMonitoringSpec extends Specification {
 
   "getOutputKey" should {
     "produce new keys with interval" in {
-      implicit val T = IO.timer(scala.concurrent.ExecutionContext.global)
       val result = FolderMonitoring
         .getOutputKeys[IO](
           Config.Folders(

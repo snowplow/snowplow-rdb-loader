@@ -34,7 +34,7 @@ object SQS {
 
   case class SQSMessage[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
 
-  def consumer[F[_]: ConcurrentEffect: Timer: Logger](
+  def consumer[F[_]: Async: Logger](
     queueName: String,
     sqsVisibility: FiniteDuration,
     region: String,
@@ -57,7 +57,7 @@ object SQS {
       }
     )
 
-  def producer[F[_]: Concurrent](
+  def producer[F[_]: Async](
     queueName: String,
     region: String,
     groupId: String
@@ -69,12 +69,12 @@ object SQS {
       }
     }
 
-  private def mkClient[F[_]: Concurrent](region: Region): Resource[F, SqsClient] =
+  private def mkClient[F[_]: Async](region: Region): Resource[F, SqsClient] =
     Resource.fromAutoCloseable(Sync[F].delay[SqsClient] {
       SqsClient.builder.region(region).build
     })
 
-  private def readQueue[F[_]: Timer: Concurrent](
+  private def readQueue[F[_]: Async](
     queueName: String,
     visibilityTimeout: Int,
     region: Region,

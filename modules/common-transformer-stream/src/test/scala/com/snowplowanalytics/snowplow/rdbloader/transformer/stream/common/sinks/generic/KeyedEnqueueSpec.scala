@@ -14,14 +14,14 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
 import fs2.Pipe
 import cats.implicits._
+import cats.effect.kernel.Ref
+import cats.effect.unsafe.implicits.global
 
-import cats.effect.concurrent.Ref
-import cats.effect.{ContextShift, IO, Timer}
+import cats.effect.IO
 
 import org.specs2.mutable.Specification
 
 class KeyedEnqueueSpec extends Specification {
-  import KeyedEnqueueSpec._
 
   "sink" should {
 
@@ -67,8 +67,6 @@ class KeyedEnqueueSpec extends Specification {
 }
 
 object KeyedEnqueueSpec {
-  implicit val CS: ContextShift[IO] = IO.contextShift(concurrent.ExecutionContext.global)
-  implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
   def sinkAndStore: IO[(Ref[IO, Vector[(String, String)]], String => Pipe[IO, String, Unit])] =
     Ref.of[IO, Vector[(String, String)]](Vector.empty).map { ref =>

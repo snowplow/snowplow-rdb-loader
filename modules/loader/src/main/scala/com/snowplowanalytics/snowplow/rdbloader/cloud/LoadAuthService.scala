@@ -14,7 +14,6 @@ package com.snowplowanalytics.snowplow.rdbloader.cloud
 
 import cats.effect._
 import cats.implicits._
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Utils => CloudUtils}
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sts.StsAsyncClient
@@ -57,7 +56,7 @@ object LoadAuthService {
    * is specified in the config, it will get temporary credentials with sending request to STS
    * service then return credentials.
    */
-  def aws[F[_]: Concurrent: ContextShift](region: String, sessionDuration: FiniteDuration): Resource[F, LoadAuthService[F]] =
+  def aws[F[_]: Async](region: String, sessionDuration: FiniteDuration): Resource[F, LoadAuthService[F]] =
     for {
       stsAsyncClient <- Resource.fromAutoCloseable(
                           Concurrent[F].delay(
@@ -70,10 +69,10 @@ object LoadAuthService {
       authService = new LoadAuthService[F] {
                       override def getLoadAuthMethod(authMethodConfig: StorageTarget.LoadAuthMethod): F[LoadAuthMethod] =
                         authMethodConfig match {
-                          case StorageTarget.LoadAuthMethod.NoCreds => Concurrent[F].pure(LoadAuthMethod.NoCreds)
+                          case StorageTarget.LoadAuthMethod.NoCreds => Async[F].pure(LoadAuthMethod.NoCreds)
                           case StorageTarget.LoadAuthMethod.TempCreds(roleArn, roleSessionName) =>
                             for {
-                              assumeRoleRequest <- Concurrent[F].delay(
+                              assumeRoleRequest <- Async[F].delay(
                                                      AssumeRoleRequest
                                                        .builder()
                                                        .durationSeconds(sessionDuration.toSeconds.toInt)
@@ -81,8 +80,8 @@ object LoadAuthService {
                                                        .roleSessionName(roleSessionName)
                                                        .build()
                                                    )
-                              response <- CloudUtils.fromCompletableFuture(
-                                            Concurrent[F].delay(stsAsyncClient.assumeRole(assumeRoleRequest))
+                              response <- Async[F].fromCompletableFuture(
+                                            Async[F].delay(stsAsyncClient.assumeRole(assumeRoleRequest))
                                           )
                               creds = response.credentials()
                             } yield LoadAuthMethod.TempCreds(creds.accessKeyId(), creds.secretAccessKey(), creds.sessionToken())

@@ -18,7 +18,7 @@ import java.net.URI
 import java.time.Instant
 
 import cats.effect.IO
-
+import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.badrows.Processor
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion

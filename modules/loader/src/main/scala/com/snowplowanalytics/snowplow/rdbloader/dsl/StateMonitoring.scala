@@ -13,15 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.time.{Duration, Instant}
-
 import scala.concurrent.duration._
-
 import cats.Monad
 import cats.implicits._
-
-import cats.effect.{Concurrent, Resource, Timer}
+import cats.effect.{Concurrent, Resource}
 import cats.effect.implicits._
-
+import cats.effect.kernel.{Clock, Outcome, Temporal}
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 import com.snowplowanalytics.snowplow.rdbloader.loading.{Load, Stage}
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
@@ -38,22 +35,29 @@ object StateMonitoring {
    * stuck in unexpected state. It results into timeout exception that could be caught and recovered
    * from downstream
    */
-  def inBackground[F[_]: Concurrent: Timer: Logging](
+  def inBackground[F[_]: Temporal: Logging](
     timeouts: Config.Timeouts,
     getState: F[State],
     busy: Resource[F, Unit]
   )(
     loading: F[Unit]
-  ) = {
+  ): F[Unit] = {
     val backgroundCheck =
       StateMonitoring.run(timeouts, getState).background <* busy
 
     backgroundCheck.use { join =>
       Concurrent[F].race(loading, join).flatMap {
         case Left(_) => Concurrent[F].unit
-        case Right(None) => Concurrent[F].unit
-        case Right(Some(error)) =>
-          Logging[F].error(error) *> Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
+        case Right(value) =>
+          value match {
+            case Outcome.Succeeded(fa) =>
+              fa.flatMap {
+                case None => Concurrent[F].unit
+                case Some(error) => Logging[F].error(error) *> Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
+              }
+            case Outcome.Errored(e) => Concurrent[F].raiseError[Unit](LoaderError.RuntimeError(e.getMessage))
+            case Outcome.Canceled() => Concurrent[F].unit
+          }
       }
     }
   }
@@ -65,11 +69,11 @@ object StateMonitoring {
    *   None if monitoring completed has stopped because of Idle state or some error message if it
    *   got stale
    */
-  def run[F[_]: Monad: Timer: Logging](timeouts: Config.Timeouts, globalState: F[State]): F[Option[String]] = {
-    val getNow: F[Instant] = Timer[F].clock.instantNow
+  def run[F[_]: Temporal: Monad: Logging](timeouts: Config.Timeouts, globalState: F[State]): F[Option[String]] = {
+    val getNow: F[Instant] = Clock[F].realTimeInstant
 
     def go(previous: Load.Status): F[Option[String]] =
-      (Timer[F].sleep(timeouts.sqsVisibility) >> getNow).flatMap { now =>
+      (Temporal[F].sleep(timeouts.sqsVisibility) >> getNow).flatMap { now =>
         globalState.flatMap { current =>
           val again = go(current.loading)
           current.loading match {

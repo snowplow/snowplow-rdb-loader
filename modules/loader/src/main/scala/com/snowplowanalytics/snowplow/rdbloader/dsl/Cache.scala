@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.implicits._
 import cats.effect.Sync
-import cats.effect.concurrent.Ref
+import cats.effect.kernel.Ref
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 trait Cache[F[_]] {

@@ -18,7 +18,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.ShredTsvProcessingSpec.{appConfig, igluConfig}
 
-import java.nio.file.Path
+import cats.effect.unsafe.implicits.global
+import fs2.io.file.Path
 
 class ShredTsvProcessingSpec extends BaseProcessingSpec {
   sequential
@@ -36,30 +37,32 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
             output <- process(inputStream, config)
             actualAtomicRows <-
               readStringRowsFrom(
-                Path.of(
-                  outputDirectory.toString,
-                  s"run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
                 )
               )
             actualOptimizelyRows <-
               readStringRowsFrom(
-                Path.of(
-                  outputDirectory.toString,
-                  s"run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.optimizely/name=state/format=tsv/model=1"
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.optimizely/name=state/format=tsv/model=1"
                 )
               )
-            actualConsentRows <- readStringRowsFrom(
-                                   Path.of(
-                                     outputDirectory.toString,
-                                     s"run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1"
-                                   )
-                                 )
-            actualBadRows <- readStringRowsFrom(
-                               Path.of(
-                                 outputDirectory.toString,
-                                 s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/"
-                               )
-                             )
+            actualConsentRows <-
+              readStringRowsFrom(
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1"
+                )
+              )
+            actualBadRows <-
+              readStringRowsFrom(
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/"
+                )
+              )
 
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/tsv/completion.json", outputDirectory)
             expectedAtomicRows <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-atomic")
@@ -94,17 +97,18 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
             output <- process(inputStream, config)
             actualAtomicRows <-
               readStringRowsFrom(
-                Path.of(
-                  outputDirectory.toString,
-                  s"run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
                 )
               )
-            actualBadRows <- readStringRowsFrom(
-                               Path.of(
-                                 outputDirectory.toString,
-                                 s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"
-                               )
-                             )
+            actualBadRows <-
+              readStringRowsFrom(
+                Path(
+                  outputDirectory.toString +
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"
+                )
+              )
 
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", outputDirectory)
             expectedBadRows <- readLinesFromResource("/processing-spec/3/output/bad")
@@ -130,7 +134,7 @@ object ShredTsvProcessingSpec {
         |   "maxAckExtensionPeriod": "1 hours"
         | }
         | "output": {
-        |   "path": "${outputPath.toUri.toString}"
+        |   "path": "${outputPath.toNioPath.toUri.toString}"
         |   "compression": "NONE"
         |   "region": "eu-central-1"
         | }

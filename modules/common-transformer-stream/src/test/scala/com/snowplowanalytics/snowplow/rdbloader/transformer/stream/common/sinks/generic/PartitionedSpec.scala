@@ -13,15 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.generic
 
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext
-
 import cats.implicits._
-
-import cats.effect.concurrent.Ref
-import cats.effect.{ContextShift, IO, Sync, Timer}
-
+import cats.effect.{IO, Sync}
+import cats.effect.kernel.Ref
+import cats.effect.unsafe.implicits.global
 import fs2.{Pipe, Stream}
-
 import org.specs2.mutable.Specification
 
 class PartitionedSpec extends Specification {
@@ -29,8 +25,6 @@ class PartitionedSpec extends Specification {
 
   "write" should {
     "produce consistent windows" in {
-      implicit val CS: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-      implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
       val numWindows = 4
       val recordsPerWindow = 8
@@ -68,8 +62,6 @@ class PartitionedSpec extends Specification {
     }
 
     "emit on completion when there is no EndWindow" in {
-      implicit val CS: ContextShift[IO] = IO.contextShift(ExecutionContext.global)
-      implicit val T: Timer[IO] = IO.timer(concurrent.ExecutionContext.global)
 
       val numWindows = 1
       val recordsPerWindow = 8

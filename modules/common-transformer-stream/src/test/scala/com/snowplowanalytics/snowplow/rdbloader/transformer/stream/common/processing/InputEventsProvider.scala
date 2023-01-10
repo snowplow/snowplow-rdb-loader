@@ -14,9 +14,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
-import cats.effect.{ContextShift, IO}
+import cats.effect.IO
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.FileUtils
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.TransformingSpec.testBlocker
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.ParsedC
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Processing
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication.TestProcessor
@@ -24,9 +23,9 @@ import fs2.Stream
 
 object InputEventsProvider {
 
-  def eventStream(inputEventsPath: String)(implicit cs: ContextShift[IO]): Stream[IO, ParsedC[Unit]] =
+  def eventStream(inputEventsPath: String): Stream[IO, ParsedC[Unit]] =
     FileUtils
-      .resourceFileStream(testBlocker, inputEventsPath)
+      .resourceFileStream(inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines
       .map(f => (Processing.parseEvent(f, TestProcessor), ()))

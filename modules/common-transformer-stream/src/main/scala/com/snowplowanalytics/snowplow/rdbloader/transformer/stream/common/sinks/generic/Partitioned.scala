@@ -14,11 +14,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
 import cats.{Monoid, Order, Semigroup, Show}
 import cats.implicits._
-
-import cats.effect.{Concurrent, Sync}
-
+import cats.effect.{Async, Sync}
 import fs2.{Pipe, Pull}
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 object Partitioned {
@@ -42,7 +39,7 @@ object Partitioned {
    *   a sink constructor. For every new `W`, `K` and buffer we create a new sink which usually
    *   means a new file of key on blob store Can be taken from `sinks.s3` or `sinks.file`
    */
-  def write[F[_]: Concurrent, W: Order: Show, K: Show, V, D: Monoid](
+  def write[F[_]: Async, W: Order: Show, K: Show, V, D: Monoid](
     getSink: W => D => K => Pipe[F, V, Unit],
     bufferSize: Int
   ): Pipe[F, Record[W, List[(K, V)], D], (W, D)] = {
@@ -92,7 +89,7 @@ object Partitioned {
    * @param getSink
    *   original [[Pipe]] constructor
    */
-  def getState[F[_]: Concurrent, W: Show, K: Show, V, D: Monoid](
+  def getState[F[_]: Async, W: Show, K: Show, V, D: Monoid](
     stateOpt: Option[SinkState[W, K, V, D]],
     window: W
   ): Pull[F, (W, D), SinkState[W, K, V, D]] =
@@ -112,7 +109,7 @@ object Partitioned {
    * @param state
    *   existing [[SinkState]], it will also be returned in the `Pull`
    */
-  private def emit[F[_]: Concurrent, W, K: Show, V, D](
+  private def emit[F[_]: Async, W, K: Show, V, D](
     getSink: W => D => K => Pipe[F, V, Unit],
     state: SinkState[W, K, V, D]
   ): Pull[F, (W, D), SinkState[W, K, V, D]] =
@@ -130,7 +127,7 @@ object Partitioned {
    * @param state
    *   existing [[SinkState]], it will also be returned in the `Pull`
    */
-  private def maybeEmit[F[_]: Concurrent, W, K: Show, V, D](
+  private def maybeEmit[F[_]: Async, W, K: Show, V, D](
     getSink: W => D => K => Pipe[F, V, Unit],
     state: SinkState[W, K, V, D],
     bufferSize: Int
@@ -149,7 +146,7 @@ object Partitioned {
    * @param getSink
    *   original [[Pipe]] constructor
    */
-  private def rotate[F[_]: Concurrent, W: Show, K: Show, V, D: Semigroup](
+  private def rotate[F[_]: Async, W: Show, K: Show, V, D: Semigroup](
     stateOpt: Option[SinkState[W, K, V, D]],
     getSink: W => D => K => Pipe[F, V, Unit]
   ): Pull[F, (W, D), Unit] =

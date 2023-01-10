@@ -1,9 +1,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import java.time.Instant
-import cats.{Functor, Monad, MonadError}
+import cats.{Functor, Monad, MonadError, MonadThrow}
 import cats.implicits._
-import cats.effect.{MonadThrow, Timer}
 import doobie.Read
 import doobie.implicits.javasql._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -29,7 +28,7 @@ object Manifest {
     "shredded_cardinality"
   ).map(ColumnName)
 
-  def initialize[F[_]: MonadThrow: Logging: Timer, C[_]: DAO: Monad, I](
+  def initialize[F[_]: MonadThrow: Logging, C[_]: DAO: Monad, I](
     config: StorageTarget,
     target: Target[I]
   )(implicit F: Transaction[F, C]

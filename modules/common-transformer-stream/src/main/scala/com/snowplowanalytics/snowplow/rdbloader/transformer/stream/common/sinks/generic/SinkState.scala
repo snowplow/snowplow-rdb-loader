@@ -2,9 +2,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
 import cats.{Monoid, Semigroup, Show}
 import cats.implicits._
-
-import cats.effect.{Concurrent, Sync}
-
+import cats.effect.{Async, Sync}
 import fs2.{Pipe, Stream}
 
 /**
@@ -44,7 +42,7 @@ final case class SinkState[W, K, V, D](
     enqueue.queues.values.map(_.size.toLong).sum
 
   /** Write all pending data to a sink, via a key-specific pipe */
-  def sink[F[_]](getSink: W => D => K => Pipe[F, V, Unit])(implicit F: Concurrent[F], S: Show[K]): Stream[F, Unit] =
+  def sink[F[_]](getSink: W => D => K => Pipe[F, V, Unit])(implicit F: Async[F], S: Show[K]): Stream[F, Unit] =
     KeyedEnqueue.sink(enqueue, getSink(id)(data))
 }
 

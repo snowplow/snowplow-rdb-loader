@@ -1,11 +1,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
 import cats.effect.IO
-import cats.effect.concurrent.{Deferred, Ref}
+import cats.effect.kernel.{Deferred, Ref}
+import cats.effect.unsafe.implicits.global
 import fs2.Stream
 
 import scala.concurrent.duration.DurationInt
-
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.{
   ProcessingOutput,
   TransformerConfig

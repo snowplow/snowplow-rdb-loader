@@ -13,24 +13,20 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import java.time.Instant
-
 import cats.data.NonEmptyList
 import cats.implicits._
-
-import cats.effect.{Clock, ConcurrentEffect, Resource, Sync, Timer}
-
+import cats.effect.{Clock, Resource, Sync}
+import cats.effect.kernel.Async
+import cats.effect.std.Random
 import io.circe._
 import io.circe.generic.semiauto._
-
-import org.http4s.{EntityEncoder, Method, Request}
+import org.http4s.{EntityDecoder, EntityEncoder, Method, Request}
 import org.http4s.client.Client
 import org.http4s.circe.jsonEncoderOf
-
 import io.sentry.SentryClient
-
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker}
+import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker, Tracking}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -38,6 +34,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.PeriodicMetrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
+import org.http4s.FormDataDecoder.formEntityDecoder
 
 trait Monitoring[F[_]] { self =>
 
@@ -156,13 +153,14 @@ object Monitoring {
       SuccessPayload(shredding, Application, attempts, start, ingestion, Map.empty)
   }
 
-  def monitoringInterpreter[F[_]: Sync: Logging: Timer](
+  def monitoringInterpreter[F[_]: Sync: Logging](
     tracker: Option[Tracker[F]],
     sentryClient: Option[SentryClient],
     reporters: List[Reporter[F]],
     webhookConfig: Option[Config.Webhook],
     httpClient: Client[F],
     pm: PeriodicMetrics[F]
+  )(implicit E: EntityDecoder[F, String]
   ): Monitoring[F] =
     new Monitoring[F] {
 
@@ -177,7 +175,8 @@ object Monitoring {
               .run(request)
               .use { response =>
                 if (response.status.isSuccess) Sync[F].unit
-                else response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
+                else
+                  response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
               }
               .handleErrorWith { e =>
                 Logging[F].error(e)(s"Webhook ${webhook.endpoint} resulted in exception without a response")
@@ -233,7 +232,7 @@ object Monitoring {
    * @return
    *   some tracker if enabled, none otherwise
    */
-  def initializeTracking[F[_]: ConcurrentEffect: Timer: Clock: Logging](
+  def initializeTracking[F[_]: Async: Random: Tracking: Logging](
     monitoring: Config.Monitoring,
     client: Client[F]
   ): Resource[F, Option[Tracker[F]]] =

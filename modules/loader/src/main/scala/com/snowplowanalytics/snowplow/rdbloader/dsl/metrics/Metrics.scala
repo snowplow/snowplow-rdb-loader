@@ -13,17 +13,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.dsl.metrics
 
 import java.time.{Duration, Instant}
-
 import scala.concurrent.duration._
-
 import fs2.Stream
-
 import cats.{Functor, Show}
 import cats.implicits._
-
-import cats.effect.{Clock, Sync, Timer}
-import cats.effect.concurrent.Ref
-
+import cats.effect.{Async, Clock, Sync}
+import cats.effect.kernel.Ref
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 
 object Metrics {
@@ -116,7 +111,7 @@ object Metrics {
   }
 
   object PeriodicMetrics {
-    def init[F[_]: Sync: Timer](reporters: List[Reporter[F]], period: FiniteDuration): F[Metrics.PeriodicMetrics[F]] =
+    def init[F[_]: Async](reporters: List[Reporter[F]], period: FiniteDuration): F[Metrics.PeriodicMetrics[F]] =
       Metrics.PeriodicMetricsRefs.init[F].map { refs =>
         new Metrics.PeriodicMetrics[F] {
           def report: Stream[F, Unit] =
@@ -147,13 +142,13 @@ object Metrics {
   object PeriodicMetricsRefs {
     def init[F[_]: Sync: Clock]: F[PeriodicMetricsRefs[F]] =
       for {
-        now <- Clock[F].instantNow
+        now <- Clock[F].realTimeInstant
         maxTstampOfLoadedData <- Ref.of[F, MaxTstampOfLoadedData](MaxTstampOfLoadedData.EarliestKnownUnloaded(now))
       } yield PeriodicMetricsRefs(maxTstampOfLoadedData)
 
     def snapshot[F[_]: Sync: Clock](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
       for {
-        now <- Clock[F].instantNow
+        now <- Clock[F].realTimeInstant
         m <- refs.maxTstampOfLoadedData.get
       } yield KVMetrics.PeriodicMetricsSnapshot(KVMetric.MinAgeOfLoadedData(Duration.between(m.tstamp, now).toSeconds()))
   }
@@ -204,7 +199,7 @@ object Metrics {
   }
 
   def getCompletedMetrics[F[_]: Clock: Functor](loaded: LoaderMessage.ShreddingComplete): F[KVMetrics.LoadingCompleted] =
-    Clock[F].instantNow.map { now =>
+    Clock[F].realTimeInstant.map { now =>
       KVMetrics.LoadingCompleted(
         KVMetric.CountGood(loaded.count.map(_.good).getOrElse(0)),
         KVMetric.CountBad(loaded.count.flatMap(_.bad).getOrElse(0)),

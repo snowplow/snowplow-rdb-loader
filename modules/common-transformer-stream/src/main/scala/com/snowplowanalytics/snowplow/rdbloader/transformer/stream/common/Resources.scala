@@ -24,13 +24,12 @@ import io.circe.Json
 import cats.Applicative
 import cats.implicits._
 import cats.effect._
-
-import org.http4s.client.blaze.BlazeClientBuilder
+import cats.effect.std.Random
 
 import io.sentry.SentryClient
-
-import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache, Resolver}
+import com.snowplowanalytics.iglu.client.resolver.{CreateResolverCache, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
@@ -42,13 +41,16 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metric
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
+import com.snowplowanalytics.snowplow.scalatracker.Tracking
+
+import org.http4s.blaze.client.BlazeClientBuilder
+
 case class Resources[F[_], C](
   igluResolver: Resolver[F],
   propertiesCache: PropertiesCache[F],
   atomicLengths: Map[String, Int],
   producer: Queue.Producer[F],
   instanceId: String,
-  blocker: Blocker,
   metrics: Metrics[F],
   telemetry: Telemetry[F],
   sentry: Option[SentryClient],
@@ -62,15 +64,15 @@ object Resources {
 
   implicit private def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
-  def mk[F[_]: ConcurrentEffect: ContextShift: Clock: InitSchemaCache: InitListCache: Timer, C: Checkpointer[F, *]](
+  def mk[F[_]: Async: Tracking, C: Checkpointer[F, *]](
     igluConfig: Json,
     config: Config,
     buildName: String,
     buildVersion: String,
     executionContext: ExecutionContext,
-    mkSource: (Blocker, Config.StreamInput, Config.Monitoring) => Resource[F, Queue.Consumer[F]],
-    mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
-    mkBadQueue: (Blocker, Config.Output.Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
+    mkSource: (Config.StreamInput, Config.Monitoring) => Resource[F, Queue.Consumer[F]],
+    mkSink: Config.Output => Resource[F, BlobStorage[F]],
+    mkBadQueue: Config.Output.Bad.Queue => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): Resource[F, Resources[F, C]] =
@@ -79,12 +81,13 @@ object Resources {
       resolverConfig <- mkResolverConfig(igluConfig)
       resolver <- mkResolver(resolverConfig)
       propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
-      atomicLengths <- mkAtomicFieldLengthLimit(resolver)
+      httpClient <- BlazeClientBuilder[F].withExecutionContext(executionContext).resource
+      implicit0(registryLookup: RegistryLookup[F]) <- Resource.pure(Http4sRegistryLookup[F](httpClient))
+      atomicLengths <- mkAtomicFieldLengthLimit[F](resolver)
       instanceId <- mkTransformerInstanceId
-      blocker <- Blocker[F]
-      metrics <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
+      metrics <- Resource.eval(Metrics.build[F](config.monitoring.metrics))
       sentry <- Sentry.init[F](config.monitoring.sentry.map(_.dsn))
-      httpClient <- BlazeClientBuilder[F](executionContext).resource
+      implicit0(random: Random[F]) <- Resource.eval(Random.scalaUtilRandom[F])
       telemetry <- Telemetry.build[F](
                      config.telemetry,
                      buildName,
@@ -94,16 +97,15 @@ object Resources {
                      getRegionFromConfig(config),
                      getCloudFromConfig(config)
                    )
-      inputStream <- mkSource(blocker, config.input, config.monitoring)
-      blobStorage <- mkSink(blocker, config.output)
-      badSink <- mkBadSink(config, mkBadQueue, blocker)
+      inputStream <- mkSource(config.input, config.monitoring)
+      blobStorage <- mkSink(config.output)
+      badSink <- mkBadSink(config, mkBadQueue)
     } yield Resources(
       resolver,
       propertiesCache,
       atomicLengths,
       producer,
       instanceId.toString,
-      blocker,
       metrics,
       telemetry,
       sentry,
@@ -115,12 +117,11 @@ object Resources {
 
   private def mkBadSink[F[_]: Applicative](
     config: Config,
-    mkBadQueue: (Blocker, Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
-    blocker: Blocker
+    mkBadQueue: Bad.Queue => Resource[F, Queue.ChunkProducer[F]]
   ): Resource[F, BadSink[F]] =
     config.output.bad match {
       case Bad.File => Resource.pure[F, BadSink[F]](BadSink.UseBlobStorage())
-      case queueConfig: Bad.Queue => mkBadQueue(blocker, queueConfig).map(BadSink.UseQueue(_))
+      case queueConfig: Bad.Queue => mkBadQueue(queueConfig).map(BadSink.UseQueue(_))
     }
 
   private def mkResolverConfig[F[_]: Sync](igluConfig: Json): Resource[F, ResolverConfig] = Resource.eval {
@@ -131,7 +132,7 @@ object Resources {
     }
   }
 
-  private def mkResolver[F[_]: Sync: InitSchemaCache: InitListCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] =
+  private def mkResolver[F[_]: Sync: CreateResolverCache](resolverConfig: ResolverConfig): Resource[F, Resolver[F]] =
     Resource.eval {
       Resolver
         .fromConfig[F](resolverConfig)
@@ -143,12 +144,13 @@ object Resources {
         }
     }
 
-  private def mkAtomicFieldLengthLimit[F[_]: Sync: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] = Resource.eval {
-    EventUtils.getAtomicLengths(igluResolver).flatMap {
-      case Right(valid) => Sync[F].pure(valid)
-      case Left(error) => Sync[F].raiseError[Map[String, Int]](error)
+  private def mkAtomicFieldLengthLimit[F[_]: Sync: RegistryLookup: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] =
+    Resource.eval {
+      EventUtils.getAtomicLengths[F](igluResolver).flatMap {
+        case Right(valid) => Sync[F].pure(valid)
+        case Left(error) => Sync[F].raiseError[Map[String, Int]](error)
+      }
     }
-  }
 
   private def mkTransformerInstanceId[F[_]: Sync] =
     Resource

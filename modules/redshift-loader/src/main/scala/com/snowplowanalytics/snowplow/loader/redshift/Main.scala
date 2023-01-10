@@ -13,6 +13,9 @@
 package com.snowplowanalytics.snowplow.loader.redshift
 
 import cats.effect.{ExitCode, IO, IOApp}
+import cats.effect.implicits._
+
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 
 import com.snowplowanalytics.snowplow.rdbloader.Runner
 
@@ -22,6 +25,7 @@ object Main extends IOApp {
     Runner.run[IO, Unit](
       args,
       Redshift.build,
-      "rdb-loader-redshift"
+      "rdb-loader-redshift",
+      runtime.compute
     )
 }

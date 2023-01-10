@@ -16,7 +16,7 @@ import java.net.URI
 
 import cats.implicits._
 
-import cats.effect.{Clock, ConcurrentEffect}
+import cats.effect.{Clock, Sync}
 
 import io.circe.syntax.EncoderOps
 
@@ -61,7 +61,7 @@ object Completion {
    * @param state
    *   all metadata shredder extracted from a batch
    */
-  def seal[F[_]: Clock: ConcurrentEffect, C: Checkpointer[F, *]](
+  def seal[F[_]: Sync, C: Checkpointer[F, *]](
     blobStorage: BlobStorage[F],
     compression: Compression,
     getTypes: Set[Data.ShreddedType] => TypesInfo,
@@ -70,10 +70,11 @@ object Completion {
     legacyMessageFormat: Boolean,
     processor: LoaderMessage.Processor,
     window: Window,
-    state: State[C]
+    state: State[C],
+    clock: Clock[F]
   ): F[Unit] =
     for {
-      timestamps <- Clock[F].instantNow.map { now =>
+      timestamps <- clock.realTimeInstant.map { now =>
                       Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
                     }
       base = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
@@ -93,7 +94,7 @@ object Completion {
       _ <- producer.send(body)
     } yield ()
 
-  def writeFile[F[_]: ConcurrentEffect](
+  def writeFile[F[_]: Sync](
     blobStorage: BlobStorage[F],
     key: BlobStorage.Key,
     content: String

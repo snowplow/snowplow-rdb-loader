@@ -13,15 +13,11 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-
-import cats.{Applicative, Apply, Monad}
+import cats.{Applicative, Apply, Monad, MonadThrow}
 import cats.implicits._
-import cats.effect.{Clock, Concurrent, ContextShift, MonadThrow, Timer}
-
+import cats.effect.{Async, Clock}
 import retry._
-
 import fs2.Stream
-
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
@@ -72,7 +68,7 @@ object Loader {
     F[_]: Transaction[
       *[_],
       C
-    ]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
+    ]: Async: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Monitoring: LoadAuthService: JsonPathDiscovery,
     C[_]: DAO: MonadThrow: Logging,
     I
   ](
@@ -150,7 +146,7 @@ object Loader {
     F[_]: Transaction[
       *[_],
       C
-    ]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
+    ]: Async: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Monitoring: LoadAuthService: JsonPathDiscovery,
     C[_]: DAO: MonadThrow: Logging,
     I
   ](
@@ -176,7 +172,7 @@ object Loader {
    * actions, instead of whole `Control` object
    */
   private def processDiscovery[
-    F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift: LoadAuthService,
+    F[_]: Transaction[*[_], C]: Async: Iglu: Logging: Monitoring: LoadAuthService,
     C[_]: DAO: MonadThrow: Logging,
     I
   ](
@@ -199,14 +195,14 @@ object Loader {
 
     val loading: F[Unit] = backgroundCheck {
       for {
-        start <- Clock[F].instantNow
+        start <- Clock[F].realTimeInstant
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
         loadAuth <- LoadAuthService[F].getLoadAuthMethod(config.storage.eventsLoadAuthMethod)
         result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, loadAuth, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Right(ingested) =>
-                 val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
+                 val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].realTimeInstant
                  for {
                    loaded <- ingested.map(Monad[F].pure).getOrElse(now)
                    _ <- Load.congratulate[F](attempts, start, loaded, discovery.origin)

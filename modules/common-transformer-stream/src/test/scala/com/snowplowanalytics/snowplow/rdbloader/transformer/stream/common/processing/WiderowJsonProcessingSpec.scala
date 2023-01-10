@@ -18,7 +18,9 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
 
-import java.nio.file.Path
+import cats.effect.unsafe.implicits.global
+
+import fs2.io.file.Path
 
 class WiderowJsonProcessingSpec extends BaseProcessingSpec {
 
@@ -31,8 +33,8 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
           )
 
           val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val badPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
           for {
             output <- process(inputStream, config)
@@ -65,7 +67,7 @@ object WiderowJsonProcessingSpec {
         |   "maxAckExtensionPeriod": "1 hours"
         | }
         | "output": {
-        |   "path": "${outputPath.toUri.toString}"
+        |   "path": "${outputPath.toNioPath.toUri.toString}"
         |   "compression": "NONE"
         |   "region": "eu-central-1"
         | }

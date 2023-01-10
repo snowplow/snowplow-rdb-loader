@@ -43,12 +43,13 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 }
 
 object Transformer {
-  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](
+  case class ShredTransformer[F[_]: Monad: RegistryLookup](
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     formats: Formats.Shred,
     atomicLengths: Map[String, Int],
-    processor: Processor
+    processor: Processor,
+    clock: Clock[F]
   ) extends Transformer[F] {
 
     /** Check if `shredType` should be transformed into TSV */
@@ -60,7 +61,7 @@ object Transformer {
       else TypesInfo.Shredded.ShreddedFormat.JSON
 
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
-      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, atomicLengths, processor)(event)
+      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, atomicLengths, processor, clock)(event)
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
@@ -76,10 +77,11 @@ object Transformer {
     }
   }
 
-  case class WideRowTransformer[F[_]: Monad: RegistryLookup: Clock](
+  case class WideRowTransformer[F[_]: Monad: RegistryLookup](
     igluResolver: Resolver[F],
     format: Formats.WideRow,
-    processor: Processor
+    processor: Processor,
+    clock: Clock[F]
   ) extends Transformer[F] {
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] = {
       val result = format match {
@@ -111,7 +113,7 @@ object Transformer {
       val allTypesFromEvent = event.inventory.map(TypesInfo.WideRow.Type.from)
 
       NonAtomicFieldsProvider
-        .build(igluResolver, allTypesFromEvent.toList)
+        .build(igluResolver, allTypesFromEvent.toList)(clock, Monad[F], RegistryLookup[F])
         .leftMap(error => igluBadRow(event, error))
         .flatMap { nonAtomicFields =>
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)

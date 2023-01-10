@@ -16,37 +16,37 @@ object Dependencies {
 
   object V {
     // Scala (Loader)
-    val decline          = "2.1.0"
-    val igluClient       = "1.3.0"
-    val igluCore         = "1.0.0"
-    val badrows          = "2.1.0"
+    val decline          = "2.4.1"
+    val igluClient       = "3.0.0-M1"
+    val igluCore         = "1.1.1"
+    val badrows          = "2.2.0"
     val analyticsSdk     = "3.0.1"
-    val pureconfig       = "0.16.0"
+    val pureconfig       = "0.17.2"
     val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
     val cats             = "2.2.0"
-    val catsEffect       = "2.5.4"
+    val catsEffect       = "3.3.14"
     val manifest         = "0.3.0"
-    val fs2              = "2.5.6"
-    val fs2Aws           = "3.0.11"
-    val fs2Blobstore     = "0.7.3"
-    val fs2Cron          = "0.5.0"
-    val fs2PubSub        = "0.18.1"
-    val secretManager    = "2.3.9"
-    val gcpStorage       = "2.14.0"
-    val doobie           = "0.13.4"
+    val fs2              = "3.3.0"
+    val fs2Aws           = "4.1.0"
+    val fs2Blobstore     = "0.9.7"
+    val fs2Cron          = "0.7.2"
+    val fs2PubSub        = "0.21.0"
+    val secretManager    = "2.7.0"
+    val gcpStorage       = "2.16.0"
+    val doobie           = "1.0.0-RC2"
     val monocle          = "2.0.3"
-    val catsRetry        = "2.1.0"
-    val log4cats         = "1.3.0"
-    val http4s           = "0.21.33"
-    val scalaTracker     = "1.0.0"
+    val catsRetry        = "3.1.0"
+    val log4cats         = "2.5.0"
+    val http4s           = "0.23.13"
+    val scalaTracker     = "2.0.0"
 
     val spark            = "3.3.1"
     val eventsManifest   = "0.3.0"
     val schemaDdl        = "0.16.0"
-    val jacksonModule    = "2.13.2" // Override incompatible version in spark runtime
-    val jacksonDatabind  = "2.13.2.2"
-    val parquet4s        = "1.9.4"
+    val jacksonModule    = "2.14.2" // Override incompatible version in spark runtime
+    val jacksonDatabind  = "2.14.2"
+    val parquet4s        = "2.10.0"
     val hadoopClient     = "3.3.4"
     val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
@@ -66,9 +66,10 @@ object Dependencies {
     val nettyCodec       = "4.1.86.Final" // Fix CVE
 
     // Scala (test only)
-    val specs2           = "4.10.5"
-    val catsTesting      = "0.5.3"
-    val scalaCheck       = "1.14.3"
+    val specs2           = "4.17.0"
+    val catsTesting      = "1.5.0"
+    val catsEffectTestkit = "3.4.5"
+    val scalaCheck       = "1.17.0"
 
     val betterMonadicFor = "0.3.1"
   }
@@ -81,6 +82,7 @@ object Dependencies {
   // Scala (Common)
   val http4sCore        = "org.http4s"                 %% "http4s-core"               % V.http4s
   val http4sCirce       = "org.http4s"                 %% "http4s-circe"              % V.http4s
+  val catsEffectKernel  = "org.typelevel"              %% "cats-effect-kernel"        % V.catsEffect
 
   // Scala (Loader)
   val decline           = "com.monovore"               %% "decline"                           % V.decline
@@ -94,12 +96,12 @@ object Dependencies {
   val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"              % V.circe
   val pureconfig        = "com.github.pureconfig"      %% "pureconfig"                        % V.pureconfig
   val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
-  val cron4sCirce       = "com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce
+  val cron4sCirce       = ("com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce)
+    .exclude("io.circe", "circe-core_2.12") // cron4s-circe lacks circe 0.13 support
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
-  val fs2Aws            = ("io.laserdisc"              %% "fs2-aws"                           % V.fs2Aws)
-                          .exclude("com.amazonaws", "amazon-kinesis-producer")
-                          .exclude("software.amazon.kinesis", "amazon-kinesis-client")
-  val fs2AwsSqs         = "io.laserdisc"               %% "fs2-aws-sqs"                       % V.fs2Aws
+  val fs2Kinesis        = ("io.laserdisc"              %% "fs2-aws-kinesis"              % V.fs2Aws)
+    .exclude("com.amazonaws", "amazon-kinesis-producer")
+    .exclude("software.amazon.kinesis", "amazon-kinesis-client")
   val fs2BlobstoreS3    = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val fs2BlobstoreGCS   = "com.github.fs2-blobstore"   %% "gcs"                               % V.fs2Blobstore
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
@@ -173,7 +175,8 @@ object Dependencies {
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
   val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2       % Test
   val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck   % Test
-  val catsTesting       = "com.codecommit"             %% "cats-effect-testing-specs2" % V.catsTesting  % Test
+  val catsTesting       = "org.typelevel"              %% "cats-effect-testing-specs2"  % V.catsTesting  % Test
+  val catsEffectTestkit = "org.typelevel"              %% "cats-effect-testkit"        % V.catsEffectTestkit  % Test
   val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect   % Test
   val fs2BlobstoreCore  = "com.github.fs2-blobstore"   %% "core"                       % V.fs2Blobstore % Test
 
@@ -187,7 +190,7 @@ object Dependencies {
     aws2sns,
     aws2kinesis,
     fs2BlobstoreS3,
-    fs2Aws,
+    fs2Kinesis,
     kinesisClient,
     protobuf,
     nettyCodec,
@@ -207,6 +210,7 @@ object Dependencies {
     analyticsSdk,
     badrows,
     igluClient,
+    catsEffectKernel,
     circeGeneric,
     circeGenericExtra,
     circeLiteral,
@@ -252,6 +256,7 @@ object Dependencies {
     scalaCheck,
     catsEffectLaws,
     catsTesting,
+    catsEffectTestkit
   )
 
   val redshiftDependencies = Seq(
@@ -286,6 +291,7 @@ object Dependencies {
   )
 
   val commonStreamTransformerDependencies = Seq(
+    igluClientHttp4s,
     slf4jSimple,
     protobuf,
     log4cats,
@@ -296,7 +302,8 @@ object Dependencies {
     parquetHadoop,
     specs2,
     specs2ScalaCheck,
-    scalaCheck
+    scalaCheck,
+    catsEffectTestkit
   )
 
 
