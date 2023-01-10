@@ -57,7 +57,7 @@ object Pubsub {
 
   case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
 
-  def producer[F[_]: Concurrent: Logger](
+  def producer[F[_]: Async: Logger](
     projectId: String,
     topic: String,
     batchSize: Long,
@@ -81,7 +81,7 @@ object Pubsub {
       }
   }
 
-  def chunkProducer[F[_]: Concurrent: Logger](
+  def chunkProducer[F[_]: Async: Logger](
     projectId: String,
     topic: String,
     batchSize: Long,
@@ -96,8 +96,7 @@ object Pubsub {
         }
       }
 
-  def consumer[F[_]: ConcurrentEffect: Logger: ContextShift: Timer](
-    blocker: Blocker,
+  def consumer[F[_]: Async: Logger](
     projectId: String,
     subscription: String,
     parallelPullCount: Int,
@@ -136,7 +135,6 @@ object Pubsub {
                      // Ack deadline extension isn't needed in here because it is handled by the pubsub library
                      val stream = PubsubGoogleConsumer
                        .subscribe[F, Array[Byte]](
-                         blocker,
                          ConsumerProjectId(projectId),
                          Subscription(subscription),
                          errorHandler,
@@ -152,11 +150,11 @@ object Pubsub {
                  }
     } yield consumer
 
-  private def createPubsubChannelProvider[F[_]: ConcurrentEffect](host: String): Resource[F, TransportChannelProvider] =
+  private def createPubsubChannelProvider[F[_]: Async](host: String): Resource[F, TransportChannelProvider] =
     Resource.make(
-      ConcurrentEffect[F].delay {
+      Async[F].delay {
         val channel = NettyChannelBuilder.forTarget(host).usePlaintext().build()
         FixedTransportChannelProvider.create(GrpcTransportChannel.create(channel))
       }
-    )(p => ConcurrentEffect[F].delay(p.getTransportChannel.close()))
+    )(p => Async[F].delay(p.getTransportChannel.close()))
 }

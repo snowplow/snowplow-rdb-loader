@@ -12,9 +12,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
-import scala.concurrent.duration.{MILLISECONDS, NANOSECONDS, TimeUnit}
+import scala.concurrent.duration.FiniteDuration
 import io.circe._
-import cats.{Id, Show}
+import cats.{Applicative, Id, Show}
 import cats.effect.Clock
 import cats.implicits.toShow
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -23,14 +23,16 @@ import com.snowplowanalytics.iglu.client.resolver.registries.RegistryError
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 
+import java.util.concurrent.TimeUnit
+
 package object common {
 
   implicit val catsClockIdInstance: Clock[Id] = new Clock[Id] {
-    override def realTime(unit: TimeUnit): Id[Long] =
-      unit.convert(System.currentTimeMillis(), MILLISECONDS)
+    override def applicative: Applicative[Id] = Applicative[Id]
 
-    override def monotonic(unit: TimeUnit): Id[Long] =
-      unit.convert(System.nanoTime(), NANOSECONDS)
+    override def monotonic: Id[FiniteDuration] = FiniteDuration(System.nanoTime(), TimeUnit.NANOSECONDS)
+
+    override def realTime: Id[FiniteDuration] = FiniteDuration(System.currentTimeMillis(), TimeUnit.MILLISECONDS)
   }
 
   /**

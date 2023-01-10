@@ -14,25 +14,23 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl.metrics
 
 import java.net.{DatagramPacket, DatagramSocket, InetAddress}
 import java.nio.charset.StandardCharsets.UTF_8
-
 import cats.implicits._
-
-import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
-
+import cats.effect.Sync
+import cats.effect.kernel.Resource
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 
 object StatsDReporter {
 
-  def build[F[_]: ContextShift: Sync: Timer](statsDConfig: Option[Config.StatsD], blocker: Blocker): Reporter[F] =
+  def build[F[_]: Sync](statsDConfig: Option[Config.StatsD]): Reporter[F] =
     statsDConfig match {
       case Some(config) =>
         new Reporter[F] {
           def report(metrics: List[Metrics.KVMetric]): F[Unit] = {
             val formatted = metrics.map(statsDFormat(config))
-            mkSocket[F](blocker).use { socket =>
+            mkSocket[F].use { socket =>
               for {
-                ip <- blocker.delay(InetAddress.getByName(config.hostname))
-                _ <- formatted.traverse_(sendMetric[F](blocker, socket, ip, config.port))
+                ip <- Sync[F].blocking(InetAddress.getByName(config.hostname))
+                _ <- formatted.traverse_(sendMetric[F](socket, ip, config.port))
               } yield ()
             }
           }
@@ -41,11 +39,10 @@ object StatsDReporter {
         Reporter.noop[F]
     }
 
-  private def mkSocket[F[_]: ContextShift: Sync](blocker: Blocker): Resource[F, DatagramSocket] =
-    Resource.fromAutoCloseableBlocking(blocker)(Sync[F].delay(new DatagramSocket))
+  private def mkSocket[F[_]: Sync]: Resource[F, DatagramSocket] =
+    Resource.fromAutoCloseable(Sync[F].delay(new DatagramSocket))
 
-  private def sendMetric[F[_]: ContextShift: Sync](
-    blocker: Blocker,
+  private def sendMetric[F[_]: Sync](
     socket: DatagramSocket,
     addr: InetAddress,
     port: Int
@@ -54,7 +51,7 @@ object StatsDReporter {
   ): F[Unit] = {
     val bytes = metric.getBytes(UTF_8)
     val packet = new DatagramPacket(bytes, bytes.length, addr, port)
-    blocker.delay(socket.send(packet))
+    Sync[F].blocking(socket.send(packet))
   }
 
   private def statsDFormat(config: Config.StatsD)(metric: Metrics.KVMetric): String = {

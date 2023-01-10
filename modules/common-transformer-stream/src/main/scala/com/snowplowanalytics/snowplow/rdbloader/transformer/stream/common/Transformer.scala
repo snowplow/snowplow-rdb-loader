@@ -43,7 +43,7 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 }
 
 object Transformer {
-  case class ShredTransformer[F[_]: Concurrent: Clock: Timer](
+  case class ShredTransformer[F[_]: Monad: RegistryLookup: Clock](
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     formats: Formats.Shred,

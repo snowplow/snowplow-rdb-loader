@@ -14,10 +14,11 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.data.EitherT
 
-import cats.effect.{Clock, IO}
+import cats.effect.IO
 import cats.implicits._
+import cats.effect.unsafe.implicits.global
 
-import fs2.text.utf8Decode
+import fs2.text.utf8
 
 import io.circe.Json
 import io.circe.parser.parse
@@ -36,7 +37,6 @@ import org.specs2.mutable.Specification
 class MonitoringSpec extends Specification {
   "AlertPayload" should {
     "be valid against its schema" in {
-      implicit val C: Clock[IO] = Clock.create[IO]
 
       val payload = AlertPayload(
         BuildInfo.version,
@@ -50,7 +50,7 @@ class MonitoringSpec extends Specification {
         EntityEncoder[IO, AlertPayload]
           .toEntity(payload)
           .body
-          .through(utf8Decode)
+          .through(utf8.decode)
           .compile
           .string
           .map(string => parse(string).flatMap(_.as[SelfDescribingData[Json]]).leftMap(_.show))

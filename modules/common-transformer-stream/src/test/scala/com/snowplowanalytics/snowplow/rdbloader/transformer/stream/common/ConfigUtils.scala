@@ -18,6 +18,8 @@ import io.circe.Decoder
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 
+import cats.effect.unsafe.implicits.global
+
 object ConfigUtils {
   def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
     parse(readResource(confPath))

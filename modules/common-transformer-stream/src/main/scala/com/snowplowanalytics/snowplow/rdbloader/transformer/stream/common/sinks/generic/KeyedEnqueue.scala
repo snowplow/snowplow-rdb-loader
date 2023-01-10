@@ -2,11 +2,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
 import cats.Show
 import cats.implicits._
-
-import cats.effect.{Concurrent, Sync}
-
+import cats.effect.{Async, Sync}
 import fs2.{Pipe, Stream}
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 /**
@@ -40,7 +37,7 @@ object KeyedEnqueue {
   }
 
   /** Sink all enqueued items by sending them through a key-specific pipe */
-  def sink[F[_]: Concurrent, K: Show, V](enqueue: KeyedEnqueue[K, V], getSink: K => Pipe[F, V, Unit]): Stream[F, Unit] =
+  def sink[F[_]: Async, K: Show, V](enqueue: KeyedEnqueue[K, V], getSink: K => Pipe[F, V, Unit]): Stream[F, Unit] =
     Stream
       .iterable(enqueue.queues)
       .map { case (k, vs) =>

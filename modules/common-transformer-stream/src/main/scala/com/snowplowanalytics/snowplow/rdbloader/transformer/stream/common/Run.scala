@@ -4,12 +4,13 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import cats.Parallel
 import cats.implicits._
 import cats.effect._
+
 import scala.concurrent.ExecutionContext
-import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCache}
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{Monitoring, StreamInput}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import com.snowplowanalytics.snowplow.scalatracker.Tracking
 
 object Run {
 
@@ -17,15 +18,15 @@ object Run {
 
   val InvalidConfig: ExitCode = ExitCode(2)
 
-  def run[F[_]: ConcurrentEffect: ContextShift: Clock: InitSchemaCache: InitListCache: Timer: Parallel, C: Checkpointer[F, *]](
+  def run[F[_]: Async: Parallel: Tracking, C: Checkpointer[F, *]](
     args: List[String],
     buildName: String,
     buildVersion: String,
     buildDescription: String,
     ec: ExecutionContext,
-    mkSource: (Blocker, StreamInput, Monitoring) => Resource[F, Queue.Consumer[F]],
-    mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
-    mkBadQueue: (Blocker, Config.Output.Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
+    mkSource: (StreamInput, Monitoring) => Resource[F, Queue.Consumer[F]],
+    mkSink: Config.Output => Resource[F, BlobStorage[F]],
+    mkBadQueue: Config.Output.Bad.Queue => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): F[ExitCode] =

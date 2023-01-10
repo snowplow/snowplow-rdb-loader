@@ -4,10 +4,11 @@ import fs2.Stream
 import retry._
 import retry.syntax.all._
 import cats.syntax.all._
-import cats.effect.{Concurrent, MonadThrow, Timer}
+import cats.effect.Concurrent
+import cats.MonadThrow
+import cats.effect.kernel.Async
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-import eu.timepit.fs2cron.ScheduledStreams
 import eu.timepit.fs2cron.cron4s.Cron4sScheduler
 import retry.RetryDetails.{GivingUp, WillDelayAndRetry}
 
@@ -15,7 +16,7 @@ import scala.concurrent.duration._
 
 object VacuumScheduling {
 
-  def retryPolicy[F[_]: Timer: Concurrent]: RetryPolicy[F] =
+  def retryPolicy[F[_]: Concurrent]: RetryPolicy[F] =
     RetryPolicies.fibonacciBackoff[F](1.minute) join RetryPolicies.limitRetries[F](10)
 
   def logError[F[_]: Logging](err: Throwable, details: RetryDetails): F[Unit] = details match {
@@ -31,7 +32,7 @@ object VacuumScheduling {
       )
   }
 
-  def run[F[_]: Transaction[*[_], C]: Concurrent: Logging: Timer, C[_]: DAO: MonadThrow: Logging](
+  def run[F[_]: Transaction[*[_], C]: Async: Logging, C[_]: DAO: MonadThrow: Logging](
     tgt: StorageTarget,
     cfg: Config.Schedules
   ): Stream[F, Unit] = {
@@ -39,7 +40,8 @@ object VacuumScheduling {
       case _: StorageTarget.Databricks =>
         cfg.optimizeEvents match {
           case Some(cron) =>
-            new ScheduledStreams(Cron4sScheduler.systemDefault[F])
+            Cron4sScheduler
+              .systemDefault[F]
               .awakeEvery(cron)
               .evalMap { _ =>
                 Transaction[F, C]
@@ -59,7 +61,8 @@ object VacuumScheduling {
       case _: StorageTarget.Databricks =>
         cfg.optimizeManifest match {
           case Some(cron) =>
-            new ScheduledStreams(Cron4sScheduler.systemDefault[F])
+            Cron4sScheduler
+              .systemDefault[F]
               .awakeEvery(cron)
               .evalMap { _ =>
                 Transaction[F, C]

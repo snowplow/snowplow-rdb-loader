@@ -89,7 +89,7 @@ final class KinesisSink(
     val result = attemptToWriteBatch(recordsToWriteInBatch)
       .retryingOnFailures(
         policy = Retries.fibonacci(config.throttledBackoffPolicy),
-        wasSuccessful = failedRecords => failedRecords.isEmpty,
+        wasSuccessful = failedRecords => Try(failedRecords.isEmpty),
         onFailure = (failedRecords, retryDetails) =>
           Try {
             // Updating the list of unwritten to kinesis records so they are picked in the next retry
@@ -119,7 +119,7 @@ final class KinesisSink(
     executeKinesisRequest(records)
       .retryingOnFailuresAndAllErrors(
         policy = Retries.fullJitter(config.backoffPolicy),
-        wasSuccessful = r => !r.shouldRetrySameBatch,
+        wasSuccessful = r => Try(!r.shouldRetrySameBatch),
         onFailure = (result, retryDetails) =>
           Try(println(s"${failureMessageForInternalFailures(records, result)}. Retries so far: ${retryDetails.retriesSoFar}")),
         onError = (exception, retryDetails) =>

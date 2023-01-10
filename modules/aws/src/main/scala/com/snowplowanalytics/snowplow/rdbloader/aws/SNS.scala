@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SNS {
 
-  def producer[F[_]: Concurrent](
+  def producer[F[_]: Async](
     queueName: String,
     region: String,
     groupId: String

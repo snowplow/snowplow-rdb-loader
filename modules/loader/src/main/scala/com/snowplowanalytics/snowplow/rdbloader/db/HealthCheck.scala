@@ -14,13 +14,10 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 import cats.MonadThrow
 import cats.implicits._
-
 import fs2.Stream
-
 import cats.effect.implicits._
-import cats.effect.{Concurrent, Timer}
-import cats.effect.concurrent.Ref
-
+import cats.effect.{Concurrent, Ref}
+import cats.effect.kernel.Temporal
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Monitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
@@ -30,7 +27,7 @@ object HealthCheck {
   private implicit val LoggerName: Logging.LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  def start[F[_]: Transaction[*[_], C]: Timer: Concurrent: Logging: Monitoring, C[_]: DAO](
+  def start[F[_]: Transaction[*[_], C]: Temporal: Logging: Monitoring, C[_]: DAO](
     config: Option[Config.HealthCheck]
   ): Stream[F, Unit] =
     config match {

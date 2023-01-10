@@ -29,6 +29,8 @@ import com.typesafe.sbt.packager.linux.LinuxPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerVersion
 
+import com.snowplowanalytics.snowplow.sbt.IgluSchemaPlugin.autoImport._
+
 import scoverage.ScoverageKeys._
 
 import sbtdynver.DynVerPlugin.autoImport._
@@ -211,7 +213,33 @@ object BuildSettings {
   }
 
   lazy val commonStreamTransformerBuildSettings = {
-    buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    Seq(
+      Test / igluUris := Seq(
+        "iglu:com.google.analytics/cookies/jsonschema/1-0-0",
+        "iglu:com.google.analytics/private/jsonschema/1-0-0",
+        "iglu:org.ietf/http_cookie/jsonschema/1-0-0",
+        "iglu:org.ietf/http_header/jsonschema/1-0-0",
+        "iglu:com.mparticle.snowplow/pushregistration_event/jsonschema/1-0-0",
+        "iglu:com.mparticle.snowplow/session_context/jsonschema/1-0-0",
+        "iglu:com.optimizely.optimizelyx/summary/jsonschema/1-0-0",
+        "iglu:com.optimizely/state/jsonschema/1-0-0",
+        "iglu:com.optimizely/variation/jsonschema/1-0-0",
+        "iglu:com.optimizely/visitor/jsonschema/1-0-0",
+        "iglu:com.segment/screen/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/atomic/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/change_form/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/client_session/jsonschema/1-0-1",
+        "iglu:com.snowplowanalytics.snowplow/consent_document/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/consent_withdrawn/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/desktop_context/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/geolocation_context/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-1",
+        "iglu:com.snowplowanalytics.snowplow/ua_parser_context/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/web_page/jsonschema/1-0-0",
+        "iglu:org.w3/PerformanceTiming/jsonschema/1-0-0"
+      )
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
   }
 
   lazy val loaderBuildSettings = {
@@ -246,7 +274,7 @@ object BuildSettings {
       Docker / packageName := "snowplow/rdb-loader-databricks",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
-      Compile / unmanagedJars += file("DatabricksJDBC42.jar")
+      Compile / unmanagedJars += file("DatabricksJDBC42.jar"),
     ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
   }
 

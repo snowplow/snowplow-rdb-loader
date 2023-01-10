@@ -13,12 +13,9 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.generic
 
 import scala.concurrent.duration._
-
 import cats.Applicative
 import cats.implicits._
-
-import cats.effect.{Concurrent, Timer}
-
+import cats.effect.kernel.Temporal
 import fs2.{Pipe, Pull, RaiseThrowable, Stream}
 
 /**
@@ -44,7 +41,7 @@ object Record {
   case object EndWindow extends Record[Nothing, Nothing, Nothing]
 
   /** Convert regular stream to a windowed stream */
-  def windowed[F[_]: Concurrent: Timer, W, A, S](getWindow: F[W]): Pipe[F, (A, S), Record[W, A, S]] = { in =>
+  def windowed[F[_]: Temporal, W, A, S](getWindow: F[W]): Pipe[F, (A, S), Record[W, A, S]] = { in =>
     val windows = Stream
       .fixedRate(1.second)
       .evalMap(_ => getWindow)

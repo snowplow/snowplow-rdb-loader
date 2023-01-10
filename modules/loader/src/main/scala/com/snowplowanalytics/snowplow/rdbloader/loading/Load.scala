@@ -13,11 +13,10 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
-
 import cats.{Monad, MonadThrow, Show}
 import cats.implicits._
-
-import cats.effect.{Clock, Timer}
+import cats.effect.Clock
+import retry.Sleep
 
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -90,7 +89,7 @@ object Load {
    * @return
    *   either alert payload in case of duplicate event or ingestion timestamp in case of success
    */
-  def load[F[_]: MonadThrow: Logging: Timer: Iglu: Transaction[*[_], C], C[_]: MonadThrow: Logging: LoadAuthService: DAO, I](
+  def load[F[_]: MonadThrow: Logging: Iglu: Sleep: Transaction[*[_], C], C[_]: MonadThrow: Logging: LoadAuthService: DAO, I](
     config: Config[StorageTarget],
     setStage: Stage => C[Unit],
     incrementAttempt: F[Unit],
