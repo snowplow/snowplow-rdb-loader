@@ -22,6 +22,8 @@ import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec
 
+import cats.effect.unsafe.implicits.global
+
 class CliConfigSpec extends Specification {
   val configB64 = new String(
     Base64.getEncoder.encode(

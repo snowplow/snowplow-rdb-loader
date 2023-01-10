@@ -14,13 +14,10 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import cats.{Applicative, MonadThrow, Show}
 import cats.implicits._
-
-import cats.effect.Timer
-
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
-
-import retry.{RetryDetails, RetryPolicies, RetryPolicy, retryingOnSomeErrors}
+import retry.{RetryDetails, RetryPolicies, RetryPolicy, Sleep}
+import retry._
 
 /**
  * A module responsible for retrying a transaction Unlike, `discovery.Retries` it's all about
@@ -33,14 +30,14 @@ object Retry {
    * of errors such connection drops should be happening in in connection acquisition The error
    * handler will also abort the transaction (it should start in the original action again)
    */
-  def retryLoad[F[_]: MonadThrow: Logging: Timer, A](
+  def retryLoad[F[_]: MonadThrow: Sleep: Logging, A](
     config: Retries,
     incrementAttempt: F[Unit],
     fa: F[A]
   ): F[A] = {
     val onError = (e: Throwable, d: RetryDetails) => incrementAttempt *> log[F](e, d)
     val retryPolicy = getRetryPolicy[F](config)
-    retryingOnSomeErrors[A](retryPolicy, isWorth, onError)(fa)
+    retryingOnSomeErrors(retryPolicy, { t: Throwable => isWorth(t).pure[F] }, onError)(fa)
   }
 
   def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =

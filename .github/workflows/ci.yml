@@ -21,10 +21,8 @@ jobs:
       - name: Check Scala formatting
         if: ${{ always() }}
         run: sbt scalafmtCheckAll
-      - name: Run flaky tests separetly
-        run: sbt 'testOnly *WiderowParquetProcessingSpec'
       - name: Run tests
-        run: sbt coverage 'testOnly * -- -l WiderowParquetProcessingSpec' coverageReport
+        run: sbt coverage test coverageReport
       - name: Aggregate coverage data
         if: ${{ always() }}
         run: sbt coverageAggregate

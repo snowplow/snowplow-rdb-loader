@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.effect.{ExitCode, IO, IOApp}
 
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+
 import com.snowplowanalytics.snowplow.rdbloader.Runner
 
 object Main extends IOApp {

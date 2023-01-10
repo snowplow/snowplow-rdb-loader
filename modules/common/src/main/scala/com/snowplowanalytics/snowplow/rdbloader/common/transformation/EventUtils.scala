@@ -148,7 +148,7 @@ object EventUtils {
    * @return
    *   list of columns or flattening error
    */
-  def flatten[F[_]: Monad: RegistryLookup: Clock](
+  def flatten[F[_]: Monad: Clock: RegistryLookup](
     resolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     instance: SelfDescribingData[Json]

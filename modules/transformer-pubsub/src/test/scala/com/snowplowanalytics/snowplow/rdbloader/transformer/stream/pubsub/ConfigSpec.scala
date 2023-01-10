@@ -18,7 +18,7 @@ import java.time.Instant
 import scala.concurrent.duration._
 
 import cats.effect.IO
-
+import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig

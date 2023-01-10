@@ -15,7 +15,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
 import cats.effect.IO
-import com.github.mjakubowski84.parquet4s._
+import cats.effect.unsafe.implicits.global
+
+import fs2.io.file.Path
+
+import com.github.mjakubowski84.parquet4s.{Path => ParquetPath, RowParquetRecord}
 import com.github.mjakubowski84.parquet4s.parquet.fromParquet
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
@@ -29,7 +33,6 @@ import io.circe.{Json, JsonObject}
 import org.apache.parquet.column.ColumnDescriptor
 
 import java.io.File
-import java.nio.file.Path
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
@@ -50,8 +53,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           )
 
           val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val badPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
           for {
             output <- process(inputStream, config)
@@ -79,6 +82,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         }
         .unsafeRunSync()
     }
+
     "process items with custom contexts correctly in widerow parquet format" in {
       temporaryDirectory
         .use { outputDirectory =>
@@ -88,7 +92,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           )
 
           val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
             output <- process(inputStream, config)
@@ -121,7 +125,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           )
 
           val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
             output <- process(inputStream, config)
@@ -155,7 +159,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           )
 
           val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path.of(outputDirectory.toString, s"run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
             output <- process(inputStream, config)
@@ -202,14 +206,16 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
       }
 
   private def readParquetRowsFrom(path: Path, columns: List[ColumnDescriptor]) =
-    fromParquet[IO, RowParquetRecord]
-      .read(blocker, path.toUri.toString)
+    fromParquet[IO]
+      .as[RowParquetRecord]
+      .read(ParquetPath(path.toNioPath.toUri.toString))
       .map { record =>
         ParquetUtils.convertParquetRecordToJson(record, List.empty, columns)
       }
       .compile
       .toList
       .map(_.sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString)))
+      .map(_.map(_.deepDropNullValues))
 
   private def readParquetColumnsFromResource(path: String): IO[List[ColumnDescriptor]] =
     readLinesFromResource(path)
@@ -314,7 +320,7 @@ object WiderowParquetProcessingSpec {
         |    "bufferSize": 3
         | }
         | "output": {
-        |   "path": "${outputPath.toUri.toString}"
+        |   "path": "${outputPath.toNioPath.toUri.toString}"
         |   "compression": "NONE"
         |   "region": "eu-central-1"
         | }
@@ -332,26 +338,15 @@ object WiderowParquetProcessingSpec {
 
   private val igluConfig =
     """|{
-       |  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
+       |  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-2",
        |  "data": {
-       |    "cacheSize": 500,
+       |    "cacheSize": 5000,
+       |    "cacheTtl": 10000,
        |    "repositories": [
        |      {
-       |        "name": "Iglu Central",
+       |        "name": "Iglu Test Embedded",
        |        "priority": 0,
-       |        "vendorPrefixes": [
-       |          "com.snowplowanalytics"
-       |        ],
-       |        "connection": {
-       |          "http": {
-       |            "uri": "http://iglucentral.com"
-       |          }
-       |        }
-       |      },
-       |      {
-       |        "name": "Iglu Embedded",
-       |        "priority": 0,
-       |        "vendorPrefixes": [ "com.snowplowanalytics" ],
+       |        "vendorPrefixes": [ ],
        |        "connection": {
        |          "embedded": {
        |            "path": "/"

@@ -109,7 +109,7 @@ object Transformed {
    *   either bad row (in case of failed flattening) or list of shredded entities inside original
    *   event
    */
-  def shredEvent[F[_]: Monad: RegistryLookup: Clock](
+  def shredEvent[F[_]: Monad: Clock: RegistryLookup](
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     isTabular: SchemaKey => Boolean,
@@ -145,7 +145,7 @@ object Transformed {
    * @param hierarchy
    *   actual JSON hierarchy from an enriched event
    */
-  private def fromHierarchy[F[_]: Monad: RegistryLookup: Clock](
+  private def fromHierarchy[F[_]: Monad: Clock: RegistryLookup](
     tabular: Boolean,
     resolver: => Resolver[F],
     propertiesCache: PropertiesCache[F]

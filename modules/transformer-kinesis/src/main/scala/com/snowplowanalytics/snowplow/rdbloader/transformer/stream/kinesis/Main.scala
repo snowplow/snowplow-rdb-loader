@@ -22,6 +22,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Config, Run}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated.BuildInfo
 
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+
 object Main extends IOApp {
   final val QueueMessageGroupId = "shredding"
 
@@ -31,23 +33,21 @@ object Main extends IOApp {
       BuildInfo.name,
       BuildInfo.version,
       BuildInfo.description,
-      executionContext,
+      runtime.compute,
       mkSource,
-      (_, c) => mkSink(c),
-      (blocker, c) => mkBadQueue(blocker, c),
+      c => mkSink(c),
+      c => mkBadQueue(c),
       mkQueue,
       KinesisCheckpointer.checkpointer
     )
 
-  private def mkSource[F[_]: ConcurrentEffect: ContextShift: Timer](
-    blocker: Blocker,
+  private def mkSource[F[_]: Async](
     streamInput: Config.StreamInput,
     monitoring: Config.Monitoring
   ): Resource[F, Queue.Consumer[F]] =
     streamInput match {
       case conf: Config.StreamInput.Kinesis =>
         Kinesis.consumer[F](
-          blocker,
           conf.appName,
           conf.streamName,
           conf.region,
@@ -60,19 +60,18 @@ object Main extends IOApp {
           monitoring.metrics.cloudwatch
         )
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Input is not Kinesis")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Input is not Kinesis")))
     }
 
-  private def mkSink[F[_]: ConcurrentEffect: Timer](output: Config.Output): Resource[F, BlobStorage[F]] =
+  private def mkSink[F[_]: Async](output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
       case s3Output: Config.Output.S3 =>
         S3.blobStorage[F](s3Output.region.name)
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not S3")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Output is not S3")))
     }
 
-  private def mkBadQueue[F[_]: ConcurrentEffect: Timer: ContextShift: Parallel](
-    blocker: Blocker,
+  private def mkBadQueue[F[_]: Async: Parallel](
     output: Config.Output.Bad.Queue
   ): Resource[F, Queue.ChunkProducer[F]] =
     output match {
@@ -90,22 +89,21 @@ object Main extends IOApp {
           kinesis.streamName,
           kinesis.region,
           kinesis.customEndpoint,
-          blocker,
           errorPolicy,
           throttlingPolicy,
           RequestLimits(kinesis.recordLimit, kinesis.byteLimit)
         )
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output queue is not Kinesis")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Output queue is not Kinesis")))
     }
 
-  private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
+  private def mkQueue[F[_]: Async](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
       case Config.QueueConfig.SQS(queueName, region) =>
         SQS.producer(queueName, region.name, QueueMessageGroupId)
       case Config.QueueConfig.SNS(topicArn, region) =>
         SNS.producer(topicArn, region.name, QueueMessageGroupId)
       case _ =>
-        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not SQS or SNS")))
+        Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Message queue is not SQS or SNS")))
     }
 }

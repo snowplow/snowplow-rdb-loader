@@ -12,16 +12,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.aws
 
-import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, ContextShift, Resource, Sync, Timer}
 import cats.implicits._
 import cats.{Applicative, Monoid, Parallel}
+import cats.effect.kernel.Ref
+import cats.effect.{Resource, Sync}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import retry.syntax.all._
-import retry.{RetryPolicies, RetryPolicy}
+import retry.{RetryPolicies, RetryPolicy, Sleep}
 import software.amazon.awssdk.core.SdkBytes
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.awssdk.services.kinesis.KinesisClient
@@ -38,11 +38,10 @@ object KinesisProducer {
   private implicit def unsafeLogger[F[_]: Sync]: Logger[F] =
     Slf4jLogger.getLogger[F]
 
-  def producer[F[_]: ContextShift: Parallel: Sync: Timer](
+  def producer[F[_]: Parallel: Sync: Sleep](
     streamName: String,
     region: Region,
     customEndpoint: Option[URI],
-    blocker: Blocker,
     internalErrorsPolicy: BackoffPolicy,
     throttlingPolicy: BackoffPolicy,
     requestLimits: RequestLimits
@@ -54,7 +53,7 @@ object KinesisProducer {
           override def send(messages: List[String]): F[Unit] = {
             val records = messages.map(toKinesisRecord)
 
-            writeToKinesis(blocker, internalErrorsPolicy, throttlingPolicy, requestLimits, client, streamName, records)
+            writeToKinesis[F](internalErrorsPolicy, throttlingPolicy, requestLimits, client, streamName, records)
           }
         }
       }
@@ -67,8 +66,7 @@ object KinesisProducer {
     }
   }
 
-  private def writeToKinesis[F[_]: ContextShift: Parallel: Sync: Timer](
-    blocker: Blocker,
+  private def writeToKinesis[F[_]: Parallel: Sync: Sleep](
     internalErrorsPolicy: BackoffPolicy,
     throttlingErrorsPolicy: BackoffPolicy,
     requestLimits: RequestLimits,
@@ -83,17 +81,17 @@ object KinesisProducer {
       for {
         records <- ref.get
         failures <- group(records, requestLimits.recordLimit, requestLimits.bytesLimit, getRecordSize)
-                      .parTraverse(g => tryWriteToKinesis(blocker, streamName, kinesis, g, policyForErrors))
+                      .parTraverse(g => tryWriteToKinesis(streamName, kinesis, g, policyForErrors))
         flattened = failures.flatten
         _ <- ref.set(flattened)
       } yield flattened
 
     for {
-      ref <- Ref.of(records)
+      ref <- Ref.of[F, List[PutRecordsRequestEntry]](records)
       failures <- runAndCaptureFailures(ref)
                     .retryingOnFailures(
                       policy = policyForThrottling,
-                      wasSuccessful = _.isEmpty,
+                      wasSuccessful = entries => Sync[F].pure(entries.isEmpty),
                       onFailure = { case (result, retryDetails) =>
                         val msg = failureMessageForThrottling(result, streamName)
                         Logger[F].warn(s"$msg (${retryDetails.retriesSoFar} retries from cats-retry)")
@@ -146,20 +144,19 @@ object KinesisProducer {
    * list contains throttled records and records that gave internal errors. If there is an
    * exception, or if all records give internal errors, then we retry using the policy.
    */
-  private def tryWriteToKinesis[F[_]: ContextShift: Sync: Timer](
-    blocker: Blocker,
+  private def tryWriteToKinesis[F[_]: Sync: Sleep](
     streamName: String,
     kinesis: KinesisClient,
     records: List[PutRecordsRequestEntry],
     retryPolicy: RetryPolicy[F]
   ): F[Vector[PutRecordsRequestEntry]] =
     Logger[F].debug(s"Writing ${records.size} records to ${streamName}") *>
-      blocker
-        .blockOn(Sync[F].delay(putRecords(kinesis, streamName, records)))
+      Sync[F]
+        .blocking(putRecords(kinesis, streamName, records))
         .map(TryBatchResult.build(records, _))
         .retryingOnFailuresAndAllErrors(
           policy = retryPolicy,
-          wasSuccessful = r => !r.shouldRetrySameBatch,
+          wasSuccessful = r => Sync[F].pure(!r.shouldRetrySameBatch),
           onFailure = { case (result, retryDetails) =>
             val msg = failureMessageForInternalErrors(records, streamName, result)
             Logger[F].error(s"$msg (${retryDetails.retriesSoFar} retries from cats-retry)")

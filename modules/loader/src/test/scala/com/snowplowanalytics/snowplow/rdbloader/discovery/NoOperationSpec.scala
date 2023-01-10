@@ -14,16 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.{Instant, ZoneId, ZonedDateTime}
 import java.time.format.DateTimeFormatter
-import java.util.concurrent.TimeUnit
 
 import scala.concurrent.duration._
-import scala.util.{Failure, Success, Try}
 
 import cats.implicits._
-
-import cats.effect.{ContextShift, IO, Resource, Timer}
-import cats.effect.concurrent.Ref
-
+import cats.effect.{IO, Outcome, Resource}
+import cats.effect.kernel.Ref
 import fs2.Stream
 import fs2.concurrent.SignallingRef
 
@@ -35,10 +31,11 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status
 import com.snowplowanalytics.snowplow.rdbloader.state.MakePaused
 
 import org.specs2.mutable.Specification
-
 import org.specs2.matcher.{Expectable, MatchResult, Matcher}
-
-import cats.effect.laws.util.TestContext
+import cats.effect.testkit.TestControl
+import cats.effect.unsafe.implicits.global
+import cats.Id
+import cats.effect.kernel.Outcome.Succeeded
 
 class NoOperationSpec extends Specification {
   import NoOperationSpec._
@@ -180,13 +177,6 @@ class NoOperationSpec extends Specification {
 
 object NoOperationSpec {
 
-  implicit lazy val ec: TestContext = TestContext()
-
-  implicit val CS: ContextShift[IO] =
-    ec.ioContextShift
-  implicit val T: Timer[IO] =
-    ec.ioTimer
-
   implicit val L: Logging[IO] =
     Logging.noOp[IO] // Can be changed to real one for debugging
 
@@ -195,7 +185,7 @@ object NoOperationSpec {
   def formatTime(timestamp: Long): String =
     InstantFormat.format(Instant.ofEpochMilli(timestamp))
 
-  def run(n: Long)(input: List[Schedule]): FutureValue = {
+  def run(n: Long)(input: List[Schedule]): Option[Outcome[Id, Throwable, List[Job]]] = {
     val jobs = create.use { case (makePaused, state, idleStatus) =>
       NoOperation
         .run[IO](input, makePaused, idleStatus)
@@ -210,28 +200,33 @@ object NoOperationSpec {
         .toList
     }
 
-    val future = jobs.unsafeToFuture()
-    ec.tick(20.seconds)
-    future.value
+    TestControl
+      .execute(jobs)
+      .flatMap { testControl =>
+        testControl.tick >>
+          testControl.advanceAndTick(20.seconds) >>
+          testControl.tickAll >>
+          testControl.results
+      }
+      .unsafeRunSync()
   }
 
-  type FutureValue = Option[Try[List[Job]]]
+  type RunResult = Option[Outcome[Id, Throwable, List[Job]]]
 
   /** Ad-hoc matcher */
-  def haveJobs(pattern: PartialFunction[List[Job], MatchResult[_]]): Matcher[FutureValue] =
-    new Matcher[FutureValue] { outer =>
-      def apply[S <: FutureValue](a: Expectable[S]): MatchResult[S] =
+  def haveJobs(pattern: PartialFunction[List[Job], MatchResult[_]]): Matcher[RunResult] =
+    new Matcher[RunResult] { outer =>
+      def apply[S <: RunResult](a: Expectable[S]): MatchResult[S] =
         a.value match {
-          case Some(Failure(error)) =>
-            outer.result(false, a.description, error.toString, a)
-          case Some(Success(jobs)) if pattern.isDefinedAt(jobs) =>
-            val r = pattern.apply(jobs)
-            outer.result(r.isSuccess, a.description + " is correct: " + r.message, a.description + " is incorrect: " + r.message, a)
-          case Some(Success(jobs)) =>
-            outer.failure(s"Expected different amount of resulting jobs, got: [${jobs.mkString(", ")}]", a)
-          case None =>
-            outer.failure(s"Future timed out", a)
-
+          case Some(outcome) =>
+            outcome match {
+              case Succeeded(jobs) if pattern.isDefinedAt(jobs) =>
+                val r = pattern.apply(jobs)
+                outer.result(r.isSuccess, a.description + " is correct: " + r.message, a.description + " is incorrect: " + r.message, a)
+              case Outcome.Errored(e) => outer.result(false, a.description, e.toString, a)
+              case Outcome.Canceled() => outer.result(false, a.description, "cancelled", a)
+            }
+          case None => outer.failure(s"timed out", a)
         }
     }
 
@@ -264,7 +259,7 @@ object NoOperationSpec {
       this.copy(status = status)
   }
 
-  val now: IO[Long] = T.clock.realTime(TimeUnit.MILLISECONDS)
+  val now: IO[Long] = IO.realTime.map(_.toMillis)
 
   def pause(state: Ref[IO, State], who: String): IO[(Int, Long)] =
     IO.sleep(1.nano) *>

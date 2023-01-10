@@ -14,17 +14,13 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 
 import cats.Parallel
 import cats.implicits._
-
-import cats.effect.concurrent.Ref
-import cats.effect.{Blocker, Clock, ConcurrentEffect, ContextShift, Resource, Timer}
-
+import cats.effect.{Async, Resource}
+import cats.effect.kernel.Ref
+import cats.effect.std.{Dispatcher, Random}
+import cats.effect.unsafe.implicits.global
 import doobie.ConnectionIO
-
-import org.http4s.client.blaze.BlazeClientBuilder
-
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
@@ -36,6 +32,8 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, Stora
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.db.Target
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics._
+import com.snowplowanalytics.snowplow.scalatracker.Tracking
+import org.http4s.blaze.client.BlazeClientBuilder
 
 /**
  * Container for most of interepreters to be used in Main JDBC will be instantiated only when
@@ -86,34 +84,35 @@ object Environment {
     secretStore: SecretStore[F]
   )
 
-  def initialize[F[_]: Clock: ConcurrentEffect: ContextShift: Timer: Parallel, I](
+  def initialize[F[_]: Async: Parallel: Tracking, I](
     cli: CliConfig,
     statementer: Target[I],
     appName: String,
     appVersion: String
   ): Resource[F, Environment[F, I]] =
     for {
-      blocker <- Blocker[F]
+      httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
-      httpClient <- BlazeClientBuilder[F](blocker.blockingContext).resource
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
       implicit0(logging: Logging[F]) =
         Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      implicit0(random: Random[F]) <- Resource.eval(Random.scalaUtilRandom[F])
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- Sentry.init[F](cli.config.monitoring.sentry.map(_.dsn))
-      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd, blocker)
+      statsdReporter = StatsDReporter.build[F](cli.config.monitoring.metrics.statsd)
       stdoutReporter = StdoutReporter.build[F](cli.config.monitoring.metrics.stdout)
       cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
       implicit0(cache: Cache[F]) = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      control = Control(state)
-      cloudServices <- createCloudServices(cli.config, blocker, control)
+      control = Control[F](state)
+      cloudServices <- createCloudServices[F](cli.config, control)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) =
         Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
-      transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts, blocker)
+      implicit0(dispatcher: Dispatcher[F]) <- Dispatcher.parallel[F]
+      transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts)
       telemetry <- Telemetry.build[F](
                      cli.config.telemetry,
                      appName,
@@ -139,9 +138,8 @@ object Environment {
       telemetry
     )
 
-  def createCloudServices[F[_]: ConcurrentEffect: Timer: Logger: ContextShift: Cache](
+  def createCloudServices[F[_]: Async: Logger: Cache](
     config: Config[StorageTarget],
-    blocker: Blocker,
     control: Control[F]
   ): Resource[F, CloudServices[F]] =
     config.cloud match {
@@ -167,10 +165,9 @@ object Environment {
         for {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
-          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage(blocker)
+          implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
-                             blocker = blocker,
                              projectId = c.messageQueue.projectId,
                              subscription = c.messageQueue.subscriptionId,
                              parallelPullCount = c.messageQueue.parallelPullCount,
