@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2012-2023 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
 
 import cats.implicits.{catsSyntaxEq, toFoldableOps}
@@ -5,6 +17,7 @@ import cats.{Id, Monoid}
 import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResult}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.KinesisSink.{
   Batch,
+  FailedWriteRecords,
   FlushDataToKinesis,
   KeyedData,
   TryBatchResult,
@@ -61,55 +74,56 @@ final class KinesisSink(
       writeBatch(currentBatch)
     }
 
+  // Similar approach to retrying kinesis requests as in Enrich
+  // See sink implementation - https://github.com/snowplow/enrich/blob/master/modules/kinesis/src/main/scala/com/snowplowanalytics/snowplow/enrich/kinesis/Sink.scala
+  // and issue explaining the usage of different policies - https://github.com/snowplow/enrich/issues/697
   private def writeBatch(batch: Batch): Unit = {
-    println(s"Writing batch: ${batch.asString} of badrows to Kinesis")
+    println(s"Writing batch: (${batch.asString}) of badrows to Kinesis")
     var recordsToAttempt = buildRecords(batch.keyedData)
 
-    val result = attemptToWriteRecords(recordsToAttempt).retryingOnFailures(
+    val result = attemptToWriteBatch(recordsToAttempt).retryingOnFailures(
       policy = policyForThrottling,
       wasSuccessful = failedEntries => failedEntries.isEmpty,
       onFailure = { case (pendingFailedEntries, retryDetails) =>
         recordsToAttempt = pendingFailedEntries
         println(
-          s"Writing records to Kinesis failed for batch: ${batch.asString}. Number of records left: ${recordsToAttempt.size}. Retries so far: ${retryDetails.retriesSoFar}, giving up: ${retryDetails.givingUp}"
+          s"${failureMessageForThrottling(recordsToAttempt)}. Retries so far: ${retryDetails.retriesSoFar}"
         )
       }
     )
 
     if (result.nonEmpty) {
-      throw new RuntimeException(s"Writing batch: ${batch.asString} to Kinesis failed")
+      throw new RuntimeException(failureMessageForThrottling(result))
     } else {
-      println(s"Writing batch: ${batch.asString} of badrows to Kinesis was successful")
+      println(s"Writing batch: (${batch.asString}) of badrows to Kinesis was successful")
     }
   }
 
   private def buildRecords(keyedData: List[KeyedData]): List[PutRecordsRequestEntry] =
+    // Data was prepended (when building batch) to 'keyedData' list, which results in reversed original order of items.
+    // We have to 'reverse' it now to bring it back.
     keyedData.reverse.map { data =>
       new PutRecordsRequestEntry()
         .withPartitionKey(data.key)
         .withData(ByteBuffer.wrap(data.content))
     }
 
-  private def attemptToWriteRecords(requestEntries: List[PutRecordsRequestEntry]): Id[List[PutRecordsRequestEntry]] = {
-    val result = executeKinesisRequest(requestEntries).retryingOnFailures(
+  private def attemptToWriteBatch(records: List[PutRecordsRequestEntry]): Id[FailedWriteRecords] = {
+    val result = executeKinesisRequest(records).retryingOnFailures(
       policy = policyForErrors,
       wasSuccessful = r => !r.shouldRetrySameBatch,
-      onFailure = { case (_, retryDetails) =>
-        println(
-          s"Whole batch of records failed (no success nor throttle errors). Retries so far: ${retryDetails.retriesSoFar}, giving up: ${retryDetails.givingUp}"
-        )
+      onFailure = { case (result, retryDetails) =>
+        println(s"${failureMessageForInternalFailures(records, result)}. Retries so far: ${retryDetails.retriesSoFar}")
       }
     )
 
     if (result.shouldRetrySameBatch)
-      throw new RuntimeException("Writing batch failed")
+      throw new RuntimeException(failureMessageForInternalFailures(records, result))
     else
       result.nextBatchAttempt.toList
   }
 
   private def executeKinesisRequest(requestEntires: List[PutRecordsRequestEntry]): Id[TryBatchResult] = {
-    // Data was prepended (when building batch) to 'keyedData' list, which results in reversed original order of items.
-    // We have to 'reverse' it now to bring it back.
     val putRecordsRequest =
       new PutRecordsRequest()
         .withStreamName(streamName)
@@ -118,11 +132,19 @@ final class KinesisSink(
     val response = flushDataToKinesis(putRecordsRequest)
     TryBatchResult.build(requestEntires, response)
   }
+
+  private def failureMessageForInternalFailures(records: List[PutRecordsRequestEntry], result: TryBatchResult) = {
+    val exampleMessage = result.exampleInternalError.getOrElse("none")
+    s"Writing ${records.size} records to $streamName errored with internal failures. Example error message [$exampleMessage]."
+  }
+
+  private def failureMessageForThrottling(records: List[PutRecordsRequestEntry]): String =
+    s"Exceeded Kinesis provisioned throughput: ${records.size} records failed writing to $streamName."
 }
 
 object KinesisSink {
   type FlushDataToKinesis = PutRecordsRequest => PutRecordsResult
-  type FailedWriteEntries = List[PutRecordsRequestEntry]
+  type FailedWriteRecords = List[PutRecordsRequestEntry]
 
   private val policyForErrors = Retries.fullJitter(BackoffPolicy(minBackoff = 100.millis, maxBackoff = 10.seconds, maxRetries = Some(10)))
   private val policyForThrottling = Retries.fibonacci(BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None))
@@ -202,7 +224,7 @@ object KinesisSink {
     def addData(data: KeyedData): Batch =
       Batch(this.partitionIndex, size + data.size, recordsCount + 1, data :: keyedData)
 
-    def asString: String = s"Partition: $partitionIndex, size in bytes: $size, records count: $recordsCount"
+    def asString: String = s"Partition: $partitionIndex, initial size in bytes: $size, records count: $recordsCount"
   }
 
   object Batch {
