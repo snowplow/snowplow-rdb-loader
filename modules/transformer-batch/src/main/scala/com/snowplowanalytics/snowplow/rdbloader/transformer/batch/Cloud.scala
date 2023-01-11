@@ -160,6 +160,5 @@ object Cloud {
     AmazonKinesisClientBuilder
       .standard()
       .withRegion(region.name)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
       .build()
 }

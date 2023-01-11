@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import com.amazonaws.services.kinesis.model.PutRecordsRequest
+import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsResult}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.DString
@@ -167,9 +167,9 @@ object PartitionDataFilterSpec {
   class MockedKinesisStream {
     val receivedPutRequests: mutable.ListBuffer[PutRecordsRequest] = mutable.ListBuffer.empty
 
-    def receive(request: PutRecordsRequest) = {
+    def receive(request: PutRecordsRequest): PutRecordsResult = {
       receivedPutRequests += request
-      ()
+      new PutRecordsResult().withFailedRecordCount(0)
     }
   }
 
