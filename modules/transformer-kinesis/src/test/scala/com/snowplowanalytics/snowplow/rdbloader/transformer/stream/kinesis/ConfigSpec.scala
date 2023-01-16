@@ -49,7 +49,7 @@ class ConfigSpec extends Specification {
         TransformerConfig.Formats.WideRow.JSON,
         exampleMonitoringStream,
         exampleTelemetry,
-        exampleDefaultFeatureFlags,
+        exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
         exampleValidations
       )
       result must beRight(expected)
@@ -65,7 +65,7 @@ class ConfigSpec extends Specification {
         TransformerConfig.Formats.WideRow.JSON,
         exampleDefaultMonitoringStream,
         defaultTelemetry,
-        exampleDefaultFeatureFlags,
+        exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
         emptyValidations
       )
       result must beRight(expected)

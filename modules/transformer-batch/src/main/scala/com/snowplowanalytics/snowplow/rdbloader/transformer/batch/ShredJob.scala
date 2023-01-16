@@ -149,7 +149,7 @@ class ShredJob[T](
 
     val maxRecordsPerFile =
       if (config.featureFlags.enableMaxRecordsPerFile)
-        config.maxRecordsPerFile
+        config.output.maxRecordsPerFile
       else
         0L
 

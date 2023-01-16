@@ -16,7 +16,7 @@
   }
   
   # number of events per parquet partition
-  "maxRecordsPerFile": 1000,
+  "maxRecordsPerFile": 10000,
 
   # Queue used to communicate with Loader
   "queue": {
@@ -109,7 +109,6 @@
     
     # When enables `maxRecordsPerFile` configuration parameter is going to be used
     "enableMaxRecordsPerFile": false
-    
     
   }
 

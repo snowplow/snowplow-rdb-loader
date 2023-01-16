@@ -37,7 +37,6 @@ class ConfigSpec extends Specification {
         exampleOutput,
         exampleSQSConfig,
         exampleFormats,
-        maxRecordsPerFile = 0,
         exampleMonitoringBatch,
         exampleDeduplication,
         exampleRunInterval,
@@ -54,7 +53,6 @@ class ConfigSpec extends Specification {
         exampleDefaultOutput,
         exampleSNSConfig,
         exampleDefaultFormats,
-        maxRecordsPerFile = 0,
         exampleDefaultMonitoringBatch,
         exampleDeduplication,
         emptyRunInterval,
@@ -108,7 +106,8 @@ object TransformerConfigSpec {
   val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
-    Region("eu-central-1")
+    Region("eu-central-1"),
+    maxRecordsPerFile = 10000
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
   val exampleSQSConfig = Config.QueueConfig.SQS(

@@ -91,7 +91,6 @@ object Config {
     def path: URI
     def compression: Compression
     def bufferSize: Int
-
     def maxRecordsPerFile: Long
   }
 

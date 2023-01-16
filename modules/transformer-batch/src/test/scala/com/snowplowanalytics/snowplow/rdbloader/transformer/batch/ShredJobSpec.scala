@@ -435,10 +435,9 @@ object ShredJobSpec {
     }
     Config(
       input,
-      Config.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1")),
+      Config.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1"), maxRecordsPerFile = 10000),
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
-      maxRecordsPerFile = 0,
       Config.Monitoring(None),
       deduplication,
       Config.RunInterval(None, None, None),

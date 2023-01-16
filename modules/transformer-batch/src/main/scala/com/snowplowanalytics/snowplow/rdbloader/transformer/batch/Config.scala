@@ -33,7 +33,6 @@ final case class Config(
   output: Config.Output,
   queue: Config.QueueConfig,
   formats: TransformerConfig.Formats,
-  maxRecordsPerFile: Long,
   monitoring: Config.Monitoring,
   deduplication: Config.Deduplication,
   runInterval: Config.RunInterval,
@@ -56,7 +55,8 @@ object Config {
   final case class Output(
     path: URI,
     compression: Compression,
-    region: Region
+    region: Region,
+    maxRecordsPerFile: Long
   )
 
   sealed trait QueueConfig extends Product with Serializable
