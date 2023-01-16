@@ -57,14 +57,17 @@ object Sink {
     spark: SparkSession,
     sparkSchema: StructType,
     data: RDD[List[Any]],
-    outFolder: String
+    outFolder: String,
+    maxRecordsPerFile: Long
   ): Unit = {
     val rows = data.map(Row.fromSeq)
     spark
       .createDataFrame(rows, sparkSchema)
       .write
+      .option("spark.sql.files.maxRecordsPerFile", maxRecordsPerFile)
       .mode(SaveMode.Append)
       .parquet(outFolder)
+
     rows.unpersist()
   }
 

@@ -14,6 +14,9 @@
     # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html
     "region": "eu-central-1"
   }
+  
+  # number of events per parquet partition
+  "maxRecordsPerFile": 1000,
 
   # Queue used to communicate with Loader
   "queue": {
@@ -102,7 +105,12 @@
   "featureFlags": {
     # Read/write in the legacy version 1 shredding complete message format.
     # This should be enabled during upgrade from older versions of the loader.
-    "legacyMessageFormat": false
+    "legacyMessageFormat": false,
+    
+    # When enables `maxRecordsPerFile` configuration parameter is going to be used
+    "enableMaxRecordsPerFile": false
+    
+    
   }
 
   # Observability and reporting options

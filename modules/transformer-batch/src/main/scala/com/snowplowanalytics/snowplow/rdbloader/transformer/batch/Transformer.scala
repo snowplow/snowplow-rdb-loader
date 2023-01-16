@@ -57,7 +57,8 @@ sealed trait Transformer[T] extends Product with Serializable {
     sc: SparkSession,
     compression: TransformerConfig.Compression,
     transformed: RDD[Transformed],
-    outFolder: Folder
+    outFolder: Folder,
+    maxRecordsPerFile: Long
   ): Unit
   def register(sc: SparkContext): Unit
 }
@@ -66,7 +67,8 @@ object Transformer {
   case class ShredTransformer(
     resolverConfig: ResolverConfig,
     formats: Formats.Shred,
-    atomicLengths: Map[String, Int]
+    atomicLengths: Map[String, Int],
+    maxRecordsPerFile: Long
   ) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
@@ -110,7 +112,8 @@ object Transformer {
       spark: SparkSession,
       compression: TransformerConfig.Compression,
       transformed: RDD[Transformed],
-      outFolder: Folder
+      outFolder: Folder,
+      maxRecordsPerFile: Long
     ): Unit =
       Sink.writeShredded(spark, compression, transformed.flatMap(_.shredded), outFolder)
 
@@ -143,7 +146,8 @@ object Transformer {
       spark: SparkSession,
       compression: TransformerConfig.Compression,
       transformed: RDD[Transformed],
-      outFolder: Folder
+      outFolder: Folder,
+      maxRecordsPerFile: Long
     ): Unit =
       Sink.writeWideRowed(spark, compression, transformed.flatMap(_.wideRow), outFolder)
 
@@ -180,13 +184,14 @@ object Transformer {
       spark: SparkSession,
       compression: TransformerConfig.Compression,
       transformed: RDD[Transformed],
-      outFolder: Folder
+      outFolder: Folder,
+      maxRecordsPerFile: Long
     ): Unit = {
       // If it is not cached, events will be processed two times since
       // data is output in both wide row json and parquet format.
       val transformedCache = transformed.cache()
       Sink.writeWideRowed(spark, compression, transformedCache.flatMap(_.wideRow), outFolder)
-      Sink.writeParquet(spark, schema, transformedCache.flatMap(_.parquet), outFolder.append("output=good"))
+      Sink.writeParquet(spark, schema, transformedCache.flatMap(_.parquet), outFolder.append("output=good"), maxRecordsPerFile)
     }
 
     def register(sc: SparkContext): Unit = {

@@ -62,6 +62,10 @@
   # Frequency to emit loading finished message - 5,10,15,20,30,60 etc minutes
   # Optional, default value 10 minutes
   "windowing": "10 minutes"
+  
+  
+  # Max number of events per parquet partition.
+  "maxRecordsPerFile": 1000
 
   # Queue used to communicate with Loader
   "queue": {

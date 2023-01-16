@@ -33,6 +33,7 @@ final case class Config(
   output: Config.Output,
   queue: Config.QueueConfig,
   formats: TransformerConfig.Formats,
+  maxRecordsPerFile: Long,
   monitoring: Config.Monitoring,
   deduplication: Config.Deduplication,
   runInterval: Config.RunInterval,

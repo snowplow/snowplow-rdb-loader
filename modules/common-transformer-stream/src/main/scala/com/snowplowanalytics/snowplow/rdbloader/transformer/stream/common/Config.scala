@@ -92,7 +92,7 @@ object Config {
     def compression: Compression
     def bufferSize: Int
 
-    def rowsPerFile: Long
+    def maxRecordsPerFile: Long
   }
 
   object Output {
@@ -101,14 +101,14 @@ object Config {
       compression: Compression,
       bufferSize: Int,
       region: Region,
-      rowsPerFile: Long
+      maxRecordsPerFile: Long
     ) extends Output
 
     final case class GCS(
       path: URI,
       compression: Compression,
       bufferSize: Int,
-      rowsPerFile: Long
+      maxRecordsPerFile: Long
     ) extends Output
   }
 

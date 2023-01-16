@@ -438,10 +438,11 @@ object ShredJobSpec {
       Config.Output(dirs.output.toURI, TransformerConfig.Compression.None, Region("eu-central-1")),
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
+      maxRecordsPerFile = 0,
       Config.Monitoring(None),
       deduplication,
       Config.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false, None),
+      TransformerConfig.FeatureFlags(false, None, false),
       TransformerConfig.Validations(None)
     )
   }
@@ -497,7 +498,7 @@ trait ShredJobSpec extends SparkSpec {
           .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
 
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty)
+          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty, 0)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
             val resolver = IgluSingleton.get(resolverConfig)
