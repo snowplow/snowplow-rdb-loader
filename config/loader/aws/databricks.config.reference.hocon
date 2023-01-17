@@ -55,6 +55,18 @@
     #  # for transformer output S3 bucket should be specified in the role.
     #  "roleArn": "arn:aws:iam::123456789:role/role_name"
     #}
+    
+    #  JDBC driver log level.
+    #  0 Disable all logging.
+    #  1 Log severe error events that lead the driver to abort.
+    #  2 Log error events that might allow the driver to continue  running.
+    #  3 Log events that might result in an error if action is not taken. (default)
+    #  4 Log general information that describes the progress of the  driver.
+    #  5 Log detailed information that is useful for debugging the driver.
+    #  6 Log all driver activity.
+    # "logLevel": 3
+    
+    
   },
 
   "schedules": {

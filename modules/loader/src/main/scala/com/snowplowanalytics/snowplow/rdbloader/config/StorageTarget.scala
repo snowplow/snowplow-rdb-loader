@@ -116,7 +116,8 @@ object StorageTarget {
     sshTunnel: Option[TunnelConfig],
     userAgent: String,
     loadAuthMethod: LoadAuthMethod,
-    eventsOptimizePeriod: FiniteDuration
+    eventsOptimizePeriod: FiniteDuration,
+    logLevel: Int
   ) extends StorageTarget {
 
     override def username: String = "token"
@@ -133,7 +134,7 @@ object StorageTarget {
       val props: Properties = new Properties()
       props.put("httpPath", httpPath)
       props.put("ssl", 1)
-      //      props.put("LogLevel", 6)
+      props.put("LogLevel", logLevel)
       props.put("AuthMech", 3)
       props.put("transportMode", "http")
       props.put("UserAgentEntry", userAgent)
