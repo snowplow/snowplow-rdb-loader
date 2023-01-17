@@ -269,6 +269,7 @@ object FolderMonitoringSpec {
     None,
     "snowplow-rdbloader-oss",
     StorageTarget.LoadAuthMethod.NoCreds,
-    2.days
+    2.days,
+    3
   )
 }

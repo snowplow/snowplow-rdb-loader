@@ -168,7 +168,8 @@ class StorageTargetSpec extends Specification {
       "loadAuthMethod": {
             "type": "NoCreds",
             "roleSessionName": "rdb_loader"
-        }
+        },
+      "logLevel": 3
     }"""
 
       val expected: StorageTarget.Databricks = StorageTarget.Databricks(
@@ -181,7 +182,8 @@ class StorageTargetSpec extends Specification {
         sshTunnel = None,
         userAgent = "snowplow-rdbloader-oss",
         loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
-        eventsOptimizePeriod = 2.days
+        eventsOptimizePeriod = 2.days,
+        3
       )
 
       input.as[StorageTarget.Databricks] must beRight(expected)
