@@ -144,7 +144,8 @@ object ConfigSpec {
     None,
     "snowplow-rdbloader-oss",
     StorageTarget.LoadAuthMethod.NoCreds,
-    2.days
+    2.days,
+    3
   )
   val exampleAWSCloud = Config.Cloud.AWS(Region("us-east-1"), Config.Cloud.AWS.SQS("test-queue", Some(Region("us-east-1"))))
   val exampleGCPCloud = Config.Cloud.GCP(

@@ -171,7 +171,8 @@ object DatabricksSpec {
           None,
           "useragent",
           StorageTarget.LoadAuthMethod.NoCreds,
-          2.days
+          2.days,
+          logLevel = 3
         ),
         Config.Cloud.AWS(
           Region("eu-central-1"),
