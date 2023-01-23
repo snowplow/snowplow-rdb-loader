@@ -20,8 +20,11 @@ import org.apache.hadoop.io.compress.GzipCodec
 import java.io.{BufferedWriter, OutputStream, OutputStreamWriter}
 import java.net.URI
 import java.nio.charset.StandardCharsets
+import java.nio.file.Paths
 
-final class FileSink(
+// Doesn't support shredded directory style as there is no partitioning by vendor/name/model.
+// It simply saves files under 'output=bad' directory.
+final class WiderowFileSink(
   folderName: String,
   hadoopConfiguration: Configuration,
   outputPath: URI,
@@ -29,8 +32,8 @@ final class FileSink(
 ) extends BadrowSink {
 
   override def sink(badrows: Iterator[String], partitionIndex: Int): Unit = {
-    val outputFile = openFile(folderName, hadoopConfiguration, outputPath, compression, partitionIndex)
-    val outputStream = createOutputStream(outputFile, hadoopConfiguration, compression)
+    val outputFile = openFile(partitionIndex)
+    val outputStream = createOutputStream(outputFile)
     val writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
 
     try
@@ -40,25 +43,19 @@ final class FileSink(
   }
 
   private def openFile(
-    folderName: String,
-    hadoopConfiguration: Configuration,
-    outputPath: URI,
-    compression: Compression,
     partitionIndex: Int
   ): FSDataOutputStream = {
-    val extension = getOutputFileExtension(compression)
-    val directory = s"${outputPath.toString}/$folderName/output=bad"
-    val fileName = s"part-$partitionIndex.$extension"
-    println(fileName)
-    val path = new Path(directory, fileName)
+    val directory = Paths.get(
+      outputPath.toString,
+      folderName,
+      "output=bad"
+    )
+    val fileName = s"part-$partitionIndex.$outputFileExtension"
+    val path = new Path(directory.toString, fileName)
     path.getFileSystem(hadoopConfiguration).create(path, false)
   }
 
-  private def createOutputStream(
-    outputFile: FSDataOutputStream,
-    hadoopConfiguration: Configuration,
-    compression: Compression
-  ): OutputStream =
+  private def createOutputStream(outputFile: FSDataOutputStream): OutputStream =
     compression match {
       case Compression.None =>
         outputFile
@@ -75,7 +72,7 @@ final class FileSink(
         writer.newLine()
       }
 
-  private def getOutputFileExtension(compression: Compression): String =
+  private def outputFileExtension: String =
     compression match {
       case Compression.None =>
         "txt"

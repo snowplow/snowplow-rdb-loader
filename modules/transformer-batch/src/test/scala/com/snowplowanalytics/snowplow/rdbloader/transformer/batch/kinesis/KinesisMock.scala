@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis
 
-import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsResult, PutRecordsResultEntry}
+import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResult, PutRecordsResultEntry}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult.ReceivedResponse.RecordWriteStatus
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult.ReceivedResponse.RecordWriteStatus.{
@@ -32,10 +32,13 @@ final class KinesisMock(responses: Iterator[KinesisResult]) {
 
     response match {
       case KinesisResult.ReceivedResponse(output) =>
-        extractAndStoreSuccessfulRecords(request, output)
+        val requestData = extractRequestContent(request.getRecords.asScala.toList)
+        val responseStatus = extractResponseStatus(requestData, output)
+
+        storeSuccessfulRecords(requestData, responseStatus)
 
         new PutRecordsResult()
-          .withRecords(mapToKinesisRecords(output): _*)
+          .withRecords(mapToKinesisRecords(responseStatus): _*)
           .withFailedRecordCount(countFailedRecords(output))
 
       case KinesisResult.ExceptionThrown(ex) =>
@@ -43,18 +46,28 @@ final class KinesisMock(responses: Iterator[KinesisResult]) {
     }
   }
 
-  private def extractAndStoreSuccessfulRecords(request: PutRecordsRequest, outputStatus: Map[String, RecordWriteStatus]): Unit =
-    request.getRecords.asScala.toList
-      .flatMap { record =>
-        val data = new String(record.getData.array(), UTF_8)
-        outputStatus.get(data).filter(_ == Success).map(_ => data)
+  private def extractResponseStatus(requestData: List[String], output: Map[String, RecordWriteStatus]): List[RecordWriteStatus] =
+    requestData
+      .map { data =>
+        output.getOrElse(data, throw new RuntimeException(s"No mapped output for value: '$data'!"))
       }
-      .foreach { data =>
+
+  private def storeSuccessfulRecords(requestData: List[String], responses: List[RecordWriteStatus]): Unit =
+    requestData
+      .zip(responses)
+      .filter(_._2 == RecordWriteStatus.Success)
+      .foreach { case (data, _) =>
         storedData += data
       }
 
-  private def mapToKinesisRecords(output: Map[String, RecordWriteStatus]): List[PutRecordsResultEntry] =
-    output.values.toList.map {
+  private def extractRequestContent(requestEntries: List[PutRecordsRequestEntry]): List[String] =
+    requestEntries
+      .map { record =>
+        new String(record.getData.array(), UTF_8)
+      }
+
+  private def mapToKinesisRecords(responses: List[RecordWriteStatus]): List[PutRecordsResultEntry] =
+    responses.map {
       case Success =>
         new PutRecordsResultEntry()
       case Failure(errorCode) =>

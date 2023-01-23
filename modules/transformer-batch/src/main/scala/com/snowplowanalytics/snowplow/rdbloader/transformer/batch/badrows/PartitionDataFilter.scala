@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.DString
 
 object PartitionDataFilter {
 
@@ -26,12 +27,10 @@ object PartitionDataFilter {
     badrowSink: BadrowSink
   ): GoodData = {
     val (good, bad) = splitPartitionToGoodAndBad(data)
+    val badAsStrings = extractStringRepresentation(bad)
 
-    if (bad.hasNext) {
-      val badrowAsStrings = bad
-        .collect { case Transformed.WideRow(false, dString) => dString.value }
-
-      badrowSink.sink(badrowAsStrings, partitionIndex)
+    if (badAsStrings.hasNext) {
+      badrowSink.sink(badAsStrings, partitionIndex)
     }
 
     good
@@ -39,7 +38,15 @@ object PartitionDataFilter {
 
   private def splitPartitionToGoodAndBad(data: PartitionData): (GoodData, BadData) =
     data.partition {
-      case Transformed.WideRow(isGood, _) => isGood
+      case widerow: Transformed.WideRow => widerow.good
+      case shredded: Transformed.Shredded.Json => shredded.isGood
       case _ => true
     }
+
+  private def extractStringRepresentation(bad: BadData) =
+    bad
+      .map(_.data)
+      .collect { case DString(value) =>
+        value
+      }
 }

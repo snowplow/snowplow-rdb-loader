@@ -44,7 +44,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "one internal error first, then success" in {
@@ -57,7 +57,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "multiple internal errors, exceeding max retries limit, exception is thrown as a result" in {
@@ -83,7 +83,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "multiple throttling errors (no max retries) from kinesis first, then success" in {
@@ -101,7 +101,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "exception first, then success" in {
@@ -114,7 +114,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "multiple exceptions from kinesis, exceeding max retries, exception is thrown as a result" in {
@@ -146,7 +146,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1"))
+      storedData must containTheSameElementsAs(List("badrow1"))
     }
 
     "2 badrows are eventually stored successfully after series of retries" in {
@@ -155,7 +155,7 @@ class KinesisSinkSpec extends Specification {
       // not exceeding max retries for non throttling errors = 2
       val kinesisOutput = List(
         ReceivedResponse(
-          Map("badrow1" -> Failure("Some internal error for badrow1"), "badrow1" -> Failure("Some internal error for badrow2"))
+          Map("badrow1" -> Failure("Some internal error for badrow1"), "badrow2" -> Failure("Some internal error for badrow2"))
         ),
         ReceivedResponse(Map("badrow1" -> Success, "badrow2" -> Failure("Some internal error for badrow2"))),
         ReceivedResponse(Map("badrow2" -> Failure("ProvisionedThroughputExceededException"))),
@@ -164,7 +164,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1", "badrow2"))
+      storedData must containTheSameElementsAs(List("badrow1", "badrow2"))
     }
 
     "request with 3 items is split into 2 batches as record limit is exceeded" in {
@@ -178,7 +178,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1", "badrow2", "badrow3"))
+      storedData must containTheSameElementsAs(List("badrow1", "badrow2", "badrow3"))
     }
 
     "request with 2 items is split into 2 batches as byte limit is exceeded" in {
@@ -192,7 +192,7 @@ class KinesisSinkSpec extends Specification {
 
       val storedData = processInput(inputData, kinesisOutput)
 
-      storedData must beEqualTo(List("badrow1", "too          Long       Badrow        Content3"))
+      storedData must containTheSameElementsAs(List("badrow1", "too          Long       Badrow        Content3"))
     }
   }
 

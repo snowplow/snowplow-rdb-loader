@@ -68,13 +68,19 @@ final class KinesisSink(
     currentBatch.size + data.size > config.byteLimit
 
   private def sinkPendingDataIn(currentBatch: Batch): Unit =
-    if (currentBatch.keyedData.nonEmpty) {
+    if (currentBatch.recordsCount > 0) {
       writeBatch(currentBatch)
     }
 
-  // Similar approach to retrying kinesis requests as in Enrich
-  // See sink implementation - https://github.com/snowplow/enrich/blob/master/modules/kinesis/src/main/scala/com/snowplowanalytics/snowplow/enrich/kinesis/Sink.scala
-  // and issue explaining the usage of different policies - https://github.com/snowplow/enrich/issues/697
+  /**
+   * Similar approach to retrying kinesis requests as in Enrich. See sink implementation -
+   * https://github.com/snowplow/enrich/blob/master/modules/kinesis/src/main/scala/com/snowplowanalytics/snowplow/enrich/kinesis/Sink.scala
+   * and issue explaining the usage of different policies -
+   * https://github.com/snowplow/enrich/issues/697
+   *
+   * This method focues on retrying throttling error. Called here 'attemptToWriteBatch' method
+   * focues on retrying non-throttling internal errors.
+   */
   private def writeBatch(batch: Batch): Unit = {
     var recordsToWriteInBatch = buildRecords(batch.keyedData)
 
@@ -102,8 +108,15 @@ final class KinesisSink(
     }
   }
 
+  /**
+   * Try writing a batch, and returns a list of the failures to be retried:
+   *
+   * If we are not throttled by kinesis, then the list is empty. If we are throttled by kinesis, the
+   * list contains throttled records and records that gave internal errors. If there is an
+   * exception, or if all records give internal errors, then we retry using the policy.
+   */
   private def attemptToWriteBatch(records: List[PutRecordsRequestEntry]): Try[FailedWriteRecords] =
-    executeKinesisRequest(records) // We're relying on 'scala.util.Try' so it's possible to catch and retry exceptions in 'onError' function
+    executeKinesisRequest(records)
       .retryingOnFailuresAndAllErrors(
         policy = Retries.fullJitter(config.backoffPolicy),
         wasSuccessful = r => !r.shouldRetrySameBatch,
@@ -117,6 +130,7 @@ final class KinesisSink(
           )
       )
       .flatMap { result =>
+        // Reaching maximum number of retries and batch still should be retries cause there are some internal errros - there is nothing we can do hence throw an exception
         if (result.shouldRetrySameBatch) {
           Failure(new RuntimeException(failureMessageForInternalFailures(records, result)))
         } else {
@@ -135,9 +149,7 @@ final class KinesisSink(
   }
 
   private def buildRecords(keyedData: List[KeyedData]): List[PutRecordsRequestEntry] =
-    // Data was prepended (when building batch) to 'keyedData' list, which results in reversed original order of items.
-    // We have to 'reverse' it now to bring it back.
-    keyedData.reverse.map { data =>
+    keyedData.map { data =>
       new PutRecordsRequestEntry()
         .withPartitionKey(data.key)
         .withData(ByteBuffer.wrap(data.content))
@@ -162,6 +174,17 @@ object KinesisSink {
     new KinesisSink(writeDataToKinesis, config)
   }
 
+  /**
+   * The result of trying to write a batch to kinesis
+   * @param nextBatchAttempt
+   *   Records to re-package into another batch, either because of throttling or an internal error
+   * @param hadSuccess
+   *   Whether one or more records in the batch were written successfully
+   * @param wasThrottled
+   *   Whether at least one of retries is because of throttling
+   * @param exampleInternalError
+   *   A message to help with logging
+   */
   final case class TryBatchResult(
     nextBatchAttempt: Vector[PutRecordsRequestEntry],
     hadSuccess: Boolean,

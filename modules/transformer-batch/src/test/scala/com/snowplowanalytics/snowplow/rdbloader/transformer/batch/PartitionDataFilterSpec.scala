@@ -12,108 +12,81 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.DString
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.WideRow
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.PartitionDataFilterSpec.TempDirectory
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, FileSink, KinesisSink, PartitionDataFilter}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult.ReceivedResponse.RecordWriteStatus.Success
-import org.apache.hadoop.io.compress.GzipCodec
-import org.specs2.execute.{AsResult, Result}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.PartitionDataFilterSpec.TestBadrowsSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, PartitionDataFilter}
 import org.specs2.mutable.Specification
-import org.specs2.specification.ForEach
 
-import java.io.{File, FileInputStream}
-import java.nio.file.{Files, Path, Paths}
-import scala.collection.JavaConverters._
-import scala.concurrent.duration.DurationInt
-import scala.io.Source
+import scala.collection.mutable
 
-class PartitionDataFilterSpec extends Specification with SparkSpec with TempDirectory {
+class PartitionDataFilterSpec extends Specification {
 
   "Good data should be preserved in output and bad data sinked when partition contains" >> {
-    "only good data, output to uncompressed file" in { (tempOutput: Path) =>
-      val partitionData = List(
-        good("good content1"),
-        good("good content2")
-      )
+    "for widerow format and" >> {
+      "only good data" in {
+        assert(
+          inputData = List(goodWide("good1"), goodWide("good2")),
+          expectedGoodOutput = List(goodWide("good1"), goodWide("good2")),
+          expectedSinkedBad = List.empty
+        )
+      }
 
-      val sink = fileSink(Compression.None, tempOutput)
-      val goodOutput = extractGoodAndSinkBad(partitionData, sink)
+      "only bad data" in {
+        assert(
+          inputData = List(badWide("bad1"), badWide("bad2")),
+          expectedGoodOutput = List.empty,
+          expectedSinkedBad = List("bad1", "bad2")
+        )
+      }
 
-      goodOutput must beEqualTo(List("good content1", "good content2"))
-      Files.exists(Paths.get(tempOutput.toString, "run=1970-01-01-00-00-00/output=bad")) must beEqualTo(false)
+      "good and bad data" in {
+        assert(
+          inputData = List(goodWide("good1"), badWide("bad1"), goodWide("good2")),
+          expectedGoodOutput = List(goodWide("good1"), goodWide("good2")),
+          expectedSinkedBad = List("bad1")
+        )
+      }
     }
 
-    "only bad data, output to uncompressed file" in { (tempOutput: Path) =>
-      val partitionData = List(
-        bad("bad content1"),
-        bad("bad content2")
-      )
+    "for shredded format and" >> {
+      "only good data" in {
+        assert(
+          inputData = List(goodTabShred("good1"), goodJsonShred("good2")),
+          expectedGoodOutput = List(goodTabShred("good1"), goodJsonShred("good2")),
+          expectedSinkedBad = List.empty
+        )
+      }
 
-      val sink = fileSink(Compression.None, tempOutput)
-      val goodOutput = extractGoodAndSinkBad(partitionData, sink)
+      "only bad data" in {
+        assert(
+          inputData = List(badShred("bad1"), badShred("bad2")),
+          expectedGoodOutput = List.empty,
+          expectedSinkedBad = List("bad1", "bad2")
+        )
+      }
 
-      listFilesIn(tempOutput, folderPath = "run=1970-01-01-00-00-00/output=bad").head must beEqualTo("part-1.txt")
-      val badFromFile = readUncompressedBadrows(tempOutput, filePath = s"run=1970-01-01-00-00-00/output=bad/part-1.txt")
-
-      goodOutput must beEqualTo(List.empty)
-      badFromFile must beEqualTo(List("bad content1", "bad content2"))
+      "good and bad data" in {
+        assert(
+          inputData = List(goodTabShred("good1"), badShred("bad1"), goodJsonShred("good2")),
+          expectedGoodOutput = List(goodTabShred("good1"), goodJsonShred("good2")),
+          expectedSinkedBad = List("bad1")
+        )
+      }
     }
+  }
 
-    "good and bad data, output to uncompressed file" in { (tempOutput: Path) =>
-      val partitionData = List(
-        good("good content1"),
-        bad("bad content1"),
-        good("good content2")
-      )
+  private def assert(
+    inputData: List[Transformed],
+    expectedGoodOutput: List[Transformed],
+    expectedSinkedBad: List[String]
+  ) = {
+    val sink = new TestBadrowsSink
+    val goodOutput = extractGoodAndSinkBad(inputData, sink)
 
-      val sink = fileSink(Compression.None, tempOutput)
-      val goodOutput = extractGoodAndSinkBad(partitionData, sink)
-
-      listFilesIn(tempOutput, folderPath = "run=1970-01-01-00-00-00/output=bad").head must beEqualTo("part-1.txt")
-
-      val badFromFile = readUncompressedBadrows(tempOutput, filePath = s"run=1970-01-01-00-00-00/output=bad/part-1.txt")
-
-      goodOutput must beEqualTo(List("good content1", "good content2"))
-      badFromFile must beEqualTo(List("bad content1"))
-    }
-    "good and bad data, output to compressed file" in { (tempOutput: Path) =>
-      val partitionData = List(
-        good("good content1"),
-        bad("bad content1"),
-        good("good content2")
-      )
-
-      val sink = fileSink(Compression.Gzip, tempOutput)
-      val goodOutput = extractGoodAndSinkBad(partitionData, sink)
-
-      listFilesIn(tempOutput, folderPath = "run=1970-01-01-00-00-00/output=bad").head must beEqualTo("part-1.txt.gz")
-
-      val badFromFile = readCompressedBadrows(tempOutput, filePath = s"run=1970-01-01-00-00-00/output=bad/part-1.txt.gz")
-
-      goodOutput must beEqualTo(List("good content1", "good content2"))
-      badFromFile must beEqualTo(List("bad content1"))
-    }
-
-    "good and bad data, output to kinesis" in {
-      val partitionData = List(
-        good("good content1"),
-        bad("bad content1"),
-        good("good content2")
-      )
-
-      val kinesis = new KinesisMock(List(KinesisResult.ReceivedResponse(Map("bad content1" -> Success))).iterator)
-      val sink = kinesisSink(kinesis)
-      val goodOutput = extractGoodAndSinkBad(partitionData, sink)
-
-      goodOutput must beEqualTo(List("good content1", "good content2"))
-      kinesis.storedData must beEqualTo(List("bad content1"))
-    }
+    goodOutput must beEqualTo(expectedGoodOutput)
+    sink.storedData.toList must beEqualTo(expectedSinkedBad)
   }
 
   private def extractGoodAndSinkBad(
@@ -126,75 +99,23 @@ class PartitionDataFilterSpec extends Specification with SparkSpec with TempDire
         partitionIndex = 1,
         sink
       )
-      .collect { case d: WideRow => d.data.value }
       .toList
 
-  private def fileSink(compression: Compression, badRowsRoot: Path) =
-    new FileSink(
-      folderName = "run=1970-01-01-00-00-00",
-      hadoopConfiguration = spark.sparkContext.hadoopConfiguration,
-      outputPath = badRowsRoot.toUri,
-      compression = compression
-    )
-
-  private def kinesisSink(kinesis: KinesisMock) = {
-    val mockedKinesisWrite = kinesis.receive _
-    val backoffPolicy = Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None)
-    val config = Config.Output.BadSink.Kinesis(
-      "mockedStream",
-      Region("unused"),
-      recordLimit = 2,
-      byteLimit = 100,
-      backoffPolicy = backoffPolicy,
-      throttledBackoffPolicy = backoffPolicy
-    )
-    new KinesisSink(mockedKinesisWrite, config)
-  }
-
-  private def readUncompressedBadrows(badRowsRoot: Path, filePath: String) = {
-    val outputFile = Paths.get(badRowsRoot.toString, filePath)
-    val source = Source.fromFile(outputFile.toUri)
-    source.getLines().toList
-  }
-
-  private def readCompressedBadrows(badRowsRoot: Path, filePath: String) = {
-    val codec = new GzipCodec()
-    codec.setConf(spark.sparkContext.hadoopConfiguration)
-
-    val stream = codec.createInputStream(new FileInputStream(Paths.get(badRowsRoot.toString, filePath).toFile))
-    Source.createBufferedSource(stream).getLines().toList
-  }
-
-  private def listFilesIn(badRowsRoot: Path, folderPath: String) =
-    Files
-      .list(Paths.get(badRowsRoot.toString, folderPath))
-      .iterator()
-      .asScala
-      .toList
-      .filterNot(_.toFile.isHidden)
-      .map(_.getFileName.toString)
-
-  private def good(content: String) = WideRow(good = true, DString(content))
-  private def bad(content: String) = WideRow(good = false, DString(content))
-
-  override def appName: String = "badrows-test"
+  private def goodWide(content: String) = WideRow(good = true, DString(content))
+  private def badWide(content: String) = WideRow(good = false, DString(content))
+  private def goodTabShred(content: String) = Transformed.Shredded.Tabular("vendor", "name", 1, DString(content))
+  private def goodJsonShred(content: String) = Transformed.Shredded.Json(isGood = true, "vendor", "name", 1, DString(content))
+  private def badShred(content: String) = Transformed.Shredded.Json(isGood = false, "vendor", "name", 1, DString(content))
 }
 
 object PartitionDataFilterSpec {
 
-  trait TempDirectory extends ForEach[Path] {
-    override protected def foreach[R: AsResult](f: Path => R): Result = {
-      val tempDirectory = Files.createTempDirectory("badrows-temp")
+  final class TestBadrowsSink extends BadrowSink {
+    val storedData: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-      try AsResult[R](f(tempDirectory))
-      finally deleteRecursively(tempDirectory.toFile)
-    }
-
-    private def deleteRecursively(file: File): Unit =
-      if (file.isDirectory) {
-        file.listFiles.foreach(deleteRecursively)
-      } else if (file.exists && !file.delete) {
-        throw new Exception(s"Unable to delete ${file.getAbsolutePath}")
+    override def sink(badrows: Iterator[String], partitionIndex: Int): Unit =
+      badrows.foreach { data =>
+        storedData += data
       }
   }
 }
