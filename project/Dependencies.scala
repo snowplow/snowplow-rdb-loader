@@ -157,13 +157,14 @@ object Dependencies {
   val sns               = "com.amazonaws"         % "aws-java-sdk-sns"          % V.aws
   val redshiftSdk       = "com.amazonaws"         % "aws-java-sdk-redshift"     % V.aws
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
+  val sts               = "com.amazonaws"         % "aws-java-sdk-sts"          % V.aws % Runtime
 
   val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
   val aws2sns           = "software.amazon.awssdk" % "sns"                      % V.aws2
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
-  val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2
+  val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2        % Runtime
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
 
@@ -188,7 +189,9 @@ object Dependencies {
     fs2Aws,
     kinesisClient,
     protobuf,
-    nettyCodec
+    nettyCodec,
+    sts,
+    aws2sts
   )
 
   val gcpDependencies = Seq(
@@ -231,7 +234,6 @@ object Dependencies {
   val loaderDependencies = Seq(
     slf4jSimple,
     ssm,
-    aws2sts,
     dynamodb,
     jSch,
     scalaTracker,
