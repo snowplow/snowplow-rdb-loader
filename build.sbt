@@ -60,7 +60,7 @@ lazy val loader = project
   .settings(BuildSettings.loaderBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.loaderDependencies)
-  .dependsOn(aws % "compile->compile;test->test", gcp % "compile->compile;test->test")
+  .dependsOn(aws % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoader = project
@@ -68,7 +68,7 @@ lazy val redshiftLoader = project
   .settings(BuildSettings.redshiftBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
-  .dependsOn(loader % "compile->compile;test->test")
+  .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val redshiftLoaderDistroless = project
@@ -77,7 +77,7 @@ lazy val redshiftLoaderDistroless = project
   .settings(BuildSettings.redshiftDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.redshiftDependencies)
-  .dependsOn(loader % "compile->compile;test->test")
+  .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val snowflakeLoader = project
@@ -85,7 +85,7 @@ lazy val snowflakeLoader = project
   .settings(BuildSettings.snowflakeBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
-  .dependsOn(common % "compile->compile;test->test",loader % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test",loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val snowflakeLoaderDistroless = project
@@ -94,14 +94,14 @@ lazy val snowflakeLoaderDistroless = project
   .settings(BuildSettings.snowflakeDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.snowflakeDependencies)
-  .dependsOn(loader % "compile->compile;test->test")
+  .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val databricksLoader = project
   .in(file("modules/databricks-loader"))
   .settings(BuildSettings.databricksBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(loader % "compile->compile;test->test")
+  .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val databricksLoaderDistroless = project
@@ -109,14 +109,14 @@ lazy val databricksLoaderDistroless = project
   .settings(sourceDirectory := (databricksLoader / sourceDirectory).value)
   .settings(BuildSettings.databricksDistrolessBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
-  .dependsOn(loader % "compile->compile;test->test")
+  .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerBatch = project
   .in(file("modules/transformer-batch"))
   .settings(BuildSettings.transformerBatchBuildSettings)
   .settings(libraryDependencies ++= Dependencies.batchTransformerDependencies)
-  .dependsOn(common % "compile->compile;test->test")
+  .dependsOn(common % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(BuildInfoPlugin)
 
 lazy val transformerKinesis = project
@@ -125,7 +125,7 @@ lazy val transformerKinesis = project
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesisDistroless = project
@@ -135,7 +135,7 @@ lazy val transformerKinesisDistroless = project
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.transformerKinesisDependencies)
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
-  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test")
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", aws % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, DockerPlugin, BuildInfoPlugin, LauncherJarPlugin)
 
 lazy val transformerPubsub = project
