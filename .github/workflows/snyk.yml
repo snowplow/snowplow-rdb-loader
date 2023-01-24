@@ -2,19 +2,39 @@ name: Snyk
 
 on:
   push:
+    tags:
+      - '*'
     branches: [ master ]
 
 jobs:
   security:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        app:
+          - { project: redshiftLoader, image: snowplow/rdb-loader-redshift }
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
+    - name: Get current version
+      id: ver
+      run: echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
+
+    - name: Build local distroless image
+      run: sbt "project ${{ matrix.app.project }}Distroless" docker:publishLocal
+
+    - name: Docker image ls
+      run: docker image ls
 
     - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/scala@master
+      uses: snyk/actions/docker@master
       with:
-        command: monitor
-        args: --prune-repeated-subdependencies --project-name=snowplow-rdb-loader
+        image: "${{ matrix.app.image }}:${{ steps.ver.outputs.tag }}-distroless"
+        args: "--app-vulns"
+        command: test
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+
+    - name: Print image name and tag
+      run: echo "${{ matrix.app.image }}:${{ steps.ver.outputs.tag }}-distroless"
