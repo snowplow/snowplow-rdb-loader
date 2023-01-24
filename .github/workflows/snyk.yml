@@ -8,13 +8,21 @@ jobs:
   security:
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        image-name:
+          - snowplow/rdb-loader-redshift
+          - snowplow/rdb-loader-snowflake
+          - snowplow/rdb-loader-databricks
+          - snowplow/transformer-kinesis
+          - snowplow/transformer-pubsub
+
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Run Snyk to check for vulnerabilities
       uses: snyk/actions/scala@master
       with:
-        command: monitor
-        args: --prune-repeated-subdependencies --project-name=snowplow-rdb-loader
+        command: "container monitor ${{ matrix.image-name }}:latest-distroless --app-vulns"
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
