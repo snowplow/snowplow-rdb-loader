@@ -26,6 +26,8 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
 
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
+
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
@@ -36,9 +38,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage._
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
@@ -80,7 +82,7 @@ object Snowflake {
             loadAuthMethod: LoadAuthMethod,
             initQueryResult: InitQueryResult
           ): LoadStatements = {
-            val columnsToCopy = ColumnsToCopy.fromDiscoveredData(discovery)
+            val columnsToCopy = columnsToCopyFromDiscoveredData(discovery)
             loadAuthMethod match {
               case LoadAuthMethod.NoCreds =>
                 NonEmptyList.one(
@@ -347,6 +349,19 @@ object Snowflake {
           s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')"
         )
     }
+
+  private def columnsToCopyFromDiscoveredData(discovery: DataDiscovery): ColumnsToCopy = {
+    val shredTypeColumns = discovery.shreddedTypes
+      .filterNot(_.isAtomic)
+      .map(getShredTypeColumn)
+    ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
+  }
+
+  private def getShredTypeColumn(shreddedType: ShreddedType): ColumnName = {
+    val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
+    val info = shreddedType.info
+    ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model))
+  }
 
   private def findPathAfterStage(
     stage: StorageTarget.Snowflake.Stage,

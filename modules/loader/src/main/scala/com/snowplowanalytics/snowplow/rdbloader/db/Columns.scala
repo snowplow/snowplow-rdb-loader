@@ -12,21 +12,12 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
-
 object Columns {
 
   final case class ColumnName(value: String) extends AnyVal
   type EventTableColumns = List[ColumnName]
 
   final case class ColumnsToCopy(names: List[ColumnName]) extends AnyVal
-
-  object ColumnsToCopy {
-    def fromDiscoveredData(discovery: DataDiscovery): ColumnsToCopy = {
-      val shredTypeColumns = discovery.columns.map(ColumnName.apply)
-      ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
-    }
-  }
 
   final case class ColumnsToSkip(names: List[ColumnName]) extends AnyVal
 

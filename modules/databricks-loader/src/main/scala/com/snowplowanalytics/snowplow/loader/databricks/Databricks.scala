@@ -21,9 +21,9 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
+import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
@@ -53,7 +53,7 @@ object Databricks {
             loadAuthMethod: LoadAuthMethod,
             i: Unit
           ): LoadStatements = {
-            val toCopy = ColumnsToCopy.fromDiscoveredData(discovery)
+            val toCopy = columnsToCopyFromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
 
             NonEmptyList.one(
@@ -223,4 +223,9 @@ object Databricks {
           s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )"
         )
     }
+
+  private def columnsToCopyFromDiscoveredData(discovery: DataDiscovery): ColumnsToCopy = {
+    val shredTypeColumns = discovery.columns.map(ColumnName.apply)
+    ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
+  }
 }
