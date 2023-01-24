@@ -2,19 +2,33 @@ name: Snyk
 
 on:
   push:
-    branches: [ master ]
+    tags:
+      - '*'
 
 jobs:
   security:
+    if: ${{ !contains(github.ref_name, 'rc') }}
     runs-on: ubuntu-latest
-
+    
+    strategy:
+      matrix:
+        app:
+          - { project: redshiftLoader, image: snowplow/rdb-loader-redshift }
+          - { project: snowflakeLoader, image: snowplow/rdb-loader-snowflake }
+          - { project: databricksLoader, image: snowplow/rdb-loader-databricks }
+          - { project: transformerKinesis, image: snowplow/transformer-kinesis }
+          - { project: transformerPubsub, image: snowplow/transformer-pubsub }
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
+
+    - name: Build local distroless image
+      run: sbt "project ${{ matrix.app.project }}Distroless" docker:publishLocal
 
     - name: Run Snyk to check for vulnerabilities
-      uses: snyk/actions/scala@master
+      uses: snyk/actions/docker@master
       with:
+        image: "${{ matrix.app.image }}:${{ github.ref_name }}-distroless"
+        args: "--app-vulns --org=data-processing-new"
         command: monitor
-        args: --prune-repeated-subdependencies --project-name=snowplow-rdb-loader
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
