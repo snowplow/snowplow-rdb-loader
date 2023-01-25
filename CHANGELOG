@@ -1,3 +1,9 @@
+Version 5.3.1 (2023-01-25)
+--------------------------
+Snowflake Loader: fix contexts and unstructured event data not being copied into Snowflake (#1185)
+Add sts runtime dependency for v1 and v2 AWS SDKs (#1183)
+Databricks loader: Use VARCHAR instead of CHAR when creating events table (#1175)
+
 Version 5.3.0 (2023-01-02)
 --------------------------
 Bump ivy to 2.5.1 (#1166)
