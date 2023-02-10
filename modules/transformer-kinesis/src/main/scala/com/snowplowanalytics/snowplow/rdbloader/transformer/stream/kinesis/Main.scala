@@ -14,16 +14,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis
 
+import cats.Parallel
 import cats.effect._
-
+import com.snowplowanalytics.snowplow.rdbloader.aws.KinesisProducer.{BackoffPolicy, RequestLimits}
+import com.snowplowanalytics.snowplow.rdbloader.aws._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.aws.{Kinesis, S3, SNS, SQS}
-
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Config, Run}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated.BuildInfo
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 
 object Main extends IOApp {
+  final val QueueMessageGroupId = "shredding"
 
   def run(args: List[String]): IO[ExitCode] =
     Run.run[IO, KinesisCheckpointer[IO]](
@@ -34,6 +34,7 @@ object Main extends IOApp {
       executionContext,
       mkSource,
       (_, c) => mkSink(c),
+      (blocker, c) => mkBadQueue(blocker, c),
       mkQueue,
       KinesisCheckpointer.checkpointer
     )
@@ -70,12 +71,40 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not S3")))
     }
 
+  private def mkBadQueue[F[_]: ConcurrentEffect: Timer: ContextShift: Parallel](
+    blocker: Blocker,
+    output: Config.Output.Bad.Queue
+  ): Resource[F, Queue.ChunkProducer[F]] =
+    output match {
+      case kinesis: Config.Output.Bad.Queue.Kinesis =>
+        val errorPolicy =
+          BackoffPolicy(kinesis.backoffPolicy.minBackoff, kinesis.backoffPolicy.maxBackoff, kinesis.backoffPolicy.maxRetries)
+
+        val throttlingPolicy = BackoffPolicy(
+          kinesis.throttledBackoffPolicy.minBackoff,
+          kinesis.throttledBackoffPolicy.maxBackoff,
+          kinesis.throttledBackoffPolicy.maxRetries
+        )
+
+        KinesisProducer.producer[F](
+          kinesis.streamName,
+          kinesis.region,
+          kinesis.customEndpoint,
+          blocker,
+          errorPolicy,
+          throttlingPolicy,
+          RequestLimits(kinesis.recordLimit, kinesis.byteLimit)
+        )
+      case _ =>
+        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output queue is not Kinesis")))
+    }
+
   private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
       case Config.QueueConfig.SQS(queueName, region) =>
-        SQS.producer(queueName, region.name)
+        SQS.producer(queueName, region.name, QueueMessageGroupId)
       case Config.QueueConfig.SNS(topicArn, region) =>
-        SNS.producer(topicArn, region.name)
+        SNS.producer(topicArn, region.name, QueueMessageGroupId)
       case _ =>
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not SQS or SNS")))
     }

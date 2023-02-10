@@ -43,4 +43,7 @@ object FileUtils {
       .through(text.utf8Decode)
       .through(text.lines)
 
+  def pathExists(blocker: Blocker, filePath: Path)(implicit cs: ContextShift[IO]): IO[Boolean] =
+    fs2.io.file.exists[IO](blocker, filePath)
+
 }

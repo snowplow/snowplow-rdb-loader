@@ -25,10 +25,14 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SNS {
 
-  def producer[F[_]: Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+  def producer[F[_]: Concurrent](
+    queueName: String,
+    region: String,
+    groupId: String
+  ): Resource[F, Queue.Producer[F]] =
     mkClient(Region.of(region)).map { client =>
       new Queue.Producer[F] {
-        override def send(groupId: Option[String], message: String): F[Unit] =
+        override def send(message: String): F[Unit] =
           SNS.sendMessage(client)(queueName, groupId, message)
       }
     }
@@ -42,20 +46,17 @@ object SNS {
     client: SnsClient
   )(
     topicArn: String,
-    groupId: Option[String],
+    groupId: String,
     message: String
   ): F[Unit] = {
-    def getRequest = {
-      val builder = PublishRequest
+    val request =
+      PublishRequest
         .builder()
         .topicArn(topicArn)
         .message(message)
-      groupId
-        .map(builder.messageGroupId)
-        .getOrElse(builder)
+        .messageGroupId(groupId)
         .build()
-    }
 
-    Sync[F].delay(client.publish(getRequest)).void
+    Sync[F].delay(client.publish(request)).void
   }
 }

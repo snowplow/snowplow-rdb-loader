@@ -21,6 +21,32 @@
     # Transformer output compression, GZIP or NONE
     # Optional, default value GZIP
     "compression": "GZIP",
+
+    # Optional section specifying details about badrows output. When unspecified, badrows are written as files under 'output.path' URI
+    "bad": {
+    
+      # Type of output sink. Either 'pubsub' or 'file'. Optional, default value 'file'. When 'file', badrows are written as files under 'output.path' URI 
+      "type": "pubsub",
+      
+      # Name of the PubSub topic that will receive the bad data
+      "topic": "projects/project-id/topics/topic-id"
+      
+      # Optional. Maximum number of messages sent within a batch.
+      # When the buffer reaches this number of messages they are sent.
+      # PubSub maximum : 1000
+      "batchSize": 1000      
+
+      # Optional. Maximum number of bytes sent within a batch.
+      # When the buffer reaches this size messages are sent.
+      # Note the PubSub maximum is 10MB
+      "requestByteThreshold": 8000000            
+      
+      # Optional. Delay threshold to use for batching.
+      # After this amount of time has elapsed,
+      # before maxBatchSize and maxBatchBytes have been reached,
+      # messages from the buffer will be sent.
+      "delayThreshold": 200 milliseconds
+    }        
   }
 
   # Frequency to emit loading finished message - 5,10 etc minutes

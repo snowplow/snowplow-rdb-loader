@@ -34,7 +34,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 
 object Completion {
 
-  final val MessageGroupId = "shredding"
   final val sealFile = "shredding_complete.json"
 
   /**
@@ -62,7 +61,8 @@ object Completion {
    * @param state
    *   all metadata shredder extracted from a batch
    */
-  def seal[F[_]: Clock: ConcurrentEffect: BlobStorage, C: Checkpointer[F, *]](
+  def seal[F[_]: Clock: ConcurrentEffect, C: Checkpointer[F, *]](
+    blobStorage: BlobStorage[F],
     compression: Compression,
     getTypes: Set[Data.ShreddedType] => TypesInfo,
     root: URI,
@@ -88,16 +88,17 @@ object Completion {
                   Some(count)
                 )
       body = message.selfDescribingData(legacyMessageFormat).asJson.noSpaces
-      _ <- writeFile(shreddingCompletePath, body)
+      _ <- writeFile(blobStorage, shreddingCompletePath, body)
       _ <- Checkpointer[F, C].checkpoint(state.checkpointer)
-      _ <- producer.send(Some(MessageGroupId), body)
+      _ <- producer.send(body)
     } yield ()
 
-  def writeFile[F[_]: ConcurrentEffect: BlobStorage](
+  def writeFile[F[_]: ConcurrentEffect](
+    blobStorage: BlobStorage[F],
     key: BlobStorage.Key,
     content: String
   ): F[Unit] = {
-    val pipe = BlobStorage[F].put(key, false)
+    val pipe = blobStorage.put(key, false)
     val bytes = Stream.emits[F, Byte](content.getBytes)
     bytes.through(pipe).compile.drain
   }
