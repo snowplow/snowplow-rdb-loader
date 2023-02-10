@@ -55,10 +55,12 @@ trait BaseProcessingSpec extends Specification {
     for {
       checkpointRef <- Ref.of[IO, Int](0)
       completionsRef <- Ref.of[IO, Vector[String]](Vector.empty)
-      _ <- TestApplication.run(args, completionsRef, checkpointRef, input).timeout(60.seconds)
+      queueBadSink <- Ref.of[IO, Vector[String]](Vector.empty)
+      _ <- TestApplication.run(args, completionsRef, checkpointRef, queueBadSink, input).timeout(60.seconds)
       checkpointed <- checkpointRef.get
       completions <- completionsRef.get
-    } yield ProcessingOutput(completions, checkpointed)
+      badrows <- queueBadSink.get
+    } yield ProcessingOutput(completions, badrows, checkpointed)
   }
 
   protected def assertStringRows(actualRows: List[String], expectedRows: List[String]) =
@@ -84,6 +86,9 @@ trait BaseProcessingSpec extends Specification {
   protected def readLinesFromResource(resource: String) =
     FileUtils.readLines(blocker, resource)
 
+  protected def pathExists(path: Path): IO[Boolean] =
+    FileUtils.pathExists(blocker, path)
+
   protected def prepareAppArgs(config: TransformerConfig) = {
     val encoder = Base64.getUrlEncoder
 
@@ -99,5 +104,10 @@ trait BaseProcessingSpec extends Specification {
 object BaseProcessingSpec {
 
   final case class TransformerConfig(app: String, iglu: String)
-  final case class ProcessingOutput(completionMessages: Vector[String], checkpointed: Int)
+  final case class ProcessingOutput(
+    completionMessages: Vector[String],
+    badrowsFromQueue: Vector[String],
+    checkpointed: Int
+  )
+
 }

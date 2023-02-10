@@ -21,6 +21,7 @@ import org.typelevel.log4cats.Logger
 
 import io.circe.Json
 
+import cats.Applicative
 import cats.implicits._
 import cats.effect._
 
@@ -36,7 +37,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 
 case class Resources[F[_], C](
@@ -51,10 +54,9 @@ case class Resources[F[_], C](
   sentry: Option[SentryClient],
   inputStream: Queue.Consumer[F],
   checkpointer: Queue.Consumer.Message[F] => C,
-  blobStorage: BlobStorage[F]
-) {
-  implicit val implBlobStorage: BlobStorage[F] = blobStorage
-}
+  blobStorage: BlobStorage[F],
+  badSink: BadSink[F]
+)
 
 object Resources {
 
@@ -68,6 +70,7 @@ object Resources {
     executionContext: ExecutionContext,
     mkSource: (Blocker, Config.StreamInput, Config.Monitoring) => Resource[F, Queue.Consumer[F]],
     mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
+    mkBadQueue: (Blocker, Config.Output.Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): Resource[F, Resources[F, C]] =
@@ -93,6 +96,7 @@ object Resources {
                    )
       inputStream <- mkSource(blocker, config.input, config.monitoring)
       blobStorage <- mkSink(blocker, config.output)
+      badSink <- mkBadSink(config, mkBadQueue, blocker)
     } yield Resources(
       resolver,
       propertiesCache,
@@ -105,8 +109,19 @@ object Resources {
       sentry,
       inputStream,
       checkpointer,
-      blobStorage
+      blobStorage,
+      badSink
     )
+
+  private def mkBadSink[F[_]: Applicative](
+    config: Config,
+    mkBadQueue: (Blocker, Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
+    blocker: Blocker
+  ): Resource[F, BadSink[F]] =
+    config.output.bad match {
+      case Bad.File => Resource.pure[F, BadSink[F]](BadSink.UseBlobStorage())
+      case queueConfig: Bad.Queue => mkBadQueue(blocker, queueConfig).map(BadSink.UseQueue(_))
+    }
 
   private def mkResolverConfig[F[_]: Sync](igluConfig: Json): Resource[F, ResolverConfig] = Resource.eval {
     Resolver.parseConfig(igluConfig) match {

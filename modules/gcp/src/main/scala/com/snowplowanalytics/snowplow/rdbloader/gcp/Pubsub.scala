@@ -75,11 +75,26 @@ object Pubsub {
       .of[F, Array[Byte]](ProducerProjectId(projectId), Topic(topic), config)
       .map { producer =>
         new Queue.Producer[F] {
-          override def send(groupId: Option[String], message: String): F[Unit] =
+          override def send(message: String): F[Unit] =
             producer.produce(message.getBytes).void
         }
       }
   }
+
+  def chunkProducer[F[_]: Concurrent: Logger](
+    projectId: String,
+    topic: String,
+    batchSize: Long,
+    requestByteThreshold: Option[Long],
+    delayThreshold: FiniteDuration
+  ): Resource[F, Queue.ChunkProducer[F]] =
+    producer(projectId, topic, batchSize, requestByteThreshold, delayThreshold)
+      .map { producer =>
+        new Queue.ChunkProducer[F] {
+          override def send(messages: List[String]): F[Unit] =
+            messages.traverse_(message => producer.send(message))
+        }
+      }
 
   def consumer[F[_]: ConcurrentEffect: Logger: ContextShift: Timer](
     blocker: Blocker,

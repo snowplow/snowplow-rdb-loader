@@ -45,13 +45,15 @@ class ShutdownSpec extends BaseProcessingSpec {
       wait <- Deferred[IO, Unit]
       checkpointRef <- Ref.of[IO, Int](0)
       completionsRef <- Ref.of[IO, Vector[String]](Vector.empty)
+      queueBadSink <- Ref.of[IO, Vector[String]](Vector.empty)
       stream = nonTerminatingStream(input, wait)
-      fiber <- TestApplication.run(args, completionsRef, checkpointRef, stream).start
+      fiber <- TestApplication.run(args, completionsRef, checkpointRef, queueBadSink, stream).start
       _ <- wait.get.timeout(60.seconds)
       _ <- fiber.cancel.timeout(60.seconds) // This terminates the application
       checkpointed <- checkpointRef.get
       completions <- completionsRef.get
-    } yield ProcessingOutput(completions, checkpointed)
+      badrows <- queueBadSink.get
+    } yield ProcessingOutput(completions, badrows, checkpointed)
   }
 
   // Unlike the input stream, this stream does not terminate naturally.

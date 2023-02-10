@@ -14,22 +14,23 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
-import java.net.URI
-import java.nio.file.{Path => NioPath, Paths}
-import blobstore.fs.FileStore
 import blobstore.Path
-import cats.effect.concurrent.Ref
+import blobstore.fs.FileStore
+import cats.Applicative
 import cats.effect._
+import cats.effect.concurrent.Ref
 import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.ParsedC
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
 import fs2.{Pipe, Stream}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+
+import java.net.URI
+import java.nio.file.{Path => NioPath, Paths}
 
 object TestApplication {
 
@@ -41,6 +42,7 @@ object TestApplication {
     args: Seq[String],
     completionsRef: Ref[IO, Vector[String]],
     checkpointRef: Ref[IO, Int],
+    queueBadSink: Ref[IO, Vector[String]],
     sourceRecords: Stream[IO, ParsedC[Unit]]
   )(implicit CS: ContextShift[IO],
     T: Timer[IO],
@@ -61,11 +63,11 @@ object TestApplication {
                      scala.concurrent.ExecutionContext.global,
                      (_, _, _) => mkSource[IO],
                      mkSink,
+                     (_, _) => mkBadQueue[IO](queueBadSink),
                      _ => queueFromRef[IO](completionsRef),
                      _ => ()
                    )
                    .use { resources =>
-                     import resources._
                      logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>
                        Processing.runFromSource[IO, Unit](sourceRecords, resources, appConfig, TestProcessor).compile.drain
                    }
@@ -77,7 +79,7 @@ object TestApplication {
   private def queueFromRef[F[_]: Concurrent](ref: Ref[F, Vector[String]]): Resource[F, Queue.Producer[F]] =
     Resource.pure[F, Queue.Producer[F]](
       new Queue.Producer[F] {
-        override def send(groupId: Option[String], message: String): F[Unit] =
+        override def send(message: String): F[Unit] =
           ref.update(_ :+ message)
       }
     )
@@ -117,6 +119,14 @@ object TestApplication {
                        }
                      )
     } yield blobStorage
+
+  private def mkBadQueue[F[_]: Applicative](badrows: Ref[F, Vector[String]]): Resource[F, Queue.ChunkProducer[F]] =
+    Resource.pure {
+      new Queue.ChunkProducer[F] {
+        override def send(messages: List[String]): F[Unit] =
+          badrows.update(_ ++ messages)
+      }
+    }
 
   private def updateOutputURIScheme(config: Config): Config = {
     val updatedOutput = config.output match {

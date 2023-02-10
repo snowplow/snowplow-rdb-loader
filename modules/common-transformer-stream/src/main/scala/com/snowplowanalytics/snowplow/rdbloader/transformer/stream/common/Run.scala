@@ -25,6 +25,7 @@ object Run {
     ec: ExecutionContext,
     mkSource: (Blocker, StreamInput, Monitoring) => Resource[F, Queue.Consumer[F]],
     mkSink: (Blocker, Config.Output) => Resource[F, BlobStorage[F]],
+    mkBadQueue: (Blocker, Config.Output.Bad.Queue) => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
     checkpointer: Queue.Consumer.Message[F] => C
   ): F[ExitCode] =
@@ -41,11 +42,11 @@ object Run {
                      ec,
                      mkSource,
                      mkSink,
+                     mkBadQueue,
                      mkQueue,
                      checkpointer
                    )
                    .use { resources =>
-                     import resources._
                      val processor = Processor(buildName, buildVersion)
                      logger[F].info(s"Starting transformer with ${cliConfig.config} config") *>
                        logger[F].info(s"Transformer app id is  ${AppId.appId}") *>

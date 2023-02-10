@@ -55,7 +55,7 @@ class ConfigSpec extends Specification {
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,
-        exampleOutput,
+        exampleDefaultOutput,
         exampleQueueConfig,
         TransformerConfig.Formats.WideRow.JSON,
         exampleDefaultMonitoringStream,
@@ -83,8 +83,16 @@ object ConfigSpec {
     URI.create("gs://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
     4096,
-    10000
+    10000,
+    Config.Output.Bad.Queue.Pubsub(
+      topic = "projects/project-id/topics/topic-id",
+      batchSize = 1000,
+      requestByteThreshold = Some(8000000),
+      delayThreshold = 200.milliseconds
+    )
   )
+  val exampleDefaultOutput = exampleOutput.copy(bad = Config.Output.Bad.File)
+
   val exampleQueueConfig = Config.QueueConfig.Pubsub(
     topic = "projects/project-id/topics/topic-id",
     batchSize = 100,
