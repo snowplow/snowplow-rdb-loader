@@ -96,9 +96,18 @@ object ConfigSpec {
     TransformerConfig.Compression.Gzip,
     4096,
     Region("eu-central-1"),
-    10000
+    10000,
+    Config.Output.Bad.Queue.Kinesis(
+      "bad",
+      Region("eu-central-1"),
+      500,
+      5242880,
+      Config.Output.Bad.Queue.Kinesis.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 10.seconds, maxRetries = Some(10)),
+      Config.Output.Bad.Queue.Kinesis.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None),
+      Some(URI.create("http://localhost:4566"))
+    )
   )
-  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion)
+  val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion, bad = Config.Output.Bad.File)
   val exampleSQSConfig = Config.QueueConfig.SQS(
     "test-sqs",
     Region("eu-central-1")

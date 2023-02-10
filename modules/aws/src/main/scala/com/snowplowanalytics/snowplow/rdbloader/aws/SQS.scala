@@ -57,10 +57,14 @@ object SQS {
       }
     )
 
-  def producer[F[_]: Concurrent](queueName: String, region: String): Resource[F, Queue.Producer[F]] =
+  def producer[F[_]: Concurrent](
+    queueName: String,
+    region: String,
+    groupId: String
+  ): Resource[F, Queue.Producer[F]] =
     mkClient(Region.of(region)).map { client =>
       new Queue.Producer[F] {
-        override def send(groupId: Option[String], message: String): F[Unit] =
+        override def send(message: String): F[Unit] =
           SQS.sendMessage(client)(queueName, groupId, message)
       }
     }
@@ -128,22 +132,16 @@ object SQS {
     sqsClient: SqsClient
   )(
     queueName: String,
-    groupId: Option[String],
+    groupId: String,
     body: String
   ): F[Unit] = {
-    def getRequestBuilder(queueUrl: String) =
+    def getRequest(queueUrl: String) =
       SendMessageRequest
         .builder()
         .queueUrl(queueUrl)
         .messageBody(body)
-
-    def getRequest(queueUrl: String) = {
-      val builder = getRequestBuilder(queueUrl)
-      groupId
-        .map(id => builder.messageGroupId(id))
-        .getOrElse(builder)
+        .messageGroupId(groupId)
         .build()
-    }
 
     getUrl[F](queueName)(sqsClient).flatMap { case (_, queueUrl) =>
       Sync[F].delay(sqsClient.sendMessage(getRequest(queueUrl))).void

@@ -29,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 
 final case class Config(
   input: Config.StreamInput,
@@ -92,6 +93,7 @@ object Config {
     def compression: Compression
     def bufferSize: Int
     def maxRecordsPerFile: Long
+    def bad: Bad
   }
 
   object Output {
@@ -100,15 +102,61 @@ object Config {
       compression: Compression,
       bufferSize: Int,
       region: Region,
-      maxRecordsPerFile: Long
+      maxRecordsPerFile: Long,
+      bad: Bad
     ) extends Output
 
     final case class GCS(
       path: URI,
       compression: Compression,
       bufferSize: Int,
-      maxRecordsPerFile: Long
+      maxRecordsPerFile: Long,
+      bad: Bad
     ) extends Output
+
+    sealed trait Bad
+    object Bad {
+
+      final case object File extends Bad
+
+      sealed trait Queue extends Bad
+
+      object Queue {
+        final case class Kinesis(
+          streamName: String,
+          region: Region,
+          recordLimit: Int,
+          byteLimit: Int,
+          backoffPolicy: Kinesis.BackoffPolicy,
+          throttledBackoffPolicy: Kinesis.BackoffPolicy,
+          customEndpoint: Option[URI]
+        ) extends Queue
+
+        object Kinesis {
+          case class BackoffPolicy(
+            minBackoff: FiniteDuration,
+            maxBackoff: FiniteDuration,
+            maxRetries: Option[Int]
+          )
+        }
+
+        final case class Pubsub(
+          topic: String,
+          batchSize: Long,
+          requestByteThreshold: Option[Long],
+          delayThreshold: FiniteDuration
+        ) extends Queue {
+          val (projectId, topicId) =
+            topic.split("/").toList match {
+              case List("projects", project, "topics", name) =>
+                (project, name)
+              case _ =>
+                throw new IllegalArgumentException(s"Subscription format $topic invalid")
+            }
+        }
+      }
+
+    }
   }
 
   sealed trait QueueConfig extends Product with Serializable
@@ -220,6 +268,33 @@ object Config {
         }
       }
 
+    implicit val kinesisBadOutputConfigDecoder: Decoder[Output.Bad.Queue.Kinesis] =
+      deriveDecoder[Output.Bad.Queue.Kinesis]
+
+    implicit val pubsubBadOutputConfigDecoder: Decoder[Output.Bad.Queue.Pubsub] =
+      deriveDecoder[Output.Bad.Queue.Pubsub]
+
+    implicit val badOutputConfigDecoder: Decoder[Output.Bad] =
+      Decoder.instance { cur =>
+        val typeCur = cur.downField("type")
+        typeCur.as[String].map(_.toLowerCase) match {
+          case Right("kinesis") =>
+            cur.as[Output.Bad.Queue.Kinesis]
+          case Right("pubsub") =>
+            cur.as[Output.Bad.Queue.Pubsub]
+          case Right("file") =>
+            Right(Output.Bad.File)
+          case Right(other) =>
+            Left(
+              DecodingFailure(
+                s"Bad output type '$other' is not supported yet. Supported types: 'kinesis', 'pubsub', 'file'",
+                typeCur.history
+              )
+            )
+          case Left(other) =>
+            Left(other)
+        }
+      }
     implicit val outputS3ConfigDecoder: Decoder[Output.S3] =
       deriveDecoder[Output.S3]
 
@@ -256,6 +331,10 @@ object Config {
 
     implicit val configDecoder: Decoder[Config] =
       deriveDecoder[Config].ensure(validateConfig)
+
+    implicit val backoffPolicyDecoder: Decoder[Output.Bad.Queue.Kinesis.BackoffPolicy] =
+      deriveDecoder[Output.Bad.Queue.Kinesis.BackoffPolicy]
+
   }
 
   def impureDecoders: Decoders = new Decoders with TransformerConfig.ImpureRegionDecodable

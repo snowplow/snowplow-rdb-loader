@@ -30,7 +30,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload, Processor}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Compression, Formats}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
@@ -52,7 +52,7 @@ object Processing {
   type TransformationResults[C] = (List[TransformationResult], C)
   type SerializationResults[C] = (List[(SinkPath, Transformed.Data)], State[C])
 
-  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel: BlobStorage, C: Checkpointer[F, *]](
+  def run[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](
     resources: Resources[F, C],
     config: Config,
     processor: Processor
@@ -61,7 +61,7 @@ object Processing {
     runFromSource(source, resources, config, processor)
   }
 
-  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel: BlobStorage, C: Checkpointer[F, *]](
+  def runFromSource[F[_]: ConcurrentEffect: ContextShift: Clock: Timer: Parallel, C: Checkpointer[F, *]](
     source: Stream[F, ParsedC[C]],
     resources: Resources[F, C],
     config: Config,
@@ -85,6 +85,7 @@ object Processing {
 
     val onComplete: ((Window, State[C])) => F[Unit] = { case (window, state) =>
       Completion.seal[F, C](
+        resources.blobStorage,
         config.output.compression,
         transformer.typesInfo,
         config.output.path,
@@ -114,7 +115,7 @@ object Processing {
   }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: ConcurrentEffect: ContextShift: Timer: BlobStorage, C: Monoid](
+  def getSink[F[_]: ConcurrentEffect: ContextShift: Timer, C: Monoid](
     resources: Resources[F, C],
     config: Config.Output,
     formats: Formats
@@ -125,7 +126,21 @@ object Processing {
         (k: SinkPath) =>
           ParquetSink.parquetSink[F, C](resources, config.compression, config.maxRecordsPerFile, config.path, w, s.types.toList, k)
     val nonParquetSink = (w: Window) =>
-      (_: State[C]) => (k: SinkPath) => getBlobStorageSink(BlobStorage.Folder.coerce(config.path.toString), config.compression, w, k)
+      (_: State[C]) =>
+        (k: SinkPath) => {
+          val blobSink =
+            getBlobStorageSink(resources.blobStorage, BlobStorage.Folder.coerce(config.path.toString), config.compression, w, k)
+          k.pathType match {
+            case PathType.Good => blobSink
+            case PathType.Bad =>
+              resources.badSink match {
+                case BadSink.UseBlobStorage() =>
+                  blobSink
+                case BadSink.UseQueue(queueProducer) =>
+                  getQueueOutputSink(queueProducer)
+              }
+          }
+        }
 
     val parquetCombinedSink = (w: Window) =>
       (s: State[C]) =>
@@ -143,7 +158,8 @@ object Processing {
     Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink, config.bufferSize)
   }
 
-  def getBlobStorageSink[F[_]: ConcurrentEffect: BlobStorage](
+  def getBlobStorageSink[F[_]: ConcurrentEffect](
+    blobStorage: BlobStorage[F],
     outputPath: BlobStorage.Folder,
     compression: Compression,
     window: Window,
@@ -161,8 +177,14 @@ object Processing {
           .intersperse("\n")
           .through(utf8Encode[F])
           .through(finalPipe)
-          .through(BlobStorage[F].put(fileOutputPath, false))
+          .through(blobStorage.put(fileOutputPath, false))
       }
+  }
+
+  def getQueueOutputSink[F[_]](producer: Queue.ChunkProducer[F]): Pipe[F, Transformed.Data, Unit] = { in =>
+    in.chunks
+      .map(_.mapFilter(_.str))
+      .evalMap(messages => producer.send(messages.toList))
   }
 
   /** Chunk-wise transforms incoming events into either a BadRow or a list of transformed outputs */

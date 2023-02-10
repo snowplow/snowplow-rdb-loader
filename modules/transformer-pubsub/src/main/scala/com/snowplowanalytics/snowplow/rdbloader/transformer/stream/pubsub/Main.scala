@@ -24,7 +24,6 @@ import com.google.api.gax.core.ExecutorProvider
 import com.google.common.util.concurrent.{ForwardingListeningExecutorService, MoreExecutors}
 
 import java.util.concurrent.{Callable, ScheduledExecutorService, ScheduledFuture, ScheduledThreadPoolExecutor, TimeUnit}
-
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 
@@ -45,6 +44,7 @@ object Main extends IOApp {
       executionContext,
       (b, s, _) => mkSource(b, s),
       mkSink,
+      (_, c) => mkBadQueue(c),
       mkQueue,
       PubsubCheckpointer.checkpointer
     )
@@ -132,6 +132,20 @@ object Main extends IOApp {
         Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Output is not GCS")))
     }
 
+  private def mkBadQueue[F[_]: ConcurrentEffect](output: Config.Output.Bad.Queue): Resource[F, Queue.ChunkProducer[F]] =
+    output match {
+      case config: Config.Output.Bad.Queue.Pubsub =>
+        Pubsub
+          .chunkProducer(
+            config.projectId,
+            config.topicId,
+            batchSize = config.batchSize,
+            requestByteThreshold = config.requestByteThreshold,
+            delayThreshold = config.delayThreshold
+          )
+      case _ =>
+        Resource.eval(ConcurrentEffect[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
+    }
   private def mkQueue[F[_]: ConcurrentEffect](queueConfig: Config.QueueConfig): Resource[F, Queue.Producer[F]] =
     queueConfig match {
       case p: Config.QueueConfig.Pubsub =>

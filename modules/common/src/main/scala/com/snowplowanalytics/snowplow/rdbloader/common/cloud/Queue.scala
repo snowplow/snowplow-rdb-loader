@@ -25,7 +25,11 @@ import org.typelevel.log4cats.Logger
 
 object Queue {
   trait Producer[F[_]] {
-    def send(groupId: Option[String], message: String): F[Unit]
+    def send(message: String): F[Unit]
+  }
+
+  trait ChunkProducer[F[_]] {
+    def send(messages: List[String]): F[Unit]
   }
 
   object Producer {
