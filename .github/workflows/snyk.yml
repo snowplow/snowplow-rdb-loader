@@ -4,22 +4,18 @@ on:
   push:
     tags:
       - '*'
-    branches: [ master ]
 
 jobs:
   security:
+    if: ${{ contains(github.ref_name, 'rc') }}
     runs-on: ubuntu-latest
-
+    
     strategy:
       matrix:
         app:
           - { project: redshiftLoader, image: snowplow/rdb-loader-redshift }
     steps:
     - uses: actions/checkout@v3
-
-    - name: Get current version
-      id: ver
-      run: echo "::set-output name=tag::${GITHUB_REF#refs/tags/}"
 
     - name: Build local distroless image
       run: sbt "project ${{ matrix.app.project }}Distroless" docker:publishLocal
@@ -30,11 +26,8 @@ jobs:
     - name: Run Snyk to check for vulnerabilities
       uses: snyk/actions/docker@master
       with:
-        image: "${{ matrix.app.image }}:${{ steps.ver.outputs.tag }}-distroless"
+        image: "${{ matrix.app.image }}:${{ github.ref_name }}-distroless"
         args: "--app-vulns"
         command: monitor
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-    - name: Print image name and tag
-      run: echo "${{ matrix.app.image }}:${{ steps.ver.outputs.tag }}-distroless"
