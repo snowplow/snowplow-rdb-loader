@@ -183,8 +183,6 @@ object BuildSettings {
     dockerBaseImage := "gcr.io/distroless/java11-debian11:nonroot",
     Docker / daemonUser := "nonroot",
     Docker / daemonGroup := "nonroot",
-    dockerRepository := None,
-//    dockerRepository := Some("snowplow"),
     Docker / daemonUserUid := None,
     Docker / defaultLinuxInstallLocation := "/home/snowplow",
     dockerEntrypoint := Seq("java", "-jar",s"/home/snowplow/lib/${(packageJavaLauncherJar / artifactPath).value.getName}"),
