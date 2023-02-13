@@ -167,6 +167,8 @@ object Dependencies {
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
 
+  val log4jWithSecurityVulns = "org.apache.logging.log4j" % "log4j-core" % "2.15.0"
+
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
   val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2       % Test
@@ -225,7 +227,8 @@ object Dependencies {
     scalaTrackerEmit,
     http4sClient,
     slf4jApi,
-    sentry
+    sentry,
+    log4jWithSecurityVulns
   )
 
   val loaderDependencies = Seq(
