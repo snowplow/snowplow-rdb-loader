@@ -58,13 +58,6 @@ trait Monitoring[F[_]] { self =>
    */
   def alert(payload: Monitoring.AlertPayload): F[Unit]
 
-  /** Helper method specifically for exceptions */
-  def alert(error: Throwable, folder: BlobStorage.Folder): F[Unit] = {
-    val message = Option(error.getMessage).getOrElse(error.toString)
-    // Note tags are added by Monitoring later
-    val payload = Monitoring.AlertPayload(Monitoring.Application, Some(folder), Monitoring.AlertPayload.Severity.Error, message, Map.empty)
-    alert(payload)
-  }
 }
 
 object Monitoring {
