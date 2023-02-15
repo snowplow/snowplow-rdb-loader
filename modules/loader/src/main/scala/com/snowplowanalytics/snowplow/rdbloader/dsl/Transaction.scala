@@ -18,7 +18,7 @@ import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, Resource, Sync, Timer}
+import cats.effect.{Blocker, ConcurrentEffect, ContextShift, Effect, ExitCase, Resource, Sync, Timer}
 import cats.effect.implicits._
 
 import doobie._
@@ -135,7 +135,7 @@ object Transaction {
   }
 
   /** Real-world (opposed to dry-run) interpreter */
-  def jdbcRealInterpreter[F[_]: ConcurrentEffect: ContextShift](
+  def jdbcRealInterpreter[F[_]: ConcurrentEffect: ContextShift: Timer](
     target: StorageTarget,
     timeouts: Config.Timeouts,
     conn: Transactor[F]
@@ -154,7 +154,12 @@ object Transaction {
       implicit class ErrorAdaption[A](f: F[A]) {
         def withErrorAdaption: F[A] =
           f.start
-            .bracket(_.join)(_.cancel)
+            .bracketCase(_.join) {
+              case (_, ExitCase.Completed | ExitCase.Error(_)) =>
+                ConcurrentEffect[F].unit
+              case (fiber, ExitCase.Canceled) =>
+                fiber.cancel.timeout(timeouts.rollbackCommit)
+            }
             .adaptError {
               case e: SQLException => new TransactionException(s"${e.getMessage} - SqlState: ${e.getSQLState}", e)
               case e => new TransactionException(e.getMessage, e)
