@@ -154,6 +154,21 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.distroless-meta.outputs.tags }}
           push: true
+      - name: Build local distroless image
+        if: ${{ contains(github.ref_name, 'rc') }}
+        run: sbt "project ${{ matrix.app.project }}Distroless" docker:publishLocal
+      - name: Print docker images
+        if: ${{ contains(github.ref_name, 'rc') }}
+        run: docker image ls
+      - name: Run Snyk to check for vulnerabilities
+        uses: snyk/actions/docker@master
+        if: ${{ contains(github.ref_name, 'rc') }}
+        with:
+          image: "${{ steps.packageName.outputs.package_name }}:${{ github.ref_name }}-distroless"
+          args: "--app-vulns --org=data-processing-new"
+          command: monitor
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
 
   create_release:
     needs: test
