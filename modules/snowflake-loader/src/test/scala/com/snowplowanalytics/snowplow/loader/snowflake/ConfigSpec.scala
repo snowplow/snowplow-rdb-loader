@@ -158,7 +158,8 @@ class ConfigSpec extends Specification {
         appName = "Snowplow_OSS",
         folderMonitoringStage = None,
         jdbcHost = None,
-        StorageTarget.LoadAuthMethod.NoCreds
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        readyCheck = StorageTarget.Snowflake.ResumeWarehouse
       )
       exampleSnowflake.host must beRight("acme.snowflakecomputing.com")
       exampleSnowflake.copy(jdbcHost = "override".some).host must beRight("override")

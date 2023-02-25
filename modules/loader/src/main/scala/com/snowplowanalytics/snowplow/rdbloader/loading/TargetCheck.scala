@@ -18,7 +18,7 @@ import cats.implicits._
 
 import retry._
 
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
@@ -34,17 +34,11 @@ object TargetCheck {
    * it become ready.
    */
   def blockUntilReady[F[_]: Transaction[*[_], C]: Logging: MonadThrow: Timer, C[_]: DAO](
-    readyCheckConfig: Config.Retries,
-    target: StorageTarget
+    readyCheckConfig: Config.Retries
   ): F[Unit] = {
     val onError = (e: Throwable, d: RetryDetails) => log(e, d)
     val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
-    val fa: F[Unit] = target match {
-      case _: StorageTarget.Snowflake =>
-        Transaction[F, C].run(DAO[C].executeUpdate(Statement.ReadyCheck, DAO.Purpose.NonLoading)).void
-      case _: StorageTarget.Databricks | _: StorageTarget.Redshift =>
-        Transaction[F, C].run(DAO[C].executeQuery[Int](Statement.ReadyCheck)).void
-    }
+    val fa: F[Unit] = Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
     retryingOnSomeErrors(retryPolicy, isWorth, onError)(fa)
   }
 

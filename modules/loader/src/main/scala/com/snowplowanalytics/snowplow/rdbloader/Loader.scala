@@ -114,7 +114,7 @@ object Loader {
 
     def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
 
-    val blockUntilReady = initRetry(TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)) *>
+    val blockUntilReady = initRetry(TargetCheck.blockUntilReady[F, C](config.readyCheck)) *>
       Logging[F].info("Target check is completed")
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")

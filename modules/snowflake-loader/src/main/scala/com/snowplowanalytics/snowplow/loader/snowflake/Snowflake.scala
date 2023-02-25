@@ -134,7 +134,13 @@ object Snowflake {
           override def toFragment(statement: Statement): Fragment =
             statement match {
               case Statement.Select1 => sql"SELECT 1" // OK
-              case Statement.ReadyCheck => sql"ALTER WAREHOUSE ${Fragment.const0(tgt.warehouse)} RESUME IF SUSPENDED"
+              case Statement.ReadyCheck =>
+                tgt.readyCheck match {
+                  case StorageTarget.Snowflake.ResumeWarehouse =>
+                    sql"ALTER WAREHOUSE ${Fragment.const0(tgt.warehouse)} RESUME IF SUSPENDED"
+                  case StorageTarget.Snowflake.Select1 =>
+                    sql"SELECT 1"
+                }
 
               case Statement.CreateAlertingTempTable => // OK
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))

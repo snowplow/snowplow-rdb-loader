@@ -166,8 +166,6 @@ object FolderMonitoring {
    *   list shredded folders
    * @param readyCheck
    *   config for retry logic
-   * @param storageTarget
-   *   target storage config
    * @param loadAuthMethod
    *   auth method used for load operation
    * @param initQueryResult
@@ -180,7 +178,6 @@ object FolderMonitoring {
   def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad, I](
     loadFrom: BlobStorage.Folder,
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     loadAuthMethod: LoadAuthMethod,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
@@ -192,7 +189,7 @@ object FolderMonitoring {
     } yield onlyS3Batches
 
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](readyCheck, storageTarget)
+      _ <- TargetCheck.blockUntilReady[F, C](readyCheck)
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
     } yield foldersWithChecks.map { case (folder, exists) =>
@@ -284,7 +281,7 @@ object FolderMonitoring {
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
                       loadAuth <- LoadAuthService[F].getLoadAuthMethod(storageTarget.foldersLoadAuthMethod)
-                      alerts <- check[F, C, I](outputFolder, readyCheck, storageTarget, loadAuth, initQueryResult, prepareAlertTable)
+                      alerts <- check[F, C, I](outputFolder, readyCheck, loadAuth, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")

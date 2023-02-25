@@ -148,7 +148,8 @@ object ConfigSpec {
     "Snowplow_OSS",
     None,
     None,
-    StorageTarget.LoadAuthMethod.NoCreds
+    StorageTarget.LoadAuthMethod.NoCreds,
+    StorageTarget.Snowflake.ResumeWarehouse
   )
   val exampleSchedules: Config.Schedules = Config.Schedules(
     List(

@@ -37,6 +37,8 @@
     "folderMonitoringStage": "snowplow_folders_stage"
     # An optional host name that will take a priority over automatically derived
     "jdbcHost": "acme.eu-central-1.snowflake.com"
+    # Either "ResumeWarehouse" (the default) or "Select1". The command the loader runs to prepare the JDBC connection.
+    "readyCheck": "ResumeWarehouse"
   },
 
   "schedules": {
