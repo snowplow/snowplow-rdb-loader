@@ -90,7 +90,7 @@ object Load {
     target: Target[I]
   ): F[Either[AlertPayload, Option[Instant]]] =
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](config.readyCheck, config.storage)
+      _ <- TargetCheck.blockUntilReady[F, C](config.readyCheck)
       migrations <- Migration.build[F, C, I](discovery.discovery, target)
       _ <- Transaction[F, C].run(setStage(Stage.MigrationPre))
       _ <- migrations.preTransaction.traverse_(Transaction[F, C].run_)

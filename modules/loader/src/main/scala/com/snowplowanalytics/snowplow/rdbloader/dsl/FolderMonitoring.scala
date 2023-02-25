@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import doobie.util.Get
 import fs2.Stream
 import fs2.text.utf8Encode
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
@@ -165,8 +165,6 @@ object FolderMonitoring {
    *   list shredded folders
    * @param readyCheck
    *   config for retry logic
-   * @param storageTarget
-   *   target storage config
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
    * @param prepareAlertTable
@@ -177,7 +175,6 @@ object FolderMonitoring {
   def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad: LoadAuthService, I](
     loadFrom: BlobStorage.Folder,
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): F[List[AlertPayload]] = {
@@ -189,7 +186,7 @@ object FolderMonitoring {
     } yield onlyS3Batches
 
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](readyCheck, storageTarget)
+      _ <- TargetCheck.blockUntilReady[F, C](readyCheck)
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
     } yield foldersWithChecks.map { case (folder, exists) =>
@@ -228,14 +225,13 @@ object FolderMonitoring {
   ](
     foldersCheck: Option[Config.Folders],
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, readyCheck, storageTarget, isBusy, initQueryResult, prepareAlertTable)
+        stream[F, C, I](folders, readyCheck, isBusy, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -249,8 +245,6 @@ object FolderMonitoring {
    *   configuration for folders monitoring
    * @param readyCheck
    *   configuration for target ready check
-   * @param storageTarget
-   *   target storage config
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
    * @param initQueryResult
@@ -265,7 +259,6 @@ object FolderMonitoring {
   ](
     folders: Config.Folders,
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
@@ -280,7 +273,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
-                      alerts <- check[F, C, I](outputFolder, readyCheck, storageTarget, initQueryResult, prepareAlertTable)
+                      alerts <- check[F, C, I](outputFolder, readyCheck, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")

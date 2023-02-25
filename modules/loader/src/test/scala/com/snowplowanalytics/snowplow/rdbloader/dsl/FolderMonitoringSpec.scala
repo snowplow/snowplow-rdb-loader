@@ -17,7 +17,7 @@ import scala.concurrent.duration._
 import cats.effect.{IO, Timer}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import io.circe.syntax._
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
@@ -76,7 +76,6 @@ class FolderMonitoringSpec extends Specification {
           .check[Pure, Pure, Unit](
             loadFrom,
             exampleReadyCheckConfig,
-            exampleDatabricks,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -126,7 +125,6 @@ class FolderMonitoringSpec extends Specification {
           .check[Pure, Pure, Unit](
             loadFrom,
             exampleReadyCheckConfig,
-            exampleDatabricks,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -270,17 +268,4 @@ object FolderMonitoringSpec {
   }
 
   val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
-  val exampleDatabricks: StorageTarget.Databricks = StorageTarget.Databricks(
-    "databricks.com",
-    None,
-    "snowplow",
-    443,
-    "http/path",
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-    None,
-    "snowplow-rdbloader-oss",
-    StorageTarget.LoadAuthMethod.NoCreds,
-    2.days,
-    3
-  )
 }

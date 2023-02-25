@@ -63,6 +63,8 @@
     #  # https://docs.snowflake.com/en/user-guide/data-load-s3-config-aws-iam-user.html
     #  "roleArn": "arn:aws:iam::123456789:role/role_name"
     #}
+    # Either "ResumeWarehouse" (the default) or "Select1". The command the loader runs to prepare the JDBC connection.
+    "readyCheck": "ResumeWarehouse"
   },
 
   "schedules": {

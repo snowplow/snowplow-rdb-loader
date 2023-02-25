@@ -158,7 +158,8 @@ object StorageTarget {
     appName: String,
     folderMonitoringStage: Option[Snowflake.Stage],
     jdbcHost: Option[String],
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    readyCheck: Snowflake.ReadyCheck
   ) extends StorageTarget {
 
     override def connectionUrl: String =
@@ -223,6 +224,19 @@ object StorageTarget {
 
   object Snowflake {
     case class Stage(name: String, location: Option[BlobStorage.Folder])
+
+    sealed trait ReadyCheck
+    case object ResumeWarehouse extends ReadyCheck
+    case object Select1 extends ReadyCheck
+
+    implicit def readyCheckDecoder: Decoder[ReadyCheck] =
+      Decoder.decodeString.emap { str =>
+        str.toLowerCase() match {
+          case "resumewarehouse" => Right(ResumeWarehouse)
+          case "select1" => Right(Select1)
+          case _ => Left("invalid ready check")
+        }
+      }
   }
 
   /**
