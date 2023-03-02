@@ -16,7 +16,7 @@ import java.net.URI
 
 import cats.implicits._
 
-import cats.effect.{Clock, Sync}
+import cats.effect.Sync
 
 import io.circe.syntax.EncoderOps
 
@@ -70,11 +70,10 @@ object Completion {
     legacyMessageFormat: Boolean,
     processor: LoaderMessage.Processor,
     window: Window,
-    state: State[C],
-    clock: Clock[F]
+    state: State[C]
   ): F[Unit] =
     for {
-      timestamps <- clock.realTimeInstant.map { now =>
+      timestamps <- Sync[F].realTimeInstant.map { now =>
                       Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
                     }
       base = BlobStorage.Folder.coerce(root.toString).append(window.getDir)

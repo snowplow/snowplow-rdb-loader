@@ -140,13 +140,13 @@ object Metrics {
   final case class PeriodicMetricsRefs[F[_]](maxTstampOfLoadedData: Ref[F, MaxTstampOfLoadedData])
 
   object PeriodicMetricsRefs {
-    def init[F[_]: Sync: Clock]: F[PeriodicMetricsRefs[F]] =
+    def init[F[_]: Sync]: F[PeriodicMetricsRefs[F]] =
       for {
         now <- Clock[F].realTimeInstant
         maxTstampOfLoadedData <- Ref.of[F, MaxTstampOfLoadedData](MaxTstampOfLoadedData.EarliestKnownUnloaded(now))
       } yield PeriodicMetricsRefs(maxTstampOfLoadedData)
 
-    def snapshot[F[_]: Sync: Clock](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
+    def snapshot[F[_]: Sync](refs: PeriodicMetricsRefs[F]): F[KVMetrics.PeriodicMetricsSnapshot] =
       for {
         now <- Clock[F].realTimeInstant
         m <- refs.maxTstampOfLoadedData.get

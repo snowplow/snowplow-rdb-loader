@@ -82,6 +82,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         }
         .unsafeRunSync()
     }
+
     "process items with custom contexts correctly in widerow parquet format" in {
       temporaryDirectory
         .use { outputDirectory =>
@@ -343,21 +344,9 @@ object WiderowParquetProcessingSpec {
        |    "cacheTtl": 10000,
        |    "repositories": [
        |      {
-       |        "name": "Iglu Central",
+       |        "name": "Iglu Test Embedded",
        |        "priority": 0,
-       |        "vendorPrefixes": [
-       |          "com.snowplowanalytics"
-       |        ],
-       |        "connection": {
-       |          "http": {
-       |            "uri": "http://iglucentral.com"
-       |          }
-       |        }
-       |      },
-       |      {
-       |        "name": "Iglu Embedded",
-       |        "priority": 0,
-       |        "vendorPrefixes": [ "com.snowplowanalytics" ],
+       |        "vendorPrefixes": [ ],
        |        "connection": {
        |          "embedded": {
        |            "path": "/"

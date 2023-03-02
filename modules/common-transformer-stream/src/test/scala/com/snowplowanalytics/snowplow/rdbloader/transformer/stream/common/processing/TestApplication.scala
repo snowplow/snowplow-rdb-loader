@@ -20,6 +20,7 @@ import blobstore.fs.FileStore
 import blobstore.url.Path
 import cats.effect._
 import cats.effect.std.Random
+import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.badrows.Processor
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
@@ -34,10 +35,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.source
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
 import fs2.io.file.Files
 import fs2.io.file.{Path => Fs2Path}
+import scala.concurrent.duration.DurationInt
 
-import scala.concurrent.duration.FiniteDuration
-
-import java.util.concurrent.TimeUnit
 import java.net.URI
 
 object TestApplication {
@@ -48,15 +47,6 @@ object TestApplication {
 
   implicit val rand = Random.scalaUtilRandom[IO].unsafeRunSync()
 
-  // returns always 1970-01-01-10:30
-  val clock: Clock[IO] = new Clock[IO] {
-    override def applicative: Applicative[IO] = Applicative[IO]
-
-    override def monotonic: IO[FiniteDuration] = IO(FiniteDuration(37800L, TimeUnit.SECONDS))
-
-    override def realTime: IO[FiniteDuration] = IO(FiniteDuration(37800L, TimeUnit.SECONDS))
-  }
-
   def run(
     args: Seq[String],
     completionsRef: Ref[IO, Vector[String]],
@@ -64,33 +54,52 @@ object TestApplication {
     queueBadSink: Ref[IO, Vector[String]],
     sourceRecords: Stream[IO, ParsedC[Unit]]
   ): IO[Unit] =
-    for {
-      parsed <- CliConfig.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
-      implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
-      res <- parsed match {
-               case Right(cliConfig) =>
-                 val appConfig = updateOutputURIScheme(cliConfig.config)
-                 Resources
-                   .mk[IO, Unit](
-                     cliConfig.igluConfig,
-                     appConfig,
-                     BuildInfo.name,
-                     BuildInfo.version,
-                     scala.concurrent.ExecutionContext.global,
-                     (_, _) => mkSource[IO],
-                     mkSink,
-                     _ => mkBadQueue[IO](queueBadSink),
-                     _ => queueFromRef[IO](completionsRef),
-                     _ => ()
-                   )
-                   .use { resources =>
-                     logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>
-                       Processing.runFromSource[IO, Unit](sourceRecords, resources, appConfig, TestProcessor, clock).compile.drain
-                   }
-               case Left(e) =>
-                 IO.raiseError(new RuntimeException(s"Configuration error: $e - parsed: $parsed"))
-             }
-    } yield res
+    runWithTestControl {
+      for {
+        parsed <- CliConfig.loadConfigFrom[IO]("Streaming transformer", "Test app")(args).value
+        implicit0(chk: Checkpointer[IO, Unit]) = checkpointer(checkpointRef)
+        res <- parsed match {
+                 case Right(cliConfig) =>
+                   val appConfig = updateOutputURIScheme(cliConfig.config)
+                   Resources
+                     .mk[IO, Unit](
+                       cliConfig.igluConfig,
+                       appConfig,
+                       BuildInfo.name,
+                       BuildInfo.version,
+                       scala.concurrent.ExecutionContext.global,
+                       (_, _) => mkSource[IO],
+                       mkSink,
+                       _ => mkBadQueue[IO](queueBadSink),
+                       _ => queueFromRef[IO](completionsRef),
+                       _ => ()
+                     )
+                     .use { resources =>
+                       logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>
+                         Processing.runFromSource[IO, Unit](sourceRecords, resources, appConfig, TestProcessor).compile.drain
+                     }
+                 case Left(e) =>
+                   IO.raiseError(new RuntimeException(s"Configuration error: $e - parsed: $parsed"))
+               }
+      } yield res
+    }
+
+  private def runWithTestControl(program: IO[Unit]): IO[Unit] =
+    TestControl
+      .execute(program)
+      .flatMap { control =>
+        for {
+          _ <- control.advance(37800.seconds) // initialize the clock at 1970-01-01-10:30
+          _ <- control.tickAll
+          results <- control.results
+        } yield results
+      }
+      .flatMap {
+        case Some(Outcome.Succeeded(output)) => IO.pure(output)
+        case Some(Outcome.Errored(e)) => IO.raiseError(e)
+        case Some(Outcome.Canceled()) => IO.raiseError(new RuntimeException("Program cancelled"))
+        case None => IO.raiseError(new RuntimeException("Program under test did not complete"))
+      }
 
   private def queueFromRef[F[_]: Concurrent](ref: Ref[F, Vector[String]]): Resource[F, Queue.Producer[F]] =
     Resource.pure[F, Queue.Producer[F]](

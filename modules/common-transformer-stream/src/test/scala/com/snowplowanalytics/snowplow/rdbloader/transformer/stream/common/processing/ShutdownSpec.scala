@@ -27,7 +27,7 @@ class ShutdownSpec extends BaseProcessingSpec {
 
           for {
             output <- runWithShutdown(inputStream, config)
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", outputDirectory)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/8/output/completion.json", outputDirectory)
           } yield {
             removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
 

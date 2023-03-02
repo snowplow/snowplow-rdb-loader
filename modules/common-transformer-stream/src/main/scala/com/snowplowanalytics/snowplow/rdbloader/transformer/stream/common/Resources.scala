@@ -144,7 +144,7 @@ object Resources {
         }
     }
 
-  private def mkAtomicFieldLengthLimit[F[_]: Sync: RegistryLookup: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] =
+  private def mkAtomicFieldLengthLimit[F[_]: Sync: RegistryLookup](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] =
     Resource.eval {
       EventUtils.getAtomicLengths[F](igluResolver).flatMap {
         case Right(valid) => Sync[F].pure(valid)

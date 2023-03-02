@@ -303,7 +303,8 @@ object Dependencies {
     specs2,
     specs2ScalaCheck,
     scalaCheck,
-    catsEffectTestkit
+    catsEffectTestkit,
+    catsTesting
   )
 
 

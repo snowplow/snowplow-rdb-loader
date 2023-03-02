@@ -176,14 +176,13 @@ object EventUtils {
    * @return
    *   list of columns or flattening error
    */
-  def flatten[F[_]: Monad: RegistryLookup](
+  def flatten[F[_]: Monad: Clock: RegistryLookup](
     resolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
-    instance: SelfDescribingData[Json],
-    clock: Clock[F]
+    instance: SelfDescribingData[Json]
   ): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
     Flattening
-      .getDdlProperties(resolver, propertiesCache, instance.schema, clock)
+      .getDdlProperties(resolver, propertiesCache, instance.schema)
       .map(props => mapProperties(props, instance))
 
   private def mapProperties(props: Properties, instance: SelfDescribingData[Json]) =

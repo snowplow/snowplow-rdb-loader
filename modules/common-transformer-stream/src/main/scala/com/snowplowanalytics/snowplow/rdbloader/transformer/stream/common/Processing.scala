@@ -14,12 +14,12 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import java.util.UUID
 
-import cats.{Applicative, Functor, Monad, Monoid, Parallel}
+import cats.{Applicative, Monad, Monoid, Parallel}
 import cats.data.EitherT
 import cats.implicits._
 import cats.effect.implicits._
 
-import cats.effect.{Async, Clock, Concurrent, Sync}
+import cats.effect.{Async, Concurrent, Sync}
 
 import fs2.{Pipe, Stream}
 import fs2.text.utf8
@@ -59,21 +59,20 @@ object Processing {
     processor: Processor
   ): Stream[F, Unit] = {
     val source = resources.inputStream.read.map(m => (parseEvent(m.content, processor), resources.checkpointer(m)))
-    runFromSource(source, resources, config, processor, Clock[F])
+    runFromSource(source, resources, config, processor)
   }
 
   def runFromSource[F[_]: Async, C: Checkpointer[F, *]](
     source: Stream[F, ParsedC[C]],
     resources: Resources[F, C],
     config: Config,
-    processor: Processor,
-    clock: Clock[F]
+    processor: Processor
   ): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor, clock)
+        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(resources.igluResolver, f, processor, clock)
+        Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
 
     val messageProcessorVersion = Semver
@@ -83,7 +82,7 @@ object Processing {
       LoaderMessage.Processor(processor.artifact, messageProcessorVersion)
 
     def windowing[A]: Pipe[F, (List[A], State[C]), Windowed[List[A], State[C]]] =
-      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt)(clock, Functor[F]))
+      Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
 
     val onComplete: ((Window, State[C])) => F[Unit] = { case (window, state) =>
       Completion.seal[F, C](
@@ -95,8 +94,7 @@ object Processing {
         config.featureFlags.legacyMessageFormat,
         messageProcessor,
         window,
-        state,
-        clock
+        state
       )
     }
 

@@ -128,7 +128,7 @@ object NoOperation {
    * Check if the schedule active at the moment (i.e. Loader should not be running) Used when the
    * app starts in the middle of no-op window
    */
-  def isActive[F[_]: Clock: Sync](schedule: Schedule): F[Boolean] =
+  def isActive[F[_]: Sync](schedule: Schedule): F[Boolean] =
     getTime[F].map(now => isInWindow(schedule, now))
 
   def isInWindow(schedule: Schedule, now: ZonedDateTime): Boolean =

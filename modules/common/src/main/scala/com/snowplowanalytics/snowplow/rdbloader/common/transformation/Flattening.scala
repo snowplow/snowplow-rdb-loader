@@ -51,21 +51,20 @@ object Flattening {
     } yield ordered
   }
 
-  def getDdlProperties[F[_]: Monad: RegistryLookup](
+  def getDdlProperties[F[_]: Monad: Clock: RegistryLookup](
     resolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
-    schemaKey: SchemaKey,
-    clock: Clock[F]
+    schemaKey: SchemaKey
   ): EitherT[F, FailureDetails.LoaderIgluError, Properties] = {
     val criterion = SchemaCriterion(schemaKey.vendor, schemaKey.name, "jsonschema", Some(schemaKey.version.model), None, None)
 
-    EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model)(Monad[F], RegistryLookup[F], clock))
+    EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model))
       .leftMap(error => FailureDetails.LoaderIgluError.SchemaListNotFound(criterion, error))
       .flatMap {
         case cached: ResolverResult.Cached[SchemaListKey, SchemaList] =>
-          lookupInCache(resolver, propertiesCache, cached)(Monad[F], RegistryLookup[F], clock)
+          lookupInCache(resolver, propertiesCache, cached)
         case ResolverResult.NotCached(schemaList) =>
-          evaluateProperties(schemaList, resolver)(Monad[F], RegistryLookup[F], clock)
+          evaluateProperties(schemaList, resolver)
       }
   }
 

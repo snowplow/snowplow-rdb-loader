@@ -111,13 +111,12 @@ object Transformed {
    *   either bad row (in case of failed flattening) or list of shredded entities inside original
    *   event
    */
-  def shredEvent[F[_]: Monad: RegistryLookup](
+  def shredEvent[F[_]: Monad: Clock: RegistryLookup](
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     isTabular: SchemaKey => Boolean,
     atomicLengths: Map[String, Int],
-    processor: Processor,
-    clock: Clock[F]
+    processor: Processor
   )(
     event: Event
   ): EitherT[F, BadRow, List[Transformed]] =
@@ -125,11 +124,11 @@ object Transformed {
       .fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
-        fromHierarchy(tabular, igluResolver, propertiesCache, clock)(hierarchy)
+        fromHierarchy(tabular, igluResolver, propertiesCache)(hierarchy)
       }
       .leftMap(error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)))
       .map { shredded =>
-        val data = EventUtils.alterEnrichedEvent(event, atomicLengths)(clock, RegistryLookup[F], Monad[F])
+        val data = EventUtils.alterEnrichedEvent(event, atomicLengths)
         val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
         atomic :: shredded
       }
@@ -149,18 +148,17 @@ object Transformed {
    * @param hierarchy
    *   actual JSON hierarchy from an enriched event
    */
-  private def fromHierarchy[F[_]: Monad: RegistryLookup](
+  private def fromHierarchy[F[_]: Monad: Clock: RegistryLookup](
     tabular: Boolean,
     resolver: => Resolver[F],
-    propertiesCache: PropertiesCache[F],
-    clock: Clock[F]
+    propertiesCache: PropertiesCache[F]
   )(
     hierarchy: Hierarchy
   ): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
     if (tabular) {
-      EventUtils.flatten(resolver, propertiesCache, hierarchy.entity, clock).map { columns =>
+      EventUtils.flatten(resolver, propertiesCache, hierarchy.entity).map { columns =>
         val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
         Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString((meta ++ columns).mkString("\t")))
       }

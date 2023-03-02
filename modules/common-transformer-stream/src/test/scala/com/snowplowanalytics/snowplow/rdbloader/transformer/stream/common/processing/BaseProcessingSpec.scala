@@ -15,6 +15,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
 import cats.effect.{IO, Resource}
+import cats.effect.kernel.Ref
+
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.FileUtils
@@ -30,7 +32,6 @@ import org.specs2.mutable.Specification
 import scala.concurrent.duration.DurationInt
 
 import java.util.Base64
-import cats.effect.kernel.Ref
 import fs2.io.file.Path
 
 trait BaseProcessingSpec extends Specification {

@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import java.time.Instant
 import cats.data.NonEmptyList
 import cats.implicits._
-import cats.effect.{Clock, Resource, Sync}
+import cats.effect.{Resource, Sync}
 import cats.effect.kernel.Async
 import cats.effect.std.Random
 import io.circe._
@@ -246,7 +246,7 @@ object Monitoring {
     }
 
   /** Callback for failed */
-  private def callback[F[_]: Sync: Clock: Logging](
+  private def callback[F[_]: Sync: Logging](
     params: Emitter.EndpointParams,
     request: Emitter.Request,
     response: Emitter.Result

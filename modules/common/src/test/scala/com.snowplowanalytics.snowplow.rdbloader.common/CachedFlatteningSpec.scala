@@ -190,7 +190,7 @@ class CachedFlatteningSpec extends Specification {
 
     val data = SelfDescribingData(schema = SchemaKey.fromUri(schemaKey).right.get, data = dataToFlatten)
 
-    EventUtils.flatten(resolver, propertiesCache, data, staticClock)(Monad[Id], testRegistryLookup).value.right.get
+    EventUtils.flatten(resolver, propertiesCache, data)(Monad[Id], staticClock, testRegistryLookup).value.right.get
   }
 
   private def getCache: PropertiesCache[Id] = CreateLruMap[Id, PropertiesKey, Properties].create(100)

@@ -25,7 +25,6 @@ import io.circe.Json
 import io.circe.optics.JsonPath._
 import io.circe.parser.{parse => parseCirce}
 import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -121,7 +120,7 @@ object TransformingSpec {
   val BadPathPrefix = "output=bad"
   val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
 
-  val defaultIgluResolver: Resolver[IO] = Resolver(List(Registry.IgluCentral), None)
+  val defaultIgluResolver: Resolver[IO] = Resolver(Nil, None)
   val defaultAtomicLengths: Map[String, Int] = Map.empty
   val wideRowFormat = TransformerConfig.Formats.WideRow.JSON
   val shredFormat = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
@@ -133,9 +132,9 @@ object TransformingSpec {
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, defaultAtomicLengths, TestProcessor, clock)
+        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, defaultAtomicLengths, TestProcessor)
       case f: TransformerConfig.Formats.WideRow =>
-        Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor, clock)
+        Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
     }
 
   def transformTestEvents(
