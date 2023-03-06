@@ -83,22 +83,23 @@ object Redshift {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod,
             i: Unit
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
-              .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression, loadAuthMethod))
+              .map(shreddedType => loadAuthMethod => Statement.ShreddedCopy(shreddedType, discovery.compression, loadAuthMethod))
 
-            val atomic = Statement.EventsCopy(
-              discovery.base,
-              discovery.compression,
-              ColumnsToCopy(AtomicColumns.Columns),
-              ColumnsToSkip.none,
-              discovery.typesInfo,
-              loadAuthMethod,
-              i
-            )
+            val atomic = { loadAuthMethod: LoadAuthMethod =>
+              Statement.EventsCopy(
+                discovery.base,
+                discovery.compression,
+                ColumnsToCopy(AtomicColumns.Columns),
+                ColumnsToSkip.none,
+                discovery.typesInfo,
+                loadAuthMethod,
+                i
+              )
+            }
             NonEmptyList(atomic, shreddedStatements)
           }
 
@@ -297,7 +298,7 @@ object Redshift {
       case LoadAuthMethod.NoCreds =>
         val roleArn = roleArnOpt.getOrElse(throw new IllegalStateException("roleArn needs to be provided with 'NoCreds' auth method"))
         Fragment.const0(s"aws_iam_role=$roleArn")
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"aws_access_key_id=$awsAccessKey;aws_secret_access_key=$awsSecretKey;token=$awsSessionToken"
         )

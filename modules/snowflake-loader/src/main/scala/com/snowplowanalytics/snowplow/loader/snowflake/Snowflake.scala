@@ -79,13 +79,13 @@ object Snowflake {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod,
             initQueryResult: InitQueryResult
           ): LoadStatements = {
             val columnsToCopy = columnsToCopyFromDiscoveredData(discovery)
-            loadAuthMethod match {
-              case LoadAuthMethod.NoCreds =>
-                NonEmptyList.one(
+
+            tgt.loadAuthMethod match {
+              case StorageTarget.LoadAuthMethod.NoCreds =>
+                NonEmptyList.one(loadAuthMethod =>
                   Statement.EventsCopy(
                     discovery.base,
                     discovery.compression,
@@ -96,17 +96,22 @@ object Snowflake {
                     initQueryResult
                   )
                 )
-              case c: LoadAuthMethod.TempCreds =>
+              case _: StorageTarget.LoadAuthMethod.TempCreds =>
                 val tempTableName = s"snowplow_tmp_${discovery.runId.replace('=', '_').replace('-', '_')}"
                 // It isn't possible to use 'SELECT' statement with external location in 'COPY INTO' statement.
                 // External location is needed for using temp credentials. Therefore, we need to use two-steps copy operation.
                 // Initially, events will be copied to temp table from s3. Then, they will copied from temp table to event table.
                 NonEmptyList.of(
-                  Statement.DropTempEventTable(tempTableName),
-                  Statement.CreateTempEventTable(tempTableName),
-                  Statement.EventsCopyToTempTable(discovery.base, tempTableName, c, discovery.typesInfo),
-                  Statement.EventsCopyFromTempTable(tempTableName, columnsToCopy),
-                  Statement.DropTempEventTable(tempTableName)
+                  _ => Statement.DropTempEventTable(tempTableName),
+                  _ => Statement.CreateTempEventTable(tempTableName),
+                  {
+                    case c: LoadAuthMethod.TempCreds =>
+                      Statement.EventsCopyToTempTable(discovery.base, tempTableName, c, discovery.typesInfo)
+                    case LoadAuthMethod.NoCreds =>
+                      throw new IllegalStateException("Received NoCreds, expected TempCreds")
+                  },
+                  _ => Statement.EventsCopyFromTempTable(tempTableName, columnsToCopy),
+                  _ => Statement.DropTempEventTable(tempTableName)
                 )
             }
           }
@@ -344,7 +349,7 @@ object Snowflake {
     loadAuthMethod match {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')"
         )

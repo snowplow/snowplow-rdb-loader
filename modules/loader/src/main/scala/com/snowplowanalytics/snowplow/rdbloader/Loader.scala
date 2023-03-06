@@ -72,8 +72,8 @@ object Loader {
     F[_]: Transaction[
       *[_],
       C
-    ]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-    C[_]: DAO: MonadThrow: Logging,
+    ]: Concurrent: BlobStorage: Queue.Consumer: Clock: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: JsonPathDiscovery,
+    C[_]: DAO: MonadThrow: Logging: LoadAuthService,
     I
   ](
     config: Config[StorageTarget],
@@ -150,8 +150,8 @@ object Loader {
     F[_]: Transaction[
       *[_],
       C
-    ]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: LoadAuthService: JsonPathDiscovery,
-    C[_]: DAO: MonadThrow: Logging,
+    ]: Concurrent: BlobStorage: Queue.Consumer: Iglu: Cache: Logging: Timer: Monitoring: ContextShift: JsonPathDiscovery,
+    C[_]: DAO: MonadThrow: Logging: LoadAuthService,
     I
   ](
     config: Config[StorageTarget],
@@ -176,8 +176,8 @@ object Loader {
    * actions, instead of whole `Control` object
    */
   private def processDiscovery[
-    F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift: LoadAuthService,
-    C[_]: DAO: MonadThrow: Logging,
+    F[_]: Transaction[*[_], C]: Concurrent: Iglu: Logging: Timer: Monitoring: ContextShift,
+    C[_]: DAO: MonadThrow: Logging: LoadAuthService,
     I
   ](
     config: Config[StorageTarget],
@@ -201,8 +201,7 @@ object Loader {
       for {
         start <- Clock[F].instantNow
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
-        loadAuth <- LoadAuthService[F].getLoadAuthMethod(config.storage.eventsLoadAuthMethod)
-        result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, loadAuth, initQueryResult, target)
+        result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Right(ingested) =>

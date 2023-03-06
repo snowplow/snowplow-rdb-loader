@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec._
 
+import java.time.Instant
 import scala.concurrent.duration.DurationInt
 import org.specs2.mutable.Specification
 
@@ -65,30 +66,33 @@ class DatabricksSpec extends Specification {
         )
       )
 
-      target.getLoadStatements(discovery, eventsColumns, LoadAuthMethod.NoCreds, ()) should be like {
-        case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>
-          path must beEqualTo(baseFolder)
-          compression must beEqualTo(Compression.Gzip)
+      val results = target
+        .getLoadStatements(discovery, eventsColumns, ())
+        .map(f => f(LoadAuthMethod.NoCreds))
 
-          columnsToCopy.names must contain(
-            allOf(
-              ColumnName("unstruct_event_com_acme_aaa_1"),
-              ColumnName("unstruct_event_com_acme_ccc_1"),
-              ColumnName("contexts_com_acme_yyy_1"),
-              ColumnName("contexts_com_acme_zzz_1")
-            )
+      results should be like { case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>
+        path must beEqualTo(baseFolder)
+        compression must beEqualTo(Compression.Gzip)
+
+        columnsToCopy.names must contain(
+          allOf(
+            ColumnName("unstruct_event_com_acme_aaa_1"),
+            ColumnName("unstruct_event_com_acme_ccc_1"),
+            ColumnName("contexts_com_acme_yyy_1"),
+            ColumnName("contexts_com_acme_zzz_1")
           )
+        )
 
-          columnsToCopy.names must not contain (ColumnName("unstruct_event_com_acme_bbb_1"))
-          columnsToCopy.names must not contain (ColumnName("contexts_com_acme_xxx_1"))
-          columnsToCopy.names must not contain (ColumnName("not_a_snowplow_column"))
+        columnsToCopy.names must not contain (ColumnName("unstruct_event_com_acme_bbb_1"))
+        columnsToCopy.names must not contain (ColumnName("contexts_com_acme_xxx_1"))
+        columnsToCopy.names must not contain (ColumnName("not_a_snowplow_column"))
 
-          columnsToSkip.names must beEqualTo(
-            List(
-              ColumnName("unstruct_event_com_acme_bbb_1"),
-              ColumnName("contexts_com_acme_xxx_1")
-            )
+        columnsToSkip.names must beEqualTo(
+          List(
+            ColumnName("unstruct_event_com_acme_bbb_1"),
+            ColumnName("contexts_com_acme_xxx_1")
           )
+        )
       }
     }
   }
@@ -140,7 +144,7 @@ class DatabricksSpec extends Specification {
           ColumnName("contexts_com_acme_yyy_1")
         )
       )
-      val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken")
+      val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken", Instant.now.plusSeconds(3600))
       val statement =
         Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
 
