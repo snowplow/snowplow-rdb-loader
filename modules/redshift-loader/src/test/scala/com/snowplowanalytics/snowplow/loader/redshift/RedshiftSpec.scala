@@ -13,16 +13,19 @@
 package com.snowplowanalytics.snowplow.loader.redshift
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
 import com.snowplowanalytics.iglu.schemaddl.redshift.{AddColumn, AlterTable, AlterType, CompressionEncoding, RedshiftVarchar, ZstdEncoding}
-
 import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Target}
-
 import org.specs2.mutable.Specification
-
 import com.snowplowanalytics.snowplow.loader.redshift.db.MigrationSpec
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.validConfig
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity.{Context, SelfDescribingEvent}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
+import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType.{Info, Tabular}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 
 class RedshiftSpec extends Specification {
   import RedshiftSpec.redshift
@@ -66,6 +69,34 @@ class RedshiftSpec extends Specification {
           fragment.toString() must beEqualTo(s"""Fragment("${alterTable.toDdl}")""")
         case _ => ko("Unexpected block found")
       }
+    }
+
+    "getLoadStatements should return one COPY per unique schema (vendor, name, model)" in {
+      val shreddedTypes = List(
+        Info(vendor = "com.acme", name = "event", model = 2, entity = SelfDescribingEvent, base = Folder.coerce("s3://my-bucket/my-path")),
+        Info(vendor = "com.acme", name = "event", model = 2, entity = Context, base = Folder.coerce("s3://my-bucket/my-path")),
+        Info(vendor = "com.acme", name = "event", model = 3, entity = SelfDescribingEvent, base = Folder.coerce("s3://my-bucket/my-path")),
+        Info(vendor = "com.acme", name = "event", model = 3, entity = Context, base = Folder.coerce("s3://my-bucket/my-path"))
+      ).map(Tabular)
+
+      val discovery = DataDiscovery(
+        Folder.coerce("s3://my-bucket/my-path"),
+        shreddedTypes,
+        Compression.None,
+        TypesInfo.Shredded(List.empty),
+        Nil
+      )
+
+      val result = redshift.getLoadStatements(discovery, List.empty, LoadAuthService.LoadAuthMethod.NoCreds, ()).map(_.title)
+
+      result.size must beEqualTo(3)
+      result.toList must containTheSameElementsAs(
+        List(
+          "COPY events FROM s3://my-bucket/my-path/", // atomic
+          "COPY com_acme_event_2 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=2",
+          "COPY com_acme_event_3 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=3"
+        )
+      )
     }
   }
 }

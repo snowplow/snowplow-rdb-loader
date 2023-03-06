@@ -89,6 +89,10 @@ object Redshift {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
               .map(shreddedType => Statement.ShreddedCopy(shreddedType, discovery.compression, loadAuthMethod))
+              .groupBy(_.path)
+              .values
+              .map(_.head) // So we get only one copy statement for given path
+              .toList
 
             val atomic = Statement.EventsCopy(
               discovery.base,
