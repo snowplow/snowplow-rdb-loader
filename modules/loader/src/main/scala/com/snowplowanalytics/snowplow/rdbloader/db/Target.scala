@@ -18,7 +18,6 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigra
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.EventTableColumns
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import doobie.Fragment
@@ -49,7 +48,6 @@ trait Target[I] {
   def getLoadStatements(
     discovery: DataDiscovery,
     eventTableColumns: EventTableColumns,
-    loadAuthMethod: LoadAuthMethod,
     initQueryResult: I
   ): LoadStatements
 

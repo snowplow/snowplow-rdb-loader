@@ -19,9 +19,20 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureDAO, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.{
+  Pure,
+  PureAWS,
+  PureDAO,
+  PureLoadAuthService,
+  PureLogging,
+  PureOps,
+  PureTimer,
+  PureTransaction,
+  TestState
+}
 import org.specs2.mutable.Specification
 
 class FolderMonitoringSpec extends Specification {
@@ -34,6 +45,7 @@ class FolderMonitoringSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(
@@ -65,7 +77,6 @@ class FolderMonitoringSpec extends Specification {
             loadFrom,
             exampleReadyCheckConfig,
             exampleDatabricks,
-            LoadAuthMethod.NoCreds,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -84,6 +95,7 @@ class FolderMonitoringSpec extends Specification {
       implicit val timer: Timer[Pure] = PureTimer.interpreter
       implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
       val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
 
       val expectedState = TestState(
@@ -115,7 +127,6 @@ class FolderMonitoringSpec extends Specification {
             loadFrom,
             exampleReadyCheckConfig,
             exampleDatabricks,
-            LoadAuthMethod.NoCreds,
             (),
             Target.defaultPrepareAlertTable
           )

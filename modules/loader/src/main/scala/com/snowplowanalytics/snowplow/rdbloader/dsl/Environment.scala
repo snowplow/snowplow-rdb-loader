@@ -68,6 +68,7 @@ class Environment[F[_], I](
 
   implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
   implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
+  implicit val loadAuthServiceC: LoadAuthService[ConnectionIO] = loadAuthService.mapK(transaction.arrowBack)
   val controlF: Control[F] = control
   val telemetryF: Telemetry[F] = telemetry
   val dbTarget: Target[I] = target
@@ -156,7 +157,9 @@ object Environment {
               control.isBusy,
               Some(postProcess)
             )
-          loadAuthService <- LoadAuthService.aws[F](c.region.name, config.timeouts.loading)
+          loadAuthService <-
+            LoadAuthService
+              .aws[F](c.region.name, config.timeouts, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore <- EC2ParameterStore.secretStore[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)

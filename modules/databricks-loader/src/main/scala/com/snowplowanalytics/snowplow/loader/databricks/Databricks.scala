@@ -50,13 +50,12 @@ object Databricks {
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            loadAuthMethod: LoadAuthMethod,
             i: Unit
           ): LoadStatements = {
             val toCopy = columnsToCopyFromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
 
-            NonEmptyList.one(
+            NonEmptyList.one(loadAuthMethod =>
               Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod, i)
             )
           }
@@ -218,7 +217,7 @@ object Databricks {
     loadAuthMethod match {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken) =>
+      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )"
         )
