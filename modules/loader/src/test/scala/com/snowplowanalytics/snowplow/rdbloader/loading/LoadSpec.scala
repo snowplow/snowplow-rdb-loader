@@ -25,13 +25,24 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureOps, PureTimer, PureTransaction, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.{
+  Pure,
+  PureDAO,
+  PureIglu,
+  PureLoadAuthService,
+  PureLogging,
+  PureOps,
+  PureTimer,
+  PureTransaction,
+  TestState
+}
 
 class LoadSpec extends Specification {
   import LoadSpec.{failCommit, isBeforeFirstCommit}
@@ -43,6 +54,7 @@ class LoadSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
         ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
@@ -79,7 +91,6 @@ class LoadSpec extends Specification {
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds,
           (),
           PureDAO.DummyTarget
         )
@@ -94,6 +105,7 @@ class LoadSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
@@ -112,7 +124,6 @@ class LoadSpec extends Specification {
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds,
           (),
           PureDAO.DummyTarget
         )
@@ -127,6 +138,7 @@ class LoadSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
         ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
@@ -178,7 +190,6 @@ class LoadSpec extends Specification {
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds,
           (),
           PureDAO.DummyTarget
         )
@@ -202,6 +213,7 @@ class LoadSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
         PureTransaction.NoTransactionMessage,
@@ -220,7 +232,6 @@ class LoadSpec extends Specification {
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
-          LoadAuthMethod.NoCreds,
           (),
           PureDAO.DummyTarget
         )

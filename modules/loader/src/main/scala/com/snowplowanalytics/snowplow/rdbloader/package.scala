@@ -24,6 +24,7 @@ import doobie.implicits.javasql._
 import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -40,7 +41,7 @@ package object rdbloader {
   /**
    * List of DB-agnostic load statements. Could be just single `COPY events` or also shredded tables
    */
-  type LoadStatements = NonEmptyList[Statement.Loading]
+  type LoadStatements = NonEmptyList[LoadAuthService.LoadAuthMethod => Statement.Loading]
 
   /** A function to build a specific `Target` or error in case invalid config is passed */
   type BuildTarget[I] = Config[StorageTarget] => Either[String, Target[I]]

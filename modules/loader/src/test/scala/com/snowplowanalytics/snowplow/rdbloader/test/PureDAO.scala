@@ -29,7 +29,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Item}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 
@@ -93,22 +92,20 @@ object PureDAO {
     def getLoadStatements(
       discovery: DataDiscovery,
       eventTableColumns: EventTableColumns,
-      loadAuthMethod: LoadAuthMethod,
       i: Unit
     ): LoadStatements =
       NonEmptyList(
-        Statement.EventsCopy(
-          discovery.base,
-          Compression.Gzip,
-          ColumnsToCopy(List.empty),
-          ColumnsToSkip(List.empty),
-          TypesInfo.Shredded(List.empty),
-          loadAuthMethod,
-          i
-        ),
-        discovery.shreddedTypes.map { shredded =>
-          Statement.ShreddedCopy(shredded, Compression.Gzip, LoadAuthMethod.NoCreds)
-        }
+        loadAuthMethod =>
+          Statement.EventsCopy(
+            discovery.base,
+            Compression.Gzip,
+            ColumnsToCopy(List.empty),
+            ColumnsToSkip(List.empty),
+            TypesInfo.Shredded(List.empty),
+            loadAuthMethod,
+            i
+          ),
+        discovery.shreddedTypes.map(shredded => loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod))
       )
 
     def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit

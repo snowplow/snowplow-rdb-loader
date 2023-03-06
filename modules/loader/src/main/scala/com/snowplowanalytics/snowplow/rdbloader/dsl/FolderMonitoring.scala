@@ -25,10 +25,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import doobie.util.Get
 import fs2.Stream
 import fs2.text.utf8Encode
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 
@@ -166,8 +165,6 @@ object FolderMonitoring {
    *   list shredded folders
    * @param readyCheck
    *   config for retry logic
-   * @param loadAuthMethod
-   *   auth method used for load operation
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
    * @param prepareAlertTable
@@ -175,15 +172,15 @@ object FolderMonitoring {
    * @return
    *   potentially empty list of alerts
    */
-  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad, I](
+  def check[F[_]: MonadThrow: BlobStorage: Transaction[*[_], C]: Timer: Logging, C[_]: DAO: Monad: LoadAuthService, I](
     loadFrom: BlobStorage.Folder,
     readyCheck: Config.Retries,
-    loadAuthMethod: LoadAuthMethod,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): F[List[AlertPayload]] = {
     val getBatches = for {
       _ <- prepareAlertTable.traverse(st => DAO[C].executeUpdate(st, DAO.Purpose.NonLoading))
+      loadAuthMethod <- LoadAuthService[C].forFolderMonitoring
       _ <- DAO[C].executeUpdate(FoldersCopy(loadFrom, loadAuthMethod, initQueryResult), DAO.Purpose.NonLoading)
       onlyS3Batches <- DAO[C].executeQueryList[BlobStorage.Folder](FoldersMinusManifest)
     } yield onlyS3Batches
@@ -222,20 +219,19 @@ object FolderMonitoring {
    * provided - just prints a warning. Resulting stream has to be running in background.
    */
   def run[
-    F[_]: Concurrent: Timer: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
-    C[_]: DAO: Monad,
+    F[_]: Concurrent: Timer: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow: ContextShift,
+    C[_]: DAO: LoadAuthService: Monad,
     I
   ](
     foldersCheck: Option[Config.Folders],
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, readyCheck, storageTarget, isBusy, initQueryResult, prepareAlertTable)
+        stream[F, C, I](folders, readyCheck, isBusy, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -249,8 +245,6 @@ object FolderMonitoring {
    *   configuration for folders monitoring
    * @param readyCheck
    *   configuration for target ready check
-   * @param storageTarget
-   *   target storage config
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
    * @param initQueryResult
@@ -259,13 +253,12 @@ object FolderMonitoring {
    *   statements to prepare the alert table ready for the folder monitoring task
    */
   def stream[
-    F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift: LoadAuthService,
-    C[_]: DAO: Monad,
+    F[_]: Transaction[*[_], C]: Concurrent: Timer: BlobStorage: Logging: Monitoring: MonadThrow: ContextShift,
+    C[_]: DAO: LoadAuthService: Monad,
     I
   ](
     folders: Config.Folders,
     readyCheck: Config.Retries,
-    storageTarget: StorageTarget,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
@@ -280,8 +273,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
-                      loadAuth <- LoadAuthService[F].getLoadAuthMethod(storageTarget.foldersLoadAuthMethod)
-                      alerts <- check[F, C, I](outputFolder, readyCheck, loadAuth, initQueryResult, prepareAlertTable)
+                      alerts <- check[F, C, I](outputFolder, readyCheck, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
