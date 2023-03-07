@@ -152,7 +152,8 @@ object LoadAuthService {
                         assumeRoleRequest <- Concurrent[F].delay(
                                                AssumeRoleRequest
                                                  .builder()
-                                                 .durationSeconds(usageDuration.toSeconds.toInt)
+                                                 // 900 is the minimum value accepted by the AssumeRole API
+                                                 .durationSeconds(Math.max(usageDuration.toSeconds.toInt, 900))
                                                  .roleArn(tempCredsConfig.roleArn)
                                                  .roleSessionName(tempCredsConfig.roleSessionName)
                                                  .build()
