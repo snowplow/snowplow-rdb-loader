@@ -74,7 +74,7 @@ limitations under the License.
 [build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
 [build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
 
-[release-image]: https://img.shields.io/badge/release-5.3.1-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-5.3.2-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
