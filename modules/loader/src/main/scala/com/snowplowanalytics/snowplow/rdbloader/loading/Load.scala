@@ -60,6 +60,15 @@ object Load {
       }
   }
 
+  sealed trait LoadResult
+
+  case class LoadSuccess(ingestionTimestamp: Option[Instant]) extends LoadResult
+
+  case class FolderAlreadyLoaded(folder: BlobStorage.Folder) extends LoadResult {
+    def toAlertPayload: AlertPayload =
+      AlertPayload.info("Folder is already loaded", folder)
+  }
+
   /**
    * Process discovered data with specified storage target (load it) The function is responsible for
    * transactional load nature and retries Any failure in transaction or migration results into an
@@ -88,7 +97,7 @@ object Load {
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I]
-  ): F[Either[AlertPayload, Option[Instant]]] =
+  ): F[LoadResult] =
     for {
       _ <- TargetCheck.blockUntilReady[F, C](config.readyCheck)
       migrations <- Migration.build[F, C, I](discovery.discovery, target)
@@ -124,7 +133,7 @@ object Load {
     target: Target[I]
   )(
     inTransactionMigrations: F[Unit]
-  ): F[Either[AlertPayload, Option[Instant]]] =
+  ): F[LoadResult] =
     for {
       _ <- setStage(Stage.ManifestCheck)
       manifestState <- Manifest.get[F](discovery.discovery.base)
@@ -132,9 +141,8 @@ object Load {
                   case Some(entry) =>
                     val message =
                       s"Folder [${entry.meta.base}] is already loaded at ${entry.ingestion}. Aborting the operation, acking the command"
-                    val payload = AlertPayload.info("Folder is already loaded", entry.meta.base).asLeft
                     setStage(Stage.Cancelling("Already loaded")) *>
-                      Logging[F].warning(message).as(payload)
+                      Logging[F].warning(message).as(FolderAlreadyLoaded(entry.meta.base))
                   case None =>
                     val setLoading: String => F[Unit] =
                       table => setStage(Stage.Loading(table))
@@ -146,7 +154,7 @@ object Load {
                       Manifest.add[F](discovery.origin.toManifestItem) *>
                       Manifest
                         .get[F](discovery.discovery.base)
-                        .map(opt => opt.map(_.ingestion).asRight)
+                        .map(opt => LoadSuccess(opt.map(_.ingestion)))
                 }
     } yield result
 
