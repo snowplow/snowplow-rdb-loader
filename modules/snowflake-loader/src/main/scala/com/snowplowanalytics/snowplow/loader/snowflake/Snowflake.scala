@@ -278,7 +278,8 @@ object Snowflake {
                    base, types, shredding_started, shredding_completed,
                    min_collector_tstamp, max_collector_tstamp,
                    compression, processor_artifact, processor_version, count_good
-                   FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base"""
+                   FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base
+                   LIMIT 1"""
               case Statement.AddLoadTstampColumn =>
                 sql"""ALTER TABLE ${Fragment.const0(EventsTable.withSchema(schema))}
                       ADD COLUMN load_tstamp TIMESTAMP NULL"""

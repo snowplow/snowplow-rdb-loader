@@ -102,6 +102,40 @@ class LoadSpec extends Specification {
     "abort the transaction and return alert if the folder already in manifest" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withDuplicateExistingRecord))
+      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
+      implicit val timer: Timer[Pure] = PureTimer.interpreter
+      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
+
+      val expected = List(
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
+        PureTransaction.NoTransactionMessage, // Migration.build
+        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
+
+        PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
+        PureTransaction.CommitMessage
+      )
+
+      val result = Load
+        .load[Pure, Pure, Unit](
+          SpecHelpers.validCliConfig.config,
+          LoadSpec.setStageNoOp,
+          Pure.unit,
+          LoadSpec.dataDiscoveryWithOrigin,
+          (),
+          PureDAO.DummyTarget
+        )
+        .runS
+
+      result.getLog must beEqualTo(expected)
+    }
+
+    // See https://github.com/snowplow/snowplow-rdb-loader/issues/1213
+    "abort the transaction and return alert if duplicate copies of the folder already in manifest" in {
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val timer: Timer[Pure] = PureTimer.interpreter
@@ -203,7 +237,7 @@ class LoadSpec extends Specification {
       def getResult(s: TestState)(statement: Statement): Any =
         statement match {
           case Statement.ManifestGet(Base) =>
-            Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem).some
+            List(Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem))
           case Statement.ReadyCheck => 1
           case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
@@ -275,10 +309,21 @@ object LoadSpec {
       case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
       case Statement.ManifestGet(_) =>
-        Some(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
+        List(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
       case Statement.FoldersMinusManifest => List()
       case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
+    }
+
+  def withDuplicateExistingRecord(s: TestState)(query: Statement): Any =
+    query match {
+      case Statement.ManifestGet(_) =>
+        List(
+          Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem),
+          Manifest.Entry(Instant.ofEpochMilli(1600345399999L), dataDiscoveryWithOrigin.origin.toManifestItem)
+        )
+      case other =>
+        withExistingRecord(s)(other)
     }
 
   val dataDiscoveryWithOrigin = DataDiscovery.WithOrigin(

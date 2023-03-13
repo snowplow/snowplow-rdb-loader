@@ -1,7 +1,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import java.time.Instant
-import cats.{Functor, Monad, MonadError}
+import cats.{Applicative, Functor, Monad, MonadError}
 import cats.implicits._
 import cats.effect.{MonadThrow, Timer}
 import doobie.Read
@@ -82,8 +82,8 @@ object Manifest {
   def add[F[_]: DAO: Functor](item: LoaderMessage.ManifestItem): F[Unit] =
     DAO[F].executeUpdate(Statement.ManifestAdd(item), DAO.Purpose.NonLoading).void
 
-  def get[F[_]: DAO](base: BlobStorage.Folder): F[Option[Entry]] =
-    DAO[F].executeQueryOption[Entry](Statement.ManifestGet(base))(Entry.entryRead)
+  def get[F[_]: DAO: Applicative](base: BlobStorage.Folder): F[Option[Entry]] =
+    DAO[F].executeQueryList[Entry](Statement.ManifestGet(base))(Entry.entryRead).map(_.headOption)
 
   /** Create manifest table */
   def create[F[_]: DAO: Functor, I](target: Target[I]): F[Unit] =
