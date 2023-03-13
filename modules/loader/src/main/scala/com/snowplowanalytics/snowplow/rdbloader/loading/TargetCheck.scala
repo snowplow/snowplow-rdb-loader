@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.loading
 import cats.Applicative
 import cats.effect.{MonadThrow, Timer}
 import cats.implicits._
+import java.sql.SQLException
 
 import retry._
 
@@ -47,7 +48,17 @@ object TargetCheck {
       Logging[F].debug(show"Caught exception during target check: ${e.toString}")
 
   /** Check if error is worth retrying */
-  def isWorth(e: Throwable): Boolean =
-    e.toString.toLowerCase.contains("(700100) connection timeout expired. details: none") ||
-      e.toString.toLowerCase.contains("(500051) error processing query/statement")
+  def isWorth: Throwable => Boolean = {
+    case e: SQLException =>
+      val toSearch = e.getMessage.toLowerCase
+      worthRetrying.exists(s => toSearch.contains(s))
+    case _ => false
+  }
+
+  private def worthRetrying: List[String] = List(
+    "(700100) connection timeout expired. details: none",
+    "(500051) error processing query/statement",
+    "(500593) communication link failure"
+  )
+
 }
