@@ -62,6 +62,13 @@
     #  # List of necessary permissions needs to be given to role specified in the following link:
     #  # https://docs.snowflake.com/en/user-guide/data-load-s3-config-aws-iam-user.html
     #  "roleArn": "arn:aws:iam::123456789:role/role_name"
+    #   
+    #  # If 'TempCreds' load auth method is used, this value will be used as a session duration
+    #  # of temporary credentials used for loading data and folder monitoring.
+    #  # In that case, it can't be greater than maximum session duration
+    #  # of IAM role used for temporary credentials and can't be less than 15 minutes.
+    #  # Optional, default value "2 hours" 
+    #  "credentialsTtl": "2 hours"   
     #}
     # Either "ResumeWarehouse" (the default) or "Select1". The command the loader runs to prepare the JDBC connection.
     "readyCheck": "ResumeWarehouse"

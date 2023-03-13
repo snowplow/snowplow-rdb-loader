@@ -17,13 +17,12 @@ import cats.effect._
 import cats.effect.concurrent.Ref
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{Utils => CloudUtils}
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import software.amazon.awssdk.regions.Region
 import software.amazon.awssdk.services.sts.StsAsyncClient
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest
 
 import java.time.Instant
-import scala.concurrent.duration.FiniteDuration
 
 trait LoadAuthService[F[_]] { self =>
   def forLoadingEvents: F[LoadAuthService.LoadAuthMethod]
@@ -74,7 +73,6 @@ object LoadAuthService {
    */
   def aws[F[_]: Concurrent: ContextShift: Clock](
     region: String,
-    timeouts: Config.Timeouts,
     eventsLoadAuthMethodConfig: StorageTarget.LoadAuthMethod,
     foldersLoadAuthMethodConfig: StorageTarget.LoadAuthMethod
   ): Resource[F, LoadAuthService[F]] =
@@ -91,8 +89,8 @@ object LoadAuthService {
                                   .build()
                               )
                             )
-          eventsAuthProvider <- Resource.eval(awsCreds(stsAsyncClient, timeouts.loading, eventsLoadAuthMethodConfig))
-          foldersAuthProvider <- Resource.eval(awsCreds(stsAsyncClient, timeouts.nonLoading, foldersLoadAuthMethodConfig))
+          eventsAuthProvider <- Resource.eval(awsCreds(stsAsyncClient, eventsLoadAuthMethodConfig))
+          foldersAuthProvider <- Resource.eval(awsCreds(stsAsyncClient, foldersLoadAuthMethodConfig))
         } yield new LoadAuthService[F] {
           override def forLoadingEvents: F[LoadAuthMethod] =
             eventsAuthProvider.get
@@ -103,7 +101,6 @@ object LoadAuthService {
 
   private def awsCreds[F[_]: Concurrent: ContextShift: Clock](
     client: StsAsyncClient,
-    usageDuration: FiniteDuration,
     loadAuthConfig: StorageTarget.LoadAuthMethod
   ): F[LoadAuthMethodProvider[F]] =
     loadAuthConfig match {
@@ -114,7 +111,7 @@ object LoadAuthService {
           }
         }
       case tc: StorageTarget.LoadAuthMethod.TempCreds =>
-        awsTempCreds(client, usageDuration, tc)
+        awsTempCreds(client, tc)
     }
 
   /**
@@ -126,15 +123,11 @@ object LoadAuthService {
    *
    * @param client
    *   Used to fetch new credentials
-   * @param usageDuration
-   *   How long these credentials must be valid for. If cached credentials do not cover this
-   *   duration, then new creds are needed.
    * @param tempCredsConfig
    *   Configuration required for the STS request.
    */
   private def awsTempCreds[F[_]: Concurrent: ContextShift: Clock](
     client: StsAsyncClient,
-    usageDuration: FiniteDuration,
     tempCredsConfig: StorageTarget.LoadAuthMethod.TempCreds
   ): F[LoadAuthMethodProvider[F]] =
     for {
@@ -145,15 +138,14 @@ object LoadAuthService {
           opt <- ref.get
           now <- Clock[F].instantNow
           next <- opt match {
-                    case Some(tc) if tc.expires.isAfter(now.plusMillis(usageDuration.toMillis)) =>
+                    case Some(tc) if tc.expires.isAfter(now.plusMillis(tempCredsConfig.credentialsTtl.toMillis)) =>
                       Concurrent[F].pure(tc)
                     case _ =>
                       for {
                         assumeRoleRequest <- Concurrent[F].delay(
                                                AssumeRoleRequest
                                                  .builder()
-                                                 // 900 is the minimum value accepted by the AssumeRole API
-                                                 .durationSeconds(Math.max(usageDuration.toSeconds.toInt, 900))
+                                                 .durationSeconds(tempCredsConfig.credentialsTtl.toSeconds.toInt)
                                                  .roleArn(tempCredsConfig.roleArn)
                                                  .roleSessionName(tempCredsConfig.roleSessionName)
                                                  .build()

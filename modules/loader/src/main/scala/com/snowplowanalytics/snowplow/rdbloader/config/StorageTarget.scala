@@ -379,7 +379,11 @@ object StorageTarget {
 
   object LoadAuthMethod {
     final case object NoCreds extends LoadAuthMethod
-    final case class TempCreds(roleArn: String, roleSessionName: String) extends LoadAuthMethod
+    final case class TempCreds(
+      roleArn: String,
+      roleSessionName: String,
+      credentialsTtl: FiniteDuration
+    ) extends LoadAuthMethod
   }
 
   /**

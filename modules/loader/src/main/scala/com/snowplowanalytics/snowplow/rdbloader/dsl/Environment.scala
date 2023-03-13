@@ -159,7 +159,7 @@ object Environment {
             )
           loadAuthService <-
             LoadAuthService
-              .aws[F](c.region.name, config.timeouts, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
+              .aws[F](c.region.name, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore <- EC2ParameterStore.secretStore[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
