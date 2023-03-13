@@ -167,7 +167,8 @@ object Databricks {
                       base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp,
                       compression, processor_artifact, processor_version, count_good
-                      FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base"""
+                      FROM ${Fragment.const0(qualify(Manifest.Name))} WHERE base = $base
+                      LIMIT 1"""
               case Statement.AddLoadTstampColumn =>
                 throw new IllegalStateException("Databricks Loader does not support load_tstamp column")
               case Statement.CreateTable(ddl) =>
