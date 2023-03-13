@@ -194,7 +194,7 @@
     # How long loading (actual COPY statements) can take before considering Snowflake unhealthy
     # Without any progress (i.e. different subfolder) within this period, loader
     # will abort the transaction
-    "loading": "1 hour",
+    "loading": "45 minutes",
 
     # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
     # before considering Snowflake unhealthy

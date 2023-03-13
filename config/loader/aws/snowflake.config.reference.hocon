@@ -62,6 +62,12 @@
     #  # List of necessary permissions needs to be given to role specified in the following link:
     #  # https://docs.snowflake.com/en/user-guide/data-load-s3-config-aws-iam-user.html
     #  "roleArn": "arn:aws:iam::123456789:role/role_name"
+    #   
+    #  # If 'TempCreds' load auth method is used, this value will be used as a session duration
+    #  # of temporary credentials used for loading data and folder monitoring.
+    #  # Because of role chaining, it can't be greater than 1 hour and less than 15 minutes.
+    #  # Optional, default value "1 hour" 
+    #  "credentialsTtl": "1 hour"
     #}
     # Either "ResumeWarehouse" (the default) or "Select1". The command the loader runs to prepare the JDBC connection.
     "readyCheck": "ResumeWarehouse"
@@ -220,7 +226,7 @@
     # How long loading (actual COPY statements) can take before considering Redshift unhealthy
     # Without any progress (i.e. different subfolder) within this period, loader
     # will abort the transaction
-    "loading": "1 hour",
+    "loading": "45 minutes",
 
     # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
     # before considering Redshift unhealthy

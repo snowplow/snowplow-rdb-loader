@@ -190,7 +190,7 @@
     # If 'TempCreds' load auth method is used, this value will be used as session duration
     # of temporary credentials. In that case, it can't be greater than maximum session duration
     # of IAM role used for temporary credentials
-    "loading": "1 hour",
+    "loading": "45 minutes",
 
     # How long non-loading steps (such as ALTER TABLE or metadata queries) can take
     # before considering Redshift unhealthy
