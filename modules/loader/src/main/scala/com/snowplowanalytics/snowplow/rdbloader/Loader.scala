@@ -203,18 +203,17 @@ object Loader {
         result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
-               case Right(ingested) =>
+               case Load.LoadSuccess(ingested) =>
                  val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].instantNow
                  for {
                    loaded <- ingested.map(Monad[F].pure).getOrElse(now)
                    _ <- Load.congratulate[F](attempts, start, loaded, discovery.origin)
-                   _ <- control.removeFailure(folder)
                    _ <- control.incrementLoaded
                  } yield ()
-               case Left(alert) =>
-                 Monitoring[F].alert(alert)
-
+               case fal: Load.FolderAlreadyLoaded =>
+                 Monitoring[F].alert(fal.toAlertPayload)
              }
+        _ <- control.removeFailure(folder)
       } yield ()
     }
 
