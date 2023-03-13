@@ -53,7 +53,7 @@ object PureDAO {
       case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
       case Statement.TableExists(_) => false
       case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_) => None
+      case Statement.ManifestGet(_) => List()
       case Statement.FoldersMinusManifest => List()
       case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
@@ -81,8 +81,10 @@ object PureDAO {
     def executeQueryList[A](query: Statement)(implicit A: Read[A]): Pure[List[A]] =
       results.executeQuery.asInstanceOf[Statement => Pure[List[A]]](query)
 
+    /*
     def executeQueryOption[A](query: Statement)(implicit A: Read[A]): Pure[Option[A]] =
       results.executeQuery.asInstanceOf[Statement => Pure[Option[A]]](query)
+     */
   }
 
   val DummyTarget = new Target[Unit] {

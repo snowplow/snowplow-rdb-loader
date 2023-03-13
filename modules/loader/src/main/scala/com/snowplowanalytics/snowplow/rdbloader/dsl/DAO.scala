@@ -35,9 +35,6 @@ trait DAO[C[_]] {
 
   /** Execute query and parse results into 0 or more `A`s */
   def executeQueryList[A](query: Statement)(implicit A: Read[A]): C[List[A]]
-
-  /** Execute query and parse results into 0 or one `A` */
-  def executeQueryOption[A](query: Statement)(implicit A: Read[A]): C[Option[A]]
 }
 
 object DAO {
@@ -72,11 +69,6 @@ object DAO {
     def executeQueryList[A](query: Statement)(implicit A: Read[A]): ConnectionIO[List[A]] =
       dbTarget.toFragment(query).execWith {
         HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.build))
-      }
-
-    def executeQueryOption[A](query: Statement)(implicit A: Read[A]): ConnectionIO[Option[A]] =
-      dbTarget.toFragment(query).execWith {
-        HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.getOption))
       }
   }
 }
