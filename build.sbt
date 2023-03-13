@@ -11,6 +11,18 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 
+/**
+ * Inspired by the same issue in the Iglu Server, see commit https://github.com/snowplow/iglu-server/pull/128/commits/d4a0940c12181dd40bc5cdc2249f2c84c5296353
+ * 
+ * Currently we have some libs that depend on circe 0.14.x and some that depend on 0.13.x.
+ * These reported binary incompatibilities can only be removed once we have bumped cats-effect to version 3.
+ * For now, we ignore the reported binary incompatibilities because testing shows it is safe.
+ */
+ThisBuild / libraryDependencySchemes ++= Seq(
+  "io.circe" %% "circe-core" % "always",
+  "io.circe" %% "circe-generic" % "always",
+)
+
 lazy val root = project.in(file("."))
   .aggregate(
     aws,
