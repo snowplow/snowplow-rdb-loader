@@ -103,8 +103,6 @@ object Transformed {
    *   Iglu Resolver
    * @param isTabular
    *   predicate to decide whether output should be JSON or TSV
-   * @param atomicLengths
-   *   a map to trim atomic event columns
    * @param event
    *   enriched event
    * @return
@@ -115,7 +113,6 @@ object Transformed {
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     isTabular: SchemaKey => Boolean,
-    atomicLengths: Map[String, Int],
     processor: Processor
   )(
     event: Event
@@ -128,7 +125,7 @@ object Transformed {
       }
       .leftMap(error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)))
       .map { shredded =>
-        val data = EventUtils.alterEnrichedEvent(event, atomicLengths)
+        val data = EventUtils.alterEnrichedEvent(event)
         val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
         atomic :: shredded
       }

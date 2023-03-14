@@ -21,6 +21,8 @@
 ThisBuild / libraryDependencySchemes ++= Seq(
   "io.circe" %% "circe-core" % "always",
   "io.circe" %% "circe-generic" % "always",
+  "io.circe" %% "circe-parser" % "always",
+  "io.circe" %% "circe-jawn" % "always",
 )
 
 lazy val root = project.in(file("."))

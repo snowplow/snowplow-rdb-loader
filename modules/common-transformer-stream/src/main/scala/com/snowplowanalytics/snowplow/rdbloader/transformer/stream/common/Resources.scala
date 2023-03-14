@@ -36,7 +36,7 @@ import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.BadSink
@@ -45,7 +45,6 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.source
 case class Resources[F[_], C](
   igluResolver: Resolver[F],
   propertiesCache: PropertiesCache[F],
-  atomicLengths: Map[String, Int],
   producer: Queue.Producer[F],
   instanceId: String,
   blocker: Blocker,
@@ -79,7 +78,6 @@ object Resources {
       resolverConfig <- mkResolverConfig(igluConfig)
       resolver <- mkResolver(resolverConfig)
       propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
-      atomicLengths <- mkAtomicFieldLengthLimit(resolver)
       instanceId <- mkTransformerInstanceId
       blocker <- Blocker[F]
       metrics <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
@@ -100,7 +98,6 @@ object Resources {
     } yield Resources(
       resolver,
       propertiesCache,
-      atomicLengths,
       producer,
       instanceId.toString,
       blocker,
@@ -142,13 +139,6 @@ object Resources {
           case Left(error) => Sync[F].raiseError[Resolver[F]](error)
         }
     }
-
-  private def mkAtomicFieldLengthLimit[F[_]: Sync: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] = Resource.eval {
-    EventUtils.getAtomicLengths(igluResolver).flatMap {
-      case Right(valid) => Sync[F].pure(valid)
-      case Left(error) => Sync[F].raiseError[Map[String, Int]](error)
-    }
-  }
 
   private def mkTransformerInstanceId[F[_]: Sync] =
     Resource

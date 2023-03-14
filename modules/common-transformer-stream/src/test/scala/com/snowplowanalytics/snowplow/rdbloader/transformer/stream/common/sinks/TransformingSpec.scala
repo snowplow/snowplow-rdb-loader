@@ -125,7 +125,6 @@ object TransformingSpec {
   val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
 
   val defaultIgluResolver: Resolver[IO] = Resolver(List(Registry.IgluCentral), None)
-  val defaultAtomicLengths: Map[String, Int] = Map.empty
   val wideRowFormat = TransformerConfig.Formats.WideRow.JSON
   val shredFormat = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
   val testBlocker = Blocker.liftExecutionContext(concurrent.ExecutionContext.global)
@@ -137,7 +136,7 @@ object TransformingSpec {
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, defaultAtomicLengths, TestProcessor)
+        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, TestProcessor)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
     }
@@ -161,7 +160,7 @@ object TransformingSpec {
 
   def parsedEventStream(resourcePath: String): Stream[IO, ParsedC[Unit]] =
     fileStream(resourcePath)
-      .map(Processing.parseEvent(_, TestProcessor))
+      .map(Processing.parseEvent(_, TestProcessor, validateFieldLengths = false))
       .map(p => (p, ()))
 
   def getResourceLines(resourcePath: String): List[String] =

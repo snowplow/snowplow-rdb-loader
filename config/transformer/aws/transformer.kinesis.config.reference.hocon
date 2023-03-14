@@ -231,5 +231,9 @@
     # Read/write in the legacy version 1 shredding complete message format.
     # This should be enabled during upgrade from older versions of the loader.
     "legacyMessageFormat": false
+    
+    # When enabled, event's atomic fields are validated (based on the atomic JSON schema) before transformation.
+    # Optional, default "false".
+    "validateFieldLengths": false    
   }
 }

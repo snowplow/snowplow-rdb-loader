@@ -85,11 +85,12 @@ class ShredJob[T](
     val outFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
     transformer.register(sc)
     // Enriched TSV lines along with their shredded components
+
     val common = sc
       .textFile(inputFolder)
       .map { line =>
         for {
-          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line, config.featureFlags.validateFieldLengths)
           _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
         } yield event
       }
@@ -240,7 +241,7 @@ class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends S
       .textFile(inputFolder)
       .map { line =>
         for {
-          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line, config.featureFlags.validateFieldLengths)
           _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
         } yield event
       }
@@ -278,7 +279,6 @@ object ShredJob {
       .parseConfig(igluConfig)
       .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
     val s3Client = Cloud.createS3Client(config.output.region)
-    val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(resolverConfig)).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(config.input.toString)
     val shreddedFolder = Folder.coerce(config.output.path.toString)
@@ -308,7 +308,7 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths, maxRecordsPerFile = 0)
+        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
           val resolver = IgluSingleton.get(resolverConfig)

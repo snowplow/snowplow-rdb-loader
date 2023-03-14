@@ -29,5 +29,5 @@ object InputEventsProvider {
       .resourceFileStream(testBlocker, inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines
-      .map(f => (Processing.parseEvent(f, TestProcessor), ()))
+      .map(f => (Processing.parseEvent(f, TestProcessor, validateFieldLengths = false), ()))
 }

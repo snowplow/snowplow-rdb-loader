@@ -57,7 +57,9 @@ object Processing {
     config: Config,
     processor: Processor
   ): Stream[F, Unit] = {
-    val source = resources.inputStream.read.map(m => (parseEvent(m.content, processor), resources.checkpointer(m)))
+    val source = resources.inputStream.read.map(m =>
+      (parseEvent(m.content, processor, config.featureFlags.validateFieldLengths), resources.checkpointer(m))
+    )
     runFromSource(source, resources, config, processor)
   }
 
@@ -69,7 +71,7 @@ object Processing {
   ): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor)
+        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, processor)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
@@ -246,8 +248,12 @@ object Processing {
       metrics.goodCount(good.size) *> metrics.badCount(bad.size)
     }
 
-  def parseEvent(record: String, processor: Processor): Parsed =
-    Event.parse(record).toEither.leftMap { error =>
+  def parseEvent(
+    record: String,
+    processor: Processor,
+    validateFieldLengths: Boolean
+  ): Parsed =
+    Event.parse(record, validateFieldLengths).toEither.leftMap { error =>
       BadRow.LoaderParsingError(processor, error, Payload.RawPayload(record))
     }
 
