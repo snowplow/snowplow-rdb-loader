@@ -148,7 +148,8 @@ object TransformerConfig {
   final case class FeatureFlags(
     legacyMessageFormat: Boolean,
     sparkCacheEnabled: Option[Boolean],
-    enableMaxRecordsPerFile: Boolean
+    enableMaxRecordsPerFile: Boolean,
+    truncateAtomicFields: Boolean
   )
 
   object FeatureFlags {

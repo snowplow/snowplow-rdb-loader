@@ -71,7 +71,6 @@ object Transformer {
   case class ShredTransformer(
     resolverConfig: ResolverConfig,
     formats: Formats.Shred,
-    atomicLengths: Map[String, Int],
     maxRecordsPerFile: Long
   ) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
@@ -95,7 +94,6 @@ object Transformer {
           IgluSingleton.get(resolverConfig),
           PropertiesCacheSingleton.get(resolverConfig),
           isTabular,
-          atomicLengths,
           ShredJob.BadRowsProcessor
         )(event)
         .value match {
