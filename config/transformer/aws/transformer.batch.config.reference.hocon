@@ -152,6 +152,9 @@
     # When enables `maxRecordsPerFile` configuration parameter is going to be used
     "enableMaxRecordsPerFile": false
     
+    # When enabled, event's atomic fields are truncated (based on the length limits from the atomic JSON schema) before transformation.
+    # Optional, default "false".
+    "truncateAtomicFields": false
   }
 
   # Observability and reporting options

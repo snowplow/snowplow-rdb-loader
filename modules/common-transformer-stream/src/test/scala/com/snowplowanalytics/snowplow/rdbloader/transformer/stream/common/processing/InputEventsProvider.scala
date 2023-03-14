@@ -15,6 +15,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
 import cats.effect.{ContextShift, IO}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.FileUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.TransformingSpec.testBlocker
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.ParsedC
@@ -29,5 +30,5 @@ object InputEventsProvider {
       .resourceFileStream(testBlocker, inputEventsPath)
       .filter(_.nonEmpty) // ignore empty lines
       .filter(!_.startsWith("//")) // ignore comment-like lines
-      .map(f => (Processing.parseEvent(f, TestProcessor), ()))
+      .map(f => (Processing.parseEvent(f, TestProcessor, Event.parser()), ()))
 }

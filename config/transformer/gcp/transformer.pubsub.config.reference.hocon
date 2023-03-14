@@ -139,5 +139,9 @@
     # Read/write in the legacy version 1 shredding complete message format.
     # This should be enabled during upgrade from older versions of the loader.
     "legacyMessageFormat": false
+  
+    # When enabled, event's atomic fields are truncated (based on the length limits from the atomic JSON schema) before transformation.
+    # Optional, default "false".
+    "truncateAtomicFields": false
   }
 }

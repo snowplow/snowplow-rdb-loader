@@ -16,6 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import cats.implicits._
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -25,6 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{A
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, PartitionDataFilter, WiderowFileSink}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.EventParserSingleton
 import io.circe.Json
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
@@ -68,7 +70,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.Buil
 class ShredJob[T](
   @transient val spark: SparkSession,
   transformer: Transformer[T],
-  config: Config
+  config: Config,
+  resolverConfig: ResolverConfig
 ) extends Serializable {
   @transient private val sc: SparkContext = spark.sparkContext
 
@@ -85,11 +88,12 @@ class ShredJob[T](
     val outFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
     transformer.register(sc)
     // Enriched TSV lines along with their shredded components
+
     val common = sc
       .textFile(inputFolder)
       .map { line =>
         for {
-          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line, EventParserSingleton.get(config, resolverConfig))
           _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
         } yield event
       }
@@ -240,7 +244,7 @@ class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends S
       .textFile(inputFolder)
       .map { line =>
         for {
-          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line)
+          event <- EventUtils.parseEvent(ShredJob.BadRowsProcessor, line, Event.parser())
           _ <- ShredderValidations(ShredJob.BadRowsProcessor, event, config.validations).toLeft(())
         } yield event
       }
@@ -278,7 +282,6 @@ object ShredJob {
       .parseConfig(igluConfig)
       .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
     val s3Client = Cloud.createS3Client(config.output.region)
-    val atomicLengths = EventUtils.getAtomicLengths(IgluSingleton.get(resolverConfig)).fold(err => throw err, identity)
 
     val enrichedFolder = Folder.coerce(config.input.toString)
     val shreddedFolder = Folder.coerce(config.output.path.toString)
@@ -308,7 +311,7 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, atomicLengths, maxRecordsPerFile = 0)
+        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
           val resolver = IgluSingleton.get(resolverConfig)
@@ -322,7 +325,7 @@ object ShredJob {
 
           Transformer.WideRowParquetTransformer(allFields, schema)
       }
-      val job = new ShredJob(spark, transformer, config)
+      val job = new ShredJob(spark, transformer, config, resolverConfig)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
     }

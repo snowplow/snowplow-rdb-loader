@@ -20,14 +20,14 @@ import java.time.format.DateTimeParseException
 
 import io.circe.Json
 import cats.Monad
-import cats.data.{EitherT, NonEmptyList, Validated}
+import cats.data.{EitherT, NonEmptyList}
 import cats.implicits._
 
 import cats.effect.Clock
 
 import com.snowplowanalytics.iglu.core._
 
-import com.snowplowanalytics.iglu.client.{Client, ClientError, Resolver}
+import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
 import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
@@ -39,8 +39,11 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Failure, FailureDetails, 
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import Flattening.NullCharacter
 import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.snowplow.analytics.scalasdk.decode.TSVParser
 
 object EventUtils {
+
+  type EventParser = TSVParser[Event]
 
   /**
    * Pipeline the loading of raw lines into shredded JSONs.
@@ -52,8 +55,12 @@ object EventUtils {
    *   a Validation boxing either a Nel of ProcessingMessages on Failure, or a (possibly empty) List
    *   of JSON instances + schema on Success
    */
-  def parseEvent[F[_]: Clock: RegistryLookup: Monad](processor: Processor, line: String): F[Either[BadRow, Event]] =
-    Monad[F].pure(Event.parse(line).toEither.leftMap(parsingBadRow(line, processor)))
+  def parseEvent[F[_]: Clock: RegistryLookup: Monad](
+    processor: Processor,
+    line: String,
+    parser: EventParser
+  ): F[Either[BadRow, Event]] =
+    Monad[F].pure(parser.parse(line).toEither.leftMap(parsingBadRow(line, processor)))
 
   /**
    * Build a map of columnName -> maxLength, according to `schema`. Non-string values are not
@@ -85,55 +92,20 @@ object EventUtils {
    * @return
    *   The original line with the proper fields removed respecting the Postgres constaints
    */
-  def alterEnrichedEvent[F[_]: Clock: RegistryLookup: Monad](originalLine: Event, lengths: Map[String, Int]): String = {
+  def alterEnrichedEvent[F[_]: Clock: RegistryLookup: Monad](originalLine: Event): String = {
     def tranformDate(s: String): String =
       Either.catchOnly[DateTimeParseException](Instant.parse(s)).map(_.formatted).getOrElse(s)
-    def truncate(key: String, value: String): String =
-      lengths.get(key) match {
-        case Some(len) => value.take(len)
-        case None => value
-      }
 
     val tabular = originalLine.ordered.flatMap {
       case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
       case (key, Some(value)) if key.endsWith("_tstamp") =>
         Some(value.fold("", transformBool, _ => value.show, tranformDate, _ => value.noSpaces, _ => value.noSpaces))
-      case (key, Some(value)) =>
-        Some(value.fold("", transformBool, _ => truncate(key, value.show), identity, _ => value.noSpaces, _ => value.noSpaces))
+      case (_, Some(value)) =>
+        Some(value.fold("", transformBool, _ => value.show, identity, _ => value.noSpaces, _ => value.noSpaces))
       case (_, None) => Some("")
     }
 
     tabular.mkString("\t")
-  }
-
-  def validateEntities[F[_]: Clock: RegistryLookup: Monad](
-    processor: Processor,
-    client: Client[F, Json],
-    event: Event
-  ): F[Either[BadRow, Unit]] =
-    getEntities(event)
-      .traverse { entity =>
-        client.check(entity).value.map {
-          case Right(_) => ().validNel
-          case Left(x) => (entity.schema, x).invalidNel
-        }
-      }
-      .map {
-        _.sequence_ match {
-          case Validated.Valid(_) => ().asRight
-          case Validated.Invalid(errors) => validationBadRow(event, processor, errors).asLeft
-        }
-      }
-
-  def validationBadRow(
-    event: Event,
-    processor: Processor,
-    errors: NonEmptyList[(SchemaKey, ClientError)]
-  ): BadRow = {
-    val failureInfo = errors.map(FailureDetails.LoaderIgluError.IgluError.tupled)
-    val failure = Failure.LoaderIgluErrors(failureInfo)
-    val payload = Payload.LoaderPayload(event)
-    BadRow.LoaderIgluError(processor, failure, payload)
   }
 
   def shreddingBadRow(event: Event, processor: Processor)(errors: NonEmptyList[FailureDetails.LoaderIgluError]): BadRow = {
@@ -211,7 +183,6 @@ object EventUtils {
     if (s == NullCharacter) "\\\\N"
     else s.replace('\t', ' ').replace('\n', ' ')
 
-  /** Get maximum length for a string value */
   private def getLength(schema: Schema): Option[Int] =
     schema.maxLength.map(_.value.toInt)
 }

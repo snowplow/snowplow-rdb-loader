@@ -34,6 +34,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.{Compression, Formats}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
@@ -57,7 +58,7 @@ object Processing {
     config: Config,
     processor: Processor
   ): Stream[F, Unit] = {
-    val source = resources.inputStream.read.map(m => (parseEvent(m.content, processor), resources.checkpointer(m)))
+    val source = resources.inputStream.read.map(m => (parseEvent(m.content, processor, resources.eventParser), resources.checkpointer(m)))
     runFromSource(source, resources, config, processor)
   }
 
@@ -69,7 +70,7 @@ object Processing {
   ): Stream[F, Unit] = {
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, resources.atomicLengths, processor)
+        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, processor)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
@@ -246,8 +247,12 @@ object Processing {
       metrics.goodCount(good.size) *> metrics.badCount(bad.size)
     }
 
-  def parseEvent(record: String, processor: Processor): Parsed =
-    Event.parse(record).toEither.leftMap { error =>
+  def parseEvent(
+    record: String,
+    processor: Processor,
+    eventParser: EventParser
+  ): Parsed =
+    eventParser.parse(record).toEither.leftMap { error =>
       BadRow.LoaderParsingError(processor, error, Payload.RawPayload(record))
     }
 

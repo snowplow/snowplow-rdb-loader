@@ -47,7 +47,6 @@ object Transformer {
     igluResolver: Resolver[F],
     propertiesCache: PropertiesCache[F],
     formats: Formats.Shred,
-    atomicLengths: Map[String, Int],
     processor: Processor
   ) extends Transformer[F] {
 
@@ -60,7 +59,7 @@ object Transformer {
       else TypesInfo.Shredded.ShreddedFormat.JSON
 
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
-      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, atomicLengths, processor)(event)
+      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, processor)(event)
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
