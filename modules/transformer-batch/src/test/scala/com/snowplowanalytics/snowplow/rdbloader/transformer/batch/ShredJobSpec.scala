@@ -447,7 +447,7 @@ object ShredJobSpec {
       Config.Monitoring(None),
       deduplication,
       Config.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false, None, false),
+      TransformerConfig.FeatureFlags(false, None, false, false),
       TransformerConfig.Validations(None)
     )
   }
@@ -503,7 +503,7 @@ trait ShredJobSpec extends SparkSpec {
           .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
 
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, Map.empty, 0)
+          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, 0)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
             val resolver = IgluSingleton.get(resolverConfig)
@@ -515,7 +515,7 @@ trait ShredJobSpec extends SparkSpec {
 
             Transformer.WideRowParquetTransformer(allFields, schema)
         }
-        val job = new ShredJob(spark, transformer, cli.config)
+        val job = new ShredJob(spark, transformer, cli.config, resolverConfig)
         val result = job.run("", dedupeConfig)
         deleteRecursively(new File(cli.config.input))
         result

@@ -33,9 +33,11 @@ import com.snowplowanalytics.iglu.client.resolver.{InitListCache, InitSchemaCach
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
@@ -45,7 +47,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.source
 case class Resources[F[_], C](
   igluResolver: Resolver[F],
   propertiesCache: PropertiesCache[F],
-  atomicLengths: Map[String, Int],
+  eventParser: EventParser,
   producer: Queue.Producer[F],
   instanceId: String,
   blocker: Blocker,
@@ -79,7 +81,7 @@ object Resources {
       resolverConfig <- mkResolverConfig(igluConfig)
       resolver <- mkResolver(resolverConfig)
       propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
-      atomicLengths <- mkAtomicFieldLengthLimit(resolver)
+      eventParser <- mkEventParser(resolver, config)
       instanceId <- mkTransformerInstanceId
       blocker <- Blocker[F]
       metrics <- Resource.eval(Metrics.build[F](blocker, config.monitoring.metrics))
@@ -100,7 +102,7 @@ object Resources {
     } yield Resources(
       resolver,
       propertiesCache,
-      atomicLengths,
+      eventParser,
       producer,
       instanceId.toString,
       blocker,
@@ -142,13 +144,18 @@ object Resources {
           case Left(error) => Sync[F].raiseError[Resolver[F]](error)
         }
     }
-
-  private def mkAtomicFieldLengthLimit[F[_]: Sync: Clock](igluResolver: Resolver[F]): Resource[F, Map[String, Int]] = Resource.eval {
-    EventUtils.getAtomicLengths(igluResolver).flatMap {
-      case Right(valid) => Sync[F].pure(valid)
-      case Left(error) => Sync[F].raiseError[Map[String, Int]](error)
+  private def mkEventParser[F[_]: Sync: Clock](igluResolver: Resolver[F], config: Config): Resource[F, EventParser] = Resource.eval {
+    mkAtomicLengths(igluResolver, config).flatMap {
+      case Right(atomicLengths) => Sync[F].pure(Event.parser(atomicLengths))
+      case Left(error) => Sync[F].raiseError[EventParser](error)
     }
   }
+  private def mkAtomicLengths[F[_]: Sync: Clock](igluResolver: Resolver[F], config: Config): F[Either[RuntimeException, Map[String, Int]]] =
+    if (config.featureFlags.truncateAtomicFields) {
+      EventUtils.getAtomicLengths(igluResolver)
+    } else {
+      Sync[F].pure(Right(Map.empty[String, Int]))
+    }
 
   private def mkTransformerInstanceId[F[_]: Sync] =
     Resource

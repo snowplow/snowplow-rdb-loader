@@ -24,10 +24,12 @@ import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.schemaddl.Properties
 
 import com.snowplowanalytics.lrumap.CreateLruMap
-
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
-
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common._
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -109,4 +111,26 @@ object singleton {
       instance
     }
   }
+
+  object EventParserSingleton {
+    @volatile private var instance: EventParser = _
+
+    def get(config: Config, resolverConfig: ResolverConfig): EventParser = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            val atomicLengths =
+              if (config.featureFlags.truncateAtomicFields) {
+                EventUtils.getAtomicLengths(IgluSingleton.get(resolverConfig)).fold(err => throw err, identity)
+              } else {
+                Map.empty[String, Int]
+              }
+            instance = Event.parser(atomicLengths)
+          }
+        }
+      }
+      instance
+    }
+  }
+
 }
