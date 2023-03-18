@@ -28,6 +28,7 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.snowplow.scalatracker.{Emitter, Tracker, Tracking}
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.Http4sEmitter
+import com.snowplowanalytics.snowplow.rdbloader.AlertableFatalException
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -113,8 +114,8 @@ object Monitoring {
     def warn(message: String, folder: BlobStorage.Folder): AlertPayload =
       AlertPayload(Application, Some(folder), Severity.Warning, message, Map.empty)
 
-    def error(message: String): AlertPayload =
-      AlertPayload(Application, None, Severity.Error, message, Map.empty)
+    def error(exception: AlertableFatalException): AlertPayload =
+      AlertPayload(Application, None, Severity.Error, exception.alertMessage, Map.empty)
   }
 
   final case class SuccessPayload(
@@ -179,7 +180,11 @@ object Monitoring {
                   response.as[String].flatMap(body => Logging[F].error(s"Webhook ${webhook.endpoint} returned non-2xx response:\n$body"))
               }
               .handleErrorWith { e =>
-                Logging[F].error(e)(s"Webhook ${webhook.endpoint} resulted in exception without a response")
+                Logging[F].logThrowable(
+                  s"Webhook ${webhook.endpoint} resulted in exception without a response",
+                  e,
+                  Logging.Intention.CatchAndRecover
+                )
               }
             Some(req)
           case None =>

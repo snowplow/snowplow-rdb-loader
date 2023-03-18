@@ -21,8 +21,7 @@ import retry.Sleep
 // This project
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Control, Manifest, Migration, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{Control, ManagedTransaction, Manifest, Migration, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Monitoring, Transaction}
@@ -74,8 +73,8 @@ object Load {
    * exception in `F` context The only failure that the function silently handles is duplicated dir,
    * in which case left AlertPayload is returned
    *
-   * @param config
-   *   RDB Loader app configuration
+   * @param txnConfig
+   *   Configuration for retries and target check
    * @param setStage
    *   function setting a stage in global state
    * @param incrementAttempt
@@ -90,20 +89,24 @@ object Load {
    *   either alert payload in case of duplicate event or ingestion timestamp in case of success
    */
   def load[F[_]: MonadThrow: Logging: Iglu: Sleep: Transaction[*[_], C], C[_]: MonadThrow: Logging: LoadAuthService: DAO, I](
-    config: Config[StorageTarget],
+    txnConfig: ManagedTransaction.TxnConfig,
     setStage: Stage => C[Unit],
-    incrementAttempt: F[Unit],
+    incrementAttempt: C[Unit],
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I]
   ): F[LoadResult] =
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](config.readyCheck)
-      migrations <- Migration.build[F, C, I](discovery.discovery, target)
-      _ <- Transaction[F, C].run(setStage(Stage.MigrationPre))
-      _ <- migrations.preTransaction.traverse_(Transaction[F, C].run_)
-      transaction = getTransaction[C, I](setStage, discovery, initQueryResult, target)(migrations.inTransaction)
-      result <- Retry.retryLoad(config.retries, incrementAttempt, Transaction[F, C].transact(transaction))
+      migrations <- Migration.build[F, C, I](discovery.discovery, target, txnConfig)
+      _ <- ManagedTransaction.run[F, C](txnConfig, "pre-transaction migrations") {
+             getPreTransaction[C](setStage, migrations.preTransaction)
+           }
+      result <- ManagedTransaction.transact[F, C](txnConfig, show"loading batch ${discovery.discovery.base}") {
+                  getTransaction[C, I](setStage, discovery, initQueryResult, target)(migrations.inTransaction)
+                    .onError { case _: Throwable =>
+                      incrementAttempt
+                    }
+                }
     } yield result
 
   /**
@@ -156,6 +159,24 @@ object Load {
                         .map(opt => LoadSuccess(opt.map(_.ingestion)))
                 }
     } yield result
+
+  val awsColumnResizeError: String =
+    raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different; - SqlState: 0A000"""
+
+  def getPreTransaction[C[_]: Logging: MonadThrow: DAO](
+    setStage: Stage => C[Unit],
+    preTransactionMigrations: List[C[Unit]]
+  ): C[Unit] = for {
+    _ <- setStage(Stage.MigrationPre)
+    _ <- preTransactionMigrations.map { io =>
+           io.recoverWith {
+             // If premigration was successful, but migration failed. It would leave the columns resized.
+             // This recovery makes it so resizing error would be ignored.
+             // Note: AWS will return 500310 error code other SQL errors (i.e. COPY errors), don't use for pattern matching.
+             case e if e.getMessage.matches(awsColumnResizeError) => ().pure[C]
+           }
+         }.sequence_
+  } yield ()
 
   /**
    * Run loading actions for atomic and shredded data

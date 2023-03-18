@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-import cats.{Applicative, Apply, Monad, MonadThrow}
+import cats.{Applicative, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect.{Async, Clock}
 import retry._
@@ -22,7 +22,15 @@ import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
-import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Control => DbControl, HealthCheck, Manifest, Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{
+  AtomicColumns,
+  Control => DbControl,
+  HealthCheck,
+  ManagedTransaction,
+  Manifest,
+  Statement,
+  Target
+}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{
   Cache,
@@ -36,8 +44,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{
   VacuumScheduling
 }
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
-import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Retry, Stage, TargetCheck}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
+import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Stage}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
@@ -77,28 +84,23 @@ object Loader {
     telemetry: Telemetry[F],
     target: Target[I]
   ): F[Unit] = {
-    val folderMonitoring: Stream[F, Unit] = for {
-      initQueryResult <- initQuery[F, C, I](target)
-      _ <- FolderMonitoring.run[F, C, I](
-             config.monitoring.folders,
-             config.readyCheck,
-             control.isBusy,
-             initQueryResult,
-             target.prepareAlertTable
-           )
-    } yield ()
+    def folderMonitoring(initQueryResult: I): Stream[F, Unit] =
+      FolderMonitoring.run[F, C, I](
+        config.monitoring.folders,
+        ManagedTransaction.config(config),
+        control.isBusy,
+        initQueryResult,
+        target.prepareAlertTable
+      )
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
     val vacuumScheduling: Stream[F, Unit] =
-      VacuumScheduling.run[F, C](config.storage, config.schedules)
+      VacuumScheduling.run[F, C](config.storage, config.schedules, config.readyCheck)
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
-    val loading: Stream[F, Unit] =
-      for {
-        initQueryResult <- initQuery[F, C, I](target)
-        _ <- loadStream[F, C, I](config, control, initQueryResult, target)
-      } yield ()
+    def loading(initQueryResult: I): Stream[F, Unit] =
+      loadStream[F, C, I](config, control, initQueryResult, target)
     val stateLogging: Stream[F, Unit] =
       Stream
         .awakeDelay[F](StateLoggingFrequency)
@@ -107,24 +109,30 @@ object Loader {
     val periodicMetrics: Stream[F, Unit] =
       Monitoring[F].periodicMetrics.report
 
-    def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
+    val txnConfig = ManagedTransaction.config(config)
+    val txnConfigInit = txnConfig.copy(execution = config.initRetries)
 
-    val blockUntilReady = initRetry(TargetCheck.blockUntilReady[F, C](config.readyCheck)) *>
-      Logging[F].info("Target check is completed")
+    val blockUntilReady = ManagedTransaction
+      .run[F, C](txnConfigInit, "get connection on startup")(Applicative[C].unit)
+      .adaptError { case t: Throwable =>
+        new AlertableFatalException(AlertableFatalException.Explanation.InitialConnection, t)
+      } *> Logging[F].info("Target check is completed")
+
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
-    val eventsTableInit = initRetry(createEventsTable[F, C](target)) *>
+    val eventsTableInit = createEventsTable[F, C](target, txnConfigInit) *>
       Logging[F].info("Events table initialization is completed")
-    val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)) *>
+    val manifestInit = Manifest.initialize[F, C, I](config.storage, target, txnConfigInit) *>
       Logging[F].info("Manifest initialization is completed")
-    val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
+    val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage, txnConfigInit) *>
       Logging[F].info("Adding load_tstamp column is completed")
 
-    val init: F[Unit] = blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp
+    val init: F[I] =
+      blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp *> initQuery[F, C, I](target, txnConfig)
 
-    val process = Stream.eval(init).flatMap { _ =>
-      loading
-        .merge(folderMonitoring)
+    val process = Stream.eval(init).flatMap { initQueryResult =>
+      loading(initQueryResult)
+        .merge(folderMonitoring(initQueryResult))
         .merge(noOpScheduling)
         .merge(healthCheck)
         .merge(stateLogging)
@@ -191,12 +199,13 @@ object Loader {
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
     val addFailure: Throwable => F[Boolean] =
       control.addFailure(config.retryQueue)(folder)(_)
+    val incrementAttempts: C[Unit] = Transaction[F, C].arrowBack(control.incrementAttempts)
 
     val loading: F[Unit] = backgroundCheck {
       for {
         start <- Clock[F].realTimeInstant
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
-        result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, initQueryResult, target)
+        result <- Load.load[F, C, I](ManagedTransaction.config(config), setStageC, incrementAttempts, discovery, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Load.LoadSuccess(ingested) =>
@@ -216,30 +225,34 @@ object Loader {
     loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
   }
 
-  private def addLoadTstampColumn[F[_]: Transaction[*[_], C]: Monitoring: Logging: MonadThrow, C[_]: DAO: Monad: Logging](
+  private def addLoadTstampColumn[F[_]: Transaction[*[_], C]: Monitoring: Logging: Sleep: MonadThrow, C[_]: DAO: MonadThrow: Logging](
     shouldAdd: Boolean,
-    targetConfig: StorageTarget
+    targetConfig: StorageTarget,
+    txnConfig: ManagedTransaction.TxnConfig
   ): F[Unit] =
-    if (!shouldAdd) Logging[F].info("Adding load_tstamp is skipped")
-    else {
-      val f = targetConfig match {
+    (shouldAdd, targetConfig) match {
+      case (false, _) =>
+        Logging[F].info("Adding load_tstamp is skipped")
+      case (_, _: StorageTarget.Databricks) =>
         // Adding load_tstamp column explicitly is not needed due to merge schema
         // feature of Databricks. It will create missing column itself.
-        case _: StorageTarget.Databricks => Monad[C].unit
-        case _ =>
-          for {
-            allColumns <- DbControl.getColumns[C](EventsTable.MainName)
-            _ <- if (loadTstampColumnExist(allColumns))
-                   Logging[C].info("load_tstamp column already exists")
-                 else
-                   DAO[C].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
-                     Logging[C].info("load_tstamp column is added successfully")
-          } yield ()
-      }
-      Transaction[F, C].transact(f).recoverWith { case e: Throwable =>
-        val err = s"Error while adding load_tstamp column: ${getErrorMessage(e)}"
-        Logging[F].error(err) *> Monitoring[F].alert(AlertPayload.error(err))
-      }
+        Monad[F].unit
+      case (_, _) =>
+        ManagedTransaction
+          .transact[F, C](txnConfig, "add load_tstamp column") {
+            for {
+              allColumns <- DbControl.getColumns[C](EventsTable.MainName)
+              _ <- if (loadTstampColumnExist(allColumns))
+                     Logging[C].info("load_tstamp column already exists")
+                   else
+                     DAO[C].executeUpdate(Statement.AddLoadTstampColumn, DAO.Purpose.NonLoading).void *>
+                       Logging[C].info("load_tstamp column is added successfully")
+            } yield ()
+          }
+          .recoverWith { case e: Throwable =>
+            val err = s"Error adding load_tstamp column: ${getErrorMessage(e)}"
+            Monitoring[F].alert(AlertPayload.warn(err))
+          }
     }
 
   private def loadTstampColumnExist(eventTableColumns: EventTableColumns) =
@@ -248,11 +261,27 @@ object Loader {
       .contains(AtomicColumns.ColumnsWithDefault.LoadTstamp.value)
 
   /** Query to get necessary bits from the warehouse during initialization of the application */
-  private def initQuery[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow, I](target: Target[I]): Stream[F, I] =
-    Stream.eval(Transaction[F, C].run(target.initQuery))
+  private def initQuery[F[_]: MonadThrow: Logging: Sleep: Transaction[*[_], C], C[_]: DAO: MonadThrow: Logging, I](
+    target: Target[I],
+    txnConfig: ManagedTransaction.TxnConfig
+  ): F[I] =
+    ManagedTransaction
+      .transact[F, C](txnConfig, "target-specific init query")(target.initQuery)
+      .adaptError { case t: Throwable =>
+        new AlertableFatalException(AlertableFatalException.Explanation.TargetQueryInit, t)
+      }
 
-  private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: Monad](target: Target[_]): F[Unit] =
-    Transaction[F, C].transact(DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void)
+  private def createEventsTable[F[_]: Transaction[*[_], C]: MonadThrow: Logging: Sleep, C[_]: DAO: MonadThrow: Logging](
+    target: Target[_],
+    txnConfig: ManagedTransaction.TxnConfig
+  ): F[Unit] =
+    ManagedTransaction
+      .transact[F, C](txnConfig, "create events table") {
+        DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void
+      }
+      .adaptError { case t: Throwable =>
+        new AlertableFatalException(AlertableFatalException.Explanation.EventsTableInit, t)
+      }
 
   /**
    * Handle a failure during loading. `Load.getTransaction` can fail only in one "expected" way - if
@@ -274,7 +303,7 @@ object Loader {
     val message = getErrorMessage(error)
     val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
     val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
-    val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
+    val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding into retry queue. $message")
 
     Monitoring[F].alert(alert) *>
       addFailure(error).ifM(logRetry, logNoRetry)
@@ -284,17 +313,16 @@ object Loader {
    * Last level of failure handling, called when non-loading stream fail. Called on an application
    * crash
    */
-  private def reportFatal[F[_]: Apply: Logging: Monitoring]: PartialFunction[Throwable, F[Unit]] = { case error =>
-    Logging[F].error("Loader shutting down") *>
-      Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
+  private def reportFatal[F[_]: Applicative: Logging: Monitoring]: PartialFunction[Throwable, F[Unit]] = { case error =>
+    val alert = error match {
+      case alertable: AlertableFatalException =>
+        Monitoring[F].alert(Monitoring.AlertPayload.error(alertable))
+      case _ =>
+        Applicative[F].unit
+    }
+    Logging[F].logThrowable("Loader shutting down", error, Logging.Intention.VisibilityBeforeRethrow) *>
+      alert *>
       Monitoring[F].trackException(error)
-  }
-
-  private def initRetryLog[F[_]: Logging: Applicative: Monitoring](e: Throwable, d: RetryDetails): F[Unit] = {
-    val errMessage =
-      show"""Exception from init block. $d
-            |${getErrorMessage(e)}""".stripMargin
-    Logging[F].error(errMessage) *> Monitoring[F].alert(Monitoring.AlertPayload.error(errMessage))
   }
 
   private def getErrorMessage(error: Throwable): String =

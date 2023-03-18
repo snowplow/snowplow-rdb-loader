@@ -163,7 +163,11 @@ object DataDiscovery {
   }
 
   def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =
-    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> MonadThrow[F].raiseError(error)
+    Logging[F].logThrowable(
+      "A problem occurred in the loading of SQS message",
+      error,
+      Logging.Intention.VisibilityBeforeRethrow
+    ) *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =

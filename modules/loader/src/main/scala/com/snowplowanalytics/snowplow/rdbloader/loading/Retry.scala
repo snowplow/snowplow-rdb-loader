@@ -12,11 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, MonadThrow, Show}
+import cats.{Applicative, Show}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
-import retry.{RetryDetails, RetryPolicies, RetryPolicy, Sleep}
+import retry.{RetryDetails, RetryPolicies, RetryPolicy}
 import retry._
 
 /**
@@ -25,45 +24,34 @@ import retry._
  */
 object Retry {
 
-  /**
-   * This retry policy will attempt several times with short pauses (30 + 60 + 90 sec) Because most
-   * of errors such connection drops should be happening in in connection acquisition The error
-   * handler will also abort the transaction (it should start in the original action again)
-   */
-  def retryLoad[F[_]: MonadThrow: Sleep: Logging, A](
-    config: Retries,
-    incrementAttempt: F[Unit],
-    fa: F[A]
-  ): F[A] = {
-    val onError = (e: Throwable, d: RetryDetails) => incrementAttempt *> log[F](e, d)
-    val retryPolicy = getRetryPolicy[F](config)
-    retryingOnSomeErrors(retryPolicy, { t: Throwable => isWorth(t).pure[F] }, onError)(fa)
-  }
-
-  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(show"Transaction aborted. $d. Caught exception: ${e.toString}")
-
   /** Check if error is worth retrying */
-  def isWorth(e: Throwable): Boolean = {
-    val isFatal = FatalFailures.foldLeft(false)((isPreviousFatal, predicate) => predicate(e) || isPreviousFatal)
-    !isFatal
+  def isWorth(e: Throwable): Boolean =
+    !isFatal(e)
+
+  private val isFatal: Throwable => Boolean = {
+    case _: IllegalStateException =>
+      true
+    case other if Option(other.getMessage).isEmpty =>
+      // Unlikely, but remember Java exceptions
+      false
+    case other =>
+      val lowered = other.getMessage.toLowerCase
+      fatalFailures.exists(f => f(lowered))
   }
 
   /** List of predicates, matching exceptions that should not be retried */
-  val FatalFailures: List[Throwable => Boolean] = List(
-    e => e.isInstanceOf[IllegalStateException],
-    e => e.toString.toLowerCase.contains("[amazon](500310) invalid operation"),
+  private val fatalFailures: List[String => Boolean] = List(
+    s => s.contains("[amazon](500310) invalid operation"),
 
     // Below exceptions haven't been observed in versions newer than 2.0.0
-    e => e.toString.toLowerCase.contains("invalid operation: disk full"),
-    e => e.toString.toLowerCase.contains("out of memory"),
-    e => e.toString.toLowerCase.contains("data loading error iam role"),
-    e => e.toString.toLowerCase.contains("invalid operation: cannot copy into nonexistent table"),
-    e => e.toString.toLowerCase.contains("jsonpath file") && e.toString.toLowerCase.contains("was not found"),
-    e =>
-      e.toString.toLowerCase.contains("invalid operation: number of jsonpath") && e.toString.toLowerCase.contains("columns should match"),
-    e => e.toString.toLowerCase.contains("invalid operation: permission denied for"),
-    e => e.toString.toLowerCase.contains("cannot decode sql row: table comment is not valid schemakey, invalid_igluuri")
+    s => s.contains("invalid operation: disk full"),
+    s => s.contains("out of memory"),
+    s => s.contains("data loading error iam role"),
+    s => s.contains("invalid operation: cannot copy into nonexistent table"),
+    s => s.contains("jsonpath file") && s.contains("was not found"),
+    s => s.contains("invalid operation: number of jsonpath") && s.contains("columns should match"),
+    s => s.contains("invalid operation: permission denied for"),
+    s => s.contains("cannot decode sql row: table comment is not valid schemakey, invalid_igluuri")
   )
 
   /** Build a cats-retry-specific retry policy from Loader's config */

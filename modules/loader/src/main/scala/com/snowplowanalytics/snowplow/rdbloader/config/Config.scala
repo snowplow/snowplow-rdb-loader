@@ -119,7 +119,8 @@ object Config {
     loading: FiniteDuration,
     nonLoading: FiniteDuration,
     sqsVisibility: FiniteDuration,
-    rollbackCommit: FiniteDuration
+    rollbackCommit: FiniteDuration,
+    rollbackConnectionValidation: FiniteDuration
   )
   final case class Retries(
     strategy: Strategy,

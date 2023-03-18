@@ -29,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Schedule
 import com.snowplowanalytics.snowplow.rdbloader.loading.Load.Status
 import com.snowplowanalytics.snowplow.rdbloader.state.MakePaused
+import com.snowplowanalytics.snowplow.rdbloader.test.NoOpLogging
 
 import org.specs2.mutable.Specification
 import org.specs2.matcher.{Expectable, MatchResult, Matcher}
@@ -177,8 +178,7 @@ class NoOperationSpec extends Specification {
 
 object NoOperationSpec {
 
-  implicit val L: Logging[IO] =
-    Logging.noOp[IO] // Can be changed to real one for debugging
+  implicit val L: Logging[IO] = NoOpLogging
 
   val InstantFormat: DateTimeFormatter =
     DateTimeFormatter.ofPattern("s.S").withZone(ZoneId.systemDefault)

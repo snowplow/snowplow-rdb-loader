@@ -186,7 +186,7 @@ object DatabricksSpec {
         Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
         None,
         Config.Schedules(Nil),
-        Config.Timeouts(1.minute, 1.minute, 1.minute, 1.minute),
+        Config.Timeouts(1.minute, 1.minute, 1.minute, 1.minute, 1.minute),
         Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
         Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
         Config.Retries(Config.Strategy.Constant, None, 1.minute, None),

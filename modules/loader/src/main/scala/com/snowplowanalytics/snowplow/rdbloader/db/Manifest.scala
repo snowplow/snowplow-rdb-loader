@@ -1,10 +1,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import java.time.Instant
-import cats.{Applicative, Functor, Monad, MonadError, MonadThrow}
+import cats.{Applicative, Functor, Monad, MonadThrow}
 import cats.implicits._
+import retry.Sleep
 import doobie.Read
 import doobie.implicits.javasql._
+import com.snowplowanalytics.snowplow.rdbloader.AlertableFatalException
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
@@ -28,24 +30,28 @@ object Manifest {
     "shredded_cardinality"
   ).map(ColumnName)
 
-  def initialize[F[_]: MonadThrow: Logging, C[_]: DAO: Monad, I](
+  def initialize[F[_]: MonadThrow: Logging: Transaction[*[_], C]: Sleep, C[_]: DAO: MonadThrow, I](
     config: StorageTarget,
-    target: Target[I]
-  )(implicit F: Transaction[F, C]
+    target: Target[I],
+    txnConfig: ManagedTransaction.TxnConfig
   ): F[Unit] =
-    F.transact(setup[C, I](config.schema, config, target)).attempt.flatMap {
-      case Right(InitStatus.Created) =>
-        Logging[F].info("The manifest table has been created")
-      case Right(InitStatus.Migrated) =>
-        Logging[F].info(
-          s"The new manifest table has been created, legacy 0.1.0 manifest can be found at $LegacyName and can be deleted manually"
-        )
-      case Right(InitStatus.NoChanges) =>
-        Logging[F].info("No changes needed on the manifest table")
-      case Left(error) =>
-        Logging[F].error(error)("Fatal error has happened during manifest table initialization") *>
-          MonadError[F, Throwable].raiseError(new IllegalStateException(error.toString))
-    }
+    ManagedTransaction
+      .transact[F, C](txnConfig, "manifest init") {
+        setup[C, I](config.schema, config, target)
+      }
+      .adaptError { case t: Throwable =>
+        new AlertableFatalException(AlertableFatalException.Explanation.ManifestInit, t)
+      }
+      .flatMap {
+        case InitStatus.Created =>
+          Logging[F].info("The manifest table has been created")
+        case InitStatus.Migrated =>
+          Logging[F].info(
+            s"The new manifest table has been created, legacy 0.1.0 manifest can be found at $LegacyName and can be deleted manually"
+          )
+        case InitStatus.NoChanges =>
+          Logging[F].info("No changes needed on the manifest table")
+      }
 
   def setup[F[_]: Monad: DAO, I](
     schema: String,

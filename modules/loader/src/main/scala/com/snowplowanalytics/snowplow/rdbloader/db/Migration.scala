@@ -15,6 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 import cats.data.EitherT
 import cats.implicits._
 import cats.{Applicative, Monad, MonadThrow}
+import retry.Sleep
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.StringUtils
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
@@ -147,9 +148,10 @@ object Migration {
   }
 
   /** Inspect DB state and create a [[Migration]] object that contains all necessary actions */
-  def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu, C[_]: MonadThrow: Logging: DAO, I](
+  def build[F[_]: Transaction[*[_], C]: Logging: MonadThrow: Iglu: Sleep, C[_]: MonadThrow: Logging: DAO, I](
     discovery: DataDiscovery,
-    target: Target[I]
+    target: Target[I],
+    txnConfig: ManagedTransaction.TxnConfig
   ): F[Migration[C]] = {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
@@ -162,19 +164,17 @@ object Migration {
           EitherT.rightT[F, LoaderError](Description.NoMigration)
       }
 
-    val transaction: C[Migration[C]] =
-      Transaction[F, C].arrowBack(descriptions.value).flatMap {
-        case Right(schemaList) =>
-          // Duplicate schemas cause migration vector to double failing the second migration. Therefore deduplication
-          // with toSet.toList
-          schemaList.toSet.toList
-            .traverseFilter(buildBlock[C, I](_, target))
-            .flatMap(blocks => Migration.fromBlocks[C](blocks))
-        case Left(error) =>
-          MonadThrow[C].raiseError[Migration[C]](error)
-      }
+    for {
+      schemaList <- descriptions.rethrowT
+      result <- ManagedTransaction.run[F, C](txnConfig, "build migration") {
+                  // Duplicate schemas cause migration vector to double failing the second migration. Therefore deduplication
+                  // with toSet.toList
+                  schemaList.toSet.toList
+                    .traverseFilter(buildBlock[C, I](_, target))
+                    .flatMap(blocks => Migration.fromBlocks[C](blocks))
+                }
+    } yield result
 
-    Transaction[F, C].run(transaction)
   }
 
   /** Migration with no actions */

@@ -12,13 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.{Applicative, Show, ~>}
+import cats.{Show, ~>}
 
 import cats.effect.Sync
+import cats.implicits._
 
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
+import com.snowplowanalytics.snowplow.rdbloader.AlertableFatalException
 
 trait Logging[F[_]] { self =>
 
@@ -33,8 +35,12 @@ trait Logging[F[_]] { self =>
   /** Log line with log level ERROR */
   def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit]
 
-  /** Log line with log level ERROR */
-  def error(t: Throwable)(line: String): F[Unit]
+  def logThrowable(
+    line: String,
+    t: Throwable,
+    intention: Logging.Intention
+  )(implicit L: Logging.LoggerName = Logging.DefaultLogger
+  ): F[Unit]
 
   def mapK[G[_]](arrow: F ~> G): Logging[G] =
     new Logging[G] {
@@ -42,13 +48,45 @@ trait Logging[F[_]] { self =>
       def info[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.info(a))
       def warning[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.warning(a))
       def error[A: Show](a: A)(implicit L: Logging.LoggerName): G[Unit] = arrow(self.error(a))
-      def error(t: Throwable)(line: String): G[Unit] = arrow(self.error(t)(line))
+      def logThrowable(
+        line: String,
+        t: Throwable,
+        intention: Logging.Intention
+      )(implicit L: Logging.LoggerName
+      ): G[Unit] = arrow(self.logThrowable(line, t, intention))
     }
 }
 
 object Logging {
 
   final case class LoggerName(name: String) extends AnyVal
+
+  /** Your intention when you log an exception */
+  sealed trait Intention
+
+  object Intention {
+
+    /**
+     * You are logging that you caught an exception will recover from it, i.e. you will not re-throw
+     * the exception or let it raise any higher. In this case, we need a full stacktrace so we can
+     * see what happened.
+     */
+    case object CatchAndRecover extends Intention
+
+    /**
+     * You are logging that you caught an exception and don't plan to recover from it. In this case
+     * we do not need a full stacktrace, because we assume the exception will get caught and handled
+     * higher up in the stack.
+     */
+    case object VisibilityBeforeRethrow extends Intention
+
+    /**
+     * You caught an error that is completely expected under normal healthy circumstances. We should
+     * log that it happened, but don't print a full stacktrace.
+     */
+    case object VisibilityOfExpectedError extends Intention
+
+  }
 
   val DefaultLogger = LoggerName("com.snowplowanalytics.snowplow.rdbloader")
 
@@ -58,40 +96,43 @@ object Logging {
     new Logging[F] {
       val logger: Logger[F] = Slf4jLogger.getLogger[F]
 
-      private def getLine[A: Show](a: A): String =
-        Common.sanitize(Show[A].show(a), stopWords)
+      private def getLine[A: Show](a: A)(implicit L: Logging.LoggerName): String = {
+        val sanitized = Common.sanitize(Show[A].show(a), stopWords)
+        s"${L.name}: $sanitized"
+      }
 
-      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
         logger.debug(getLine(a))
 
-      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        logger.info(s"${L.name}: ${getLine(a)}")
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
+        logger.info(getLine(a))
 
-      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        logger.warn(s"${L.name}: ${getLine(a)}")
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
+        logger.warn(getLine(a))
 
-      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        logger.error(s"${L.name}: ${getLine(a)}")
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
+        logger.error(getLine(a))
 
-      def error(t: Throwable)(line: String): F[Unit] =
-        logger.error(t)(Common.sanitize(line, stopWords))
+      def logThrowable(
+        line: String,
+        t: Throwable,
+        intention: Logging.Intention
+      )(implicit L: Logging.LoggerName
+      ): F[Unit] =
+        intention match {
+          case Intention.CatchAndRecover =>
+            logger.error(t)(getLine(line))
+          case Intention.VisibilityOfExpectedError =>
+            logger.warn(t)(getLine(line))
+          case Intention.VisibilityBeforeRethrow =>
+            val cause = t match {
+              case a: AlertableFatalException =>
+                a.alertMessage
+              case other =>
+                other.getMessage // strictly speaking could be null (Java!), but that's ok for logging
+            }
+            logger.error(getLine(s"$line. Caused by $cause")) *> logger.debug(t)(getLine(line))
+        }
     }
 
-  def noOp[F[_]: Applicative]: Logging[F] =
-    new Logging[F] {
-      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        Applicative[F].unit
-
-      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        Applicative[F].unit
-
-      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        Applicative[F].unit
-
-      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
-        Applicative[F].unit
-
-      def error(t: Throwable)(line: String): F[Unit] =
-        Applicative[F].unit
-    }
 }

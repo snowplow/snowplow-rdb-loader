@@ -12,8 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.duration.FiniteDuration
-import cats.~>
+import cats.{ApplicativeThrow, ~>}
 import cats.arrow.FunctionK
 import cats.implicits._
 
@@ -25,6 +24,7 @@ import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
+import doobie.free.connection.{isValid => connectionIsValid}
 
 import java.sql.SQLException
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
@@ -60,11 +60,6 @@ trait Transaction[F[_], C[_]] {
    * transaction
    */
   def run[A](io: C[A]): F[A]
-
-  /**
-   * Same as run, but narrowed down to transaction to allow migration error handling.
-   */
-  def run_(io: C[Unit]): F[Unit]
 
   /**
    * A kind-function (`mapK`) to downcast `F` into `C` This is a very undesirable, but necessary
@@ -121,15 +116,22 @@ object Transaction {
   ): Resource[F, Transaction[F, ConnectionIO]] =
     buildPool[F](target).map(xa => Transaction.jdbcRealInterpreter[F](target, timeouts, xa))
 
-  def defaultStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = {
-    val timeoutSeconds = rollbackCommitTimeout.toSeconds.toInt
+  def defaultStrategy(timeouts: Config.Timeouts): Strategy = {
+    val timeoutSeconds = timeouts.rollbackCommit.toSeconds.toInt
+    val isValidTimeout = timeouts.rollbackConnectionValidation.toSeconds.toInt
+
     val rollback = fr"ROLLBACK".execWith {
       HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
     }.void
+    val rollbackIfValid = connectionIsValid(isValidTimeout).ifM(
+      rollback,
+      ApplicativeThrow[ConnectionIO].raiseError(new IllegalStateException("Cannot rollback with invalid connection"))
+    )
+
     val commit = fr"COMMIT".execWith {
       HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
     }.void
-    Strategy.default.copy(after = commit, oops = rollback)
+    Strategy.default.copy(after = commit, oops = rollbackIfValid)
   }
 
   /** Real-world (opposed to dry-run) interpreter */
@@ -143,7 +145,7 @@ object Transaction {
       conn.copy(strategy0 = target.doobieNoCommitStrategy)
 
     val DefaultTransactor: Transactor[F] =
-      conn.copy(strategy0 = target.doobieCommitStrategy(timeouts.rollbackCommit))
+      conn.copy(strategy0 = target.doobieCommitStrategy(timeouts))
 
     new Transaction[F, ConnectionIO] {
 
@@ -169,17 +171,6 @@ object Transaction {
 
       def run[A](io: ConnectionIO[A]): F[A] =
         NoCommitTransactor.trans.apply(io).withErrorAdaption
-
-      val awsColumnResizeError: String =
-        raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different; - SqlState: 0A000"""
-
-      // If premigration was successful, but migration failed. It would leave the columns resized.
-      // This recovery makes it so resizing error would be ignored.
-      // Note: AWS will return 500310 error code other SQL errors (i.e. COPY errors), don't use for pattern matching.
-      def run_(io: ConnectionIO[Unit]): F[Unit] =
-        run[Unit](io).recoverWith {
-          case e: TransactionException if e.getMessage matches awsColumnResizeError => ().pure[F]
-        }
 
       def arrowBack: F ~> ConnectionIO =
         new FunctionK[F, ConnectionIO] {

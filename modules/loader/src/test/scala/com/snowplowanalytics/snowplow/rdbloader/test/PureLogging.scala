@@ -20,20 +20,25 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 object PureLogging {
   def interpreter(noop: Boolean = false, predicate: Option[String => Boolean] = None): Logging[Pure] =
     new Logging[Pure] {
-      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): Pure[Unit] =
         log(Show[A].show(a))
 
-      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName): Pure[Unit] =
         log(Show[A].show(a))
 
-      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName): Pure[Unit] =
         log(Show[A].show(a))
 
-      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): Pure[Unit] =
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName): Pure[Unit] =
         log(Show[A].show(a))
 
-      def error(t: Throwable)(message: String): Pure[Unit] =
-        log(s"$message. ${t.getMessage()}")
+      def logThrowable(
+        line: String,
+        t: Throwable,
+        intention: Logging.Intention
+      )(implicit L: Logging.LoggerName
+      ): Pure[Unit] =
+        log(s"$line. ${t.getMessage}")
 
       private def log(message: String) =
         (noop, predicate) match {

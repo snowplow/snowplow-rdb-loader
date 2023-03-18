@@ -23,7 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
-import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.db.{ManagedTransaction, Manifest, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import org.specs2.mutable.Specification
@@ -61,12 +61,12 @@ class LoadSpec extends Specification {
         "s3://assets/com.acme/json_context_1.json".key
       )
       val expected = List(
-        PureTransaction.NoTransactionMessage,
-        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
-
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(
           Statement.EventsCopy(
@@ -87,7 +87,7 @@ class LoadSpec extends Specification {
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
+          ManagedTransaction.config(SpecHelpers.validCliConfig.config),
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -108,19 +108,19 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
-        PureTransaction.NoTransactionMessage,
-        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
-
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
       )
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
+          ManagedTransaction.config(SpecHelpers.validCliConfig.config),
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -142,19 +142,19 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
-        PureTransaction.NoTransactionMessage,
-        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
-
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
       )
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
+          ManagedTransaction.config(SpecHelpers.validCliConfig.config),
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -179,12 +179,12 @@ class LoadSpec extends Specification {
         "s3://assets/com.acme/json_context_1.json".key
       )
       val expected = List(
-        PureTransaction.NoTransactionMessage,
-        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
-
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(
           Statement.EventsCopy(
@@ -201,6 +201,7 @@ class LoadSpec extends Specification {
         PureTransaction.RollbackMessage,
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(
           Statement.EventsCopy(
@@ -220,7 +221,7 @@ class LoadSpec extends Specification {
       )
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
+          ManagedTransaction.config(SpecHelpers.validCliConfig.config),
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -250,19 +251,19 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
-        PureTransaction.NoTransactionMessage,
-        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
-
+        LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage // TODO: this is potentially dangerous, we need
         //       to throw an ad-hoc exception within a transaction
       )
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
+          ManagedTransaction.config(SpecHelpers.validCliConfig.config),
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -353,7 +354,11 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_) => ts.getLog.length == 8
+      case Statement.ManifestAdd(_) =>
+        ts.getLog.count {
+          case PureTransaction.StartMessage => true
+          case _ => false
+        } == 1
       case _ => false
     }
 

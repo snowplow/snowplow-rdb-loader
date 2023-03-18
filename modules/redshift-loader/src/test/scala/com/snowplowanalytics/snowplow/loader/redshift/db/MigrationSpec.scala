@@ -13,8 +13,10 @@
 package com.snowplowanalytics.snowplow.loader.redshift.db
 
 import cats.data.NonEmptyList
-
+import retry.Sleep
 import doobie.Fragment
+
+import scala.concurrent.duration.DurationInt
 
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 
@@ -25,23 +27,27 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.SchemaList.ModelGroupSet
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Statement}
+import com.snowplowanalytics.snowplow.rdbloader.db.{ManagedTransaction, Migration, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 
 import org.specs2.mutable.Specification
 
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureTransaction}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureSleep, PureTransaction}
 
 class MigrationSpec extends Specification {
+  import MigrationSpec._
+
   "build" should {
     "build Migration with table creation for ShreddedType.Tabular" in {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
       val types =
         List(
           ShreddedType.Tabular(
@@ -85,8 +91,9 @@ class MigrationSpec extends Specification {
       )
 
       val expected = List(
-        PureTransaction.NoTransactionMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_context/jsonschema/2-0-0"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.TableExists("com_acme_some_context_2"))
       )
 
@@ -97,7 +104,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget).run
+      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget, txnConfig).run
 
       state.getLog must beEqualTo(expected)
       value must beRight.like { case Migration(preTransaction, inTransaction) =>
@@ -111,6 +118,7 @@ class MigrationSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
 
       val types =
         List(
@@ -154,8 +162,9 @@ class MigrationSpec extends Specification {
       )
 
       val expected = List(
-        PureTransaction.NoTransactionMessage,
         LogEntry.Message("Fetch iglu:com.acme/some_event/jsonschema/1-0-0"),
+        PureTransaction.NoTransactionMessage,
+        LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Sql(Statement.TableExists("com_acme_some_event_1"))
       )
 
@@ -166,7 +175,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Table created")
       )
 
-      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget).run
+      val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget, txnConfig).run
       state.getLog must beEqualTo(expected)
       value must beRight.like { case Migration(preTransaction, inTransaction) =>
         preTransaction must beEmpty
@@ -240,4 +249,7 @@ object MigrationSpec {
   val schemaListThree = SchemaList
     .unsafeBuildWithReorder(ModelGroupSet.groupSchemas(NonEmptyList.of(schema200, schema201)).head)
     .getOrElse(throw new RuntimeException("Cannot create SchemaList"))
+
+  val retryConfig = Config.Retries(Config.Strategy.Constant, None, 10.seconds, None)
+  val txnConfig = ManagedTransaction.TxnConfig(retryConfig, retryConfig)
 }

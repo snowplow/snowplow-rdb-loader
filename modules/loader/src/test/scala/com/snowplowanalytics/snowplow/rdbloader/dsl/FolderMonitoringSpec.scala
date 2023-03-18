@@ -19,7 +19,7 @@ import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
-import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.{ManagedTransaction, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
@@ -57,9 +57,8 @@ class FolderMonitoringSpec extends Specification {
           TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
           TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
           TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-          PureTransaction.StartMessage,
           TestState.LogEntry.Sql(Statement.ReadyCheck),
-          PureTransaction.NoTransactionMessage
+          PureTransaction.StartMessage
         ),
         Map()
       )
@@ -76,8 +75,8 @@ class FolderMonitoringSpec extends Specification {
       val (state, result) =
         FolderMonitoring
           .check[Pure, Pure, Unit](
+            exampleTxnConfig,
             loadFrom,
-            exampleReadyCheckConfig,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -106,9 +105,8 @@ class FolderMonitoringSpec extends Specification {
           TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
           TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
           TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-          PureTransaction.StartMessage,
           TestState.LogEntry.Sql(Statement.ReadyCheck),
-          PureTransaction.NoTransactionMessage
+          PureTransaction.StartMessage
         ),
         Map()
       )
@@ -125,8 +123,8 @@ class FolderMonitoringSpec extends Specification {
       val (state, result) =
         FolderMonitoring
           .check[Pure, Pure, Unit](
+            exampleTxnConfig,
             loadFrom,
-            exampleReadyCheckConfig,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -268,5 +266,6 @@ object FolderMonitoringSpec {
     }
   }
 
-  val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleRetryConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleTxnConfig: ManagedTransaction.TxnConfig = ManagedTransaction.TxnConfig(exampleRetryConfig, exampleRetryConfig)
 }

@@ -52,7 +52,7 @@ class StateMonitoringSpec extends Specification {
         IO.sleep(1.milli) *> // Artificial delay to make sure we don't change state too soon (makes test flaky)
           state.update(_.start(BlobStorage.Folder.coerce("s3://folder"))) *>
           IO.sleep(
-            StateMonitoringSpec.Timeouts.nonLoading + StateMonitoringSpec.Timeouts.rollbackCommit + StateMonitoringSpec.Timeouts.sqsVisibility
+            StateMonitoringSpec.Timeouts.nonLoading + StateMonitoringSpec.Timeouts.rollbackCommit + StateMonitoringSpec.Timeouts.rollbackConnectionValidation + StateMonitoringSpec.Timeouts.sqsVisibility
           )
       }
 
@@ -103,7 +103,7 @@ class StateMonitoringSpec extends Specification {
 
 object StateMonitoringSpec {
 
-  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes, 20.minutes)
+  val Timeouts = Config.Timeouts(1.hour, 10.minutes, 5.minutes, 20.minutes, 1.minute)
 
   def checkRun(init: State => State): (Option[String], List[String]) = {
 

@@ -18,8 +18,8 @@ import cats.effect.std.Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
+import com.snowplowanalytics.snowplow.rdbloader.test.NoOpLogging
 import org.specs2.mutable.Specification
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 
 import java.time.Instant
 import cats.effect.unsafe.implicits.global
@@ -132,7 +132,7 @@ class RetriesSpec extends Specification {
       val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
       val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
-      implicit val L = Logging.noOp[IO]
+      implicit val L = NoOpLogging
 
       val getFailures = IO.pure(
         Map(
@@ -163,7 +163,7 @@ class RetriesSpec extends Specification {
       val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
       val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
 
-      implicit val L = Logging.noOp[IO]
+      implicit val L = NoOpLogging
 
       val getFailures = IO.pure(
         Map(
@@ -196,7 +196,7 @@ class RetriesSpec extends Specification {
       val FolderThree = BlobStorage.Folder.coerce("s3://bucket/3/")
       val FolderFour = BlobStorage.Folder.coerce("s3://bucket/4/")
 
-      implicit val L = Logging.noOp[IO]
+      implicit val L = NoOpLogging
 
       def getFailures = IO.pure(
         Map(

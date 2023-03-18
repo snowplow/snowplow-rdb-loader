@@ -24,19 +24,24 @@ object SyncLogging {
       private def getLine[A: Show](a: A): String =
         Common.sanitize(Show[A].show(a), Nil)
 
-      def debug[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+      def debug[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
         store.update(lines => ("DEBUG " + getLine(a)) :: lines)
 
-      def info[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+      def info[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
         store.update(lines => ("INFO " + getLine(a)) :: lines)
 
-      def warning[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+      def warning[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
         store.update(lines => ("WARNING " + getLine(a)) :: lines)
 
-      def error[A: Show](a: A)(implicit L: Logging.LoggerName = Logging.DefaultLogger): F[Unit] =
+      def error[A: Show](a: A)(implicit L: Logging.LoggerName): F[Unit] =
         store.update(lines => ("ERROR " + getLine(a)) :: lines)
 
-      def error(t: Throwable)(line: String): F[Unit] =
-        store.update(lines => ("ERROR " + getLine(t.toString())) :: lines)
+      def logThrowable(
+        line: String,
+        t: Throwable,
+        intention: Logging.Intention
+      )(implicit L: Logging.LoggerName
+      ): F[Unit] =
+        store.update(lines => ("ERROR " + getLine(s"$line. ${t.getMessage}")) :: lines)
     }
 }

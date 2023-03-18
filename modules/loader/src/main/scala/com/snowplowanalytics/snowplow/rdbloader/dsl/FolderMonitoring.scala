@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import java.time.{Instant, ZoneId, ZoneOffset}
 import java.time.format.{DateTimeFormatter, DateTimeParseException}
 import scala.concurrent.duration._
-import cats.{Applicative, Functor, Monad, MonadThrow}
+import cats.{Applicative, Functor, MonadThrow}
 import cats.implicits._
 import cats.effect.kernel.{Async, Clock, Ref, Sync, Temporal}
 import cats.effect.std.Semaphore
@@ -26,9 +26,8 @@ import fs2.Stream
 import fs2.text.utf8
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
-import com.snowplowanalytics.snowplow.rdbloader.db.Statement
+import com.snowplowanalytics.snowplow.rdbloader.db.{ManagedTransaction, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
-import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 import retry.Sleep
 
 /**
@@ -161,10 +160,10 @@ object FolderMonitoring {
    * List all folders in `loadFrom`, load the list into temporary Redshift table and check if they
    * exist in `manifest` table. Ones that don't exist are checked for existence of
    * `shredding_complete.json` and turned into corresponding `AlertPayload`
+   * @param txnConfig
+   *   configuration for target ready check and retries
    * @param loadFrom
    *   list shredded folders
-   * @param readyCheck
-   *   config for retry logic
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
    * @param prepareAlertTable
@@ -172,9 +171,9 @@ object FolderMonitoring {
    * @return
    *   potentially empty list of alerts
    */
-  def check[F[_]: MonadThrow: BlobStorage: Sleep: Transaction[*[_], C]: Logging, C[_]: DAO: Monad: LoadAuthService, I](
+  def check[F[_]: MonadThrow: BlobStorage: Sleep: Transaction[*[_], C]: Logging, C[_]: DAO: MonadThrow: LoadAuthService, I](
+    txnConfig: ManagedTransaction.TxnConfig,
     loadFrom: BlobStorage.Folder,
-    readyCheck: Config.Retries,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): F[List[AlertPayload]] = {
@@ -186,8 +185,7 @@ object FolderMonitoring {
     } yield onlyS3Batches
 
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](readyCheck)
-      onlyS3Batches <- Transaction[F, C].transact(getBatches)
+      onlyS3Batches <- ManagedTransaction.transact[F, C](txnConfig, "folder monitoring")(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
     } yield foldersWithChecks.map { case (folder, exists) =>
       if (exists) Monitoring.AlertPayload.warn("Unloaded batch", folder)
@@ -216,16 +214,16 @@ object FolderMonitoring {
    * unloaded folders and launches a stream or periodic checks. If some configurations are not
    * provided - just prints a warning. Resulting stream has to be running in background.
    */
-  def run[F[_]: Async: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
+  def run[F[_]: Async: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: MonadThrow, I](
     foldersCheck: Option[Config.Folders],
-    readyCheck: Config.Retries,
+    txnConfig: ManagedTransaction.TxnConfig,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, readyCheck, isBusy, initQueryResult, prepareAlertTable)
+        stream[F, C, I](folders, txnConfig, isBusy, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -237,8 +235,8 @@ object FolderMonitoring {
    *
    * @param folders
    *   configuration for folders monitoring
-   * @param readyCheck
-   *   configuration for target ready check
+   * @param txnConfig
+   *   configuration for target ready check and retries
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
    * @param initQueryResult
@@ -246,9 +244,9 @@ object FolderMonitoring {
    * @param prepareAlertTable
    *   statements to prepare the alert table ready for the folder monitoring task
    */
-  def stream[F[_]: Transaction[*[_], C]: Async: BlobStorage: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
+  def stream[F[_]: Transaction[*[_], C]: Async: BlobStorage: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: MonadThrow, I](
     folders: Config.Folders,
-    readyCheck: Config.Retries,
+    txnConfig: ManagedTransaction.TxnConfig,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
@@ -263,7 +261,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
-                      alerts <- check[F, C, I](outputFolder, readyCheck, initQueryResult, prepareAlertTable)
+                      alerts <- check[F, C, I](txnConfig, outputFolder, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
@@ -283,11 +281,11 @@ object FolderMonitoring {
               sinkAndCheck.handleErrorWith { error =>
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
                   val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
-                  val withErrorMsg = show"$msg, message: ${error.getMessage}"
                   val payload = Monitoring.AlertPayload.warn(msg)
                   val maxAttempts = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
-                  if (failedBefore >= maxAttempts) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
-                  else Logging[F].warning(withErrorMsg)
+                  val log = Logging[F].logThrowable(msg, error, Logging.Intention.CatchAndRecover)
+                  if (failedBefore >= maxAttempts) log *> Monitoring[F].alert(payload)
+                  else log
                 }
               } *> lock.release
             } else Logging[F].warning("Attempt to execute parallel folder monitoring, skipping")
