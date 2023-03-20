@@ -1,3 +1,17 @@
+Version 5.4.0 (2023-03-20)
+--------------------------
+Transformer: add flag disabling atomic fields truncation to the transformer (#1217)
+Loader fix: loaded batches must not get stuck in the retry queue (#1210)
+Databricks loader: resilient to duplicate entries in manifest table (#1213)
+Loader: make temp credentials session duration configurable (#1215)
+Upgrade schema-ddl to 0.17.1 (#1207)
+Snowflake ready check that does not require operate permission on the warehouse (#1195)
+Add Kinesis/Pubsub badrows sink to streaming transformer (#1189)
+Add Kinesis badrows sink to batch transformer (#1188)
+Transformer: set event limit per parquet partition (#1178)
+Transformer bad row count metric (#1171)
+Don't use Spark sink for parquet badrows (#1168)
+
 Version 5.3.2 (2023-03-08)
 --------------------------
 Loader: single COPY statement for each unique schema for Redshift (#1202)
