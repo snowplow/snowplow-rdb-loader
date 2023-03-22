@@ -23,11 +23,9 @@ import sbtassembly.AssemblyKeys._
 // sbt-native-packager
 import com.typesafe.sbt.SbtNativePackager.autoImport._
 import com.typesafe.sbt.packager.archetypes.jar.LauncherJarPlugin.autoImport.packageJavaLauncherJar
-import com.typesafe.sbt.packager.docker.DockerPermissionStrategy
 import com.typesafe.sbt.packager.Keys.{daemonUser, maintainer}
 import com.typesafe.sbt.packager.linux.LinuxPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
-import com.typesafe.sbt.packager.docker.DockerVersion
 
 import com.snowplowanalytics.snowplow.sbt.IgluSchemaPlugin.autoImport._
 
@@ -170,29 +168,6 @@ object BuildSettings {
       Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
     }
 
-  lazy val dockerSettingsFocal = Seq(
-    dockerBaseImage := "adoptopenjdk:11-jre-hotspot-focal",
-    dockerUpdateLatest := true,
-    dockerVersion := Some(DockerVersion(18, 9, 0, Some("ce"))),
-    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    Docker / daemonUser := "daemon",
-    Docker / daemonUserUid := None,
-    Docker / defaultLinuxInstallLocation := "/opt/snowplow"
-  )
-
-  lazy val dockerSettingsDistroless = Seq(
-    Docker / maintainer := "Snowplow Analytics Ltd. <support@snowplowanalytics.com>",
-    dockerBaseImage := "gcr.io/distroless/java11-debian11:nonroot",
-    Docker / daemonUser := "nonroot",
-    Docker / daemonGroup := "nonroot",
-    Docker / daemonUserUid := None,
-    Docker / defaultLinuxInstallLocation := "/home/snowplow",
-    dockerEntrypoint := Seq("java", "-jar",s"/home/snowplow/lib/${(packageJavaLauncherJar / artifactPath).value.getName}"),
-    dockerPermissionStrategy := DockerPermissionStrategy.CopyChown,
-    dockerAlias := dockerAlias.value.copy(tag = dockerAlias.value.tag.map(t => s"$t-distroless")),
-    dockerUpdateLatest := false
-  )
-
   lazy val dynVerSettings = Seq(
     ThisBuild / dynverVTagPrefix := false, // Otherwise git tags required to have v-prefix
     ThisBuild / dynverSeparator := "-" // to be compatible with docker
@@ -249,36 +224,30 @@ object BuildSettings {
   lazy val redshiftBuildSettings = {
     Seq(
       name := "snowplow-redshift-loader",
-      Docker / packageName := "snowplow/rdb-loader-redshift",
+      Docker / packageName := "rdb-loader-redshift",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
   }
-
-  lazy val redshiftDistrolessBuildSettings = redshiftBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
   lazy val snowflakeBuildSettings = {
     Seq(
       name := "snowplow-snowflake-loader",
-      Docker / packageName := "snowplow/rdb-loader-snowflake",
+      Docker / packageName := "rdb-loader-snowflake",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
   }
-
-  lazy val snowflakeDistrolessBuildSettings = snowflakeBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
   lazy val databricksBuildSettings = {
     Seq(
       name := "snowplow-databricks-loader",
-      Docker / packageName := "snowplow/rdb-loader-databricks",
+      Docker / packageName := "rdb-loader-databricks",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
       Compile / unmanagedJars += file("DatabricksJDBC42.jar"),
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
   }
-
-  lazy val databricksDistrolessBuildSettings = databricksBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
   lazy val transformerBatchBuildSettings = {
     Seq(
@@ -299,23 +268,19 @@ object BuildSettings {
   lazy val transformerKinesisBuildSettings = {
     Seq(
       name := "snowplow-transformer-kinesis",
-      Docker / packageName := "snowplow/transformer-kinesis",
+      Docker / packageName := "transformer-kinesis",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated",
       buildInfoKeys := List(name, version, description),
-    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings ++ addExampleConfToTestCp
+    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
-
-  lazy val transformerKinesisDistrolessBuildSettings = transformerKinesisBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
   lazy val transformerPubsubBuildSettings = {
     Seq(
       name := "snowplow-transformer-pubsub",
-      Docker / packageName := "snowplow/transformer-pubsub",
+      Docker / packageName := "transformer-pubsub",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated",
       buildInfoKeys := List(name, version, description),
-    ) ++ buildSettings ++ assemblySettings ++ dockerSettingsFocal ++ dynVerSettings ++ addExampleConfToTestCp
+    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
-
-  lazy val transformerPubsubDistrolessBuildSettings = transformerPubsubBuildSettings.diff(dockerSettingsFocal) ++ dockerSettingsDistroless
 
 }
