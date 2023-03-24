@@ -20,12 +20,16 @@ import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat
+import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider
+import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider.SchemaWithKey
 
 /** Represents transformed data in blob storage */
 
@@ -55,6 +59,8 @@ object Transformed {
     def name: String
     def format: ShreddedFormat
     def model: Int
+    def revision: Int
+    def addition: Int
     def data: Data.DString
   }
 
@@ -68,6 +74,8 @@ object Transformed {
       vendor: String,
       name: String,
       model: Int,
+      revision: Int,
+      addition: Int,
       data: Data.DString
     ) extends Shredded {
       val format = ShreddedFormat.JSON
@@ -78,6 +86,8 @@ object Transformed {
       vendor: String,
       name: String,
       model: Int,
+      revision: Int,
+      addition: Int,
       data: Data.DString
     ) extends Shredded {
       val isGood = true // We don't support TSV shredding for bad data
@@ -111,7 +121,7 @@ object Transformed {
    */
   def shredEvent[F[_]: Monad: Clock: RegistryLookup](
     igluResolver: Resolver[F],
-    propertiesCache: PropertiesCache[F],
+    shredModelCache: ShredModelCache[F],
     isTabular: SchemaKey => Boolean,
     processor: Processor
   )(
@@ -121,17 +131,53 @@ object Transformed {
       .fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
-        fromHierarchy(tabular, igluResolver, propertiesCache)(hierarchy)
+        fromHierarchy(tabular, igluResolver, shredModelCache)(hierarchy)
       }
       .leftMap(error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)))
       .map { shredded =>
         val data = EventUtils.alterEnrichedEvent(event)
-        val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
+        val atomic = Shredded.Tabular(
+          AtomicSchema.vendor,
+          AtomicSchema.name,
+          AtomicSchema.version.model,
+          AtomicSchema.version.revision,
+          AtomicSchema.version.addition,
+          Transformed.Data.DString(data)
+        )
         atomic :: shredded
       }
 
   def wideRowEvent(event: Event): Transformed =
     WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
+
+  /**
+   * Lookup ShredModel for given SchemaKey and evaluate if not found
+   */
+  def lookupShredModel[F[_]: Monad: Clock: RegistryLookup](
+    schemaKey: SchemaKey,
+    shredModelCache: ShredModelCache[F],
+    resolver: => Resolver[F]
+  ): EitherT[F, FailureDetails.LoaderIgluError, ShredModel] =
+    EitherT
+      .liftF(shredModelCache.get(schemaKey))
+      .flatMap(
+        _.fold(
+          SchemaProvider
+            .fetchSchemasWithSameModel(resolver, schemaKey)
+            .flatMap { schemaWithKeyList =>
+              EitherT
+                .fromOption[F][FailureDetails.LoaderIgluError, NonEmptyList[SchemaWithKey]](
+                  NonEmptyList.fromList(schemaWithKeyList),
+                  FailureDetails.LoaderIgluError.InvalidSchema(schemaKey, s"Empty resolver response for $schemaKey")
+                )
+                .map { nel =>
+                  val schemas = nel.map(swk => SelfDescribingSchema[Schema](SchemaMap(swk.schemaKey), swk.schema))
+                  foldMapRedshiftSchemas(schemas)(schemaKey)
+                }
+                .semiflatTap(shredModel => shredModelCache.put(schemaKey, shredModel))
+            }
+        )(EitherT.pure(_))
+      )
 
   /**
    * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity, specifying how it
@@ -148,20 +194,37 @@ object Transformed {
   private def fromHierarchy[F[_]: Monad: Clock: RegistryLookup](
     tabular: Boolean,
     resolver: => Resolver[F],
-    propertiesCache: PropertiesCache[F]
+    shredModelCache: ShredModelCache[F]
   )(
     hierarchy: Hierarchy
   ): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
+    val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
     if (tabular) {
-      EventUtils.flatten(resolver, propertiesCache, hierarchy.entity).map { columns =>
-        val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
-        Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString((meta ++ columns).mkString("\t")))
-      }
+      lookupShredModel(hierarchy.entity.schema, shredModelCache, resolver)
+        .map { shredModel =>
+          val columns = shredModel.jsonToStrings(hierarchy.entity.data)
+          Shredded.Tabular(
+            vendor,
+            name,
+            hierarchy.entity.schema.version.model,
+            hierarchy.entity.schema.version.revision,
+            hierarchy.entity.schema.version.addition,
+            Transformed.Data.DString((meta ++ columns).mkString("\t"))
+          )
+        }
     } else
       EitherT.pure[F, FailureDetails.LoaderIgluError](
-        Shredded.Json(true, vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString(hierarchy.dumpJson))
+        Shredded.Json(
+          true,
+          vendor,
+          name,
+          hierarchy.entity.schema.version.model,
+          hierarchy.entity.schema.version.revision,
+          hierarchy.entity.schema.version.addition,
+          Transformed.Data.DString(hierarchy.dumpJson)
+        )
       )
   }
 }

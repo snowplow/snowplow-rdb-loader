@@ -39,7 +39,7 @@ class DataDiscoverySpec extends Specification {
             BlobStorage.Folder.coerce("s3://my-bucket/my-path"),
             "com.acme",
             "event",
-            2,
+            SchemaVer.Full(2, 0, 0),
             LoaderMessage.SnowplowEntity.SelfDescribingEvent
           ),
           BlobStorage.Key.coerce("s3://assets/event_1.json")
@@ -49,7 +49,7 @@ class DataDiscoverySpec extends Specification {
             BlobStorage.Folder.coerce("s3://my-bucket/my-path"),
             "com.acme",
             "context",
-            2,
+            SchemaVer.Full(2, 0, 0),
             LoaderMessage.SnowplowEntity.SelfDescribingEvent
           ),
           BlobStorage.Key.coerce("s3://assets/context_1.json")
@@ -85,7 +85,16 @@ class DataDiscoverySpec extends Specification {
               BlobStorage.Folder.coerce("s3://bucket/folder/"),
               "com.acme",
               "event-a",
-              1,
+              SchemaVer.Full(1, 0, 0),
+              LoaderMessage.SnowplowEntity.SelfDescribingEvent
+            )
+          ),
+          ShreddedType.Tabular(
+            ShreddedType.Info(
+              BlobStorage.Folder.coerce("s3://bucket/folder/"),
+              "com.acme",
+              "event-a",
+              SchemaVer.Full(1, 1, 0),
               LoaderMessage.SnowplowEntity.SelfDescribingEvent
             )
           )
@@ -174,7 +183,7 @@ class DataDiscoverySpec extends Specification {
               BlobStorage.Folder.coerce("s3://bucket/folder/"),
               "com.acme",
               "event-a",
-              1,
+              SchemaVer.Full(1, 0, 0),
               LoaderMessage.SnowplowEntity.SelfDescribingEvent
             ),
             BlobStorage.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_a_1.json")
@@ -184,7 +193,7 @@ class DataDiscoverySpec extends Specification {
               BlobStorage.Folder.coerce("s3://bucket/folder/"),
               "com.acme",
               "event-b",
-              1,
+              SchemaVer.Full(1, 0, 0),
               LoaderMessage.SnowplowEntity.SelfDescribingEvent
             ),
             BlobStorage.Key.coerce("s3://snowplow-hosted-assets-eu-central-1/4-storage/redshift-storage/jsonpaths/com.acme/event_b_1.json")

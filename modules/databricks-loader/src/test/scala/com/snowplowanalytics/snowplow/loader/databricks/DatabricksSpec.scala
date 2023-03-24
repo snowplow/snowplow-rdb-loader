@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.data.NonEmptyList
+import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.PARQUET
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -47,10 +48,10 @@ class DatabricksSpec extends Specification {
       ).map(ColumnName)
 
       val shreddedTypes = List(
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "aaa", 1, SnowplowEntity.SelfDescribingEvent)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "ccc", 1, SnowplowEntity.SelfDescribingEvent)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "yyy", 1, SnowplowEntity.Context)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", 1, SnowplowEntity.Context))
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "aaa", SchemaVer.Full(1, 0, 0), SnowplowEntity.SelfDescribingEvent)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "ccc", SchemaVer.Full(1, 0, 0), SnowplowEntity.SelfDescribingEvent)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "yyy", SchemaVer.Full(1, 0, 0), SnowplowEntity.Context)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", SchemaVer.Full(1, 0, 0), SnowplowEntity.Context))
       )
 
       val discovery = DataDiscovery(

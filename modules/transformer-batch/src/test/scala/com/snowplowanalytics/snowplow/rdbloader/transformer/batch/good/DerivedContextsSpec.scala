@@ -25,7 +25,7 @@ object DerivedContextsSpec {
   )
 
   object expected {
-    val path = s"vendor=org.schema/name=WebPage/format=json/model=1"
+    val path = s"vendor=org.schema/name=WebPage/format=json/model=1/revision=0/addition=0"
     val contents =
       s"""|{
             |"schema":{

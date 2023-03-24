@@ -21,7 +21,7 @@ import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLook
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, PropertiesCacheSingleton}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, ShredModelCacheSingleton}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.StructType
 
@@ -93,7 +93,7 @@ object Transformer {
       Transformed
         .shredEvent[Id](
           IgluSingleton.get(resolverConfig),
-          PropertiesCacheSingleton.get(resolverConfig),
+          ShredModelCacheSingleton.get(resolverConfig),
           isTabular,
           ShredJob.BadRowsProcessor
         )(event)
@@ -108,10 +108,10 @@ object Transformer {
       }
 
     def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed = {
-      val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
+      val SchemaKey(vendor, name, _, SchemaVer.Full(model, revision, addition)) = badRow.schemaKey
       val data = Transformed.Data.DString(badRow.compact)
       badEventsCounter.add(1L)
-      Transformed.Shredded.Json(false, vendor, name, model, data)
+      Transformed.Shredded.Json(false, vendor, name, model, revision, addition, data)
     }
 
     def typesInfo: TypesInfo = TypesInfo.Shredded(typesAccumulator.value.toList)
@@ -214,7 +214,7 @@ object Transformer {
   }
 
   type WideRowTuple = (String, String)
-  type ShreddedTuple = (String, String, String, String, Int, String)
+  type ShreddedTuple = (String, String, String, String, Int, Int, Int, String)
 
   private implicit class TransformedOps(t: Transformed) {
     def wideRow: Option[WideRowTuple] = t match {
@@ -227,7 +227,7 @@ object Transformer {
     def shredded: Option[ShreddedTuple] = t match {
       case p: Transformed.Shredded =>
         val outputType = if (p.isGood) "good" else "bad"
-        (outputType, p.vendor, p.name, p.format.path, p.model, p.data.value).some
+        (outputType, p.vendor, p.name, p.format.path, p.model, p.revision, p.addition, p.data.value).some
       case _ => None
     }
 

@@ -59,7 +59,13 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
-        ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        ShreddedType.Info(
+          "s3://shredded/base/".dir,
+          "com.acme",
+          "json-context",
+          SchemaVer.Full(1, 0, 0),
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
+        ),
         "s3://assets/com.acme/json_context_1.json".key
       )
       val expected = List(
@@ -175,7 +181,13 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
-        ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        ShreddedType.Info(
+          "s3://shredded/base/".dir,
+          "com.acme",
+          "json-context",
+          SchemaVer.Full(1, 0, 0),
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
+        ),
         "s3://assets/com.acme/json_context_1.json".key
       )
       val expected = List(
@@ -288,7 +300,7 @@ object LoadSpec {
           BlobStorage.Folder.coerce("s3://shredded/base/"),
           "com.acme",
           "json-context",
-          1,
+          SchemaVer.Full(1, 0, 0),
           LoaderMessage.SnowplowEntity.SelfDescribingEvent
         ),
         BlobStorage.Key.coerce("s3://assets/com.acme/json_context_1.json")
