@@ -25,7 +25,7 @@ object LinkClickEventSpec {
   )
 
   object expected {
-    val path = "vendor=com.snowplowanalytics.snowplow/name=link_click/format=json/model=1"
+    val path = "vendor=com.snowplowanalytics.snowplow/name=link_click/format=json/model=1/revision=0/addition=0"
     val contents =
       s"""|{
             |"schema":{

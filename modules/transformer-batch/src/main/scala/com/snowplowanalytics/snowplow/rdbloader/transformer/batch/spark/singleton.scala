@@ -21,13 +21,14 @@ import cats.syntax.show._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup.idLookupInstance
-import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredModelCache}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, WiderowFileSink}
@@ -100,14 +101,14 @@ object singleton {
     }
   }
 
-  object PropertiesCacheSingleton {
-    @volatile private var instance: PropertiesCache[Id] = _
+  object ShredModelCacheSingleton {
+    @volatile private var instance: ShredModelCache[Id] = _
 
-    def get(resolverConfig: ResolverConfig): PropertiesCache[Id] = {
+    def get(resolverConfig: ResolverConfig): ShredModelCache[Id] = {
       if (instance == null) {
         synchronized {
           if (instance == null) {
-            instance = CreateLruMap[Id, PropertiesKey, Properties].create(resolverConfig.cacheSize)
+            instance = CreateLruMap[Id, SchemaKey, ShredModel].create(resolverConfig.cacheSize)
           }
         }
       }

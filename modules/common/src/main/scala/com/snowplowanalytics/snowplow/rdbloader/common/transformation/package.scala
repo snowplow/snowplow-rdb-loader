@@ -14,20 +14,18 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common
 
-import com.snowplowanalytics.iglu.client.resolver.Resolver.SchemaListKey
-import com.snowplowanalytics.iglu.client.resolver.StorageTime
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 
 import java.time.{Instant, ZoneOffset}
 import java.time.format.DateTimeFormatter
 import com.snowplowanalytics.lrumap.LruMap
-import com.snowplowanalytics.iglu.schemaddl.Properties
 
 package object transformation {
 
   private val Formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
-  type PropertiesKey = (SchemaListKey, StorageTime)
-  type PropertiesCache[F[_]] = LruMap[F, PropertiesKey, Properties]
+  type ShredModelCache[F[_]] = LruMap[F, SchemaKey, ShredModel]
 
   implicit class InstantOps(time: Instant) {
     def formatted: String =

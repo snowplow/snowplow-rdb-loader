@@ -27,13 +27,14 @@ import io.circe.parser.{parse => parseCirce}
 import org.http4s.client.{Client => Http4sClient}
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, Registry, RegistryLookup}
-import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, PropertiesKey, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredModelCache, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Processing, Transformer}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.TestApplication._
@@ -48,12 +49,12 @@ class TransformingSpec extends Specification {
 
       val testFileNameMap = List(
         Transformed.Shredded
-          .Tabular("com.snowplowanalytics.snowplow", "atomic", 1, dummyTransformedData)
+          .Tabular("com.snowplowanalytics.snowplow", "atomic", 1, 0, 0, dummyTransformedData)
           .getPath -> "com.snowplowanalytics.snowplow-atomic",
         Transformed.Shredded
-          .Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, dummyTransformedData)
+          .Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, 0, 0, dummyTransformedData)
           .getPath -> "com.snowplowanalytics.snowplow-consent_document",
-        Transformed.Shredded.Tabular("com.optimizely", "state", 1, dummyTransformedData).getPath -> "com.optimizely-state"
+        Transformed.Shredded.Tabular("com.optimizely", "state", 1, 0, 0, dummyTransformedData).getPath -> "com.optimizely-state"
       ).toMap
 
       val expectedTransformedMap =
@@ -135,12 +136,12 @@ object TransformingSpec {
   val defaultWindow = Window(1, 1, 1, 1, 1)
   val dummyTransformedData = Transformed.Data.DString("")
 
-  def propertiesCache: PropertiesCache[IO] = CreateLruMap[IO, PropertiesKey, Properties].create(100).unsafeRunSync()
+  def shredModelCache: ShredModelCache[IO] = CreateLruMap[IO, SchemaKey, ShredModel].create(100).unsafeRunSync()
 
   def createTransformer(formats: TransformerConfig.Formats): Transformer[IO] =
     formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(defaultIgluResolver, propertiesCache, f, TestProcessor)
+        Transformer.ShredTransformer(defaultIgluResolver, shredModelCache, f, TestProcessor)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(defaultIgluResolver, f, TestProcessor)
     }

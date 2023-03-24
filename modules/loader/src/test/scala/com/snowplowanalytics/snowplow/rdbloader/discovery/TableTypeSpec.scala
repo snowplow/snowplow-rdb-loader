@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowplow.rdbloader
 package discovery
 
 import cats.implicits._
+import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import org.scalacheck.Gen
 import org.specs2.ScalaCheck
@@ -39,7 +40,7 @@ class TableTypeSpec extends Specification with ScalaCheck {
         BlobStorage.Folder.coerce("s3://some-bucket/"),
         "com.acme",
         "entity",
-        1,
+        SchemaVer.Full(1, 0, 0),
         LoaderMessage.SnowplowEntity.SelfDescribingEvent
       )
       val discoveryAction = jsonPathDiscovery.discoverJsonPath(None, info)

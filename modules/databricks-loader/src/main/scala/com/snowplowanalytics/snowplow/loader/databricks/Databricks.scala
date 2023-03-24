@@ -18,7 +18,7 @@ import doobie.Fragment
 import doobie.implicits._
 import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip, EventTableColumns}
@@ -42,10 +42,10 @@ object Databricks {
 
           override val requiresEventsColumns: Boolean = true
 
-          override def updateTable(migration: Migration): Block =
-            Block(Nil, Nil, Entity.Table(tgt.schema, SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)))
+          override def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block =
+            Block(Nil, Nil, Entity.Table(tgt.schema, currentSchemaKey, shredModel.tableName))
 
-          override def extendTable(info: ShreddedType.Info): Option[Block] = None
+          override def extendTable(info: ShreddedType.Info): List[Block] = List.empty
 
           override def getLoadStatements(
             discovery: DataDiscovery,
@@ -62,7 +62,8 @@ object Databricks {
 
           override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
-          override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
+          override def createTable(shredModel: ShredModel): Block =
+            Block(Nil, Nil, Entity.Table(tgt.schema, shredModel.schemaKey, shredModel.tableName))
 
           override def getManifest: Statement =
             Statement.CreateTable(
