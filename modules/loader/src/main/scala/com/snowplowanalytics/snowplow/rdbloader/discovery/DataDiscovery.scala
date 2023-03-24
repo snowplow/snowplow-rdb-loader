@@ -10,6 +10,9 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 import cats._
 import cats.data.EitherT
 import cats.implicits._
+import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.SchemaKey.ordering
+import com.snowplowanalytics.iglu.schemaddl.redshift.{MergeRedshiftSchemasResult, foldMapMergeRedshiftSchemas}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
@@ -21,6 +24,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.IgluError
 import com.snowplowanalytics.snowplow.rdbloader.state.State
+
+import scala.math.Ordered.orderingToOrdered
 
 /**
  * Result of data discovery in transformer output folder It still exists mostly to fulfill legacy
@@ -36,7 +41,8 @@ case class DataDiscovery(
   shreddedTypes: List[ShreddedType],
   compression: Compression,
   typesInfo: TypesInfo,
-  columns: List[String]
+  wideColumns: List[String],
+  shredModels: Map[SchemaKey, MergeRedshiftSchemasResult]
 ) {
 
   /** ETL id */
@@ -143,19 +149,43 @@ object DataDiscovery {
 
     for {
       types <- LoaderAction[F, List[ShreddedType]](types)
-      columns <- message.typesInfo match {
-                   case TypesInfo.Shredded(_) => EitherT.pure[F, LoaderError](List.empty[String])
-                   case TypesInfo.WideRow(fileFormat, types) =>
-                     fileFormat match {
-                       case WideRowFormat.JSON => EitherT.pure[F, LoaderError](List.empty[String])
-                       case WideRowFormat.PARQUET =>
-                         Iglu[F]
-                           .fieldNamesFromTypes(types)
-                           .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
+      nonAtomicTypes = types.distinct.filterNot(_.isAtomic)
+      wideColumns <- message.typesInfo match {
+                       case TypesInfo.Shredded(_) => EitherT.pure[F, LoaderError](List.empty[String])
+                       case TypesInfo.WideRow(fileFormat, types) =>
+                         fileFormat match {
+                           case WideRowFormat.JSON => EitherT.pure[F, LoaderError](List.empty[String])
+                           case WideRowFormat.PARQUET =>
+                             Iglu[F]
+                               .fieldNamesFromTypes(types)
+                               .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
+                         }
                      }
-                 }
-    } yield DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo, columns)
+      models <- getShredModels[F](nonAtomicTypes)
+    } yield DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo, wideColumns, models)
   }
+
+  def getShredModels[F[_]: Monad: Iglu](
+    nonAtomicTypes: List[ShreddedType]
+  ): EitherT[F, LoaderError, Map[SchemaKey, MergeRedshiftSchemasResult]] = {
+    val maxSchemaKeyPerTableName = getMaxSchemaKeyPerTableName(nonAtomicTypes)
+    nonAtomicTypes
+      .traverse { shreddedType =>
+        EitherT(Iglu[F].getSchemasWithSameModel(shreddedType.info.getSchemaKey)).map { schemas =>
+          val maxSchemaKey = maxSchemaKeyPerTableName(shreddedType.info.getName)
+          val filtered = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
+          val mergeRedshiftSchemasResult = foldMapMergeRedshiftSchemas(filtered)
+          (shreddedType.info.getSchemaKey, mergeRedshiftSchemasResult)
+        }
+      }
+      .map(_.toMap)
+  }
+
+  implicit val ord: Ordering[SchemaKey] = ordering
+
+  /** Find the maximum SchemaKey for all table names in a given set of shredded types */
+  def getMaxSchemaKeyPerTableName(shreddedTypes: List[ShreddedType]): Map[String, SchemaKey] =
+    shreddedTypes.groupBy(_.info.getName).mapValues(_.maxBy(_.info.version).info.getSchemaKey)
 
   def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =
     Logging[F].error(error)("A problem occurred in the loading of SQS message") *> MonadThrow[F].raiseError(error)

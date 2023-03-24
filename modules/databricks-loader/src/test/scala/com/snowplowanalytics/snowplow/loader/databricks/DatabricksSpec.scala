@@ -8,6 +8,7 @@
 package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.data.NonEmptyList
+import com.snowplowanalytics.iglu.core.SchemaVer
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.PARQUET
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -42,10 +43,10 @@ class DatabricksSpec extends Specification {
       ).map(ColumnName)
 
       val shreddedTypes = List(
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "aaa", 1, SnowplowEntity.SelfDescribingEvent)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "ccc", 1, SnowplowEntity.SelfDescribingEvent)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "yyy", 1, SnowplowEntity.Context)),
-        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", 1, SnowplowEntity.Context))
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "aaa", SchemaVer.Full(1, 0, 0), SnowplowEntity.SelfDescribingEvent)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "ccc", SchemaVer.Full(1, 0, 0), SnowplowEntity.SelfDescribingEvent)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "yyy", SchemaVer.Full(1, 0, 0), SnowplowEntity.Context)),
+        ShreddedType.Widerow(ShreddedType.Info(baseFolder, "com_acme", "zzz", SchemaVer.Full(1, 0, 0), SnowplowEntity.Context))
       )
 
       val discovery = DataDiscovery(
@@ -58,11 +59,12 @@ class DatabricksSpec extends Specification {
           "unstruct_event_com_acme_ccc_1",
           "contexts_com_acme_yyy_1",
           "contexts_com_acme_zzz_1"
-        )
+        ),
+        Map.empty
       )
 
       val results = target
-        .getLoadStatements(discovery, eventsColumns, ())
+        .getLoadStatements(discovery, eventsColumns, (), Nil)
         .map(f => f(LoadAuthMethod.NoCreds))
 
       results should be like { case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>
@@ -241,7 +243,7 @@ object DatabricksSpec {
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.FeatureFlags(addLoadTstampColumn = true),
+    Config.FeatureFlags(addLoadTstampColumn = true, disableMigration = Nil),
     exampleTelemetry
   )
 

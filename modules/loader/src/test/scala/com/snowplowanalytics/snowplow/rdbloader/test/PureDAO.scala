@@ -10,14 +10,9 @@ package com.snowplowanalytics.snowplow.rdbloader.test
 import cats.Monad
 import cats.data.NonEmptyList
 import cats.implicits._
-
 import doobie.{Fragment, Read}
-
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration => SchemaMigration, SchemaList}
-import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
-
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -89,7 +84,8 @@ object PureDAO {
     def getLoadStatements(
       discovery: DataDiscovery,
       eventTableColumns: EventTableColumns,
-      i: Unit
+      i: Unit,
+      disableMigration: List[SchemaCriterion]
     ): LoadStatements =
       NonEmptyList(
         loadAuthMethod =>
@@ -102,7 +98,14 @@ object PureDAO {
             loadAuthMethod,
             i
           ),
-        discovery.shreddedTypes.map(shredded => loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod))
+        discovery.shreddedTypes.map { shredded =>
+          val mergeResult = discovery.shredModels(shredded.info.getSchemaKey)
+          val shredModel =
+            mergeResult.recoveryModels.getOrElse(shredded.info.getSchemaKey, mergeResult.goodModel)
+          val isMigrationDisabled = disableMigration.contains(shredded.info.toCriterion)
+          val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
+          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName)
+        }
       )
 
     def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
@@ -113,18 +116,18 @@ object PureDAO {
     override def getEventTable: Statement =
       Statement.CreateTable(Fragment.const0("CREATE events"))
 
-    def updateTable(migration: SchemaMigration): Migration.Block =
-      throw new RuntimeException("Not implemented in test suite")
+    def updateTable(
+      shredModel: ShredModel.GoodModel,
+      currentSchemaKey: SchemaKey
+    ): Migration.Block =
+      throw new Throwable("Not implemented in test suite")
 
-    def extendTable(info: ShreddedType.Info): Option[Block] =
-      throw new RuntimeException("Not implemented in test suite")
+    def extendTable(info: ShreddedType.Info): List[Block] =
+      throw new Throwable("Not implemented in test suite")
 
-    def createTable(schemas: SchemaList): Migration.Block = {
-      val subschemas = FlatSchema.extractProperties(schemas)
-      val tableName = StringUtils.getTableName(schemas.latest)
-      val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some("public"), 4096, false)
-      val entity = Migration.Entity.Table("public", schemas.latest.schemaKey)
-      Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), entity)
+    def createTable(shredModel: ShredModel): Migration.Block = {
+      val entity = Migration.Entity.Table("public", shredModel.schemaKey, shredModel.tableName)
+      Block(Nil, List(Item.CreateTable(Fragment.const0(shredModel.toTableSql("public")))), entity)
     }
 
     def requiresEventsColumns: Boolean = false

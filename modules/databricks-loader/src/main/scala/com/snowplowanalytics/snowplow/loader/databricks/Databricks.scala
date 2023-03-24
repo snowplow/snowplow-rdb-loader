@@ -12,8 +12,8 @@ import cats.data.NonEmptyList
 import doobie.Fragment
 import doobie.implicits._
 import io.circe.syntax._
-import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.rdbloader.azure.AzureBlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
@@ -39,15 +39,16 @@ object Databricks {
 
           override val requiresEventsColumns: Boolean = true
 
-          override def updateTable(migration: Migration): Block =
-            Block(Nil, Nil, Entity.Table(tgt.schema, SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)))
+          override def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block =
+            Block(Nil, Nil, Entity.Table(tgt.schema, currentSchemaKey, shredModel.tableName))
 
-          override def extendTable(info: ShreddedType.Info): Option[Block] = None
+          override def extendTable(info: ShreddedType.Info): List[Block] = List.empty
 
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            i: Unit
+            i: Unit,
+            disableMigration: List[SchemaCriterion]
           ): LoadStatements = {
             val toCopy = columnsToCopyFromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
@@ -59,7 +60,8 @@ object Databricks {
 
           override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
-          override def createTable(schemas: SchemaList): Block = Block(Nil, Nil, Entity.Table(tgt.schema, schemas.latest.schemaKey))
+          override def createTable(shredModel: ShredModel): Block =
+            throw new IllegalStateException("createTable should never be called for Databricks")
 
           override def getManifest: Statement =
             Statement.CreateTable(
@@ -241,7 +243,7 @@ object Databricks {
     }
 
   private def columnsToCopyFromDiscoveredData(discovery: DataDiscovery): ColumnsToCopy = {
-    val shredTypeColumns = discovery.columns.map(ColumnName.apply)
+    val shredTypeColumns = discovery.wideColumns.map(ColumnName.apply)
     ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
   }
 }

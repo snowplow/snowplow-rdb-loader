@@ -20,7 +20,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{PropertiesCache, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredModelCache, Transformed}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{
   AtomicFieldsProvider,
@@ -40,7 +40,7 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 object Transformer {
   case class ShredTransformer[F[_]: Monad: RegistryLookup: Clock](
     igluResolver: Resolver[F],
-    propertiesCache: PropertiesCache[F],
+    shredModelCache: ShredModelCache[F],
     formats: Formats.Shred,
     processor: Processor
   ) extends Transformer[F] {
@@ -54,12 +54,12 @@ object Transformer {
       else TypesInfo.Shredded.ShreddedFormat.JSON
 
     def goodTransform(event: Event): EitherT[F, BadRow, List[Transformed]] =
-      Transformed.shredEvent[F](igluResolver, propertiesCache, isTabular, processor)(event)
+      Transformed.shredEvent[F](igluResolver, shredModelCache, isTabular, processor)(event)
 
     def badTransform(badRow: BadRow): Transformed = {
-      val SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)) = badRow.schemaKey
+      val SchemaKey(vendor, name, _, SchemaVer.Full(model, revision, addition)) = badRow.schemaKey
       val data = Transformed.Data.DString(badRow.compact)
-      Transformed.Shredded.Json(false, vendor, name, model, data)
+      Transformed.Shredded.Json(false, vendor, name, model, revision, addition, data)
     }
 
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
