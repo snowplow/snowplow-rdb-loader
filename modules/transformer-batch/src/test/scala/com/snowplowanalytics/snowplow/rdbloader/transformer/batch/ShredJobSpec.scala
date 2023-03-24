@@ -68,7 +68,7 @@ object ShredJobSpec {
   val Name = "snowplow-transformer-batch"
   val Version = BuildInfo.version
 
-  val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+  val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
 
   sealed trait Events
 

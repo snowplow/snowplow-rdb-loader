@@ -103,9 +103,9 @@ class PartitionDataFilterSpec extends Specification {
 
   private def goodWide(content: String) = WideRow(good = true, DString(content))
   private def badWide(content: String) = WideRow(good = false, DString(content))
-  private def goodTabShred(content: String) = Transformed.Shredded.Tabular("vendor", "name", 1, DString(content))
-  private def goodJsonShred(content: String) = Transformed.Shredded.Json(isGood = true, "vendor", "name", 1, DString(content))
-  private def badShred(content: String) = Transformed.Shredded.Json(isGood = false, "vendor", "name", 1, DString(content))
+  private def goodTabShred(content: String) = Transformed.Shredded.Tabular("vendor", "name", 1, 0, 0, DString(content))
+  private def goodJsonShred(content: String) = Transformed.Shredded.Json(isGood = true, "vendor", "name", 1, 0, 0, DString(content))
+  private def badShred(content: String) = Transformed.Shredded.Json(isGood = false, "vendor", "name", 1, 0, 0, DString(content))
 }
 
 object PartitionDataFilterSpec {

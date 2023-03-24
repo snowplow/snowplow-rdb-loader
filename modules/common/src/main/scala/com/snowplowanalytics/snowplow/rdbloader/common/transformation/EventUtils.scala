@@ -20,7 +20,7 @@ import java.time.format.DateTimeParseException
 
 import io.circe.Json
 import cats.Monad
-import cats.data.{EitherT, NonEmptyList}
+import cats.data.NonEmptyList
 import cats.implicits._
 
 import cats.effect.Clock
@@ -30,16 +30,13 @@ import com.snowplowanalytics.iglu.core._
 import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
-import com.snowplowanalytics.iglu.schemaddl.migrations.FlatData
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, ParsingError}
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Failure, FailureDetails, Payload, Processor}
-import com.snowplowanalytics.snowplow.rdbloader.common.Common
-import Flattening.NullCharacter
-import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.snowplow.analytics.scalasdk.decode.TSVParser
+import com.snowplowanalytics.snowplow.rdbloader.common.Common
 
 object EventUtils {
 
@@ -138,34 +135,6 @@ object EventUtils {
       "events"
     )
 
-  /**
-   * Transform a self-desribing entity into tabular format, using its known schemas to get a correct
-   * order of columns
-   * @param resolver
-   *   Iglu resolver to get list of known schemas
-   * @param instance
-   *   self-describing JSON that needs to be transformed
-   * @return
-   *   list of columns or flattening error
-   */
-  def flatten[F[_]: Monad: Clock: RegistryLookup](
-    resolver: Resolver[F],
-    propertiesCache: PropertiesCache[F],
-    instance: SelfDescribingData[Json]
-  ): EitherT[F, FailureDetails.LoaderIgluError, List[String]] =
-    Flattening
-      .getDdlProperties(resolver, propertiesCache, instance.schema)
-      .map(props => mapProperties(props, instance))
-
-  private def mapProperties(props: Properties, instance: SelfDescribingData[Json]) =
-    props
-      .map { case (pointer, _) =>
-        FlatData.getPath(pointer.forData, instance.data, getString, NullCharacter)
-      }
-
-  def getString(json: Json): String =
-    json.fold(NullCharacter, transformBool, _ => json.show, escape, _ => escape(json.noSpaces), _ => escape(json.noSpaces))
-
   def getEntities(event: Event): List[SelfDescribingData[Json]] =
     event.unstruct_event.data.toList ++
       event.derived_contexts.data ++
@@ -177,11 +146,6 @@ object EventUtils {
         case (Right(Some(xt)), Right(Some(yt))) => Ordering[Instant].compare(xt, yt)
         case _ => 0
       }
-
-  /** Prevents data with newlines and tabs from breaking the loading process */
-  private def escape(s: String): String =
-    if (s == NullCharacter) "\\\\N"
-    else s.replace('\t', ' ').replace('\n', ' ')
 
   private def getLength(schema: Schema): Option[Int] =
     schema.maxLength.map(_.value.toInt)
