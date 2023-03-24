@@ -50,7 +50,7 @@ object JsonPathDiscovery {
      *   full valid s3 path (with `s3://` prefix)
      */
     override def discoverJsonPath(jsonpathAssets: Option[BlobStorage.Folder], shreddedType: Info): DiscoveryAction[F, BlobStorage.Key] = {
-      val filename = s"""${toSnakeCase(shreddedType.name)}_${shreddedType.model}.json"""
+      val filename = s"""${toSnakeCase(shreddedType.name)}_${shreddedType.version.model}.json"""
       val key = s"${shreddedType.vendor}/$filename"
 
       Cache[F].getCache(key).flatMap {

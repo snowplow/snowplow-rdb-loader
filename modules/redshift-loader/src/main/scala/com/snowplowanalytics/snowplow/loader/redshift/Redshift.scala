@@ -11,29 +11,21 @@
 package com.snowplowanalytics.snowplow.loader.redshift
 
 import java.sql.Timestamp
-
 import cats.Monad
 import cats.data.NonEmptyList
-
+import cats.implicits._
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
 import doobie.Fragment
 import doobie.implicits._
 import doobie.implicits.javasql._
-
 import io.circe.syntax._
-
-import com.snowplowanalytics.iglu.core.SchemaKey
-
-import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration, SchemaList}
-import com.snowplowanalytics.iglu.schemaddl.redshift._
-import com.snowplowanalytics.iglu.schemaddl.redshift.generators.{DdlFile, DdlGenerator, MigrationGenerator}
-
+import com.snowplowanalytics.iglu.schemaddl.redshift.{ShredModel, ShredModelEntry}
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
-import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
+import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
@@ -56,39 +48,68 @@ object Redshift {
 
           override val requiresEventsColumns: Boolean = false
 
-          override def updateTable(migration: Migration): Block = {
-            val ddlFile = MigrationGenerator.generateMigration(migration, 4096, Some(schema))
+          override def updateTable(
+            goodModel: ShredModel.GoodModel,
+            currentSchemaKey: SchemaKey
+          ): Block = {
+            val outTransactions = goodModel.migrations.outTransaction(Some(currentSchemaKey), Some(goodModel.schemaKey))
+            val inTransactions = goodModel.migrations.inTransaction(Some(currentSchemaKey), Some(goodModel.schemaKey))
 
-            val (preTransaction, inTransaction) = ddlFile.statements.foldLeft((NoPreStatements, NoStatements)) {
-              case ((preTransaction, inTransaction), statement) =>
-                statement match {
-                  case s @ AlterTable(_, _: AlterType) =>
-                    (Item.AlterColumn(Fragment.const0(s.toDdl)) :: preTransaction, inTransaction)
-                  case s @ AlterTable(_, _) =>
-                    (preTransaction, Item.AddColumn(Fragment.const0(s.toDdl), ddlFile.warnings) :: inTransaction)
-                  case _ => // We explicitly support only ALTER TABLE here; also drops BEGIN/END
-                    (preTransaction, inTransaction)
-                }
-            }
+            val preTransaction =
+              outTransactions.map { varcharExtension =>
+                Item.AlterColumn(
+                  Fragment.const0(
+                    s"""ALTER TABLE $schema.${goodModel.tableName}
+                     |    ALTER COLUMN "${varcharExtension.old.columnName}" TYPE ${varcharExtension.newEntry.columnType.show}
+                     |""".stripMargin
+                  )
+                )
+              }
 
-            val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
-            Block(preTransaction.reverse, inTransaction.reverse, Entity.Table(schema, target))
+            val inTransaction =
+              inTransactions.map { columnAddition =>
+                Item.AddColumn(
+                  Fragment.const0(
+                    s"""ALTER TABLE $schema.${goodModel.tableName}
+                       |   ADD COLUMN "${columnAddition.column.columnName}" ${columnAddition.column.columnType.show} ${columnAddition.column.compressionEncoding.show}
+                       |""".stripMargin
+                  ),
+                  Nil
+                )
+              }
+
+            Block(preTransaction, inTransaction, Entity.Table(schema, goodModel.schemaKey, goodModel.tableName))
           }
 
-          override def extendTable(info: ShreddedType.Info): Option[Block] =
+          override def extendTable(info: ShreddedType.Info): List[Block] =
             throw new IllegalStateException("Redshift Loader does not support loading wide row")
 
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            i: Unit
+            i: Unit,
+            disableMigration: List[SchemaCriterion]
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
               .groupBy(_.getLoadPath)
               .values
               .map(_.head) // So we get only one copy statement for given path
-              .map(shreddedType => loadAuthMethod => Statement.ShreddedCopy(shreddedType, discovery.compression, loadAuthMethod))
+              .map { shreddedType =>
+                val mergeResult = discovery.shredModels(shreddedType.info.getSchemaKey)
+                val shredModel =
+                  mergeResult.recoveryModels.getOrElse(shreddedType.info.getSchemaKey, mergeResult.goodModel)
+                val isMigrationDisabled = disableMigration.contains(shreddedType.info.toCriterion)
+                val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
+                loadAuthMethod =>
+                  Statement.ShreddedCopy(
+                    shreddedType,
+                    discovery.compression,
+                    loadAuthMethod,
+                    shredModel,
+                    tableName
+                  )
+              }
               .toList
 
             val atomic = { loadAuthMethod: LoadAuthMethod =>
@@ -107,15 +128,47 @@ object Redshift {
 
           override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
-          override def createTable(schemas: SchemaList): Block = {
-            val subschemas = FlatSchema.extractProperties(schemas)
-            val tableName = StringUtils.getTableName(schemas.latest)
-            val createTable = DdlGenerator.generateTableDdl(subschemas, tableName, Some(schema), 4096, false)
-            Block(Nil, List(Item.CreateTable(Fragment.const0(createTable.toDdl))), Entity.Table(schema, schemas.latest.schemaKey))
-          }
+          override def createTable(shredModel: ShredModel): Block =
+            Block(
+              Nil,
+              List(
+                Item.CreateTable(
+                  Fragment.const0(
+                    s"""
+                       |CREATE TABLE IF NOT EXISTS $schema.${shredModel.tableName} (
+                       |${shredModel.entries.show},
+                       |  FOREIGN KEY (root_id) REFERENCES $schema.events(event_id)
+                       |)
+                       |DISTSTYLE KEY
+                       |DISTKEY (root_id)
+                       |SORTKEY (root_tstamp);
+                       |""".stripMargin
+                  )
+                )
+              ),
+              Entity.Table(schema, shredModel.schemaKey, shredModel.tableName)
+            )
 
           override def getManifest: Statement =
-            Statement.CreateTable(Fragment.const0(getManifestDef(schema).render))
+            Statement.CreateTable(
+              Fragment.const0(
+                s"""
+                   |CREATE TABLE IF NOT EXISTS $schema.${Manifest.Name} (
+                   |    "base"                 VARCHAR(512)   ENCODE ZSTD NOT NULL  PRIMARY KEY,
+                   |    "types"                VARCHAR(65535) ENCODE ZSTD NOT NULL,
+                   |    "shredding_started"    TIMESTAMP      ENCODE ZSTD NOT NULL,
+                   |    "shredding_completed"  TIMESTAMP      ENCODE ZSTD NOT NULL,
+                   |    "min_collector_tstamp" TIMESTAMP      ENCODE RAW  NULL,
+                   |    "max_collector_tstamp" TIMESTAMP      ENCODE ZSTD NULL,
+                   |    "ingestion_tstamp"     TIMESTAMP      ENCODE ZSTD NOT NULL,
+                   |    "compression"          VARCHAR(16)    ENCODE ZSTD NOT NULL,
+                   |    "processor_artifact"   VARCHAR(64)    ENCODE ZSTD NOT NULL,
+                   |    "processor_version"    VARCHAR(32)    ENCODE ZSTD NOT NULL,
+                   |    "count_good"           INT            ENCODE ZSTD NULL
+                   |);
+                   |""".stripMargin
+              )
+            )
 
           override def getEventTable: Statement =
             Statement.CreateTable(
@@ -168,13 +221,15 @@ object Redshift {
                      | ACCEPTINVCHARS
                      | $frCompression""".stripMargin
 
-              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod) =>
-                val frTableName = Fragment.const0(qualify(shreddedType.info.getName))
+              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName) =>
+                val frTableName = Fragment.const0(qualify(tableName))
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
+                val columns = shredModel.entries.map(_.columnName)
+                val frColumns = Fragment.const0((ShredModelEntry.commonColumnNames ::: columns).mkString(","))
 
                 shreddedType match {
                   case ShreddedType.Json(_, jsonPathsFile) =>
@@ -189,7 +244,7 @@ object Redshift {
                          | ACCEPTINVCHARS
                          | $frCompression""".stripMargin
                   case ShreddedType.Tabular(_) =>
-                    sql"""COPY $frTableName FROM '$frPath'
+                    sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                          | DELIMITER '$EventFieldSeparator'
                          | CREDENTIALS '$frCredentials'
                          | REGION AS '$frRegion'
@@ -227,9 +282,7 @@ object Redshift {
                      WHERE nspname = ${schema})
                   AND relname = $tableName""".stripMargin
               case Statement.RenameTable(from, to) =>
-                val ddl = DdlFile(List(AlterTable(qualify(from), RenameTo(to))))
-                val str = ddl.render.split("\n").filterNot(l => l.startsWith("--") || l.isBlank).mkString("\n")
-                Fragment.const0(str)
+                Fragment.const0(s"ALTER TABLE ${qualify(from)} RENAME TO ${to}")
               case Statement.GetColumns(tableName) =>
                 sql"""SELECT column_name FROM information_schema.columns 
                       WHERE table_name = $tableName and table_schema = $schema"""
@@ -260,8 +313,8 @@ object Redshift {
 
               case Statement.CreateTable(ddl) =>
                 ddl
-              case Statement.CommentOn(table, comment) =>
-                Fragment.const0(CommentOn(qualify(table), comment).toDdl)
+              case Statement.CommentOn(tableName, comment) =>
+                Fragment.const0(s"COMMENT ON TABLE $tableName IS '$comment'")
               case Statement.DdlFile(ddl) =>
                 ddl
               case Statement.AlterTable(ddl) =>
@@ -310,27 +363,4 @@ object Redshift {
       case _: LoadAuthMethod.TempCreds.Azure =>
         throw new IllegalStateException("Azure temp credentials can't be used with Redshift")
     }
-
-  val ManifestColumns = List(
-    Column("base", RedshiftVarchar(512), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull), KeyConstaint(PrimaryKey))),
-    Column("types", RedshiftVarchar(65535), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("shredding_started", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("shredding_completed", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("min_collector_tstamp", RedshiftTimestamp, Set(CompressionEncoding(RawEncoding)), Set(Nullability(Null))),
-    Column("max_collector_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(Null))),
-    Column("ingestion_tstamp", RedshiftTimestamp, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("compression", RedshiftVarchar(16), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("processor_artifact", RedshiftVarchar(64), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("processor_version", RedshiftVarchar(32), Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(NotNull))),
-    Column("count_good", RedshiftInteger, Set(CompressionEncoding(ZstdEncoding)), Set(Nullability(Null)))
-  )
-
-  /** Add `schema` to otherwise static definition of manifest table */
-  private def getManifestDef(schema: String): CreateTable =
-    CreateTable(
-      s"$schema.${Manifest.Name}",
-      ManifestColumns,
-      Set.empty,
-      Set(Diststyle(Key), DistKeyTable("base"), SortKeyTable(None, NonEmptyList.one("ingestion_tstamp")))
-    )
 }

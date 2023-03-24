@@ -16,6 +16,6 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.iterator.OnlyG
 
 class GoodShredIteratorSpec extends GoodDataIteratorSpec {
 
-  override val goodGenerator: GoodGenerator = () => Shredded.Tabular("vendor", "name", 1, DString("TEST GOOD DATA"))
-  override val badGenerator: BadGenerator = () => Shredded.Json(isGood = false, "vendor", "name", 1, DString("TEST BAD DATA"))
+  override val goodGenerator: GoodGenerator = () => Shredded.Tabular("vendor", "name", 1, 0, 0, DString("TEST GOOD DATA"))
+  override val badGenerator: BadGenerator = () => Shredded.Json(isGood = false, "vendor", "name", 1, 0, 0, DString("TEST BAD DATA"))
 }

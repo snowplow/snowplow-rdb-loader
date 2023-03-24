@@ -16,12 +16,19 @@ import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.client.resolver.Resolver.{ResolverResult, SchemaListKey}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaList, SchemaMap, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError.SchemaListNotFound
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat
+import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider
+import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider.SchemaWithKey
 
 /** Represents transformed data in blob storage */
 
@@ -51,6 +58,8 @@ object Transformed {
     def name: String
     def format: ShreddedFormat
     def model: Int
+    def revision: Int
+    def addition: Int
     def data: Data.DString
   }
 
@@ -64,6 +73,8 @@ object Transformed {
       vendor: String,
       name: String,
       model: Int,
+      revision: Int,
+      addition: Int,
       data: Data.DString
     ) extends Shredded {
       val format = ShreddedFormat.JSON
@@ -74,6 +85,8 @@ object Transformed {
       vendor: String,
       name: String,
       model: Int,
+      revision: Int,
+      addition: Int,
       data: Data.DString
     ) extends Shredded {
       val isGood = true // We don't support TSV shredding for bad data
@@ -107,7 +120,7 @@ object Transformed {
    */
   def shredEvent[F[_]: Monad: Clock: RegistryLookup](
     igluResolver: Resolver[F],
-    propertiesCache: PropertiesCache[F],
+    shredModelCache: ShredModelCache[F],
     isTabular: SchemaKey => Boolean,
     processor: Processor
   )(
@@ -117,17 +130,84 @@ object Transformed {
       .fromEvent(event)
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
-        fromHierarchy(tabular, igluResolver, propertiesCache)(hierarchy)
+        fromHierarchy(tabular, igluResolver, shredModelCache)(hierarchy)
       }
       .leftMap(error => EventUtils.shreddingBadRow(event, processor)(NonEmptyList.one(error)))
       .map { shredded =>
         val data = EventUtils.alterEnrichedEvent(event)
-        val atomic = Shredded.Tabular(AtomicSchema.vendor, AtomicSchema.name, AtomicSchema.version.model, Transformed.Data.DString(data))
+        val atomic = Shredded.Tabular(
+          AtomicSchema.vendor,
+          AtomicSchema.name,
+          AtomicSchema.version.model,
+          AtomicSchema.version.revision,
+          AtomicSchema.version.addition,
+          Transformed.Data.DString(data)
+        )
         atomic :: shredded
       }
 
   def wideRowEvent(event: Event): Transformed =
     WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
+
+  def getShredModel[F[_]: Monad: Clock: RegistryLookup](
+    schemaKey: SchemaKey,
+    schemaKeys: List[SchemaKey],
+    resolver: Resolver[F]
+  ): EitherT[F, LoaderIgluError, ShredModel] =
+    schemaKeys
+      .traverse { sk =>
+        SchemaProvider
+          .getSchema(resolver, sk)
+          .map(schema => SchemaWithKey(sk, schema))
+      }
+      .flatMap { schemaWithKeyList =>
+        EitherT
+          .fromOption[F][FailureDetails.LoaderIgluError, NonEmptyList[SchemaWithKey]](
+            NonEmptyList.fromList(schemaWithKeyList),
+            FailureDetails.LoaderIgluError.InvalidSchema(schemaKey, s"Empty resolver response for $schemaKey")
+          )
+          .map { nel =>
+            val schemas = nel.map(swk => SelfDescribingSchema[Schema](SchemaMap(swk.schemaKey), swk.schema))
+            foldMapRedshiftSchemas(schemas)(schemaKey)
+          }
+      }
+
+  /**
+   * Lookup ShredModel for given SchemaKey and evaluate if not found
+   */
+  def lookupShredModel[F[_]: Monad: Clock: RegistryLookup](
+    schemaKey: SchemaKey,
+    shredModelCache: ShredModelCache[F],
+    resolver: => Resolver[F]
+  ): EitherT[F, LoaderIgluError, ShredModel] = {
+    val criterion = SchemaCriterion(schemaKey.vendor, schemaKey.name, schemaKey.format, Some(schemaKey.version.model), None, None)
+
+    EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model, Some(schemaKey)))
+      .leftMap(error => SchemaListNotFound(criterion, error))
+      .flatMap {
+        case cached: ResolverResult.Cached[SchemaListKey, SchemaList] =>
+          lookupInCache(schemaKey, resolver, shredModelCache, cached)
+        case ResolverResult.NotCached(schemaList) =>
+          val schemaKeys = schemaList.schemas
+          getShredModel(schemaKey, schemaKeys, resolver)
+      }
+  }
+
+  def lookupInCache[F[_]: Monad: Clock: RegistryLookup](
+    schemaKey: SchemaKey,
+    resolver: Resolver[F],
+    shredModelCache: ShredModelCache[F],
+    cached: ResolverResult.Cached[SchemaListKey, SchemaList]
+  ) = {
+    val key = (schemaKey, cached.timestamp)
+    EitherT.liftF(shredModelCache.get(key)).flatMap {
+      case Some(model) =>
+        EitherT.pure[F, FailureDetails.LoaderIgluError](model)
+      case None =>
+        getShredModel(schemaKey, cached.value.schemas, resolver)
+          .semiflatTap(props => shredModelCache.put(key, props))
+    }
+  }
 
   /**
    * Transform JSON `Hierarchy`, extracted from enriched into a `Shredded` entity, specifying how it
@@ -144,20 +224,37 @@ object Transformed {
   private def fromHierarchy[F[_]: Monad: Clock: RegistryLookup](
     tabular: Boolean,
     resolver: => Resolver[F],
-    propertiesCache: PropertiesCache[F]
+    shredModelCache: ShredModelCache[F]
   )(
     hierarchy: Hierarchy
   ): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
     val name = hierarchy.entity.schema.name
+    val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
     if (tabular) {
-      EventUtils.flatten(resolver, propertiesCache, hierarchy.entity).map { columns =>
-        val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
-        Shredded.Tabular(vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString((meta ++ columns).mkString("\t")))
-      }
+      lookupShredModel(hierarchy.entity.schema, shredModelCache, resolver)
+        .map { shredModel =>
+          val columns = shredModel.jsonToStrings(hierarchy.entity.data)
+          Shredded.Tabular(
+            vendor,
+            name,
+            hierarchy.entity.schema.version.model,
+            hierarchy.entity.schema.version.revision,
+            hierarchy.entity.schema.version.addition,
+            Transformed.Data.DString((meta ++ columns).mkString("\t"))
+          )
+        }
     } else
       EitherT.pure[F, FailureDetails.LoaderIgluError](
-        Shredded.Json(true, vendor, name, hierarchy.entity.schema.version.model, Transformed.Data.DString(hierarchy.dumpJson))
+        Shredded.Json(
+          true,
+          vendor,
+          name,
+          hierarchy.entity.schema.version.model,
+          hierarchy.entity.schema.version.revision,
+          hierarchy.entity.schema.version.addition,
+          Transformed.Data.DString(hierarchy.dumpJson)
+        )
       )
   }
 }

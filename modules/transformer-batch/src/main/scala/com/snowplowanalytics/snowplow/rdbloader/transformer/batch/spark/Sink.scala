@@ -20,15 +20,15 @@ object Sink {
   def writeShredded(
     spark: SparkSession,
     compression: Compression,
-    data: RDD[(String, String, String, String, Int, String)],
+    data: RDD[(String, String, String, String, Int, Int, Int, String)],
     outFolder: String
   ): Unit = {
     import spark.implicits._
     data
-      .toDF("output", "vendor", "name", "format", "model", "data")
+      .toDF("output", "vendor", "name", "format", "model", "revision", "addition", "data")
       .write
       .withCompression(compression)
-      .partitionBy("output", "vendor", "name", "format", "model")
+      .partitionBy("output", "vendor", "name", "format", "model", "revision", "addition")
       .mode(SaveMode.Append)
       .text(outFolder)
   }

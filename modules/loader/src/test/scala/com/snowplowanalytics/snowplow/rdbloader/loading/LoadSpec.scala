@@ -10,12 +10,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
+import cats.data.NonEmptyList
+
 import java.time.Instant
 import java.sql.SQLException
 import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
 import cats.effect.Clock
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
+import com.snowplowanalytics.iglu.schemaddl.redshift.{ShredModel, foldMapMergeRedshiftSchemas}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -57,9 +61,16 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
-        ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        ShreddedType.Info(
+          "s3://shredded/base/".dir,
+          "com.acme",
+          "json-context",
+          SchemaVer.Full(1, 0, 0),
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
+        ),
         "s3://assets/com.acme/json_context_1.json".key
       )
+      val model = ShredModel.good(info.info.getSchemaKey, Schema())
       val expected = List(
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
@@ -78,7 +89,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
@@ -90,7 +101,8 @@ class LoadSpec extends Specification {
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
           (),
-          PureDAO.DummyTarget
+          PureDAO.DummyTarget,
+          Nil
         )
         .runS
 
@@ -121,7 +133,8 @@ class LoadSpec extends Specification {
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
           (),
-          PureDAO.DummyTarget
+          PureDAO.DummyTarget,
+          Nil
         )
         .runS
 
@@ -153,7 +166,8 @@ class LoadSpec extends Specification {
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
           (),
-          PureDAO.DummyTarget
+          PureDAO.DummyTarget,
+          Nil
         )
         .runS
 
@@ -170,9 +184,16 @@ class LoadSpec extends Specification {
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
-        ShreddedType.Info("s3://shredded/base/".dir, "com.acme", "json-context", 1, LoaderMessage.SnowplowEntity.SelfDescribingEvent),
+        ShreddedType.Info(
+          "s3://shredded/base/".dir,
+          "com.acme",
+          "json-context",
+          SchemaVer.Full(1, 0, 0),
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent
+        ),
         "s3://assets/com.acme/json_context_1.json".key
       )
+      val model = ShredModel.good(info.info.getSchemaKey, Schema())
       val expected = List(
         LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage,
@@ -194,7 +215,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
@@ -211,7 +232,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
@@ -222,7 +243,8 @@ class LoadSpec extends Specification {
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
           (),
-          PureDAO.DummyTarget
+          PureDAO.DummyTarget,
+          Nil
         )
         .runS
 
@@ -262,7 +284,8 @@ class LoadSpec extends Specification {
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
           (),
-          PureDAO.DummyTarget
+          PureDAO.DummyTarget,
+          Nil
         )
         .runS
 
@@ -272,23 +295,30 @@ class LoadSpec extends Specification {
 }
 
 object LoadSpec {
+  val shreddedType = ShreddedType.Json(
+    ShreddedType.Info(
+      BlobStorage.Folder.coerce("s3://shredded/base/"),
+      "com.acme",
+      "json-context",
+      SchemaVer.Full(1, 0, 0),
+      LoaderMessage.SnowplowEntity.SelfDescribingEvent
+    ),
+    BlobStorage.Key.coerce("s3://assets/com.acme/json_context_1.json")
+  )
+  val shredModels = Map(
+    shreddedType.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
+      NonEmptyList.of(SelfDescribingSchema(SchemaMap(shreddedType.info.getSchemaKey), Schema()))
+    )
+  )
   val dataDiscovery = DataDiscovery(
     BlobStorage.Folder.coerce("s3://shredded/base/"),
     List(
-      ShreddedType.Json(
-        ShreddedType.Info(
-          BlobStorage.Folder.coerce("s3://shredded/base/"),
-          "com.acme",
-          "json-context",
-          1,
-          LoaderMessage.SnowplowEntity.SelfDescribingEvent
-        ),
-        BlobStorage.Key.coerce("s3://assets/com.acme/json_context_1.json")
-      )
+      shreddedType
     ),
     Compression.Gzip,
     TypesInfo.Shredded(List.empty),
-    Nil
+    Nil,
+    shredModels
   )
 
   val arn = "arn:aws:iam::123456789876:role/RedshiftLoadRole"

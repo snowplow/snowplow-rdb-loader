@@ -12,11 +12,8 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import cats.Monad
 import cats.implicits._
-
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
-
-import com.snowplowanalytics.iglu.core.SchemaCriterion
-
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.DiscoveryStep
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.{Common, LoaderMessage}
@@ -44,8 +41,8 @@ sealed trait ShreddedType {
 
   /** Check if this type is special atomic type */
   def isAtomic = this match {
-    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, model, _)) =>
-      vendor == Common.AtomicSchema.vendor && name == Common.AtomicSchema.name && model == Common.AtomicSchema.version.model
+    case ShreddedType.Tabular(ShreddedType.Info(_, vendor, name, v, _)) =>
+      vendor == Common.AtomicSchema.vendor && name == Common.AtomicSchema.name && v.model == Common.AtomicSchema.version.model && v.revision == Common.AtomicSchema.version.revision && v.addition == Common.AtomicSchema.version.addition
     case _ =>
       false
   }
@@ -67,7 +64,7 @@ object ShreddedType {
    */
   final case class Json(info: Info, jsonPaths: BlobStorage.Key) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -81,7 +78,7 @@ object ShreddedType {
    */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.model}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
@@ -111,17 +108,18 @@ object ShreddedType {
     base: BlobStorage.Folder,
     vendor: String,
     name: String,
-    model: Int,
+    version: SchemaVer.Full,
     entity: LoaderMessage.SnowplowEntity
   ) {
-    def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", model)
+    def getSchemaKey: SchemaKey = SchemaKey(vendor, name, "jsonschema", version)
+    def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", version.model)
 
     /** Build valid table name for the shredded type */
     def getName: String =
-      s"${toSnakeCase(vendor)}_${toSnakeCase(name)}_$model"
+      s"${toSnakeCase(vendor)}_${toSnakeCase(name)}_${version.model}"
 
     def getNameFull: String =
-      SnowplowEvent.transformSchema(entity.toSdkProperty, vendor, name, model)
+      SnowplowEvent.transformSchema(entity.toSdkProperty, vendor, name, version.model)
   }
 
   /**
@@ -137,15 +135,15 @@ object ShreddedType {
       case t: TypesInfo.Shredded =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] {
           case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.TSV, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version, shredProperty)
             (Tabular(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
           case TypesInfo.Shredded.Type(schemaKey, TypesInfo.Shredded.ShreddedFormat.JSON, shredProperty) =>
-            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
+            val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version, shredProperty)
             Monad[F].map(JsonPathDiscovery[F].discoverJsonPath(jsonpathAssets, info))(_.map(Json(info, _)))
         }
       case t: TypesInfo.WideRow =>
         t.types.traverse[F, DiscoveryStep[ShreddedType]] { case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
-          val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version.model, shredProperty)
+          val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version, shredProperty)
           (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
         }
     }

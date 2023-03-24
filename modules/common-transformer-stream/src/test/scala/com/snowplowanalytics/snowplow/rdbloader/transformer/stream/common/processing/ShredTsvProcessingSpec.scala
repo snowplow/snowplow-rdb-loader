@@ -35,28 +35,28 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
                 )
               )
             actualOptimizelyRows <-
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.optimizely/name=state/format=tsv/model=1"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.optimizely/name=state/format=tsv/model=1/revision=0/addition=0"
                 )
               )
             actualConsentRows <-
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1/revision=0/addition=0"
                 )
               )
             actualBadRows <-
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/revision=0/addition=0"
                 )
               )
 
@@ -95,14 +95,14 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
                 )
               )
             actualBadRows <-
               readStringRowsFrom(
                 Path(
                   outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/"
+                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/revision=0/addition=0"
                 )
               )
 

@@ -19,7 +19,7 @@ import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits.toSchema
-import com.snowplowanalytics.snowplow.badrows.FailureDetails
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 
 object SchemaProvider {
 
@@ -34,7 +34,7 @@ object SchemaProvider {
   def getSchema[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     schemaKey: SchemaKey
-  ): EitherT[F, FailureDetails.LoaderIgluError, Schema] =
+  ): EitherT[F, LoaderIgluError, Schema] =
     for {
       json <- EitherT(resolver.lookupSchema(schemaKey)).leftMap(resolverBadRow(schemaKey))
       schema <- EitherT.fromOption[F](Schema.parse(json), parseSchemaBadRow(schemaKey))
@@ -43,7 +43,7 @@ object SchemaProvider {
   def fetchSchemasWithSameModel[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     schemaKey: SchemaKey
-  ): EitherT[F, FailureDetails.LoaderIgluError, List[SchemaWithKey]] =
+  ): EitherT[F, LoaderIgluError, List[SchemaWithKey]] =
     EitherT(resolver.listSchemasLike(schemaKey))
       .leftMap(resolverFetchBadRow(schemaKey.vendor, schemaKey.name, schemaKey.format, schemaKey.version.model))
       .map(_.schemas)
@@ -62,13 +62,13 @@ object SchemaProvider {
     model: Int
   )(
     e: ClientError.ResolutionError
-  ): FailureDetails.LoaderIgluError =
-    FailureDetails.LoaderIgluError.SchemaListNotFound(SchemaCriterion(vendor = vendor, name = name, format = format, model = model), e)
+  ): LoaderIgluError =
+    LoaderIgluError.SchemaListNotFound(SchemaCriterion(vendor = vendor, name = name, format = format, model = model), e)
 
-  private def resolverBadRow(schemaKey: SchemaKey)(e: ClientError.ResolutionError): FailureDetails.LoaderIgluError =
-    FailureDetails.LoaderIgluError.IgluError(schemaKey, e)
+  private def resolverBadRow(schemaKey: SchemaKey)(e: ClientError.ResolutionError): LoaderIgluError =
+    LoaderIgluError.IgluError(schemaKey, e)
 
-  private def parseSchemaBadRow(schemaKey: SchemaKey): FailureDetails.LoaderIgluError =
-    FailureDetails.LoaderIgluError.InvalidSchema(schemaKey, "Cannot be parsed as JSON Schema AST")
+  private def parseSchemaBadRow(schemaKey: SchemaKey): LoaderIgluError =
+    LoaderIgluError.InvalidSchema(schemaKey, "Cannot be parsed as JSON Schema AST")
 
 }

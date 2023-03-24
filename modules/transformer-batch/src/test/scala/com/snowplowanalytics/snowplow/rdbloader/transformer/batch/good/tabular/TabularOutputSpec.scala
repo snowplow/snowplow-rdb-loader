@@ -61,7 +61,7 @@ object TabularOutputSpec {
           "stackTrace": null,
           "isFatal": true,
           "className": "AbstractSingletonFactoryBean",
-          "causeStackTrace": "this column should be last"
+          "causeStackTrace": "trace"
         }
       }
     }""".noSpaces
@@ -71,15 +71,15 @@ object TabularOutputSpec {
   )
 
   object expected {
-    val contextPath = s"vendor=org.schema/name=WebPage/format=tsv/model=1"
+    val contextPath = s"vendor=org.schema/name=WebPage/format=tsv/model=1/revision=0/addition=0"
 
     val contextContents =
       "org.schema\tWebPage\tjsonschema\t1-0-0\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"WebPage\"]\tevents\tJonathan Almeida\t[\"blog\",\"releases\"]\t\\N\t\\N\t2014-07-23T00:00:00Z\tblog\ten-US\t[\"snowplow\",\"analytics\",\"java\",\"jvm\",\"tracker\"]"
 
-    val eventPath = s"vendor=com.snowplowanalytics.snowplow/name=application_error/format=tsv/model=1"
+    val eventPath = s"vendor=com.snowplowanalytics.snowplow/name=application_error/format=tsv/model=1/revision=0/addition=2"
 
     val eventContents =
-      "com.snowplowanalytics.snowplow\tapplication_error\tjsonschema\t1-0-2\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"application_error\"]\tevents\tundefined is not a function\tJAVASCRIPT\tAbstractSingletonFactoryBean\t\\N\t1\t\\N\t\\N\t14\t\\N\t\\N\t\\N\tthis column should be last"
+      "com.snowplowanalytics.snowplow\tapplication_error\tjsonschema\t1-0-2\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"application_error\"]\tevents\tundefined is not a function\tJAVASCRIPT\ttrace\tAbstractSingletonFactoryBean\t\\N\t\\N\t1\t\\N\t\\N\t\\N\t14\t\\N"
 
     // Removed three JSON columns and added 7 columns at the end
     val event =

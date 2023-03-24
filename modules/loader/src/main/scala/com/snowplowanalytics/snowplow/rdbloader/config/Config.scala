@@ -16,6 +16,7 @@ import cats.effect.Sync
 import cats.data.EitherT
 import cats.syntax.either._
 import cats.syntax.option._
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import io.circe._
 import io.circe.generic.semiauto._
 import org.http4s.{ParseFailure, Uri}
@@ -126,7 +127,7 @@ object Config {
     backoff: FiniteDuration,
     cumulativeBound: Option[FiniteDuration]
   )
-  final case class FeatureFlags(addLoadTstampColumn: Boolean)
+  final case class FeatureFlags(addLoadTstampColumn: Boolean, disableMigration: List[SchemaCriterion])
 
   sealed trait Strategy
   object Strategy {
@@ -269,6 +270,9 @@ object Config {
 
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
+
+    implicit val disableMigrationConfigDecoder: Decoder[SchemaCriterion] =
+      Decoder[String].emap(s => SchemaCriterion.parse(s).toRight(s"[$s] is not a valid schema criterion"))
 
     implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
       deriveDecoder[FeatureFlags]

@@ -11,44 +11,37 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import java.util.UUID
-
 import scala.concurrent.ExecutionContext
-
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
-
 import io.circe.Json
-
 import cats.{Applicative, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect._
 import cats.effect.std.Random
-
 import io.sentry.SentryClient
 import com.snowplowanalytics.iglu.client.resolver.{CreateResolverCache, Resolver}
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, RegistryLookup}
-import com.snowplowanalytics.iglu.schemaddl.Properties
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredModelCache, ShredModelCacheKey}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetOps
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
-
 import com.snowplowanalytics.snowplow.scalatracker.Tracking
-
 import org.http4s.blaze.client.BlazeClientBuilder
 
 case class Resources[F[_], C](
   igluResolver: Resolver[F],
-  propertiesCache: PropertiesCache[F],
+  shredModelCache: ShredModelCache[F],
   eventParser: EventParser,
   producer: Queue.Producer[F],
   instanceId: String,
@@ -84,7 +77,7 @@ object Resources {
       producer <- mkQueue(config.queue)
       resolverConfig <- mkResolverConfig(igluConfig)
       resolver <- mkResolver(resolverConfig)
-      propertiesCache <- Resource.eval(CreateLruMap[F, PropertiesKey, Properties].create(resolverConfig.cacheSize))
+      shredModelCache <- Resource.eval(CreateLruMap[F, ShredModelCacheKey, ShredModel].create(resolverConfig.cacheSize))
       httpClient <- BlazeClientBuilder[F].withExecutionContext(executionContext).resource
       implicit0(registryLookup: RegistryLookup[F]) <- Resource.pure(Http4sRegistryLookup[F](httpClient))
       eventParser <- mkEventParser(resolver, config)
@@ -106,7 +99,7 @@ object Resources {
       badSink <- mkBadSink(config, mkBadQueue)
     } yield Resources(
       resolver,
-      propertiesCache,
+      shredModelCache,
       eventParser,
       producer,
       instanceId.toString,

@@ -71,7 +71,7 @@ object Processing {
     implicit val lookup: RegistryLookup[F] = resources.registryLookup
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
-        Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, processor)
+        Transformer.ShredTransformer(resources.igluResolver, resources.shredModelCache, f, processor)
       case f: TransformerConfig.Formats.WideRow =>
         Transformer.WideRowTransformer(resources.igluResolver, f, processor)
     }
@@ -260,7 +260,9 @@ object Processing {
   implicit class TransformedOps(t: Transformed) {
     def getPath: SinkPath = t match {
       case p: Transformed.Shredded =>
-        val suffix = Some(s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/")
+        val suffix = Some(
+          s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/revision=${p.revision}/addition=${p.addition}"
+        )
         val pathType = if (p.isGood) SinkPath.PathType.Good else SinkPath.PathType.Bad
         SinkPath(suffix, pathType)
       case p: Transformed.WideRow =>
