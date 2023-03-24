@@ -63,7 +63,7 @@ object NewlineSpec {
   )
 
   object expected {
-    val contextPath = s"vendor=com.snowplowanalytics.snowplow/name=change_form/format=tsv/model=1"
+    val contextPath = s"vendor=com.snowplowanalytics.snowplow/name=change_form/format=tsv/model=1/revision=0/addition=0"
 
     val contextContents =
       "com.snowplowanalytics.snowplow\tchange_form\tjsonschema\t1-0-0\tdeadbeef-dead-beef-dead-0000beefdead\t1970-01-01 00:00:00.000\tevents\t[\"events\",\"change_form\"]\tevents\tb\ta\tTEXTAREA\t\\N\t\\N\tline 1 line2 column2"

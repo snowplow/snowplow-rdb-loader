@@ -65,7 +65,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
   "A job which is provided with a two events with same event_id and both natural and synthetic deduplication are enabled" should {
 
     object expected {
-      val path = "vendor=com.snowplowanalytics.snowplow/name=duplicate/format=json/model=1"
+      val path = "vendor=com.snowplowanalytics.snowplow/name=duplicate/format=json/model=1/revision=0/addition=0"
       val contents =
         s"""|{
             |"schema":{
@@ -86,7 +86,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
             |}
             |}""".stripMargin.replaceAll("[\n\r]", "")
 
-      val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1"
+      val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1/revision=0/addition=0"
       val additionalContextContents =
         s"""
            |{
@@ -180,7 +180,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
   "A job which is provided with a two events with same event_id and both natural and synthetic deduplication are disabled" should {
 
     object expected {
-      val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1"
+      val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1/revision=0/addition=0"
       val additionalContextContents =
         s"""
            |{

@@ -10,23 +10,16 @@ package com.snowplowanalytics.snowplow.loader.snowflake
 import cats.implicits._
 import cats.Monad
 import cats.data.NonEmptyList
-
 import doobie.Fragment
 import doobie.implicits._
-
 import io.circe.syntax._
 import io.circe.parser.parse
-
-import com.snowplowanalytics.iglu.core.SchemaKey
-
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
-
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
-
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.SnowflakeDatatype
 import com.snowplowanalytics.snowplow.loader.snowflake.ast.Statements.AddColumn
 import com.snowplowanalytics.snowplow.loader.snowflake.db.SnowflakeManifest
-
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat.{JSON, PARQUET}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
@@ -56,25 +49,25 @@ object Snowflake {
 
           override val requiresEventsColumns: Boolean = false
 
-          override def updateTable(migration: Migration): Block = {
-            val target = SchemaKey(migration.vendor, migration.name, "jsonschema", migration.to)
-            val entity = Entity.Table(schema, target)
+          def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block = {
+            val entity = Entity.Table(schema, currentSchemaKey, shredModel.tableName)
             Block(Nil, Nil, entity)
           }
 
-          override def extendTable(info: ShreddedType.Info): Option[Block] = {
+          override def extendTable(info: ShreddedType.Info): List[Block] = {
             val isContext = info.entity == SnowplowEntity.Context
             val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
             val columnName = info.getNameFull
             val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
             val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
-            Some(Block(List(addColumn), Nil, Entity.Column(info)))
+            List(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
           override def getLoadStatements(
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
-            initQueryResult: InitQueryResult
+            initQueryResult: InitQueryResult,
+            disableMigration: List[SchemaCriterion]
           ): LoadStatements = {
             val columnsToCopy = columnsToCopyFromDiscoveredData(discovery)
 
@@ -118,10 +111,8 @@ object Snowflake {
             } yield InitQueryResult(transformedStagePath, folderMonitoringStagePath)
 
           // Technically, Snowflake Loader cannot create new tables
-          override def createTable(schemas: SchemaList): Block = {
-            val entity = Entity.Table(schema, schemas.latest.schemaKey)
-            Block(Nil, Nil, entity)
-          }
+          override def createTable(shredModel: ShredModel): Block =
+            throw new IllegalStateException("createTable should never be called for Snowflake")
 
           override def getManifest: Statement =
             Statement.CreateTable(SnowflakeManifest.getManifestDef(schema).toFragment)
@@ -378,7 +369,7 @@ object Snowflake {
   private def getShredTypeColumn(shreddedType: ShreddedType): ColumnName = {
     val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
     val info = shreddedType.info
-    ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.model))
+    ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.version.model))
   }
 
   private def findPathAfterStage(

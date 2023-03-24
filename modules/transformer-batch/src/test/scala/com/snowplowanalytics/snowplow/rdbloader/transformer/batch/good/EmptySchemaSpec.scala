@@ -65,8 +65,8 @@ object EmptySchemaSpec {
     val contexBContents =
       "com.snowplowanalytics.iglu\tanything-b\tjsonschema\t1-0-0\t2b1b25a4-c0df-4859-8201-cf21492ad61b\t2014-05-29 18:16:35.000\tevents\t[\"events\",\"anything-b\"]\tevents"
 
-    val contextAPath = "vendor=com.snowplowanalytics.iglu/name=anything-a/format=tsv/model=1"
-    val contextBPath = "vendor=com.snowplowanalytics.iglu/name=anything-b/format=tsv/model=1"
+    val contextAPath = "vendor=com.snowplowanalytics.iglu/name=anything-a/format=tsv/model=1/revision=0/addition=0"
+    val contextBPath = "vendor=com.snowplowanalytics.iglu/name=anything-b/format=tsv/model=1/revision=0/addition=0"
 
     // Removed three JSON columns and added 7 columns at the end
     val event =
