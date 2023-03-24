@@ -151,6 +151,8 @@
     "backoff": "15 seconds"
     # A strategy to use when deciding on next backoff
     "strategy": "CONSTANT"
+    # When backoff reaches this delay the Loader will stop retrying
+    "cumulativeBound": "10 minutes"
   },
 
   # Retries configuration for initilization block

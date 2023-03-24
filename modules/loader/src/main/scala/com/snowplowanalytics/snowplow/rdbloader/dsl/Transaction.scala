@@ -25,6 +25,7 @@ import doobie._
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
+import com.zaxxer.hikari.HikariConfig
 
 import java.sql.SQLException
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
@@ -87,6 +88,27 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
+  def configureHikari[F[_]: Sync](target: StorageTarget, ds: HikariConfig): F[Unit] =
+    Sync[F].delay {
+      ds.setAutoCommit(target.withAutoCommit)
+      ds.setMaximumPoolSize(PoolSize)
+
+      // This disables the pool's fast failure feature. We don't need fast failure because the
+      // loader already handles failures to get warehouse connections.
+      //
+      // Fast failure at startup yields a whole different set of possible exceptions at startup,
+      // compared with failures at later stages. We disable it so that exceptions during startup
+      // are more consistent with exceptions encountered at later stages of running the app.
+      ds.setInitializationFailTimeout(-1)
+
+      // Setting this to zero prevents the pool from periodically re-connecting to the warehouse
+      // when a connection gets old. For Databricks, this stops the loader from re-starting the
+      // cluster unnecessarily when there are no events to be loaded.
+      ds.setMinimumIdle(0)
+
+      ds.setDataSourceProperties(target.properties)
+    }
+
   def buildPool[F[_]: Async: SecretStore](
     target: StorageTarget
   ): Resource[F, Transactor[F]] =
@@ -100,13 +122,7 @@ object Transaction {
                   }
       xa <- HikariTransactor
               .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce)
-      _ <- Resource.eval(xa.configure { ds =>
-             Sync[F].delay {
-               ds.setAutoCommit(target.withAutoCommit)
-               ds.setMaximumPoolSize(PoolSize)
-               ds.setDataSourceProperties(target.properties)
-             }
-           })
+      _ <- Resource.eval(xa.configure(configureHikari[F](target, _)))
       xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
     } yield xa
 

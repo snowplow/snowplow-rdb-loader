@@ -16,6 +16,8 @@ import cats.{Applicative, MonadThrow}
 import cats.implicits._
 import retry._
 
+import java.sql.SQLTransientConnectionException
+
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
@@ -37,7 +39,8 @@ object TargetCheck {
     val onError = (e: Throwable, d: RetryDetails) => log(e, d)
     val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
     val fa: F[Unit] = Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
-    retryingOnSomeErrors(retryPolicy, { t: Throwable => isWorth(t).pure[F] }, onError)(fa)
+    val isWorthF = isWorth.andThen(_.pure[F])
+    retryingOnSomeErrors(retryPolicy, isWorthF, onError)(fa)
   }
 
   def log[F[_]: Logging: Applicative](e: Throwable, d: RetryDetails): F[Unit] =
@@ -45,7 +48,8 @@ object TargetCheck {
       Logging[F].debug(show"Caught exception during target check: ${e.toString}")
 
   /** Check if error is worth retrying */
-  def isWorth(e: Throwable): Boolean =
-    e.toString.toLowerCase.contains("(700100) connection timeout expired. details: none") ||
-      e.toString.toLowerCase.contains("(500051) error processing query/statement")
+  def isWorth: Throwable => Boolean = {
+    case _: SQLTransientConnectionException => true
+    case _ => false
+  }
 }
