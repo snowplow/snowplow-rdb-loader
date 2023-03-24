@@ -17,7 +17,7 @@ object WebsitePageContextSpec {
   )
 
   object expected {
-    val path = "vendor=org.schema/name=WebPage/format=json/model=1"
+    val path = "vendor=org.schema/name=WebPage/format=json/model=1/revision=0/addition=0"
     val contents =
       s"""|{
             |"schema":{

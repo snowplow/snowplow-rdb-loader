@@ -52,7 +52,7 @@ object CrossBatchDeduplicationSpec {
   )
 
   object expected {
-    val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1"
+    val additionalContextPath = "vendor=com.snowplowanalytics.snowplow/name=ua_parser_context/format=json/model=1/revision=0/addition=0"
     val additionalContextContents1 =
       s"""
         |{

@@ -7,6 +7,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import doobie.Fragment
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -69,7 +70,9 @@ object Statement {
   case class ShreddedCopy(
     shreddedType: ShreddedType,
     compression: Compression,
-    loadAuthMethod: LoadAuthMethod
+    loadAuthMethod: LoadAuthMethod,
+    shredModel: ShredModel,
+    tableName: String
   ) extends Statement
       with Loading {
     def table: String = shreddedType.info.getName

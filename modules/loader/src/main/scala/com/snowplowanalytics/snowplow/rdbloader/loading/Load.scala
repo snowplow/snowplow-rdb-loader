@@ -11,6 +11,7 @@ import java.time.Instant
 import cats.{Monad, MonadThrow, Show}
 import cats.implicits._
 import cats.effect.Clock
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import retry.Sleep
 
 // This project
@@ -86,14 +87,15 @@ object Load {
     incrementAttempt: C[Unit],
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
-    target: Target[I]
+    target: Target[I],
+    disableMigration: List[SchemaCriterion]
   ): F[LoadResult] =
     for {
       _ <- TargetCheck.prepareTarget[F, C]
-      migrations <- Migration.build[F, C, I](discovery.discovery, target)
+      migrations <- Migration.build[F, C, I](discovery.discovery, target, disableMigration)
       _ <- getPreTransactions(setStage, migrations.preTransaction, incrementAttempt).traverse_(Transaction[F, C].run(_))
       result <- Transaction[F, C].transact {
-                  getTransaction[C, I](setStage, discovery, initQueryResult, target)(migrations.inTransaction)
+                  getTransaction[C, I](setStage, discovery, initQueryResult, target, disableMigration)(migrations.inTransaction)
                     .onError { case _: Throwable => incrementAttempt }
                 }
     } yield result
@@ -121,7 +123,8 @@ object Load {
     setStage: Stage => F[Unit],
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
-    target: Target[I]
+    target: Target[I],
+    disableMigration: List[SchemaCriterion]
   )(
     inTransactionMigrations: F[Unit]
   ): F[LoadResult] =
@@ -140,7 +143,7 @@ object Load {
                     Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
                       setStage(Stage.MigrationIn) *>
                       inTransactionMigrations *>
-                      run[F, I](setLoading, discovery.discovery, initQueryResult, target) *>
+                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration) *>
                       setStage(Stage.Committing) *>
                       Manifest.add[F](discovery.origin.toManifestItem) *>
                       Manifest
@@ -194,12 +197,13 @@ object Load {
     setLoading: String => F[Unit],
     discovery: DataDiscovery,
     initQueryResult: I,
-    target: Target[I]
+    target: Target[I],
+    disableMigration: List[SchemaCriterion]
   ): F[Unit] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
       existingEventTableColumns <- if (target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
-      _ <- target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult).traverse_ { genStatement =>
+      _ <- target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration).traverse_ { genStatement =>
              for {
                loadAuthMethod <- LoadAuthService[F].forLoadingEvents
                // statement must be generated as late as possible, to have fresh and valid credentials.

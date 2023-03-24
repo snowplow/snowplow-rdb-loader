@@ -8,8 +8,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.db
 
 import cats.Monad
-
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
+import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.EventTableColumns
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Block
@@ -43,7 +43,8 @@ trait Target[I] {
   def getLoadStatements(
     discovery: DataDiscovery,
     eventTableColumns: EventTableColumns,
-    initQueryResult: I
+    initQueryResult: I,
+    disableMigration: List[SchemaCriterion]
   ): LoadStatements
 
   /** Get DDL of a manifest table */
@@ -52,10 +53,13 @@ trait Target[I] {
   def getEventTable: Statement
 
   /** Generate a DB-specification migration Block for updating a *separate* table */
-  def updateTable(migration: SchemaMigration): Block
+  def updateTable(
+    goodModel: ShredModel.GoodModel,
+    currentSchemaKey: SchemaKey
+  ): Block
 
   /** Create a table with columns dervived from list of Iglu schemas */
-  def createTable(schemas: SchemaList): Block
+  def createTable(shredModel: ShredModel): Block
 
   /** Query to get necessary bits from the warehouse during initialization of the application */
   def initQuery[F[_]: DAO: Monad]: F[I]
@@ -64,7 +68,7 @@ trait Target[I] {
    * Add a new column into `events`, i.e. extend a wide row. Unlike `updateTable` it always operates
    * on `events` table
    */
-  def extendTable(info: ShreddedType.Info): Option[Block]
+  def extendTable(info: ShreddedType.Info): List[Block]
 
   /**
    * Prepare a temporary table to be used for folder monitoring
