@@ -16,13 +16,13 @@ import java.time.Instant
 import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, RetryingTransaction, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
@@ -87,7 +87,6 @@ class LoadSpec extends Specification {
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -120,7 +119,6 @@ class LoadSpec extends Specification {
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -154,7 +152,6 @@ class LoadSpec extends Specification {
 
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -168,10 +165,10 @@ class LoadSpec extends Specification {
 
     "abort, sleep and start transaction again if first commit failed" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val transaction: Transaction[Pure, Pure] = RetryingTransaction.wrap(validConfig.retries, PureTransaction.interpreter)
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
@@ -220,7 +217,6 @@ class LoadSpec extends Specification {
       )
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -262,7 +258,6 @@ class LoadSpec extends Specification {
       )
       val result = Load
         .load[Pure, Pure, Unit](
-          SpecHelpers.validCliConfig.config,
           LoadSpec.setStageNoOp,
           Pure.unit,
           LoadSpec.dataDiscoveryWithOrigin,
@@ -353,7 +348,11 @@ object LoadSpec {
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =
     sql match {
-      case Statement.ManifestAdd(_) => ts.getLog.length == 8
+      case Statement.ManifestAdd(_) =>
+        ts.getLog.count {
+          case PureTransaction.StartMessage => true
+          case _ => false
+        } == 1
       case _ => false
     }
 

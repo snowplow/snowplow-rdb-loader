@@ -112,7 +112,8 @@ object Environment {
         Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       implicit0(dispatcher: Dispatcher[F]) <- Dispatcher.parallel[F]
-      transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts)
+      transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts, cli.config.readyCheck)
+      transaction <- Resource.pure(RetryingTransaction.wrap(cli.config.retries, transaction))
       telemetry <- Telemetry.build[F](
                      cli.config.telemetry,
                      appName,
