@@ -26,10 +26,11 @@ import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
 import com.zaxxer.hikari.HikariConfig
+import retry.Sleep
 
 import java.sql.SQLException
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.utils.SSH
+import com.snowplowanalytics.snowplow.rdbloader.transactors.{RetryingTransactor, SSH}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
 /**
@@ -61,11 +62,6 @@ trait Transaction[F[_], C[_]] {
    * transaction
    */
   def run[A](io: C[A]): F[A]
-
-  /**
-   * Same as run, but narrowed down to transaction to allow migration error handling.
-   */
-  def run_(io: C[Unit]): F[Unit]
 
   /**
    * A kind-function (`mapK`) to downcast `F` into `C` This is a very undesirable, but necessary
@@ -109,8 +105,9 @@ object Transaction {
       ds.setDataSourceProperties(target.properties)
     }
 
-  def buildPool[F[_]: Async: SecretStore](
-    target: StorageTarget
+  def buildPool[F[_]: Async: SecretStore: Logging: Sleep](
+    target: StorageTarget,
+    retries: Config.Retries
   ): Resource[F, Transactor[F]] =
     for {
       ce <- ExecutionContexts.fixedThreadPool[F](2)
@@ -123,6 +120,7 @@ object Transaction {
       xa <- HikariTransactor
               .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce)
       _ <- Resource.eval(xa.configure(configureHikari[F](target, _)))
+      xa <- Resource.pure(RetryingTransactor.wrap(retries, xa))
       xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
     } yield xa
 
@@ -131,11 +129,14 @@ object Transaction {
    * close a JDBC connection. If connection could not be acquired, it will retry several times
    * according to `retryPolicy`
    */
-  def interpreter[F[_]: Async: Dispatcher: Monitoring: SecretStore](
+  def interpreter[F[_]: Async: Dispatcher: Logging: Monitoring: SecretStore: Sleep](
     target: StorageTarget,
-    timeouts: Config.Timeouts
+    timeouts: Config.Timeouts,
+    connectionRetries: Config.Retries
   ): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target).map(xa => Transaction.jdbcRealInterpreter[F](target, timeouts, xa))
+    buildPool[F](target, connectionRetries).map { xa =>
+      Transaction.jdbcRealInterpreter[F](target, timeouts, xa)
+    }
 
   def defaultStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = {
     val timeoutSeconds = rollbackCommitTimeout.toSeconds.toInt
@@ -174,9 +175,8 @@ object Transaction {
               case (fiber, Outcome.Canceled()) =>
                 fiber.cancel.timeout(timeouts.rollbackCommit)
             }
-            .adaptError {
-              case e: SQLException => new TransactionException(s"${e.getMessage} - SqlState: ${e.getSQLState}", e)
-              case e => new TransactionException(e.getMessage, e)
+            .adaptError { case e: SQLException =>
+              new TransactionException(s"${e.getMessage} - SqlState: ${e.getSQLState}", e)
             }
       }
 
@@ -185,17 +185,6 @@ object Transaction {
 
       def run[A](io: ConnectionIO[A]): F[A] =
         NoCommitTransactor.trans.apply(io).withErrorAdaption
-
-      val awsColumnResizeError: String =
-        raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different; - SqlState: 0A000"""
-
-      // If premigration was successful, but migration failed. It would leave the columns resized.
-      // This recovery makes it so resizing error would be ignored.
-      // Note: AWS will return 500310 error code other SQL errors (i.e. COPY errors), don't use for pattern matching.
-      def run_(io: ConnectionIO[Unit]): F[Unit] =
-        run[Unit](io).recoverWith {
-          case e: TransactionException if e.getMessage matches awsColumnResizeError => ().pure[F]
-        }
 
       def arrowBack: F ~> ConnectionIO =
         new FunctionK[F, ConnectionIO] {

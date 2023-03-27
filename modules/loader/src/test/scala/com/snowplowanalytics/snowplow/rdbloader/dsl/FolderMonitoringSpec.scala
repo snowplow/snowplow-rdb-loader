@@ -77,7 +77,6 @@ class FolderMonitoringSpec extends Specification {
         FolderMonitoring
           .check[Pure, Pure, Unit](
             loadFrom,
-            exampleReadyCheckConfig,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -126,7 +125,6 @@ class FolderMonitoringSpec extends Specification {
         FolderMonitoring
           .check[Pure, Pure, Unit](
             loadFrom,
-            exampleReadyCheckConfig,
             (),
             Target.defaultPrepareAlertTable
           )
@@ -268,5 +266,4 @@ object FolderMonitoringSpec {
     }
   }
 
-  val exampleReadyCheckConfig: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
 }

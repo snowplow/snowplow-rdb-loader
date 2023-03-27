@@ -163,8 +163,6 @@ object FolderMonitoring {
    * `shredding_complete.json` and turned into corresponding `AlertPayload`
    * @param loadFrom
    *   list shredded folders
-   * @param readyCheck
-   *   config for retry logic
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
    * @param prepareAlertTable
@@ -174,7 +172,6 @@ object FolderMonitoring {
    */
   def check[F[_]: MonadThrow: BlobStorage: Sleep: Transaction[*[_], C]: Logging, C[_]: DAO: Monad: LoadAuthService, I](
     loadFrom: BlobStorage.Folder,
-    readyCheck: Config.Retries,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): F[List[AlertPayload]] = {
@@ -186,7 +183,7 @@ object FolderMonitoring {
     } yield onlyS3Batches
 
     for {
-      _ <- TargetCheck.blockUntilReady[F, C](readyCheck)
+      _ <- TargetCheck.prepareTarget[F, C]
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
       foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
     } yield foldersWithChecks.map { case (folder, exists) =>
@@ -218,14 +215,13 @@ object FolderMonitoring {
    */
   def run[F[_]: Async: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     foldersCheck: Option[Config.Folders],
-    readyCheck: Config.Retries,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, readyCheck, isBusy, initQueryResult, prepareAlertTable)
+        stream[F, C, I](folders, isBusy, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -237,8 +233,6 @@ object FolderMonitoring {
    *
    * @param folders
    *   configuration for folders monitoring
-   * @param readyCheck
-   *   configuration for target ready check
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
    * @param initQueryResult
@@ -248,7 +242,6 @@ object FolderMonitoring {
    */
   def stream[F[_]: Transaction[*[_], C]: Async: BlobStorage: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     folders: Config.Folders,
-    readyCheck: Config.Retries,
     isBusy: Stream[F, Boolean],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
@@ -263,7 +256,7 @@ object FolderMonitoring {
                 Logging[F].info("Monitoring shredded folders") *>
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
-                      alerts <- check[F, C, I](outputFolder, readyCheck, initQueryResult, prepareAlertTable)
+                      alerts <- check[F, C, I](outputFolder, initQueryResult, prepareAlertTable)
                       _ <- alerts.traverse_ { payload =>
                              val warn = payload.base match {
                                case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
