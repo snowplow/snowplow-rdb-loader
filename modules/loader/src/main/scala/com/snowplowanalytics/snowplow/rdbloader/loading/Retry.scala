@@ -12,11 +12,10 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, MonadThrow, Show}
+import cats.{Applicative, Show}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
-import retry.{RetryDetails, RetryPolicies, RetryPolicy, Sleep}
+import retry.{RetryDetails, RetryPolicies, RetryPolicy}
 import retry._
 
 /**
@@ -24,24 +23,6 @@ import retry._
  * retrying the current load, whereas `discovery.Retries` is all about retrying past loads
  */
 object Retry {
-
-  /**
-   * This retry policy will attempt several times with short pauses (30 + 60 + 90 sec) Because most
-   * of errors such connection drops should be happening in in connection acquisition The error
-   * handler will also abort the transaction (it should start in the original action again)
-   */
-  def retryLoad[F[_]: MonadThrow: Sleep: Logging, A](
-    config: Retries,
-    incrementAttempt: F[Unit],
-    fa: F[A]
-  ): F[A] = {
-    val onError = (e: Throwable, d: RetryDetails) => incrementAttempt *> log[F](e, d)
-    val retryPolicy = getRetryPolicy[F](config)
-    retryingOnSomeErrors(retryPolicy, { t: Throwable => isWorth(t).pure[F] }, onError)(fa)
-  }
-
-  def log[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(show"Transaction aborted. $d. Caught exception: ${e.toString}")
 
   /** Check if error is worth retrying */
   def isWorth(e: Throwable): Boolean = {

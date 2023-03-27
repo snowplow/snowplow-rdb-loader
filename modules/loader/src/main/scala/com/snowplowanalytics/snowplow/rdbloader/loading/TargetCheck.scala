@@ -12,44 +12,21 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, MonadThrow}
+import cats.Applicative
 import cats.implicits._
 import retry._
 
-import java.sql.SQLTransientConnectionException
-
-import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
-import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 
 /**
- * Module checks whether target is ready to load or not. It blocks the application until target
- * become ready to accept statements.
+ * Module prepares the target to make it ready for loading.
  */
 object TargetCheck {
 
   /**
-   * Probe the target database to find out if it is operational. Continue to make this check until
-   * it become ready.
+   * Prepare the target to make it ready for loading e.g. start the warehouse running
    */
-  def blockUntilReady[F[_]: MonadThrow: Transaction[*[_], C]: Logging: Sleep, C[_]: DAO](
-    readyCheckConfig: Config.Retries
-  ): F[Unit] = {
-    val onError = (e: Throwable, d: RetryDetails) => log(e, d)
-    val retryPolicy = Retry.getRetryPolicy[F](readyCheckConfig)
-    val fa: F[Unit] = Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
-    val isWorthF = isWorth.andThen(_.pure[F])
-    retryingOnSomeErrors(retryPolicy, isWorthF, onError)(fa)
-  }
-
-  def log[F[_]: Logging: Applicative](e: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].info(show"Target is not ready. $d") *>
-      Logging[F].debug(show"Caught exception during target check: ${e.toString}")
-
-  /** Check if error is worth retrying */
-  def isWorth: Throwable => Boolean = {
-    case e: SQLTransientConnectionException if Option(e.getCause).isEmpty => true
-    case _ => false
-  }
+  def prepareTarget[F[_]: Applicative: Transaction[*[_], C]: Logging: Sleep, C[_]: DAO]: F[Unit] =
+    Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
 }

@@ -81,7 +81,6 @@ object Loader {
       initQueryResult <- initQuery[F, C, I](target)
       _ <- FolderMonitoring.run[F, C, I](
              config.monitoring.folders,
-             config.readyCheck,
              control.isBusy,
              initQueryResult,
              target.prepareAlertTable
@@ -109,7 +108,7 @@ object Loader {
 
     def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
 
-    val blockUntilReady = initRetry(TargetCheck.blockUntilReady[F, C](config.readyCheck)) *>
+    val blockUntilReady = initRetry(TargetCheck.prepareTarget[F, C]) *>
       Logging[F].info("Target check is completed")
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
@@ -189,6 +188,8 @@ object Loader {
 
     val setStageC: Stage => C[Unit] =
       stage => Transaction[F, C].arrowBack(control.setStage(stage))
+    val incrementAttemptsC: C[Unit] =
+      Transaction[F, C].arrowBack(control.incrementAttempts)
     val addFailure: Throwable => F[Boolean] =
       control.addFailure(config.retryQueue)(folder)(_)
 
@@ -196,7 +197,7 @@ object Loader {
       for {
         start <- Clock[F].realTimeInstant
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
-        result <- Load.load[F, C, I](config, setStageC, control.incrementAttempts, discovery, initQueryResult, target)
+        result <- Load.load[F, C, I](setStageC, incrementAttemptsC, discovery, initQueryResult, target)
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Load.LoadSuccess(ingested) =>
