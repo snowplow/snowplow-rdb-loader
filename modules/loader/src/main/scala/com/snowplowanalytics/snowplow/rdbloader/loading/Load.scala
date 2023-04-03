@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Monitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+import com.snowplowanalytics.snowplow.rdbloader.dsl.AlertMessage
 
 /** Entry-point for loading-related logic */
 object Load {
@@ -63,8 +63,8 @@ object Load {
   case class LoadSuccess(ingestionTimestamp: Option[Instant]) extends LoadResult
 
   case class FolderAlreadyLoaded(folder: BlobStorage.Folder) extends LoadResult {
-    def toAlertPayload: AlertPayload =
-      AlertPayload.info("Folder is already loaded", folder)
+    def toAlertMessage: AlertMessage =
+      AlertMessage.FolderIsAlreadyLoaded(folder)
   }
 
   /**

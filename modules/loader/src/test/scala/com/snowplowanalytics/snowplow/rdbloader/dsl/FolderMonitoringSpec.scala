@@ -17,12 +17,10 @@ import scala.concurrent.duration._
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import io.circe.syntax._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload.Severity
 import com.snowplowanalytics.snowplow.rdbloader.test.{
   Pure,
   PureAWS,
@@ -45,7 +43,9 @@ class FolderMonitoringSpec extends Specification {
       assertGeneratedAlerts(
         unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
         shreddingCompleteExists = false,
-        expectedMessages = List("Incomplete shredding")
+        expectedMessages =
+          List(AlertMessage.ShreddingIncomplete(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00"))),
+        expectedLogs = List("Incomplete shredding: s3://bucket/shredded/run=2021-07-09-12-30-00/")
       )
     }
 
@@ -53,7 +53,8 @@ class FolderMonitoringSpec extends Specification {
       assertGeneratedAlerts(
         unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
         shreddingCompleteExists = false,
-        expectedMessages = List.empty
+        expectedMessages = List.empty,
+        expectedLogs = List.empty
       )
     }
 
@@ -61,7 +62,8 @@ class FolderMonitoringSpec extends Specification {
       assertGeneratedAlerts(
         unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
         shreddingCompleteExists = true,
-        expectedMessages = List("Unloaded batch")
+        expectedMessages = List(AlertMessage.FolderIsUnloaded(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00"))),
+        expectedLogs = List("Unloaded folder: s3://bucket/shredded/run=2021-07-09-12-30-00/")
       )
     }
 
@@ -69,7 +71,12 @@ class FolderMonitoringSpec extends Specification {
       assertGeneratedAlerts(
         unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
         shreddingCompleteExists = true,
-        expectedMessages = List("Unloaded batch")
+        expectedMessages = List(
+          AlertMessage.FolderIsUnloaded(
+            BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
+          )
+        ),
+        expectedLogs = List("Unloaded folder: s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
       )
     }
   }
@@ -193,7 +200,8 @@ class FolderMonitoringSpec extends Specification {
   def assertGeneratedAlerts(
     unloadedFolder: String,
     shreddingCompleteExists: Boolean,
-    expectedMessages: List[String]
+    expectedMessages: List[AlertMessage],
+    expectedLogs: List[String]
   ) = {
     val aws = if (shreddingCompleteExists) PureAWS.init.withExistingKeys else PureAWS.init
     val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
@@ -207,28 +215,19 @@ class FolderMonitoringSpec extends Specification {
     implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
     val expectedState = TestState(
-      List(
-        PureTransaction.CommitMessage,
-        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-        TestState.LogEntry.Sql(Statement.FoldersCopy(loadFrom, LoadAuthMethod.NoCreds, ())),
-        TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-        PureTransaction.StartMessage,
-        TestState.LogEntry.Sql(Statement.ReadyCheck),
-        PureTransaction.NoTransactionMessage
-      ),
+      expectedLogs.map(TestState.LogEntry.Message(_)) ++
+        List(
+          PureTransaction.CommitMessage,
+          TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+          TestState.LogEntry.Sql(Statement.FoldersCopy(loadFrom, LoadAuthMethod.NoCreds, ())),
+          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+          PureTransaction.StartMessage,
+          TestState.LogEntry.Sql(Statement.ReadyCheck),
+          PureTransaction.NoTransactionMessage
+        ),
       Map()
     )
-    val ExpectedResult = expectedMessages
-      .map { message =>
-        Monitoring.AlertPayload(
-          Monitoring.Application,
-          Some(inputFolder),
-          Severity.Warning,
-          message,
-          Map.empty
-        )
-      }
 
     val (state, result) =
       FolderMonitoring
@@ -240,10 +239,7 @@ class FolderMonitoringSpec extends Specification {
         .run
 
     state must beEqualTo(expectedState)
-    result must beRight.like {
-      case ExpectedResult => ok
-      case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
-    }
+    result must beRight(expectedMessages)
   }
 
 }
