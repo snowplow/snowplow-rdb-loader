@@ -132,6 +132,7 @@ object RedshiftEventsTable {
        |	event_version varchar(128) encode ZSTD,
        |	event_fingerprint varchar(128) encode ZSTD,
        |	true_tstamp timestamp encode ZSTD,
+       |        load_tstamp timestamp default getdate() null,
        |	CONSTRAINT event_id_0110_pk PRIMARY KEY(event_id)
        |)
        |DISTSTYLE KEY
