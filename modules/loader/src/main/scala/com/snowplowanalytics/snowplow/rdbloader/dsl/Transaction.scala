@@ -28,7 +28,6 @@ import doobie.hikari._
 import com.zaxxer.hikari.HikariConfig
 import retry.Sleep
 
-import java.sql.SQLException
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.transactors.{RetryingTransactor, SSH}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
@@ -76,8 +75,6 @@ trait Transaction[F[_], C[_]] {
 }
 
 object Transaction {
-
-  final class TransactionException(message: String, cause: Throwable) extends Exception(message, cause)
 
   /** Should be enough for all monitoring and loading */
   val PoolSize = 4
@@ -174,9 +171,6 @@ object Transaction {
                 Async[F].unit
               case (fiber, Outcome.Canceled()) =>
                 fiber.cancel.timeout(timeouts.rollbackCommit)
-            }
-            .adaptError { case e: SQLException =>
-              new TransactionException(s"${e.getMessage} - SqlState: ${e.getSQLState}", e)
             }
       }
 

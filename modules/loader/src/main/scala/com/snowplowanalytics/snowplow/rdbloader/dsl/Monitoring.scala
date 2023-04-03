@@ -53,7 +53,7 @@ trait Monitoring[F[_]] { self =>
    * Send an event with `iglu:com.snowplowanalytics.monitoring.batch/alert/jsonschema/1-0-0` to
    * either HTTP webhook endpoint or snowplow collector, whichever is configured (can be both)
    */
-  def alert(payload: Monitoring.AlertPayload): F[Unit]
+  def alert(message: Alert): F[Unit]
 
 }
 
@@ -61,9 +61,6 @@ object Monitoring {
 
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
-
-  /** Restrict the length of an alert message to be compliant with alert iglu schema */
-  private val MaxAlertPayloadLength = 4096
 
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
@@ -98,23 +95,14 @@ object Monitoring {
     def toSelfDescribing(payload: AlertPayload): SelfDescribingData[Json] =
       SelfDescribingData(AlertSchema, derivedEncoder.apply(payload))
 
+    def ofAlert(am: Alert): AlertPayload =
+      AlertPayload(Application, Alert.getFolder(am), Alert.getSeverity(am), Alert.getMessage(am), Map.empty)
+
     implicit val alertPayloadEncoder: Encoder[AlertPayload] =
       Encoder[Json].contramap[AlertPayload](p => toSelfDescribing(p).normalize)
 
     implicit def alertPayloadEntityEncoder[F[_]]: EntityEncoder[F, AlertPayload] =
       jsonEncoderOf[F, AlertPayload]
-
-    def info(message: String, folder: BlobStorage.Folder): AlertPayload =
-      AlertPayload(Application, Some(folder), Severity.Info, message, Map.empty)
-
-    def warn(message: String): AlertPayload =
-      AlertPayload(Application, None, Severity.Warning, message, Map.empty)
-
-    def warn(message: String, folder: BlobStorage.Folder): AlertPayload =
-      AlertPayload(Application, Some(folder), Severity.Warning, message, Map.empty)
-
-    def error(message: String): AlertPayload =
-      AlertPayload(Application, None, Severity.Error, message, Map.empty)
   }
 
   final case class SuccessPayload(
@@ -208,15 +196,15 @@ object Monitoring {
 
       def periodicMetrics: Metrics.PeriodicMetrics[F] = pm
 
-      def alert(payload: AlertPayload): F[Unit] = {
-        val trimmedPayload = payload.copy(message = payload.message.take(MaxAlertPayloadLength))
-        val webhookRequest = viaWebhook[AlertPayload](trimmedPayload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
+      def alert(message: Alert): F[Unit] = {
+        val payload = AlertPayload.ofAlert(message)
+        val webhookRequest = viaWebhook[AlertPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
           case None => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
         }
 
         val snowplowRequest = tracker match {
-          case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(trimmedPayload))
+          case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(payload))
           case None => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
         }
 
