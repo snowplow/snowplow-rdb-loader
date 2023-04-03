@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
 
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FSDataOutputStream, Path}
@@ -20,14 +21,12 @@ import org.apache.hadoop.io.compress.GzipCodec
 import java.io.{BufferedWriter, OutputStream, OutputStreamWriter}
 import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.nio.file.Paths
 
 // Doesn't support shredded directory style as there is no partitioning by vendor/name/model.
 // It simply saves files under 'output=bad' directory.
 final class WiderowFileSink(
-  folderName: String,
+  outputFolder: BlobStorage.Folder,
   hadoopConfiguration: Configuration,
-  outputPath: URI,
   compression: Compression
 ) extends BadrowSink {
 
@@ -45,13 +44,8 @@ final class WiderowFileSink(
   private def openFile(
     partitionIndex: Int
   ): FSDataOutputStream = {
-    val directory = Paths.get(
-      outputPath.toString,
-      folderName,
-      "output=bad"
-    )
     val fileName = s"part-$partitionIndex.$outputFileExtension"
-    val path = new Path(directory.toString, fileName)
+    val path = new Path(outputFolder, fileName)
     path.getFileSystem(hadoopConfiguration).create(path, false)
   }
 
@@ -79,4 +73,20 @@ final class WiderowFileSink(
       case Compression.Gzip =>
         "txt.gz"
     }
+}
+object WiderowFileSink {
+
+  def create(
+    folderName: String,
+    hadoopConfiguration: Configuration,
+    outputPath: URI,
+    compression: Compression
+  ): WiderowFileSink = {
+    val outputFolder = BlobStorage.Folder
+      .coerce(outputPath.toString)
+      .append(folderName)
+      .append("output=bad")
+
+    new WiderowFileSink(outputFolder, hadoopConfiguration, compression)
+  }
 }

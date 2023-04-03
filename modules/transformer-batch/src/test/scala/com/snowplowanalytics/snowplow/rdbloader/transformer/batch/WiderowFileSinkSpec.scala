@@ -56,7 +56,7 @@ class WiderowFileSinkSpec extends Specification with SparkSpec with TempDirector
   }
 
   private def fileSink(compression: Compression, badRowsRoot: Path) =
-    new WiderowFileSink(
+    WiderowFileSink.create(
       folderName = "run=1970-01-01-00-00-00",
       hadoopConfiguration = spark.sparkContext.hadoopConfiguration,
       outputPath = badRowsRoot.toUri,

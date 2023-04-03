@@ -222,7 +222,7 @@ class ShredJob[T](
       case config: BadSink.Kinesis =>
         KinesisSink.createFrom(config)
       case BadSink.File =>
-        new WiderowFileSink(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
+        WiderowFileSink.create(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
     }
 
   private def sinkBad(transformed: RDD[Transformed], sinkProvider: () => BadrowSink): RDD[Transformed] =
