@@ -132,6 +132,7 @@ object SnowflakeEventsTable {
       |  event_version               VARCHAR(128),
       |  event_fingerprint           VARCHAR(128),
       |  true_tstamp                 TIMESTAMP,
+      |  load_tstamp                 TIMESTAMP NULL,
       |  CONSTRAINT event_id_pk PRIMARY KEY(event_id)
       |)
       |""".stripMargin

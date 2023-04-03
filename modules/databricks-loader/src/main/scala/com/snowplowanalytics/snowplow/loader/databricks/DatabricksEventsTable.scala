@@ -132,6 +132,7 @@ object DatabricksEventsTable {
       |  event_version               VARCHAR(128),
       |  event_fingerprint           VARCHAR(128),
       |  true_tstamp                 TIMESTAMP,
+      |  load_tstamp                 TIMESTAMP,
       |  collector_tstamp_date       DATE GENERATED ALWAYS AS (DATE(collector_tstamp))
       |)
       |PARTITIONED BY (collector_tstamp_date, event_name);
