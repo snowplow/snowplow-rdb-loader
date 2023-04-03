@@ -16,7 +16,7 @@ import java.time.Instant
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
+import com.snowplowanalytics.snowplow.rdbloader.dsl.{Alert, Monitoring}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
 
 object PureMonitoring {
@@ -30,7 +30,7 @@ object PureMonitoring {
     def success(payload: Monitoring.SuccessPayload): Pure[Unit] =
       Pure.unit
 
-    def alert(payload: Monitoring.AlertPayload): Pure[Unit] =
+    def alert(payload: Alert): Pure[Unit] =
       Pure.unit
 
     def periodicMetrics: Metrics.PeriodicMetrics[Pure] =

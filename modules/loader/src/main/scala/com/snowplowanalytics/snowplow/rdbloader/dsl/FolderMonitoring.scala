@@ -28,7 +28,6 @@ import fs2.text.utf8
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement._
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
 import com.snowplowanalytics.snowplow.rdbloader.loading.TargetCheck
 import retry.Sleep
 
@@ -160,7 +159,7 @@ object FolderMonitoring {
     loadFrom: BlobStorage.Folder,
     initQueryResult: I,
     prepareAlertTable: List[Statement]
-  ): F[List[AlertPayload]] = {
+  ): F[List[Alert]] = {
     val getBatches = for {
       _ <- prepareAlertTable.traverse(st => DAO[C].executeUpdate(st, DAO.Purpose.NonLoading))
       loadAuthMethod <- LoadAuthService[C].forFolderMonitoring
@@ -175,23 +174,29 @@ object FolderMonitoring {
     } yield alerts
   }
 
-  private def createAlerts[F[_]: Applicative: BlobStorage](folders: List[BlobStorage.Folder]): F[List[AlertPayload]] =
+  private def createAlerts[F[_]: Monad: BlobStorage: Logging](folders: List[BlobStorage.Folder]): F[List[Alert]] =
     folders
       .traverseFilter { folder =>
-        shreddingCompleteExistsIn(folder).ifF(
-          ifTrue = Some(Monitoring.AlertPayload.warn("Unloaded batch", folder)),
-          ifFalse = alertForIncompleteShredding(folder)
-        )
+        val whenShreddingComplete =
+          Logging[F]
+            .warning(s"Unloaded folder: $folder")
+            .as(Some(Alert.FolderIsUnloaded(folder)))
+            .widen[Option[Alert]]
+        val whenShreddingIncomplete = alertForIncompleteShredding[F](folder)
+        shreddingCompleteExistsIn(folder)
+          .ifM(ifTrue = whenShreddingComplete, ifFalse = whenShreddingIncomplete)
       }
 
   private def shreddingCompleteExistsIn[F[_]: BlobStorage](folder: Folder): F[Boolean] =
     BlobStorage[F].keyExists(folder.withKey(ShreddingComplete))
 
-  private def alertForIncompleteShredding(folder: Folder): Option[AlertPayload] =
+  private def alertForIncompleteShredding[F[_]: Applicative: Logging](folder: Folder): F[Option[Alert]] =
     if (isProducedByBatchTransformer(folder))
-      Some(Monitoring.AlertPayload.warn("Incomplete shredding", folder))
+      Logging[F]
+        .warning(s"Incomplete shredding: $folder")
+        .as(Some(Alert.ShreddingIncomplete(folder)))
     else
-      None
+      none.pure[F]
 
   private def isProducedByBatchTransformer(folder: Folder): Boolean =
     folder.folderName.length == s"run=$TimePattern".length
@@ -261,18 +266,9 @@ object FolderMonitoring {
                   sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
                     for {
                       alerts <- check[F, C, I](outputFolder, initQueryResult, prepareAlertTable)
-                      _ <- alerts.traverse_ { payload =>
-                             val warn = payload.base match {
-                               case Some(folder) => Logging[F].warning(s"${payload.message} $folder")
-                               case None => Logging[F].error(s"${payload.message} with unknown path. Invalid state!")
-                             }
-                             warn *> Monitoring[F].alert(payload)
-                           }
+                      _ <- alerts.traverse_(Monitoring[F].alert(_))
                       _ <- if (alerts.isEmpty) Async[F].unit
-                           else {
-                             val payload = Monitoring.AlertPayload.warn("Folder monitoring detected unloaded folders")
-                             Monitoring[F].alert(payload)
-                           }
+                           else Monitoring[F].alert(Alert.UnloadedFoldersDetected)
                     } yield (),
                     Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
                   ) *> failed.set(0)
@@ -281,7 +277,7 @@ object FolderMonitoring {
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
                   val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
                   val withErrorMsg = show"$msg, message: ${error.getMessage}"
-                  val payload = Monitoring.AlertPayload.warn(msg)
+                  val payload = Alert.FailedFolderMonitoring(error, failedBefore)
                   val maxAttempts = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
                   if (failedBefore >= maxAttempts) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
                   else Logging[F].warning(withErrorMsg)

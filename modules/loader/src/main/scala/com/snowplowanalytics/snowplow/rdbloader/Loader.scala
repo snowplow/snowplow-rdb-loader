@@ -13,7 +13,7 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import scala.concurrent.duration._
-import cats.{Applicative, Apply, Monad, MonadThrow}
+import cats.{Apply, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect.{Async, Clock}
 import retry._
@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Columns._
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Control => DbControl, HealthCheck, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, NoOperation, Retries}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{
+  Alert,
   Cache,
   DAO,
   FolderMonitoring,
@@ -35,7 +36,7 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{
   Transaction,
   VacuumScheduling
 }
-import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring.AlertPayload
+import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Retry, Stage, TargetCheck}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
@@ -77,15 +78,14 @@ object Loader {
     telemetry: Telemetry[F],
     target: Target[I]
   ): F[Unit] = {
-    val folderMonitoring: Stream[F, Unit] = for {
-      initQueryResult <- initQuery[F, C, I](target)
-      _ <- FolderMonitoring.run[F, C, I](
-             config.monitoring.folders,
-             control.isBusy,
-             initQueryResult,
-             target.prepareAlertTable
-           )
-    } yield ()
+    def folderMonitoring(initQueryResult: I): Stream[F, Unit] =
+      FolderMonitoring.run[F, C, I](
+        config.monitoring.folders,
+        control.isBusy,
+        initQueryResult,
+        target.prepareAlertTable
+      )
+
     val noOpScheduling: Stream[F, Unit] =
       NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
 
@@ -93,11 +93,8 @@ object Loader {
       VacuumScheduling.run[F, C](config.storage, config.schedules)
     val healthCheck =
       HealthCheck.start[F, C](config.monitoring.healthCheck)
-    val loading: Stream[F, Unit] =
-      for {
-        initQueryResult <- initQuery[F, C, I](target)
-        _ <- loadStream[F, C, I](config, control, initQueryResult, target)
-      } yield ()
+    def loading(initQueryResult: I): Stream[F, Unit] =
+      loadStream[F, C, I](config, control, initQueryResult, target)
     val stateLogging: Stream[F, Unit] =
       Stream
         .awakeDelay[F](StateLoggingFrequency)
@@ -108,22 +105,29 @@ object Loader {
 
     def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
 
-    val blockUntilReady = initRetry(TargetCheck.prepareTarget[F, C]) *>
-      Logging[F].info("Target check is completed")
+    val blockUntilReady = initRetry(TargetCheck.prepareTarget[F, C]).onError { case t: Throwable =>
+      Monitoring[F].alert(Alert.FailedInitialConnection(t))
+    } *> Logging[F].info("Target check is completed")
+
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
-    val eventsTableInit = initRetry(createEventsTable[F, C](target)) *>
-      Logging[F].info("Events table initialization is completed")
-    val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)) *>
-      Logging[F].info("Manifest initialization is completed")
+
+    val eventsTableInit = initRetry(createEventsTable[F, C](target)).onError { case t: Throwable =>
+      Monitoring[F].alert(Alert.FailedToCreateEventsTable(t))
+    } *> Logging[F].info("Events table initialization is completed")
+
+    val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)).onError { case t: Throwable =>
+      Monitoring[F].alert(Alert.FailedToCreateManifestTable(t))
+    } *> Logging[F].info("Manifest initialization is completed")
+
     val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
       Logging[F].info("Adding load_tstamp column is completed")
 
-    val init: F[Unit] = blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp
+    val init: F[I] = blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp *> initQuery[F, C, I](target)
 
-    val process = Stream.eval(init).flatMap { _ =>
-      loading
-        .merge(folderMonitoring)
+    val process = Stream.eval(init).flatMap { initQueryResult =>
+      loading(initQueryResult)
+        .merge(folderMonitoring(initQueryResult))
         .merge(noOpScheduling)
         .merge(healthCheck)
         .merge(stateLogging)
@@ -208,7 +212,7 @@ object Loader {
                    _ <- control.incrementLoaded
                  } yield ()
                case fal: Load.FolderAlreadyLoaded =>
-                 Monitoring[F].alert(fal.toAlertPayload)
+                 Monitoring[F].alert(fal.toAlert)
              }
         _ <- control.removeFailure(folder)
       } yield ()
@@ -239,7 +243,7 @@ object Loader {
       }
       Transaction[F, C].transact(f).recoverWith { case e: Throwable =>
         val err = s"Error while adding load_tstamp column: ${getErrorMessage(e)}"
-        Logging[F].error(err) *> Monitoring[F].alert(AlertPayload.error(err))
+        Logging[F].error(err)
       }
     }
 
@@ -249,8 +253,12 @@ object Loader {
       .contains(AtomicColumns.ColumnsWithDefault.LoadTstamp.value)
 
   /** Query to get necessary bits from the warehouse during initialization of the application */
-  private def initQuery[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow, I](target: Target[I]): Stream[F, I] =
-    Stream.eval(Transaction[F, C].run(target.initQuery))
+  private def initQuery[F[_]: MonadThrow: Monitoring: Transaction[*[_], C], C[_]: DAO: MonadThrow, I](target: Target[I]): F[I] =
+    Transaction[F, C]
+      .run(target.initQuery)
+      .onError { case t: Throwable =>
+        Monitoring[F].alert(Alert.FailedInitialConnection(t))
+      }
 
   private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: Monad](target: Target[_]): F[Unit] =
     Transaction[F, C].transact(DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void)
@@ -273,12 +281,14 @@ object Loader {
     error: Throwable
   ): F[Unit] = {
     val message = getErrorMessage(error)
-    val alert = Monitoring.AlertPayload.warn(message, discovery.origin.base)
-    val logNoRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message")
-    val logRetry = Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding intro retry queue. $message")
-
-    Monitoring[F].alert(alert) *>
-      addFailure(error).ifM(logRetry, logNoRetry)
+    addFailure(error).flatMap {
+      case true =>
+        Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding into retry queue. $message") *>
+          Monitoring[F].alert(Alert.RetryableLoadFailure(discovery.origin.base, error))
+      case false =>
+        Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message") *>
+          Monitoring[F].alert(Alert.TerminalLoadFailure(discovery.origin.base, error))
+    }
   }
 
   /**
@@ -287,15 +297,14 @@ object Loader {
    */
   private def reportFatal[F[_]: Apply: Logging: Monitoring]: PartialFunction[Throwable, F[Unit]] = { case error =>
     Logging[F].error("Loader shutting down") *>
-      Monitoring[F].alert(Monitoring.AlertPayload.error(error.toString)) *>
       Monitoring[F].trackException(error)
   }
 
-  private def initRetryLog[F[_]: Logging: Applicative: Monitoring](e: Throwable, d: RetryDetails): F[Unit] = {
+  private def initRetryLog[F[_]: Logging](e: Throwable, d: RetryDetails): F[Unit] = {
     val errMessage =
       show"""Exception from init block. $d
             |${getErrorMessage(e)}""".stripMargin
-    Logging[F].error(errMessage) *> Monitoring[F].alert(Monitoring.AlertPayload.error(errMessage))
+    Logging[F].error(errMessage)
   }
 
   private def getErrorMessage(error: Throwable): String =

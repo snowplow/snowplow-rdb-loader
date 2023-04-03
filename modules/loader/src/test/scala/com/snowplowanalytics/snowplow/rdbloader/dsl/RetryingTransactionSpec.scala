@@ -185,7 +185,7 @@ class RetryingTransactionSpec extends Specification {
 
       val (either, timeTaken) = TestControl.executeEmbed(io).unsafeRunSync()
 
-      either must beLeft(haveClass[Transaction.TransactionException])
+      either must beLeft(haveClass[SQLTransientConnectionException])
       timeTaken must_== 20.seconds // expected time taken when using the main (not target check) retries config
     }
   }
