@@ -20,7 +20,6 @@ import org.apache.hadoop.io.compress.GzipCodec
 import java.io.{BufferedWriter, OutputStream, OutputStreamWriter}
 import java.net.URI
 import java.nio.charset.StandardCharsets
-import java.nio.file.Paths
 
 // Doesn't support shredded directory style as there is no partitioning by vendor/name/model.
 // It simply saves files under 'output=bad' directory.
@@ -45,13 +44,9 @@ final class WiderowFileSink(
   private def openFile(
     partitionIndex: Int
   ): FSDataOutputStream = {
-    val directory = Paths.get(
-      outputPath.toString,
-      folderName,
-      "output=bad"
-    )
+    val directory = s"$outputPath/$folderName/output=bad"
     val fileName = s"part-$partitionIndex.$outputFileExtension"
-    val path = new Path(directory.toString, fileName)
+    val path = new Path(directory, fileName)
     path.getFileSystem(hadoopConfiguration).create(path, false)
   }
 
