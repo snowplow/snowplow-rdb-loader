@@ -1,3 +1,7 @@
+Version 5.4.1 (2023-04-05)
+--------------------------
+Transformer batch: fix output path for widerow file sink (#1229)
+
 Version 5.4.0 (2023-03-20)
 --------------------------
 Transformer: add flag disabling atomic fields truncation to the transformer (#1217)
