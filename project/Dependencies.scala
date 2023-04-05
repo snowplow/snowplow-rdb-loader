@@ -38,7 +38,8 @@ object Dependencies {
     val monocle          = "2.0.3"
     val catsRetry        = "3.1.0"
     val log4cats         = "2.5.0"
-    val http4s           = "0.23.13"
+    val http4s           = "0.23.17"
+    val http4sBlaze     = "0.23.14" // this dep fell out of sync with http4s-core versioning - 0.23.14 is the last 0.X release.
     val scalaTracker     = "2.0.0"
 
     val spark            = "3.3.1"
@@ -57,7 +58,7 @@ object Dependencies {
     val redshiftJdbc     = "1.2.55.1083"
     val snowflakeJdbc    = "3.13.25"
     val enumeratum       = "1.7.0"
-    val aws              = "1.12.161"
+    val aws              = "1.12.261"
     val aws2             = "2.18.8"
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
@@ -115,7 +116,7 @@ object Dependencies {
   val monocleMacro      = "com.github.julien-truffaut" %% "monocle-macro"                     % V.monocle
   val catsRetry         = "com.github.cb372"           %% "cats-retry"                        % V.catsRetry
   val log4cats          = "org.typelevel"              %% "log4cats-slf4j"                    % V.log4cats
-  val http4sClient      = "org.http4s"                 %% "http4s-blaze-client"               % V.http4s
+  val http4sClient      = "org.http4s"                 %% "http4s-blaze-client"               % V.http4sBlaze
   val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
   val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
 
