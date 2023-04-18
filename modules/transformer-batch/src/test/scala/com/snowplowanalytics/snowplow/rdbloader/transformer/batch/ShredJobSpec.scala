@@ -444,7 +444,7 @@ object ShredJobSpec {
       ),
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
       TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil),
-      Config.Monitoring(None),
+      Config.Monitoring(None, Config.Monitoring.Metrics(None)),
       deduplication,
       Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None, false, false),
