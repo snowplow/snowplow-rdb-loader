@@ -325,9 +325,19 @@ object ShredJob {
 
           Transformer.WideRowParquetTransformer(allFields, schema)
       }
+      val beginning = System.currentTimeMillis()
       val job = new ShredJob(spark, transformer, config, resolverConfig)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
+
+      config.monitoring.metrics.cloudwatch.foreach { metrics =>
+        Metrics.sendDuration(
+          metrics.namespace,
+          metrics.transformDuration,
+          (System.currentTimeMillis() - beginning).millis,
+          metrics.dimensions
+        )
+      }
     }
 
     Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {

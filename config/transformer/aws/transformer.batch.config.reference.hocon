@@ -163,5 +163,22 @@
     "sentry": {
       "dsn": "http://sentry.acme.com"
     }
+
+    "metrics": {
+      # Optional. For sending metrics to Cloudwatch. If not set, metrics are not sent.
+      "cloudwatch": {
+        # Namespace that will contain the metrics in Cloudwatch
+        "namespace": "snowplow/transformer_batch"
+
+        # Name of the metric that contains the number of milliseconds needed to transform a folder
+        "transformDuration": "transform_duration"
+
+        # Any key-value pairs to be added as dimensions in Cloudwatch metrics
+        "dimensions": {
+          "app_version": "x.y.z",
+          "env": "prod"
+        }
+      }
+    }
   }
 }

@@ -162,6 +162,7 @@ object Dependencies {
   val ssm               = "com.amazonaws"         % "aws-java-sdk-ssm"          % V.aws
   val sts               = "com.amazonaws"         % "aws-java-sdk-sts"          % V.aws % Runtime
   val kinesis           = "com.amazonaws"         % "aws-java-sdk-kinesis"      % V.aws
+  val cloudwatch        = "com.amazonaws"         % "aws-java-sdk-cloudwatch"   % V.aws
 
   val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
@@ -275,6 +276,7 @@ object Dependencies {
     sns,
     kinesis,
     dynamodb,
+    cloudwatch,
     slf4jSimple,
     eventsManifest,
     sparkCore,
