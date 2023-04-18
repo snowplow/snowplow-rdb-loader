@@ -163,5 +163,23 @@
     "sentry": {
       "dsn": "http://sentry.acme.com"
     }
+
+    "metrics": {
+      # Optional. For sending latency metrics to Cloudwatch. If not set, metrics are not sent.
+      "cloudwatch": {
+        # Namespace that will contain the metrics in Cloudwatch
+        "namespace": "snowplow/transformer"
+
+        # Name of the metric that contains the number of milliseconds
+        # between the end of transforming a folder and the earliest collector timestamp that it contains
+        "pipelineLatency": "pipeline_latency"
+
+        # Any key-value pairs to be added as dimensions in Cloudwatch metrics
+        "dimensions": {
+          "app_version": "x.y.z",
+          "env": "prod"
+        }
+      }
+    }
   }
 }

@@ -137,9 +137,16 @@ object TransformerConfigSpec {
   )
   val exampleDefaultFormats = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, Nil, Nil, Nil)
   val exampleMonitoringBatch = Config.Monitoring(
-    Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com")))
+    Some(TransformerConfig.Sentry(URI.create("http://sentry.acme.com"))),
+    Config.Monitoring.Metrics(
+      Some(Config.Monitoring.Cloudwatch(
+        "snowplow/transformer",
+        "pipeline_latency",
+        Map("app_version" -> "x.y.z", "env" -> "prod")
+      ))
+    )
   )
-  val exampleDefaultMonitoringBatch = Config.Monitoring(None)
+  val exampleDefaultMonitoringBatch = Config.Monitoring(None, Config.Monitoring.Metrics(None))
   val exampleDeduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
 
   val emptyRunInterval = Config.RunInterval(None, None, None)
