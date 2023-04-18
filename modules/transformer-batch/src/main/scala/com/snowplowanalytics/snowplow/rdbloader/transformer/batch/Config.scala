@@ -108,10 +108,18 @@ object Config {
       deriveDecoder[RunInterval]
   }
 
-  final case class Monitoring(sentry: Option[TransformerConfig.Sentry])
+  final case class Monitoring(sentry: Option[TransformerConfig.Sentry], metrics: Monitoring.Metrics)
   object Monitoring {
-    implicit val monitoringDecoder: Decoder[Monitoring] =
-      deriveDecoder[Monitoring]
+    final case class Metrics(cloudwatch: Option[Cloudwatch])
+    final case class Cloudwatch(
+      namespace: String,
+      pipelineLatency: String,
+      dimensions: Map[String, String]
+    )
+
+    implicit val cloudwatchDecoder: Decoder[Cloudwatch] = deriveDecoder[Cloudwatch]
+    implicit val metricsDecoder: Decoder[Metrics] = deriveDecoder[Metrics]
+    implicit val monitoringDecoder: Decoder[Monitoring] = deriveDecoder[Monitoring]
   }
 
   final case class Deduplication(synthetic: Deduplication.Synthetic, natural: Boolean)
