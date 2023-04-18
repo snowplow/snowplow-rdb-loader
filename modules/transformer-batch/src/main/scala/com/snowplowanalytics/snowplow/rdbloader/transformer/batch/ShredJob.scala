@@ -328,6 +328,16 @@ object ShredJob {
       val job = new ShredJob(spark, transformer, config, resolverConfig)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
+      config.monitoring.metrics.cloudwatch.foreach { metrics =>
+        completed.timestamps.min.foreach { earliestTimestamp =>
+          Metrics.sendLatency(
+            System.currentTimeMillis() - earliestTimestamp.toEpochMilli(),
+            metrics.namespace,
+            metrics.pipelineLatency,
+            metrics.dimensions
+          )
+        }
+      }
     }
 
     Either.catchOnly[TimeoutException](Await.result(incomplete, 2.minutes)) match {
