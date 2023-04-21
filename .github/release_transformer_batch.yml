@@ -64,7 +64,7 @@ packages:
 
     # Optional: Build commands
     build_commands:
-      - sbt "project transformerBatch" assembly
+      - sbt "project transformerBatch" "set test in assembly := {}" assembly
 
     # Required: Artifact. Version will be inserted between prefix and suffix
     artifacts:
