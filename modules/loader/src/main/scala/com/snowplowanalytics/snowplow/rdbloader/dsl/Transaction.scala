@@ -12,16 +12,15 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import scala.concurrent.duration.FiniteDuration
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
 
-import cats.effect.{Async, Outcome, Resource, Sync}
-import cats.effect.implicits._
+import cats.effect.{Async, Resource, Sync}
 import cats.effect.kernel.Spawn
 import cats.effect.std.Dispatcher
 import doobie._
+import doobie.free.connection.{isValid => cxnIsValid, unit => cxnUnit}
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
@@ -135,13 +134,23 @@ object Transaction {
       Transaction.jdbcRealInterpreter[F](target, timeouts, xa)
     }
 
-  def defaultStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = {
-    val timeoutSeconds = rollbackCommitTimeout.toSeconds.toInt
-    val rollback = fr"ROLLBACK".execWith {
-      HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
-    }.void
+  def defaultStrategy(timeouts: Config.Timeouts): Strategy = {
+    val isValidTimeout = timeouts.connectionIsValid.toSeconds.toInt
+    val rollbackTimeout = timeouts.rollbackCommit.toSeconds.toInt
+    val commitTimeout = timeouts.nonLoading.toSeconds.toInt
+    val rollback = cxnIsValid(isValidTimeout).flatMap {
+      case true =>
+        // An exception happened, but the connection is still valid.  Roll back.
+        fr"ROLLBACK".execWith {
+          HPS.setQueryTimeout(rollbackTimeout).flatMap(_ => HPS.executeUpdate)
+        }.void
+      case false =>
+        // false is expected if Hikari has evicted the connection due to a fatal exception.
+        // No point in doing a rollback if we don't have a valid connection.
+        cxnUnit
+    }
     val commit = fr"COMMIT".execWith {
-      HPS.setQueryTimeout(timeoutSeconds).flatMap(_ => HPS.executeUpdate)
+      HPS.setQueryTimeout(commitTimeout).flatMap(_ => HPS.executeUpdate)
     }.void
     Strategy.default.copy(after = commit, oops = rollback)
   }
@@ -157,28 +166,15 @@ object Transaction {
       conn.copy(strategy0 = target.doobieNoCommitStrategy)
 
     val DefaultTransactor: Transactor[F] =
-      conn.copy(strategy0 = target.doobieCommitStrategy(timeouts.rollbackCommit))
+      conn.copy(strategy0 = target.doobieCommitStrategy(timeouts))
 
     new Transaction[F, ConnectionIO] {
 
-      // The start/join is a trick to fix stack traces in exceptions raised by the transaction
-      // See https://github.com/snowplow/snowplow-rdb-loader/issues/1045
-      implicit class ErrorAdaption[A](f: F[A]) {
-        def withErrorAdaption: F[A] =
-          f.start
-            .bracketCase(_.joinWith(Async[F].raiseError(new Exception("Transaction cancelled")))) {
-              case (_, Outcome.Succeeded(_) | Outcome.Errored(_)) =>
-                Async[F].unit
-              case (fiber, Outcome.Canceled()) =>
-                fiber.cancel.timeout(timeouts.rollbackCommit)
-            }
-      }
-
       def transact[A](io: ConnectionIO[A]): F[A] =
-        DefaultTransactor.trans.apply(io).withErrorAdaption
+        DefaultTransactor.trans.apply(io)
 
       def run[A](io: ConnectionIO[A]): F[A] =
-        NoCommitTransactor.trans.apply(io).withErrorAdaption
+        NoCommitTransactor.trans.apply(io)
 
       def arrowBack: F ~> ConnectionIO =
         new FunctionK[F, ConnectionIO] {
