@@ -119,8 +119,11 @@ object Config {
     loading: FiniteDuration,
     nonLoading: FiniteDuration,
     sqsVisibility: FiniteDuration,
-    rollbackCommit: FiniteDuration
-  )
+    rollbackCommit: FiniteDuration,
+    connectionIsValid: FiniteDuration
+  ) {
+    def totalTimeToRollBack: FiniteDuration = rollbackCommit + connectionIsValid
+  }
   final case class Retries(
     strategy: Strategy,
     attempts: Option[Int],

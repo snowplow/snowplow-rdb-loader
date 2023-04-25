@@ -39,7 +39,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
-  def doobieCommitStrategy(rollbackCommitTimeout: FiniteDuration): Strategy = Transaction.defaultStrategy(rollbackCommitTimeout)
+  def doobieCommitStrategy(timeouts: Config.Timeouts): Strategy = Transaction.defaultStrategy(timeouts)
 
   /**
    * Surprisingly, for statements disallowed in transaction block we need to set autocommit
@@ -126,7 +126,7 @@ object StorageTarget {
 
     override def connectionUrl: String = s"jdbc:databricks://$host:$port"
 
-    override def doobieCommitStrategy(t: FiniteDuration): Strategy = Strategy.void
+    override def doobieCommitStrategy(t: Config.Timeouts): Strategy = Strategy.void
     override def doobieNoCommitStrategy: Strategy = Strategy.void
     override def withAutoCommit = true
 
