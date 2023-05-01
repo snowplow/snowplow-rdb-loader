@@ -56,6 +56,19 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
           }
       }
     }
+    "collapse the two fields with colliding name(after normalization) i.e. aField and a_field" in {
+      val context100 = getType(SchemaVer.Full(1, 0, 0), Context)
+      val context101 = getType(SchemaVer.Full(1, 0, 1), Context)
+      val inputTypes = List(context100, context101)
+
+      val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+      result.value.size mustEqual 1
+      result.value.head.field mustEqual nullableArrayWithRequiredElement(
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
+        elementType = DdlTypes.schema101
+      )
+    }
     "produce two fields when" >> {
       "contexts versions are not compatible" in {
         val context100 = getType(SchemaVer.Full(1, 0, 0), Context)
@@ -74,6 +87,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
           elementType = DdlTypes.schema200
         )
       }
+      
       "context and unstruct is used" in {
         val context100 = getType(SchemaVer.Full(1, 0, 0), Context)
         val unstruct100 = getType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
@@ -156,11 +170,12 @@ object ParquetFieldsProviderSpec {
   private def getBrokenType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema_broken", format = "jsonschema", version), entity)
 
-  private def nullableArrayWithRequiredElement(name: String, elementType: Type) =
+  private def nullableArrayWithRequiredElement(name: String, elementType: Type, accessors: Set[String] = Set.empty[String]) =
     Field(
       name,
       fieldType = Type.Array(elementType, nullability = Required),
-      nullability = Nullable
+      nullability = Nullable,
+      if (accessors.isEmpty) Set(name) else accessors
     )
 
   val igluConfig =
@@ -354,15 +369,17 @@ object ParquetFieldsProviderSpec {
     )
     val expectedContext111 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_1312137517",
-        elementType = DdlTypes.brokenSchema111
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_737559706",
+        elementType = DdlTypes.brokenSchema111,
+        accessors = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
       Set(context111.schemaKey)
     )
     val expectedContext101 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720",
-        elementType = DdlTypes.brokenSchema101
+        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102",
+        elementType = DdlTypes.brokenSchema101,
+        accessors = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
       Set(context101.schemaKey)
     )
