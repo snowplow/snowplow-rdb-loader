@@ -134,7 +134,7 @@ message snowplow {
         }
      }
    }
-  optional group contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720 (LIST) {
+  optional group contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102 (LIST) {
     repeated group list {
       required group element {
         optional binary b_field (STRING);

@@ -130,11 +130,11 @@ object NonAtomicFieldsProvider {
   private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Field = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)
 
-    `type`.snowplowEntity match {
+    Field.normalize(`type`.snowplowEntity match {
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent =>
         Field.build(fieldName, schema, enforceValuePresence = false)
       case LoaderMessage.SnowplowEntity.Context =>
         Field.buildRepeated(fieldName, schema, enforceItemPresence = true, Type.Nullability.Nullable)
-    }
+    })
   }
 }

@@ -151,7 +151,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
           List(
             """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
             """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
-            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_74159720\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
           )
         )
     ) { case (actual, expected) =>
