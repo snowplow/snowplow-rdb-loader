@@ -79,7 +79,7 @@ object NonAtomicFieldsProvider {
             mergeSchemas(rootField.field, typedField.field) match {
               // Failed merge Left contains the reason, which could be discarded
               case Left(_) =>
-                val hash = abs(typedField.field.hashCode())
+                val hash = abs(typedField.field.copy(accessors = Set.empty).hashCode())
                 // typedField always has a single element in matchingKeys
                 val recoverPoint = typedField.matchingKeys.head.version.asString.replaceAll("-", "_")
                 val newName = s"${typedField.field.name}_recovered_${recoverPoint}_$hash"
