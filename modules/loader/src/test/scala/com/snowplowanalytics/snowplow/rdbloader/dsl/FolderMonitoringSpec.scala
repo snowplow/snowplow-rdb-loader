@@ -41,100 +41,36 @@ class FolderMonitoringSpec extends Specification {
   import FolderMonitoringSpec._
 
   "check" should {
-    "return a single element returned by MINUS statement (shredding_complete doesn't exist)" in {
-      implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
-      val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
-
-      val expectedState = TestState(
-        List(
-          PureTransaction.CommitMessage,
-          TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
-          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-          PureTransaction.StartMessage,
-          TestState.LogEntry.Sql(Statement.ReadyCheck),
-          PureTransaction.NoTransactionMessage
-        ),
-        Map()
+    "return 'Incomplete shredding' alert when -> shredding_complete file doesn't exist, no UUID in folder name" in {
+      assertGeneratedAlerts(
+        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
+        shreddingCompleteExists = false,
+        expectedMessages = List("Incomplete shredding")
       )
-      val ExpectedResult = List(
-        Monitoring.AlertPayload(
-          Monitoring.Application,
-          Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")),
-          Severity.Warning,
-          "Incomplete shredding",
-          Map.empty
-        )
-      )
-
-      val (state, result) =
-        FolderMonitoring
-          .check[Pure, Pure, Unit](
-            loadFrom,
-            (),
-            Target.defaultPrepareAlertTable
-          )
-          .run
-
-      state must beEqualTo(expectedState)
-      result must beRight.like {
-        case ExpectedResult => ok
-        case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
-      }
     }
 
-    "return a single element returned by MINUS statement (shredding_complete does exist)" in {
-      implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
-      implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
-      val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
-
-      val expectedState = TestState(
-        List(
-          PureTransaction.CommitMessage,
-          TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
-          TestState.LogEntry.Sql(Statement.FoldersCopy(BlobStorage.Folder.coerce("s3://bucket/shredded/"), LoadAuthMethod.NoCreds, ())),
-          TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
-          TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
-          PureTransaction.StartMessage,
-          TestState.LogEntry.Sql(Statement.ReadyCheck),
-          PureTransaction.NoTransactionMessage
-        ),
-        Map()
+    "not return 'Incomplete shredding' alert when -> shredding_complete file doesn't exist, UUID in folder name" in {
+      assertGeneratedAlerts(
+        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
+        shreddingCompleteExists = false,
+        expectedMessages = List.empty
       )
-      val ExpectedResult = List(
-        Monitoring.AlertPayload(
-          Monitoring.Application,
-          Some(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/")),
-          Severity.Warning,
-          "Unloaded batch",
-          Map.empty
-        )
+    }
+
+    "return 'Unloaded batch' alert when -> shredding_complete file exists, no UUID in folder name" in {
+      assertGeneratedAlerts(
+        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
+        shreddingCompleteExists = true,
+        expectedMessages = List("Unloaded batch")
       )
+    }
 
-      val (state, result) =
-        FolderMonitoring
-          .check[Pure, Pure, Unit](
-            loadFrom,
-            (),
-            Target.defaultPrepareAlertTable
-          )
-          .run
-
-      state must beEqualTo(expectedState)
-      result must beRight.like {
-        case ExpectedResult => ok
-        case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
-      }
+    "return 'Unloaded batch' alert when -> shredding_complete file exists, UUID in folder name" in {
+      assertGeneratedAlerts(
+        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
+        shreddingCompleteExists = true,
+        expectedMessages = List("Unloaded batch")
+      )
     }
   }
 
@@ -253,14 +189,71 @@ class FolderMonitoringSpec extends Specification {
       }
     }
   }
+
+  def assertGeneratedAlerts(
+    unloadedFolder: String,
+    shreddingCompleteExists: Boolean,
+    expectedMessages: List[String]
+  ) = {
+    val aws = if (shreddingCompleteExists) PureAWS.init.withExistingKeys else PureAWS.init
+    val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
+    val inputFolder = BlobStorage.Folder.coerce(unloadedFolder)
+
+    implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults(inputFolder)))
+    implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
+    implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+    implicit val blobStorage: BlobStorage[Pure] = PureAWS.blobStorage(aws)
+    implicit val logging: Logging[Pure] = PureLogging.interpreter()
+    implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
+
+    val expectedState = TestState(
+      List(
+        PureTransaction.CommitMessage,
+        TestState.LogEntry.Sql(Statement.FoldersMinusManifest),
+        TestState.LogEntry.Sql(Statement.FoldersCopy(loadFrom, LoadAuthMethod.NoCreds, ())),
+        TestState.LogEntry.Sql(Statement.CreateAlertingTempTable),
+        TestState.LogEntry.Sql(Statement.DropAlertingTempTable),
+        PureTransaction.StartMessage,
+        TestState.LogEntry.Sql(Statement.ReadyCheck),
+        PureTransaction.NoTransactionMessage
+      ),
+      Map()
+    )
+    val ExpectedResult = expectedMessages
+      .map { message =>
+        Monitoring.AlertPayload(
+          Monitoring.Application,
+          Some(inputFolder),
+          Severity.Warning,
+          message,
+          Map.empty
+        )
+      }
+
+    val (state, result) =
+      FolderMonitoring
+        .check[Pure, Pure, Unit](
+          loadFrom,
+          (),
+          Target.defaultPrepareAlertTable
+        )
+        .run
+
+    state must beEqualTo(expectedState)
+    result must beRight.like {
+      case ExpectedResult => ok
+      case alerts => ko(s"Unexpected alerts: ${alerts.asJson.noSpaces}")
+    }
+  }
+
 }
 
 object FolderMonitoringSpec {
-  def jdbcResults(state: TestState)(statement: Statement): Any = {
+  def jdbcResults(folder: String)(state: TestState)(statement: Statement): Any = {
     val _ = state
     statement match {
       case Statement.FoldersMinusManifest =>
-        List(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00/"))
+        List(folder)
       case Statement.ReadyCheck => 1
       case _ => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
     }

@@ -21,6 +21,7 @@ import cats.effect.kernel.{Async, Clock, Ref, Sync, Temporal}
 import cats.effect.std.Semaphore
 import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import doobie.util.Get
 import fs2.Stream
 import fs2.text.utf8
@@ -143,21 +144,6 @@ object FolderMonitoring {
     }
 
   /**
-   * Check if folders have shredding_complete.json file inside,
-   * i.e. checking if they were fully processed by shredder This function uses a blocking S3 call
-   * and expects `folders` to be a small list (usually 0-length) because external system (Redshift
-   * `MINUS` statements) already filtered these folders as problematic, i.e. missing in `manifest`
-   * table
-   * @param folders
-   *   list of folders missing in `manifest` table
-   * @return
-   *   same list of folders with attached `true` if the folder has `shredding_complete.json` thus
-   *   processed, but unloaded and `false` if shredder hasn't been fully processed
-   */
-  def checkShreddingComplete[F[_]: Applicative: BlobStorage](folders: List[BlobStorage.Folder]): F[List[(BlobStorage.Folder, Boolean)]] =
-    folders.traverse(folder => BlobStorage[F].keyExists(folder.withKey(ShreddingComplete)).tupleLeft(folder))
-
-  /**
    * List all folders in `loadFrom`, load the list into temporary Redshift table and check if they
    * exist in `manifest` table. Ones that don't exist are checked for existence of
    * `shredding_complete.json` and turned into corresponding `AlertPayload`
@@ -185,12 +171,30 @@ object FolderMonitoring {
     for {
       _ <- TargetCheck.prepareTarget[F, C]
       onlyS3Batches <- Transaction[F, C].transact(getBatches)
-      foldersWithChecks <- checkShreddingComplete[F](onlyS3Batches)
-    } yield foldersWithChecks.map { case (folder, exists) =>
-      if (exists) Monitoring.AlertPayload.warn("Unloaded batch", folder)
-      else Monitoring.AlertPayload.warn("Incomplete shredding", folder)
-    }
+      alerts <- createAlerts[F](onlyS3Batches)
+    } yield alerts
   }
+
+  private def createAlerts[F[_]: Applicative: BlobStorage](folders: List[BlobStorage.Folder]): F[List[AlertPayload]] =
+    folders
+      .traverseFilter { folder =>
+        shreddingCompleteExistsIn(folder).ifF(
+          ifTrue = Some(Monitoring.AlertPayload.warn("Unloaded batch", folder)),
+          ifFalse = alertForIncompleteShredding(folder)
+        )
+      }
+
+  private def shreddingCompleteExistsIn[F[_]: BlobStorage](folder: Folder): F[Boolean] =
+    BlobStorage[F].keyExists(folder.withKey(ShreddingComplete))
+
+  private def alertForIncompleteShredding(folder: Folder): Option[AlertPayload] =
+    if (isProducedByBatchTransformer(folder))
+      Some(Monitoring.AlertPayload.warn("Incomplete shredding", folder))
+    else
+      None
+
+  private def isProducedByBatchTransformer(folder: Folder): Boolean =
+    folder.folderName.length == s"run=$TimePattern".length
 
   /** Get stream of S3 folders emitted with configured interval */
   def getOutputKeys[F[_]: Temporal: Functor](folders: Config.Folders): Stream[F, BlobStorage.Folder] = {
