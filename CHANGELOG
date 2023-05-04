@@ -1,3 +1,7 @@
+Version 5.4.2 (2023-05-04)
+--------------------------
+Transformer parquet: avoid duplicating normalised column such as eventType and event_type (#1242)
+
 Version 5.4.1 (2023-04-05)
 --------------------------
 Transformer batch: fix output path for widerow file sink (#1229)

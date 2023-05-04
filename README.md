@@ -71,10 +71,10 @@ limitations under the License.
 
 [spark]: http://spark.apache.org/
 
-[build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/Test%20and%20deploy/badge.svg
-[build]: https://github.com/snowplow/snowplow-rdb-loader/actions?query=workflow%3A%22Test%22
+[build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/CI/badge.svg
+[build]: https://github.com/snowplow/snowplow-rdb-loader/actions/workflows/ci.yml
 
-[release-image]: https://img.shields.io/badge/release-5.4.1-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-5.4.2-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license-image]: https://img.shields.io/badge/license-Apache--2-blue.svg?style=flat
