@@ -12,14 +12,14 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.db
 
-import cats.data.EitherT
+import cats.data.{EitherT, NonEmptyList}
 import cats.implicits._
 import cats.{Applicative, Monad, MonadThrow}
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer}
-import com.snowplowanalytics.iglu.schemaddl.StringUtils
-import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration => SchemaMigration, SchemaList}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.schemaddl.IgluSchema
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.ColumnName
-import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, DiscoveryFailure, ShreddedType}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
@@ -84,7 +84,7 @@ object Migration {
 
     def getCommentOn: Statement.CommentOn =
       entity match {
-        case Entity.Table(_, schemaKey) =>
+        case Entity.Table(_, schemaKey, _) =>
           Statement.CommentOn(getName, schemaKey.toSchemaUri)
         case Entity.Column(info) =>
           Statement.CommentOn(getName, info.getNameFull)
@@ -100,7 +100,7 @@ object Migration {
      * Works with separate tables (both create and update) and does support migration (hence all
      * schema info)
      */
-    final case class Table(schemaList: SchemaList) extends Description
+    final case class Table(schemaList: NonEmptyList[IgluSchema]) extends Description
 
     /** Works with only `events` table, creating a column for every new schema */
     final case class WideRow(shreddedType: ShreddedType.Info) extends Description
@@ -154,8 +154,7 @@ object Migration {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
-          val ShreddedType.Info(_, vendor, name, model, _) = s.info
-          EitherT(Iglu[F].getSchemas(vendor, name, model)).map(Description.Table)
+          EitherT(Iglu[F].getSchemasWithSameModel(s.info.getSchemaKey)).map(Description.Table)
         case ShreddedType.Widerow(info) =>
           EitherT.rightT[F, LoaderError](Description.WideRow(info))
         case ShreddedType.Json(_, _) =>
@@ -164,11 +163,11 @@ object Migration {
 
     val transaction: C[Migration[C]] =
       Transaction[F, C].arrowBack(descriptions.value).flatMap {
-        case Right(schemaList) =>
+        case Right(descriptionList) =>
           // Duplicate schemas cause migration vector to double failing the second migration. Therefore deduplication
           // with toSet.toList
-          schemaList.toSet.toList
-            .traverseFilter(buildBlock[C, I](_, target))
+          descriptionList.toSet.toList
+            .flatTraverse(buildBlock[C, I](_, target))
             .flatMap(blocks => Migration.fromBlocks[C](blocks))
         case Left(error) =>
           MonadThrow[C].raiseError[Migration[C]](error)
@@ -181,54 +180,62 @@ object Migration {
   def empty[F[_]: Applicative]: Migration[F] =
     Migration[F](Nil, Applicative[F].unit)
 
-  def buildBlock[F[_]: MonadThrow: DAO, I](description: Description, target: Target[I]): F[Option[Block]] =
+  def buildBlock[F[_]: MonadThrow: DAO, I](description: Description, target: Target[I]): F[List[Block]] =
     description match {
       case Description.Table(schemas) =>
-        val tableName = StringUtils.getTableName(schemas.latest)
+        val schemaKeysWithModels = foldMapMergeRedshiftSchemas(schemas)
 
-        val migrate: F[Option[Block]] = for {
-          schemaKey <- getVersion[F](tableName)
-          matches = schemas.latest.schemaKey == schemaKey
-          block <- if (matches) emptyBlock[F]
-                   else
-                     Control.getColumns[F](tableName).flatMap { (columns: List[ColumnName]) =>
-                       migrateTable(target, schemaKey, columns, schemas) match {
-                         case Left(migrationError) => MonadThrow[F].raiseError[Option[Block]](migrationError)
-                         case Right(block) => MonadThrow[F].pure(block.some)
+        val goodModel = schemaKeysWithModels.values.collectFirst { case model: ShredModel.GoodModel =>
+          model
+        }.get
+
+        val tableName = goodModel.tableName
+
+        val goodBlock: F[Option[Block]] =
+          for {
+            schemaKeyInTable <- getVersion[F](tableName)
+            matches = goodModel.schemaKey == schemaKeyInTable
+            block <- if (matches) emptyBlock[F]
+                     else
+                       Control.getColumns[F](tableName).flatMap[Option[Block]] { (columns: List[ColumnName]) =>
+                         migrateTable(target, schemaKeyInTable, goodModel, columns, schemas) match {
+                           case Left(migrationError) => MonadThrow[F].raiseError(migrationError)
+                           case Right(block) => Monad[F].pure(block.some)
+                         }
                        }
-                     }
-        } yield block
+          } yield block
 
-        Control.tableExists[F](tableName).ifM(migrate, Monad[F].pure(target.createTable(schemas).some))
+        val recoveryBlocks: List[Block] = schemaKeysWithModels.values
+          .collect { case model: ShredModel.RecoveryModel =>
+            model
+          }
+          .map(target.createTable)
+          .toList
+
+        val blocks: F[List[Block]] = goodBlock.map(gb => gb.fold(recoveryBlocks)(_ :: recoveryBlocks))
+
+        Control.tableExists[F](tableName).ifM(blocks, Monad[F].pure(List(target.createTable(goodModel))))
       case Description.WideRow(info) =>
         Monad[F].pure(target.extendTable(info))
       case Description.NoMigration =>
-        Monad[F].pure(none[Block])
+        Monad[F].pure(Nil)
     }
 
   def migrateTable[I](
     target: Target[I],
     current: SchemaKey,
+    shredModel: ShredModel.GoodModel,
     columns: List[ColumnName],
-    schemaList: SchemaList
+    schemaList: NonEmptyList[IgluSchema]
   ): Either[LoaderError, Block] =
-    schemaList match {
-      case s: SchemaList.Full =>
-        val migrations = s.extractSegments.map(SchemaMigration.fromSegment)
-        migrations.find(_.from == current.version) match {
-          case Some(schemaMigration) =>
-            target.updateTable(schemaMigration).asRight
-          case None =>
-            val message =
-              s"Table's schema key '${current.toSchemaUri}' cannot be found in fetched schemas $schemaList. Migration cannot be created"
-            DiscoveryFailure.IgluError(message).toLoaderError.asLeft
-        }
-      case s: SchemaList.Single =>
-        val message =
-          s"Illegal State: updateTable called for a table with known single schema [${s.schema.self.schemaKey.toSchemaUri}]\ncolumns: ${columns
-              .map(_.value)
-              .mkString(", ")}\nstate: $schemaList"
-        LoaderError.MigrationError(message).asLeft
+    if (schemaList.size >= 1) {
+      target.updateTable(shredModel, current).asRight
+    } else {
+      val message =
+        s"Illegal State: updateTable called for a table with known single schema [${shredModel.schemaKey.toSchemaUri}]\ncolumns: ${columns
+            .map(_.value)
+            .mkString(", ")}\nstate: $schemaList"
+      LoaderError.MigrationError(message).asLeft
     }
 
   def fromBlocks[F[_]: Monad: DAO: Logging](blocks: List[Block]): F[Migration[F]] =
@@ -261,7 +268,7 @@ object Migration {
             Logging[F].info(s"${b.getName} migration completed")
           migration.addInTransaction(inAction)
 
-        case (migration, b @ Block(pre, Nil, Entity.Table(_, _))) =>
+        case (migration, b @ Block(pre, Nil, Entity.Table(_, _, _))) =>
           val preAction = Logging[F].info(s"Migrating ${b.getName} (pre-transaction)") *>
             pre.traverse_(item => DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading).void) *>
             DAO[F].executeUpdate(b.getCommentOn, DAO.Purpose.NonLoading).void *>
@@ -293,21 +300,23 @@ object Migration {
 
   sealed trait Entity {
     def getName: String = this match {
-      case Entity.Table(dbSchema, schemaKey) =>
-        val tableName = StringUtils.getTableName(SchemaMap(schemaKey))
-        s"$dbSchema.$tableName"
+      case Entity.Table(dbSchema, _, tableName) => s"$dbSchema.$tableName"
       case Entity.Column(info) =>
         info.getNameFull
     }
 
     def getInfo: SchemaKey = this match {
-      case Entity.Table(_, schemaKey) => schemaKey
-      case Entity.Column(info) => SchemaKey(info.vendor, info.name, "jsonschema", SchemaVer.Full(info.model, 0, 0))
+      case Entity.Table(_, schemaKey, _) => schemaKey
+      case Entity.Column(info) => SchemaKey(info.vendor, info.name, "jsonschema", SchemaVer.Full(info.version.model, 0, 0))
     }
   }
 
   object Entity {
-    final case class Table(dbSchema: String, schemaKey: SchemaKey) extends Entity
+    final case class Table(
+      dbSchema: String,
+      schemaKey: SchemaKey,
+      tableName: String
+    ) extends Entity
     final case class Column(info: ShreddedType.Info) extends Entity
   }
 
@@ -327,7 +336,7 @@ object Migration {
           .executeQueryList[String](Statement.GetColumns(EventsTable.MainName))
           .map { columns => (entity: Entity) =>
             entity match {
-              case Entity.Table(_, _) => false
+              case Entity.Table(_, _, _) => false
               case Entity.Column(info) =>
                 val f = !columns.map(_.toLowerCase).contains(info.getNameFull.toLowerCase)
                 if (f) {
