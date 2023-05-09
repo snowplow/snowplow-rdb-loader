@@ -26,7 +26,7 @@ class ConfigSpec extends Specification {
 
   "fromString" should {
     "be able to parse extended Redshift config" in {
-      val result = getConfig("/loader/aws/redshift.config.reference.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/loader/aws/redshift.config.reference.hocon", Config.parseAppConfig[IO])
       val expected = Config(
         exampleRedshift,
         exampleCloud,
@@ -45,7 +45,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal config" in {
-      val result = getConfig("/loader/aws/redshift.config.minimal.hocon", testParseConfig)
+      val result = getConfigFromResource("/loader/aws/redshift.config.minimal.hocon", testParseConfig)
       val expected = Config(
         exampleRedshift,
         Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion))),
@@ -64,7 +64,7 @@ class ConfigSpec extends Specification {
     }
 
     "give error when unknown region given" in {
-      val result = getConfig("/test.config1.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/test.config1.hocon", Config.parseAppConfig[IO])
       result must beLeft.like { case err =>
         err must contain("unknown-region-1")
       }

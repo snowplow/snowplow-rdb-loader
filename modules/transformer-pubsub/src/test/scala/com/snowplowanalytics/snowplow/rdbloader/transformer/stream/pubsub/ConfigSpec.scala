@@ -35,7 +35,7 @@ class ConfigSpec extends Specification {
   "config fromString" should {
     "be able to parse extended transformer-pubsub config" in {
       val result =
-        getConfig("/transformer/gcp/transformer.pubsub.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
+        getConfigFromResource("/transformer/gcp/transformer.pubsub.config.reference.hocon", c => Config.parse[IO](c).value.unsafeRunSync())
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,
@@ -51,7 +51,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal transformer-pubsub config" in {
-      val result = getConfig("/transformer/gcp/transformer.pubsub.config.minimal.hocon", testParseStreamConfig)
+      val result = getConfigFromResource("/transformer/gcp/transformer.pubsub.config.minimal.hocon", testParseStreamConfig)
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,

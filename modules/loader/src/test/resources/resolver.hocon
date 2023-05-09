@@ -1,0 +1,21 @@
+{
+  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-1",
+  "data": {
+    "cacheSize": 500,
+    "repositories": [
+      {
+        "name": ${sub.a},
+        "priority": 0,
+        "vendorPrefixes": [ "com.snowplowanalytics" ],
+        "connection": {
+          "http": {
+            "uri": "https://raw.githubusercontent.com/snowplow/iglu-central/feature/redshift-401"
+          }
+        }
+      }
+    ]
+  },
+  "sub": {
+    "a": "Resolved name from substitution!"
+  }  
+}

@@ -28,7 +28,7 @@ class ConfigSpec extends Specification {
 
   "fromString" should {
     "be able to parse extended AWS Databricks Loader config" in {
-      val result = getConfig("/loader/aws/databricks.config.reference.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/loader/aws/databricks.config.reference.hocon", Config.parseAppConfig[IO])
       val monitoring = exampleMonitoring.copy(
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "databricks-loader"))
       )
@@ -50,7 +50,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse extended GCP Databricks Loader config" in {
-      val result = getConfig("/loader/gcp/databricks.config.reference.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/loader/gcp/databricks.config.reference.hocon", Config.parseAppConfig[IO])
       val monitoring = exampleMonitoring.copy(
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "databricks-loader")),
         folders = exampleMonitoring.folders.map(
@@ -78,7 +78,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal AWS Snowflake Loader config" in {
-      val result = getConfig("/loader/aws/databricks.config.minimal.hocon", testParseConfig)
+      val result = getConfigFromResource("/loader/aws/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
         catalog = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
@@ -105,7 +105,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal GCP Snowflake Loader config" in {
-      val result = getConfig("/loader/gcp/databricks.config.minimal.hocon", testParseConfig)
+      val result = getConfigFromResource("/loader/gcp/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
         catalog = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")

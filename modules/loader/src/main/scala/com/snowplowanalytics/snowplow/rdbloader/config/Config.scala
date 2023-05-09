@@ -13,24 +13,19 @@
 package com.snowplowanalytics.snowplow.rdbloader.config
 
 import java.net.URI
-
 import scala.concurrent.duration.{Duration, FiniteDuration}
-
 import cats.effect.Sync
 import cats.data.EitherT
 import cats.syntax.either._
 import cats.syntax.option._
-
 import io.circe._
 import io.circe.generic.semiauto._
-
 import org.http4s.{ParseFailure, Uri}
-
 import cron4s.CronExpr
 import cron4s.circe._
-
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 
@@ -58,12 +53,15 @@ object Config {
 
   val MetricsDefaultPrefix = "snowplow.rdbloader"
 
-  def fromString[F[_]: Sync](s: String): EitherT[F, String, Config[StorageTarget]] =
-    fromString(s, implicits().configDecoder)
+  def parseAppConfig[F[_]: Sync](config: HoconOrPath): EitherT[F, String, Config[StorageTarget]] =
+    parseAppConfig(config, implicits().configDecoder)
 
-  def fromString[F[_]: Sync](s: String, configDecoder: Decoder[Config[StorageTarget]]): EitherT[F, String, Config[StorageTarget]] = {
+  def parseAppConfig[F[_]: Sync](
+    config: HoconOrPath,
+    configDecoder: Decoder[Config[StorageTarget]]
+  ): EitherT[F, String, Config[StorageTarget]] = {
     implicit val implConfigDecoder: Decoder[Config[StorageTarget]] = configDecoder
-    ConfigUtils.fromStringF[F, Config[StorageTarget]](s)
+    ConfigUtils.parseAppConfigF[F, Config[StorageTarget]](config)
   }
 
   final case class Schedule(
