@@ -1,0 +1,22 @@
+{
+  "region": "us-east-1"
+  "messageQueue": "test-queue" 
+  "storage" : {
+    "type": "redshift"
+    "port": 5432
+    "jdbc": { "ssl": true }
+    "host": "redshift.amazonaws.com"
+    "maxError": 10,
+    "database": "snowplow"
+    "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole"
+    "schema": "atomic"
+    "username": "admin"
+    "password": ${sub.a}
+     "loadAuthMethod": {
+         "type": "NoCreds"
+     }
+  },
+  "sub": {
+    "a": "Supersecret password from substitution!"
+  }
+}

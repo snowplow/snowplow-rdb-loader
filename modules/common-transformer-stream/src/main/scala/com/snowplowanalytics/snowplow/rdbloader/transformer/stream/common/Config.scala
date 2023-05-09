@@ -13,16 +13,14 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import java.net.URI
-
 import cats.implicits._
 import cats.data.EitherT
 import cats.effect.Sync
-
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import io.circe._
 import io.circe.generic.semiauto._
 
 import scala.concurrent.duration.{Duration, FiniteDuration}
-
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
@@ -45,13 +43,13 @@ final case class Config(
 
 object Config {
 
-  def fromString[F[_]: Sync](conf: String): EitherT[F, String, Config] =
-    fromString(conf, impureDecoders)
+  def parse[F[_]: Sync](config: HoconOrPath): EitherT[F, String, Config] =
+    parse(config, impureDecoders)
 
-  def fromString[F[_]: Sync](conf: String, decoders: Decoders): EitherT[F, String, Config] = {
+  def parse[F[_]: Sync](config: HoconOrPath, decoders: Decoders): EitherT[F, String, Config] = {
     import decoders._
     for {
-      config <- ConfigUtils.fromStringF[F, Config](conf)
+      config <- ConfigUtils.parseAppConfigF[F, Config](config)
       _ <- EitherT.fromEither[F](TransformerConfig.formatsCheck(config.formats))
     } yield config
   }

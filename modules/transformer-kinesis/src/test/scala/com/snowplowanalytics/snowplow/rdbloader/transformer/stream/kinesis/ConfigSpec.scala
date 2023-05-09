@@ -40,7 +40,7 @@ class ConfigSpec extends Specification {
   "config fromString" should {
     "be able to parse extended transformer-kinesis config" in {
       val result =
-        getConfig("/transformer/aws/transformer.kinesis.config.reference.hocon", c => Config.fromString[IO](c).value.unsafeRunSync())
+        getConfigFromResource("/transformer/aws/transformer.kinesis.config.reference.hocon", c => Config.parse[IO](c).value.unsafeRunSync())
       val expected = Config(
         exampleStreamInput,
         exampleWindowPeriod,
@@ -56,7 +56,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal transformer-kinesis config" in {
-      val result = getConfig("/transformer/aws/transformer.kinesis.config.minimal.hocon", testParseStreamConfig)
+      val result = getConfigFromResource("/transformer/aws/transformer.kinesis.config.minimal.hocon", testParseStreamConfig)
       val expected = Config(
         exampleDefaultStreamInput,
         exampleWindowPeriod,

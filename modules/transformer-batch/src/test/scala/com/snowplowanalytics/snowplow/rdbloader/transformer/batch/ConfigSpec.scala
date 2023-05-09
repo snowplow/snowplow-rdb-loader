@@ -13,16 +13,15 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import java.net.URI
-import java.nio.file.{Files, Paths}
+import java.nio.file.{Path, Paths}
 import java.time.Instant
-
 import io.circe.Decoder
 
 import scala.concurrent.duration._
-import scala.collection.JavaConverters._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, RegionSpec}
 import org.specs2.mutable.Specification
 
@@ -31,7 +30,7 @@ class ConfigSpec extends Specification {
 
   "config fromString" should {
     "be able to parse extended batch transformer config" in {
-      val result = getConfig("/transformer/aws/transformer.batch.config.reference.hocon", Config.fromString)
+      val result = getConfigFromResource("/transformer/aws/transformer.batch.config.reference.hocon", Config.parse)
       val expected = Config(
         exampleBatchInput,
         exampleOutput,
@@ -47,7 +46,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal batch transformer config" in {
-      val result = getConfig("/transformer/aws/transformer.batch.config.minimal.hocon", testParseBatchConfig)
+      val result = getConfigFromResource("/transformer/aws/transformer.batch.config.minimal.hocon", testParseBatchConfig)
       val expected = Config(
         exampleBatchInput,
         exampleDefaultOutput,
@@ -63,7 +62,7 @@ class ConfigSpec extends Specification {
     }
 
     "give error when unknown region given" in {
-      val result = getConfig("/test.config1.hocon", Config.fromString)
+      val result = getConfigFromResource("/test.config1.hocon", Config.parse)
       result must beLeft(contain("unknown-region-1"))
     }
 
@@ -94,7 +93,8 @@ class ConfigSpec extends Specification {
       val expected = "Following schema criterions overlap in different groups (TSV, JSON, skip): " +
         "iglu:com.acme/overlap/jsonschema/1-0-0, iglu:com.acme/overlap/jsonschema/1-*-*. " +
         "Make sure every schema can have only one format"
-      val result = Config.fromString(input)
+      val hocon = ConfigUtils.hoconFromString(input).right.get
+      val result = Config.parse(Left(hocon))
       result must beLeft(expected)
     }
   }
@@ -161,19 +161,17 @@ object TransformerConfigSpec {
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
 
-  def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
-    parse(readResource(confPath))
+  def getConfigFromResource[A](resourcePath: String, parse: HoconOrPath => Either[String, A]): Either[String, A] =
+    parse(Right(pathOf(resourcePath)))
 
-  def readResource(resourcePath: String): String = {
-    val configExamplePath = Paths.get(getClass.getResource(resourcePath).toURI)
-    Files.readAllLines(configExamplePath).asScala.mkString("\n")
-  }
+  def pathOf(resource: String): Path =
+    Paths.get(getClass.getResource(resource).toURI)
 
   def testDecoders: Config.Decoders = new Config.Decoders {
     implicit def regionDecoder: Decoder[Region] =
       RegionSpec.testRegionConfigDecoder
   }
 
-  def testParseBatchConfig(conf: String): Either[String, Config] =
-    Config.fromString(conf, testDecoders)
+  def testParseBatchConfig(config: HoconOrPath): Either[String, Config] =
+    Config.parse(config, testDecoders)
 }

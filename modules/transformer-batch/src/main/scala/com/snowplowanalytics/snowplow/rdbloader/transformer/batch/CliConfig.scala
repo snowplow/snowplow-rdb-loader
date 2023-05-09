@@ -13,29 +13,33 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import cats.data.EitherT
-import cats.Id
-
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerCliConfig
+import cats.implicits.{toBifunctorOps, toShow}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerCliConfig}
+import io.circe.Json
 
 object CliConfig {
 
-  implicit val configParsable: TransformerCliConfig.Parsable[Id, Config] =
-    new TransformerCliConfig.Parsable[Id, Config] {
-      def fromString(conf: String): EitherT[Id, String, Config] =
-        EitherT[Id, String, Config](Config.fromString(conf))
+  def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, CliConfig] =
+    for {
+      raw <- TransformerCliConfig.command(name, description).parse(args).leftMap(_.show)
+      appConfig <- Config.parse(raw.config)
+      resolverConfig <- ConfigUtils.parseJson(raw.igluConfig)
+      duplicatesStorageConfig <- parseDuplicationConfig(raw)
+      cliConfig = TransformerCliConfig(resolverConfig, duplicatesStorageConfig, appConfig)
+      verified <- verifyDuplicationConfig(cliConfig)
+    } yield verified
+
+  private def parseDuplicationConfig(raw: TransformerCliConfig.RawConfig): Either[String, Option[Json]] =
+    raw.duplicateStorageConfig match {
+      case Some(defined) => ConfigUtils.parseJson(defined).map(Some(_))
+      case None => Right(None)
     }
 
-  def loadConfigFrom(name: String, description: String)(args: Seq[String]): Either[String, CliConfig] =
-    TransformerCliConfig
-      .loadConfigFrom[Id, Config](name, description, args)
-      .value
-      .flatMap { cli =>
-        if (cli.duplicateStorageConfig.isDefined && !cli.config.deduplication.natural)
-          Left("Natural deduplication needs to be enabled when cross batch deduplication is enabled")
-        else if (cli.config.deduplication.synthetic != Config.Deduplication.Synthetic.None && !cli.config.deduplication.natural)
-          Left("Natural deduplication needs to be enabled when synthetic deduplication is enabled")
-        else
-          Right(cli)
-      }
+  private def verifyDuplicationConfig(cli: CliConfig): Either[String, CliConfig] =
+    if (cli.duplicateStorageConfig.isDefined && !cli.config.deduplication.natural)
+      Left("Natural deduplication needs to be enabled when cross batch deduplication is enabled")
+    else if (cli.config.deduplication.synthetic != Config.Deduplication.Synthetic.None && !cli.config.deduplication.natural)
+      Left("Natural deduplication needs to be enabled when synthetic deduplication is enabled")
+    else
+      Right(cli)
 }
