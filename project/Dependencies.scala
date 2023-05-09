@@ -21,9 +21,9 @@ object Dependencies {
     val igluCore         = "1.1.1"
     val badrows          = "2.2.0"
     val analyticsSdk     = "3.1.0"
-    val pureconfig       = "0.17.2"
     val cron4sCirce      = "0.6.1"
     val circe            = "0.14.1"
+    val circeConfig      = "0.10.0"
     val cats             = "2.2.0"
     val catsEffect       = "3.3.14"
     val manifest         = "0.3.0"
@@ -93,10 +93,9 @@ object Dependencies {
   val igluCoreCirce     = "com.snowplowanalytics"      %% "iglu-core-circe"                   % V.igluCore
   val cats              = "org.typelevel"              %% "cats"                              % V.cats
   val circeCore         = "io.circe"                   %% "circe-core"                        % V.circe
+  val circeConfig       = "io.circe"                   %% "circe-config"                      % V.circeConfig
   val circeGeneric      = "io.circe"                   %% "circe-generic"                     % V.circe
   val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"              % V.circe
-  val pureconfig        = "com.github.pureconfig"      %% "pureconfig"                        % V.pureconfig
-  val pureconfigCirce   = "com.github.pureconfig"      %% "pureconfig-circe"                  % V.pureconfig
   val cron4sCirce       = ("com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce)
     .exclude("io.circe", "circe-core_2.12") // cron4s-circe lacks circe 0.13 support
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
@@ -213,11 +212,10 @@ object Dependencies {
     badrows,
     igluClient,
     catsEffectKernel,
+    circeConfig,
     circeGeneric,
     circeGenericExtra,
     circeLiteral,
-    pureconfig,
-    pureconfigCirce,
     cron4sCirce,
     schemaDdl,
     http4sCore,

@@ -15,17 +15,16 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
 import cats.data.EitherT
 import cats.effect.Sync
-
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerCliConfig
+import cats.implicits._
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerCliConfig}
 
 object CliConfig {
 
-  implicit def configParsable[F[_]: Sync]: TransformerCliConfig.Parsable[F, Config] =
-    new TransformerCliConfig.Parsable[F, Config] {
-      def fromString(conf: String): EitherT[F, String, Config] =
-        Config.fromString(conf)
-    }
-
   def loadConfigFrom[F[_]: Sync](name: String, description: String)(args: Seq[String]): EitherT[F, String, CliConfig] =
-    TransformerCliConfig.loadConfigFrom[F, Config](name, description, args)
+    for {
+      raw <- EitherT.fromEither[F](TransformerCliConfig.command(name, description).parse(args).leftMap(_.show))
+      appConfig <- Config.parse(raw.config)
+      resolverConfig <- ConfigUtils.parseJsonF[F](raw.igluConfig)
+      duplicatesStorageConfig <- raw.duplicateStorageConfig.traverse(d => ConfigUtils.parseJsonF(d))
+    } yield TransformerCliConfig(resolverConfig, duplicatesStorageConfig, appConfig)
 }

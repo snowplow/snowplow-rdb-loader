@@ -14,84 +14,72 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.config
 
-import java.nio.charset.StandardCharsets.UTF_8
-import java.util.Base64
-
-import cats.Id
+import cats.data.EitherT
 import cats.effect.Sync
-import cats.data.{EitherT, ValidatedNel}
 import cats.syntax.either._
 import cats.syntax.show._
-
-import io.circe.parser.parse
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args._
+import com.typesafe.config.{Config => TypesafeConfig, ConfigFactory}
 import io.circe._
+import io.circe.config.syntax.CirceConfigOps
 
-import pureconfig.module.circe._
-import pureconfig._
-import pureconfig.error._
-
-import com.snowplowanalytics.iglu.client.Resolver
+import java.nio.file.{Files, Path}
+import scala.jdk.CollectionConverters._
 
 object ConfigUtils {
-  private val Base64Decoder = Base64.getDecoder
 
-  def fromStringF[F[_]: Sync, A](conf: String)(implicit d: Decoder[A]): EitherT[F, String, A] =
-    EitherT(Sync[F].delay(fromString(conf)))
+  def parseAppConfigF[F[_]: Sync, A: Decoder](in: HoconOrPath): EitherT[F, String, A] =
+    EitherT(Sync[F].delay(parseAppConfig(in)))
 
-  def fromString[A](conf: String)(implicit d: Decoder[A]): Either[String, A] =
+  def parseJsonF[F[_]: Sync](in: HoconOrPath): EitherT[F, String, Json] =
+    EitherT(Sync[F].delay(parseJson(in)))
+
+  def parseAppConfig[A: Decoder](in: HoconOrPath): Either[String, A] =
+    parseHoconOrPath(in, appConfigFallbacks)
+
+  def parseJson(in: HoconOrPath): Either[String, Json] =
+    parseHoconOrPath[Json](in, identity)
+
+  def hoconFromString(str: String): Either[String, DecodedHocon] =
     Either
-      .catchNonFatal {
-        val source = ConfigSource.string(conf)
-        namespaced(
-          ConfigSource.default(namespaced(source.withFallback(namespaced(ConfigSource.default))))
-        )
-      }
-      .leftMap(error => ConfigReaderFailures(CannotParse(s"Not valid HOCON. ${error.getMessage}", None)))
-      .flatMap { config =>
-        config
-          .load[Json]
-          .flatMap { json =>
-            json.as[A].leftMap(failure => ConfigReaderFailures(CannotParse(failure.show, None)))
-          }
-      }
-      .leftMap(_.prettyPrint())
-
-  def base64decode(str: String): Either[String, String] =
-    Either
-      .catchOnly[IllegalArgumentException](Base64Decoder.decode(str))
-      .map(arr => new String(arr, UTF_8))
+      .catchNonFatal(DecodedHocon(ConfigFactory.parseString(str)))
       .leftMap(_.getMessage)
 
-  object Base64Json {
-    def decode(str: String): ValidatedNel[String, Json] =
-      base64decode(str)
-        .flatMap(str => parse(str).leftMap(_.show))
-        .toValidatedNel
-  }
-
-  /**
-   * Optionally give precedence to configs wrapped in a "snowplow" block. To help avoid polluting
-   * config namespace
-   */
-  private def namespaced(configObjSource: ConfigObjectSource): ConfigObjectSource =
-    ConfigObjectSource {
-      for {
-        configObj <- configObjSource.value()
-        conf = configObj.toConfig
-      } yield
-        if (conf.hasPath(Namespace))
-          conf.getConfig(Namespace).withFallback(conf.withoutPath(Namespace))
-        else
-          conf
+  private def parseHoconOrPath[A: Decoder](
+    config: HoconOrPath,
+    fallbacks: TypesafeConfig => TypesafeConfig
+  ): Either[String, A] =
+    config match {
+      case Left(hocon) =>
+        resolve[A](hocon, fallbacks)
+      case Right(path) =>
+        readTextFrom(path)
+          .flatMap(hoconFromString)
+          .flatMap(hocon => resolve[A](hocon, fallbacks))
     }
 
-  def validateResolverJson(resolverJson: Json): ValidatedNel[String, Json] =
-    Resolver
-      .parse[Id](resolverJson)
-      .leftMap(_.show)
-      .map(_ => resolverJson)
-      .toValidatedNel
+  private def resolve[A: Decoder](hocon: DecodedHocon, fallbacks: TypesafeConfig => TypesafeConfig): Either[String, A] = {
+    val either = for {
+      resolved <- Either.catchNonFatal(hocon.value.resolve()).leftMap(_.getMessage)
+      merged <- Either.catchNonFatal(fallbacks(resolved)).leftMap(_.getMessage)
+      parsed <- merged.as[A].leftMap(_.show)
+    } yield parsed
+    either.leftMap(e => s"Cannot resolve config: $e")
+  }
 
-  // Used as an option prefix when reading system properties.
-  val Namespace = "snowplow"
+  private def readTextFrom(path: Path): Either[String, String] =
+    Either
+      .catchNonFatal(Files.readAllLines(path).asScala.mkString("\n"))
+      .leftMap(e => s"Error reading ${path.toAbsolutePath} file from filesystem: ${e.getMessage}")
+
+  private def appConfigFallbacks(config: TypesafeConfig): TypesafeConfig =
+    namespaced(ConfigFactory.load(namespaced(config.withFallback(namespaced(ConfigFactory.load())))))
+
+  private def namespaced(config: TypesafeConfig): TypesafeConfig = {
+    val namespace = "snowplow"
+    if (config.hasPath(namespace))
+      config.getConfig(namespace).withFallback(config.withoutPath(namespace))
+    else
+      config
+  }
 }

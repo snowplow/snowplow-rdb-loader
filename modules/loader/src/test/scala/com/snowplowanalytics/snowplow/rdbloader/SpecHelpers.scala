@@ -13,23 +13,16 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
-import scala.io.Source.fromInputStream
-
 import doobie.util.fragment.Fragment
 import doobie.util.update.Update0
-
-import io.circe.jawn.parse
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, Paths}
+import java.util.Base64
 
 object SpecHelpers {
 
-  val resolverConfig = fromInputStream(getClass.getResourceAsStream("/resolver.json.base64")).getLines.mkString("\n")
-  val invalidResolverConfig = fromInputStream(getClass.getResourceAsStream("/invalid-resolver.json.base64")).getLines.mkString("\n")
-  val resolverJson =
-    parse(new String(java.util.Base64.getDecoder.decode(resolverConfig))).getOrElse(throw new RuntimeException("Invalid resolver.json"))
-
-  val disableSsl = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true))
   val validConfig: Config[StorageTarget.Redshift] = Config(
     ConfigSpec.exampleRedshift,
     ConfigSpec.exampleCloud,
@@ -44,7 +37,18 @@ object SpecHelpers {
     ConfigSpec.exampleFeatureFlags,
     ConfigSpec.exampleTelemetry
   )
-  val validCliConfig: CliConfig = CliConfig(validConfig, false, resolverJson)
+
+  def asB64(resourcePath: String): String =
+    encode(readResource(resourcePath))
+
+  def readResource(resourcePath: String): String =
+    Files.readString(fullPathOf(resourcePath))
+
+  def encode(string: String): String =
+    new String(Base64.getEncoder.encode(string.getBytes(StandardCharsets.UTF_8)))
+
+  def fullPathOf(resource: String): Path =
+    Paths.get(getClass.getResource(resource).toURI)
 
   /**
    * Pretty prints a Scala value similar to its source represention. Particularly useful for case

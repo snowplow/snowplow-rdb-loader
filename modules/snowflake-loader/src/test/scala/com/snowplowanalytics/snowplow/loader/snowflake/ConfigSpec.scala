@@ -33,7 +33,7 @@ class ConfigSpec extends Specification {
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
-      val result = getConfig("/loader/aws/snowflake.config.reference.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/loader/aws/snowflake.config.reference.hocon", Config.parseAppConfig[IO])
       val expected = Config(
         storage,
         exampleCloud,
@@ -57,7 +57,7 @@ class ConfigSpec extends Specification {
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
-      val result = getConfig("/loader/gcp/snowflake.config.reference.hocon", Config.fromString[IO])
+      val result = getConfigFromResource("/loader/gcp/snowflake.config.reference.hocon", Config.parseAppConfig[IO])
       val gcpCloud = Config.Cloud.GCP(
         Config.Cloud.GCP.Pubsub(
           subscription = "projects/project-id/subscriptions/subscription-id",
@@ -93,7 +93,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal AWS Snowflake Loader config" in {
-      val result = getConfig("/loader/aws/snowflake.config.minimal.hocon", testParseConfig)
+      val result = getConfigFromResource("/loader/aws/snowflake.config.minimal.hocon", testParseConfig)
       val expected = Config(
         exampleSnowflake
           .copy(
@@ -115,7 +115,7 @@ class ConfigSpec extends Specification {
     }
 
     "be able to parse minimal GCP Snowflake Loader config" in {
-      val result = getConfig("/loader/gcp/snowflake.config.minimal.hocon", testParseConfig)
+      val result = getConfigFromResource("/loader/gcp/snowflake.config.minimal.hocon", testParseConfig)
       val gcpCloud = Config.Cloud.GCP(
         Config.Cloud.GCP.Pubsub(
           subscription = "projects/project-id/subscriptions/subscription-id",

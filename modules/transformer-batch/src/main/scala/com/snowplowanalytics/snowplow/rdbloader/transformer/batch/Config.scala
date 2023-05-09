@@ -14,15 +14,13 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import java.net.URI
 import java.time.Instant
-
 import cats.implicits._
-
 import io.circe._
 import io.circe.generic.semiauto._
 
 import scala.concurrent.duration.FiniteDuration
-
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
@@ -41,13 +39,13 @@ final case class Config(
 )
 
 object Config {
-  def fromString(conf: String): Either[String, Config] =
-    fromString(conf, impureDecoders)
+  def parse(config: HoconOrPath): Either[String, Config] =
+    parse(config, impureDecoders)
 
-  def fromString(conf: String, decoders: Decoders): Either[String, Config] = {
+  def parse(config: HoconOrPath, decoders: Decoders): Either[String, Config] = {
     import decoders._
     for {
-      config <- ConfigUtils.fromString[Config](conf)
+      config <- ConfigUtils.parseAppConfig[Config](config)
       _ <- TransformerConfig.formatsCheck(config.formats)
     } yield config
   }

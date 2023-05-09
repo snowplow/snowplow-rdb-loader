@@ -12,29 +12,28 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
-import java.nio.file.{Files, Paths}
 import cats.effect.IO
-import io.circe.Decoder
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
-import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
-
 import cats.effect.unsafe.implicits.global
+import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+import io.circe.Decoder
+
+import java.nio.file.{Path, Paths}
 
 object ConfigUtils {
-  def getConfig[A](confPath: String, parse: String => Either[String, A]): Either[String, A] =
-    parse(readResource(confPath))
+  def getConfigFromResource[A](resourcePath: String, parse: HoconOrPath => Either[String, A]): Either[String, A] =
+    parse(Right(pathOf(resourcePath)))
 
-  def readResource(resourcePath: String): String = {
-    val configExamplePath = Paths.get(getClass.getResource(resourcePath).toURI)
-    Files.readString(configExamplePath)
-  }
+  def pathOf(resource: String): Path =
+    Paths.get(getClass.getResource(resource).toURI)
 
   def testDecoders: Config.Decoders = new Config.Decoders {
     implicit def regionDecoder: Decoder[Region] =
       RegionSpec.testRegionConfigDecoder
   }
 
-  def testParseStreamConfig(conf: String): Either[String, Config] =
-    Config.fromString[IO](conf, testDecoders).value.unsafeRunSync()
+  def testParseStreamConfig(config: HoconOrPath): Either[String, Config] =
+    Config.parse[IO](config, testDecoders).value.unsafeRunSync()
 
 }

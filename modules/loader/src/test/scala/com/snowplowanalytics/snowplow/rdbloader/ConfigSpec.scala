@@ -13,27 +13,20 @@
 package com.snowplowanalytics.snowplow.rdbloader
 
 import java.net.URI
-import java.nio.file.{Files, Paths}
-
 import scala.concurrent.duration._
-
 import cats.data.EitherT
-
 import cats.effect.IO
-
 import org.http4s.implicits._
-
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
-
 import cron4s.Cron
-
 import org.specs2.mutable.Specification
-
 import cats.effect.unsafe.implicits.global
+import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.fullPathOf
+import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 
 class ConfigSpec extends Specification {
   import ConfigSpec._
@@ -224,14 +217,9 @@ object ConfigSpec {
     exampleTelemetry
   )
 
-  def getConfig[A](confPath: String, parse: String => EitherT[IO, String, A]): Either[String, A] =
-    parse(readResource(confPath)).value.unsafeRunSync()
+  def getConfigFromResource[A](resourcePath: String, parse: HoconOrPath => EitherT[IO, String, A]): Either[String, A] =
+    parse(Right(fullPathOf(resourcePath))).value.unsafeRunSync()
 
-  def readResource(resourcePath: String): String = {
-    val configExamplePath = Paths.get(getClass.getResource(resourcePath).toURI)
-    Files.readString(configExamplePath)
-  }
-
-  def testParseConfig(conf: String): EitherT[IO, String, Config[StorageTarget]] =
-    Config.fromString[IO](conf, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
+  def testParseConfig(config: HoconOrPath): EitherT[IO, String, Config[StorageTarget]] =
+    Config.parseAppConfig[IO](config, Config.implicits(RegionSpec.testRegionConfigDecoder).configDecoder)
 }
