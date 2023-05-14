@@ -15,7 +15,7 @@ package com.snowplowanalytics.snowplow.rdbloader.dsl
 import cats.arrow.FunctionK
 import cats.data.Kleisli
 import cats.effect.testkit.TestControl
-import cats.effect.{IO, Resource}
+import cats.effect.{Clock, IO, Resource}
 import cats.effect.std.Dispatcher
 import cats.effect.unsafe.implicits.global
 import doobie.{ConnectionIO, Transactor}
@@ -27,7 +27,7 @@ import retry.Sleep
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureLogging, PureOps, PureSleep, PureTransaction, TestState}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureClock, PureDAO, PureLogging, PureOps, PureSleep, PureTransaction, TestState}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.transactors.RetryingTransactor
 import scala.concurrent.duration.DurationInt
@@ -41,6 +41,7 @@ class RetryingTransactionSpec extends Specification {
     "not retry transaction when there are no errors" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val clock: Clock[Pure] = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
@@ -49,6 +50,7 @@ class RetryingTransactionSpec extends Specification {
       val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
 
       val expected = List(
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.VacuumEvents),
         PureTransaction.CommitMessage
@@ -62,6 +64,7 @@ class RetryingTransactionSpec extends Specification {
     "not retry no-transaction when there are no errors" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val clock: Clock[Pure] = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
@@ -70,6 +73,7 @@ class RetryingTransactionSpec extends Specification {
       val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
 
       val expected = List(
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.VacuumEvents)
       )
@@ -82,6 +86,7 @@ class RetryingTransactionSpec extends Specification {
     "retry transaction when there is an error" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val clock: Clock[Pure] = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isFirstAttempt, raiseException))
 
@@ -90,8 +95,10 @@ class RetryingTransactionSpec extends Specification {
       val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
 
       val expected = List(
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.StartMessage,
         PureTransaction.RollbackMessage,
+        LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.VacuumEvents),
@@ -106,6 +113,7 @@ class RetryingTransactionSpec extends Specification {
     "retry no-transaction when there is an error" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val clock: Clock[Pure] = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isFirstAttempt, raiseException))
 
@@ -114,7 +122,9 @@ class RetryingTransactionSpec extends Specification {
       val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
 
       val expected = List(
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage,
+        LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.VacuumEvents)

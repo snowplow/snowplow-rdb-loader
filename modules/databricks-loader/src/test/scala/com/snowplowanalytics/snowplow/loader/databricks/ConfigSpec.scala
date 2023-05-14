@@ -84,7 +84,7 @@ class ConfigSpec extends Specification {
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
       val cloud = Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion)))
-      val retries = exampleRetries.copy(cumulativeBound = None)
+      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
       val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       val expected = Config(
@@ -110,7 +110,7 @@ class ConfigSpec extends Specification {
         catalog = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
-      val retries = exampleRetries.copy(cumulativeBound = None)
+      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
       val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       val expected = Config(

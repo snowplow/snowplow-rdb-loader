@@ -16,6 +16,7 @@ import java.time.Instant
 import java.sql.SQLException
 import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
+import cats.effect.Clock
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
@@ -33,6 +34,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, Colum
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{
   Pure,
+  PureClock,
   PureDAO,
   PureIglu,
   PureLoadAuthService,
@@ -168,6 +170,7 @@ class LoadSpec extends Specification {
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
       implicit val iglu: Iglu[Pure] = PureIglu.interpreter
       implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val clock: Clock[Pure] = PureClock.interpreter
       implicit val transaction: Transaction[Pure, Pure] = RetryingTransaction.wrap(validConfig.retries, PureTransaction.interpreter)
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
@@ -176,11 +179,15 @@ class LoadSpec extends Specification {
         "s3://assets/com.acme/json_context_1.json".key
       )
       val expected = List(
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage, // Migration.build
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
+        LogEntry.Message("TICK REALTIME"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         LogEntry.Sql(
@@ -196,6 +203,7 @@ class LoadSpec extends Specification {
         ),
         LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds)),
         PureTransaction.RollbackMessage,
+        LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
