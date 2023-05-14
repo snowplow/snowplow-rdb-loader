@@ -12,11 +12,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, Show}
+import cats.{Applicative, Monad, Show}
+import cats.effect.Clock
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
 import retry.{RetryDetails, RetryPolicies, RetryPolicy}
 import retry._
+import scala.concurrent.duration.FiniteDuration
 
 /**
  * A module responsible for retrying a transaction Unlike, `discovery.Retries` it's all about
@@ -58,19 +60,22 @@ object Retry {
         case Strategy.Exponential => RetryPolicies.exponentialBackoff[F](retries.backoff)
       }
 
-      val withAttempts = retries.attempts match {
+      retries.attempts match {
         case Some(attempts) =>
           policy.join(RetryPolicies.limitRetries(attempts))
         case None =>
           policy
       }
+    }
 
-      retries.cumulativeBound match {
-        case Some(bound) =>
-          RetryPolicies.limitRetriesByCumulativeDelay(bound, withAttempts)
-        case None =>
-          withAttempts
-      }
+  def isWithinCumulativeBound[F[_]: Monad: Clock](config: Retries, started: FiniteDuration): F[Boolean] =
+    config.cumulativeBound match {
+      case Some(bound) =>
+        Clock[F].realTime.map { now =>
+          now - started <= bound
+        }
+      case None =>
+        true.pure[F]
     }
 
   implicit val detailsShow: Show[RetryDetails] =

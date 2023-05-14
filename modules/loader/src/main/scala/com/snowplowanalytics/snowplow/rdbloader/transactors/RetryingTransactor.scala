@@ -12,7 +12,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transactors
 
-import cats.effect.Resource
+import cats.Monad
+import cats.effect.{Clock, Resource}
 import cats.effect.kernel.{MonadCancelThrow, Temporal}
 import cats.syntax.all._
 import doobie.Transactor
@@ -20,6 +21,7 @@ import retry._
 
 import java.sql.Connection
 import java.sql.{SQLException, SQLTransientConnectionException}
+import scala.concurrent.duration.FiniteDuration
 
 import com.snowplowanalytics.snowplow.rdbloader.UnskippableException
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -70,21 +72,35 @@ object RetryingTransactor {
     inner: Transactor.Aux[F, A]
   ): Transactor.Aux[F, A] = {
     val policy = Retry.getRetryPolicy[Resource[F, *]](config)
-    inner.copy(connect0 = a => wrapResource(policy, inner.connect(a)))
+    inner.copy(connect0 = a => wrapResource(config, policy, inner.connect(a)))
   }
 
   private def wrapResource[F[_]](
+    config: Config.Retries,
     policy: RetryPolicy[Resource[F, *]],
     resource: Resource[F, Connection]
   )(implicit F: MonadCancelThrow[F],
     L: Logging[F],
-    S: Sleep[Resource[F, *]]
+    S: Sleep[Resource[F, *]],
+    C: Clock[Resource[F, *]]
   ): Resource[F, Connection] =
-    retryingOnSomeErrors(policy, isTransientError.andThen(_.pure[Resource[F, *]]), onError[F](_, _))(resource)
-      .adaptError {
-        case t if isTransientError(t) => new ExceededRetriesException(t)
-        case t: Throwable => new UnskippableConnectionException(t)
-      }
+    C.realTime.flatMap { now =>
+      retryingOnSomeErrors(policy, shouldRetry[Resource[F, *]](config, now, _), onError[F](_, _))(resource)
+        .adaptError {
+          case t if isTransientError(t) => new ExceededRetriesException(t)
+          case t: Throwable => new UnskippableConnectionException(t)
+        }
+    }
+
+  private def shouldRetry[F[_]: Monad: Clock](
+    config: Config.Retries,
+    started: FiniteDuration,
+    t: Throwable
+  ): F[Boolean] =
+    Retry.isWithinCumulativeBound(config, started).map {
+      case true => isTransientError(t)
+      case false => false
+    }
 
   /**
    * Matches against the exception against the recognizable signatures which tell us the Hikari pool

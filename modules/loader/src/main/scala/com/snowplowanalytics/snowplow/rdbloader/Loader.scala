@@ -103,7 +103,13 @@ object Loader {
     val periodicMetrics: Stream[F, Unit] =
       Monitoring[F].periodicMetrics.report
 
-    def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
+    def initRetry(f: F[Unit]) = Clock[F].realTime.flatMap { now =>
+      retryingOnSomeErrors(
+        Retry.getRetryPolicy[F](config.initRetries),
+        { _: Throwable => Retry.isWithinCumulativeBound[F](config.initRetries, now) },
+        initRetryLog[F]
+      )(f)
+    }
 
     val blockUntilReady = initRetry(TargetCheck.prepareTarget[F, C]).onError { case t: Throwable =>
       Monitoring[F].alert(AlertMessage.FailedInitialConnection(t))
