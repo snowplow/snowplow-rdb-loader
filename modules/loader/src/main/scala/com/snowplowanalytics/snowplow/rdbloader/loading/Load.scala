@@ -98,12 +98,11 @@ object Load {
       migrations <- Migration.build[F, C, I](discovery.discovery, target)
       _ <- Transaction[F, C].run {
              getPreTransaction[C](setStage, migrations.preTransaction)
+               .onError { case _: Throwable => incrementAttempt }
            }
       result <- Transaction[F, C].transact {
                   getTransaction[C, I](setStage, discovery, initQueryResult, target)(migrations.inTransaction)
-                    .onError { case _: Throwable =>
-                      incrementAttempt
-                    }
+                    .onError { case _: Throwable => incrementAttempt }
                 }
     } yield result
 

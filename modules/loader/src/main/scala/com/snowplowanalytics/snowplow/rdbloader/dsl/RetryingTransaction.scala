@@ -49,7 +49,7 @@ object RetryingTransaction {
     retryingOnSomeErrors(policy, isWorthRetry.andThen(_.pure[F]), onError[F](_, _))(io)
 
   private val isWorthRetry: Throwable => Boolean = {
-    case _: RetryingTransactor.ExceededRetriesException =>
+    case RetryingTransactor.ExceededRetriesException() =>
       // The relevant retry policy has already been applied and exceeded
       false
     case e =>

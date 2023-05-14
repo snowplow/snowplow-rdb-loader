@@ -13,6 +13,7 @@ import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Iglu
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure
 
 object PureIglu {
   def interpreter: Iglu[Pure] = new Iglu[Pure] {
@@ -25,7 +26,7 @@ object PureIglu {
         .parseStrings(List(s"iglu:$vendor/$name/jsonschema/$model-0-0"))
         .map(x => DSchemaList.fromSchemaList(x, fetch).value)
         .sequence[Pure, Either[String, DSchemaList]]
-        .map(e => e.flatten.leftMap(x => LoaderError.RuntimeError(x)))
+        .map(e => e.flatten.leftMap(x => LoaderError.DiscoveryError(DiscoveryFailure.IgluError(x))))
 
     override def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[Pure, FailureDetails.LoaderIgluError, List[String]] =
       types.traverse { `type` =>

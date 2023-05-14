@@ -28,8 +28,6 @@ object LoaderError {
   implicit val loaderErrorShow: Show[LoaderError] = {
     case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.toList.map(_.getMessage).mkString("\n")
     case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
-    case l: StorageTargetError => s"Database error: ${l.message}"
-    case l: RuntimeError => s"Internal Exception ${l.message}"
     case t: TimeoutError => t.message
   }
 
@@ -45,15 +43,6 @@ object LoaderError {
     def fromValidated[A](validated: ValidatedNel[DiscoveryFailure, A]): Either[LoaderError, A] =
       validated.leftMap(errors => DiscoveryError(errors): LoaderError).toEither
   }
-
-  /**
-   * Error representing failure on database loading (or executing any statements) These errors have
-   * short-circuit semantics (as in `scala.Either`)
-   */
-  final case class StorageTargetError(message: String) extends LoaderError
-
-  /** Other errors, not related to a warehouse */
-  final case class RuntimeError(message: String) extends LoaderError
 
   /** Error happened during DDL-statements execution. Critical */
   final case class MigrationError(message: String) extends LoaderError
