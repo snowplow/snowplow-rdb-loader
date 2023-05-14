@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transactors
 
-import cats.effect.Resource
+import cats.effect.{Clock, Resource}
 import cats.effect.kernel.{MonadCancelThrow, Temporal}
 import cats.syntax.all._
 import doobie.Transactor
@@ -68,19 +68,19 @@ object RetryingTransactor {
   def wrap[F[_]: Temporal: Logging: Sleep, A](
     config: Config.Retries,
     inner: Transactor.Aux[F, A]
-  ): Transactor.Aux[F, A] = {
-    val policy = Retry.getRetryPolicy[Resource[F, *]](config)
-    inner.copy(connect0 = a => wrapResource(policy, inner.connect(a)))
-  }
+  ): Transactor.Aux[F, A] =
+    inner.copy(connect0 = a => wrapResource(config, inner.connect(a)))
 
   private def wrapResource[F[_]](
-    policy: RetryPolicy[Resource[F, *]],
+    config: Config.Retries,
     resource: Resource[F, Connection]
   )(implicit F: MonadCancelThrow[F],
     L: Logging[F],
-    S: Sleep[Resource[F, *]]
+    S: Sleep[Resource[F, *]],
+    C: Clock[Resource[F, *]]
   ): Resource[F, Connection] =
-    retryingOnSomeErrors(policy, isTransientError.andThen(_.pure[Resource[F, *]]), onError[F](_, _))(resource)
+    Retry
+      .retryingOnSomeErrors(config, isTransientError.andThen(_.pure[Resource[F, *]]), onError[F](_, _), resource)
       .adaptError {
         case t if isTransientError(t) => new ExceededRetriesException(t)
         case t: Throwable => new UnskippableConnectionException(t)

@@ -16,7 +16,7 @@ import scala.concurrent.duration._
 import cats.{Apply, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect.{Async, Clock}
-import retry._
+import retry.RetryDetails
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
@@ -103,7 +103,7 @@ object Loader {
     val periodicMetrics: Stream[F, Unit] =
       Monitoring[F].periodicMetrics.report
 
-    def initRetry(f: F[Unit]) = retryingOnAllErrors(Retry.getRetryPolicy[F](config.initRetries), initRetryLog[F])(f)
+    def initRetry(f: F[Unit]) = Retry.retryingOnAllErrors(config.initRetries, initRetryLog[F], f)
 
     val blockUntilReady = initRetry(TargetCheck.prepareTarget[F, C]).onError { case t: Throwable =>
       Monitoring[F].alert(Alert.FailedInitialConnection(t))

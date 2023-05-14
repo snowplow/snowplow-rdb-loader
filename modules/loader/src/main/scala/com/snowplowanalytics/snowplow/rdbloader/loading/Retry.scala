@@ -12,11 +12,13 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, Show}
+import cats.{Applicative, MonadThrow, Show}
+import cats.effect.Clock
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
 import retry.{RetryDetails, RetryPolicies, RetryPolicy}
 import retry._
+import scala.concurrent.duration.{Duration, FiniteDuration}
 
 /**
  * A module responsible for retrying a transaction Unlike, `discovery.Retries` it's all about
@@ -47,9 +49,30 @@ object Retry {
     e => e.toString.toLowerCase.contains("cannot decode sql row: table comment is not valid schemakey, invalid_igluuri")
   )
 
+  def retryingOnSomeErrors[F[_]: MonadThrow: Clock: Sleep, A](
+    retries: Retries,
+    isWorthRetrying: Throwable => F[Boolean],
+    onError: (Throwable, RetryDetails) => F[Unit],
+    f: F[A]
+  ): F[A] =
+    for {
+      policy <- getRetryPolicy[F](retries)
+      result <- retry.retryingOnSomeErrors(policy, isWorthRetrying, onError)(f)
+    } yield result
+
+  def retryingOnAllErrors[F[_]: MonadThrow: Clock: Sleep, A](
+    retries: Retries,
+    onError: (Throwable, RetryDetails) => F[Unit],
+    f: F[A]
+  ): F[A] =
+    for {
+      policy <- getRetryPolicy[F](retries)
+      result <- retry.retryingOnAllErrors(policy, onError)(f)
+    } yield result
+
   /** Build a cats-retry-specific retry policy from Loader's config */
-  def getRetryPolicy[F[_]: Applicative](retries: Retries): RetryPolicy[F] =
-    if (retries.attempts.contains(0)) RetryPolicies.alwaysGiveUp
+  private def getRetryPolicy[F[_]: Applicative: Clock](retries: Retries): F[RetryPolicy[F]] =
+    if (retries.attempts.contains(0)) RetryPolicies.alwaysGiveUp[F].pure[F]
     else {
       val policy = retries.strategy match {
         case Strategy.Jitter => RetryPolicies.fullJitter[F](retries.backoff)
@@ -67,10 +90,24 @@ object Retry {
 
       retries.cumulativeBound match {
         case Some(bound) =>
-          RetryPolicies.limitRetriesByCumulativeDelay(bound, withAttempts)
+          joinWithCumulativeBound(withAttempts, bound)
         case None =>
-          withAttempts
+          withAttempts.pure[F]
       }
+    }
+
+  private def joinWithCumulativeBound[F[_]: Applicative: Clock](policy: RetryPolicy[F], bound: FiniteDuration): F[RetryPolicy[F]] =
+    Clock[F].realTime.map { startedAt =>
+      val withCumulativeBound = RetryPolicy[F] { _ =>
+        Clock[F].realTime.map { now =>
+          if (now - startedAt <= bound)
+            PolicyDecision.DelayAndRetry(Duration.Zero)
+          else
+            PolicyDecision.GiveUp
+        }
+      }
+
+      policy.join(withCumulativeBound)
     }
 
   implicit val detailsShow: Show[RetryDetails] =
