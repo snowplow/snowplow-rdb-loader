@@ -218,7 +218,28 @@ object Loader {
       } yield ()
     }
 
-    loading.handleErrorWith(reportLoadFailure[F](discovery, addFailure))
+    // Handle all three possible failure scenarios:
+    // 1. The kind of error for which it is not worth proceeding to the next batch from the queue,
+    //   because the next batch is unlikely to succeed. e.g. a connection error.  We keep on
+    //   retrying the same batch, because we don't want to ack the message from the queue.
+    // 2. A failure which is worth retrying later, and we have space available in the internal
+    //   retry queue
+    // 3. A failure which is not worth retrying, or we don't have space to add to the retry queue
+    loading.handleErrorWith {
+      case UnskippableException(t) =>
+        Logging[F].error(t)(s"Loading of $folder has failed. This exception type cannot be skipped so it will be retried immediately.") *>
+          Monitoring[F].alert(Alert.UnskippableLoadFailure(folder, t)) *>
+          processDiscovery(config, control, initQueryResult, target)(discovery)
+      case t: Throwable =>
+        addFailure(t).flatMap {
+          case true =>
+            Logging[F].error(t)(s"Loading of $folder has failed. Adding into retry queue.") *>
+              Monitoring[F].alert(Alert.RetryableLoadFailure(folder, t))
+          case false =>
+            Logging[F].error(t)(s"Loading of $folder has failed. Not adding into retry queue.") *>
+              Monitoring[F].alert(Alert.TerminalLoadFailure(folder, t))
+        }
+    }
   }
 
   private def addLoadTstampColumn[F[_]: Transaction[*[_], C]: Monitoring: Logging: MonadThrow, C[_]: DAO: Monad: Logging](
@@ -262,34 +283,6 @@ object Loader {
 
   private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: Monad](target: Target[_]): F[Unit] =
     Transaction[F, C].transact(DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void)
-
-  /**
-   * Handle a failure during loading. `Load.getTransaction` can fail only in one "expected" way - if
-   * the folder is already loaded everything else in the transaction and outside (migration
-   * building, pre-transaction migrations, ack) is handled by this function. It's called on
-   * non-fatal loading failure and just reports the failure, without crashing the process
-   *
-   * @param discovery
-   *   the original discovery
-   * @param error
-   *   the actual error, typically `SQLException`
-   */
-  private def reportLoadFailure[F[_]: Logging: Monitoring: Monad](
-    discovery: DataDiscovery.WithOrigin,
-    addFailure: Throwable => F[Boolean]
-  )(
-    error: Throwable
-  ): F[Unit] = {
-    val message = getErrorMessage(error)
-    addFailure(error).flatMap {
-      case true =>
-        Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Adding into retry queue. $message") *>
-          Monitoring[F].alert(Alert.RetryableLoadFailure(discovery.origin.base, error))
-      case false =>
-        Logging[F].error(s"Loading of ${discovery.origin.base} has failed. Not adding into retry queue. $message") *>
-          Monitoring[F].alert(Alert.TerminalLoadFailure(discovery.origin.base, error))
-    }
-  }
 
   /**
    * Last level of failure handling, called when non-loading stream fail. Called on an application

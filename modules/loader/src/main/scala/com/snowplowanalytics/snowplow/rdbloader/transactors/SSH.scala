@@ -31,7 +31,7 @@ object SSH {
   /** Actual SSH identity data. Both passphrase and key are optional */
   case class Identity(passphrase: Option[Array[Byte]], key: Option[Array[Byte]])
 
-  final class SSHException(cause: Throwable) extends Exception(s"Error setting up SSH tunnel: ${cause.getMessage}", cause)
+  final class SSHException(cause: Throwable) extends Exception(s"Error setting up SSH tunnel", cause)
 
   /**
    * A doobie transactor that ensures the SSH tunnel is connected before attempting a connection to

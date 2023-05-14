@@ -21,6 +21,7 @@ import retry._
 import java.sql.Connection
 import java.sql.{SQLException, SQLTransientConnectionException}
 
+import com.snowplowanalytics.snowplow.rdbloader.UnskippableException
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry
@@ -28,7 +29,37 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
 
 object RetryingTransactor {
 
-  class ExceededRetriesException(cause: Throwable) extends Exception("Exceeded retry limits trying to get a JDBC connection", cause)
+  /**
+   * Exception for when we received exceptions which should be transient, but they continued beyond
+   * our retry limit
+   */
+  class ExceededRetriesException(cause: Throwable)
+      extends Exception("Failed to establish a JDBC connection", cause)
+      with UnskippableException
+
+  /**
+   * Exception for when we could not get a healthy connection
+   *
+   * It is tagged as UnskippableException because loading of any batch would be impacted by this
+   * same exception.
+   */
+  class UnskippableConnectionException(cause: Throwable)
+      extends Exception("Failed to establish a JDBC connection", cause)
+      with UnskippableException
+
+  object ExceededRetriesException {
+
+    /**
+     * Extractor that matches if the exception, or any underlying cause of the exception, was for
+     * exceeded retries
+     */
+    def unapply(t: Throwable): Boolean =
+      (t, Option(t.getCause)) match {
+        case (_: ExceededRetriesException, _) => true
+        case (_, Some(cause)) => unapply(cause)
+        case (_, None) => false
+      }
+  }
 
   /**
    * A doobie transactor that retries getting a connection if the HikariPool times out. It blocks
@@ -49,10 +80,10 @@ object RetryingTransactor {
     L: Logging[F],
     S: Sleep[Resource[F, *]]
   ): Resource[F, Connection] =
-    retryingOnSomeErrors(policy, isConnectionError.andThen(_.pure[Resource[F, *]]), onError[F](_, _))(resource)
+    retryingOnSomeErrors(policy, isTransientError.andThen(_.pure[Resource[F, *]]), onError[F](_, _))(resource)
       .adaptError {
-        case t if isConnectionError(t) => new ExceededRetriesException(t)
-        case t: Throwable => t
+        case t if isTransientError(t) => new ExceededRetriesException(t)
+        case t: Throwable => new UnskippableConnectionException(t)
       }
 
   /**
@@ -60,7 +91,7 @@ object RetryingTransactor {
    * could not get any connection within a time limit. For Databricks, it likely tells us the
    * cluster is still starting up.
    */
-  private val isConnectionError: Throwable => Boolean = {
+  private val isTransientError: Throwable => Boolean = {
     case e: SQLTransientConnectionException =>
       Option(e.getCause) match {
         case None =>

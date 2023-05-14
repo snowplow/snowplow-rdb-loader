@@ -12,10 +12,11 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.Applicative
+import cats.MonadThrow
 import cats.implicits._
 import retry._
 
+import com.snowplowanalytics.snowplow.rdbloader.UnskippableException
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
 
@@ -24,9 +25,17 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Logging, Transaction}
  */
 object TargetCheck {
 
+  class TargetCheckException(cause: Throwable) extends Exception(cause.getMessage, cause) with UnskippableException
+
   /**
    * Prepare the target to make it ready for loading e.g. start the warehouse running
    */
-  def prepareTarget[F[_]: Applicative: Transaction[*[_], C]: Logging: Sleep, C[_]: DAO]: F[Unit] =
-    Transaction[F, C].run(DAO[C].executeQuery[Unit](Statement.ReadyCheck)).void
+  def prepareTarget[F[_]: MonadThrow: Transaction[*[_], C]: Logging: Sleep, C[_]: DAO]: F[Unit] =
+    Transaction[F, C]
+      .run(DAO[C].executeQuery[Unit](Statement.ReadyCheck))
+      .void
+      .adaptError { case t: Throwable =>
+        // Tags the exception as unskippable
+        new TargetCheckException(t)
+      }
 }

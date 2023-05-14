@@ -30,6 +30,7 @@ object Alert {
   case class FolderIsUnloaded(folder: BlobStorage.Folder) extends Alert
   case class ShreddingIncomplete(folder: BlobStorage.Folder) extends Alert
   case object UnloadedFoldersDetected extends Alert
+  case class UnskippableLoadFailure(folder: BlobStorage.Folder, cause: Throwable) extends Alert
   case class RetryableLoadFailure(folder: BlobStorage.Folder, cause: Throwable) extends Alert
   case class TerminalLoadFailure(folder: BlobStorage.Folder, cause: Throwable) extends Alert
   case class FailedInitialConnection(cause: Throwable) extends Alert
@@ -43,6 +44,7 @@ object Alert {
     case FolderIsAlreadyLoaded(folder) => Some(folder)
     case FolderIsUnloaded(folder) => Some(folder)
     case ShreddingIncomplete(folder) => Some(folder)
+    case UnskippableLoadFailure(folder, _) => Some(folder)
     case RetryableLoadFailure(folder, _) => Some(folder)
     case TerminalLoadFailure(folder, _) => Some(folder)
     // general messages
@@ -59,6 +61,7 @@ object Alert {
     case FolderIsAlreadyLoaded(_) => Severity.Info
     case RetryableLoadFailure(_, _) => Severity.Info
     // warnings: require external intervention to fix the problem
+    case UnskippableLoadFailure(_, _) => Severity.Warning
     case TerminalLoadFailure(_, _) => Severity.Warning
     case UnloadedFoldersDetected => Severity.Warning
     case FailedFolderMonitoring(_, _) => Severity.Warning
@@ -79,7 +82,8 @@ object Alert {
       case FolderIsUnloaded(_) => "Unloaded batch"
       case ShreddingIncomplete(_) => "Incomplete shredding"
       case UnloadedFoldersDetected => "Folder monitoring detected unloaded folders"
-      case RetryableLoadFailure(_, t) => show"Load failed and will be retried: $t"
+      case UnskippableLoadFailure(_, t) => show"Load failed and will be retried until fixed: $t"
+      case RetryableLoadFailure(_, t) => show"Load failed and went to the retry queue: $t"
       case TerminalLoadFailure(_, t) => show"Load failed and will not be retried: $t"
       case FailedInitialConnection(t) => show"Failed to get connection at startup: $t"
       case FailedToCreateEventsTable(t) => show"Failed to create events table: $t"
@@ -92,13 +96,15 @@ object Alert {
 
   implicit def throwableShow: Show[Throwable] = {
     def go(acc: List[String], next: Throwable): String = {
-      val msg = next match {
-        case t: SQLException => s"${t.getMessage} = SqlState: ${t.getSQLState}"
-        case t => t.getMessage
+      val nextMessage = next match {
+        case t: SQLException => Some(s"${t.getMessage} = SqlState: ${t.getSQLState}")
+        case t => Option(t.getMessage)
       }
+      val msgs = nextMessage.filterNot(msg => acc.headOption.contains(msg)) ++: acc
+
       Option(next.getCause) match {
-        case Some(cause) => go(msg :: acc, cause)
-        case None => (msg :: acc).reverse.mkString(": ")
+        case Some(cause) => go(msgs, cause)
+        case None => msgs.reverse.mkString(": ")
       }
     }
 
