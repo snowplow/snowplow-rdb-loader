@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.schemaddl.migrations.{FlatSchema, Migration =>
 import com.snowplowanalytics.iglu.schemaddl.redshift.generators.DdlGenerator
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.{LoadStatements, LoaderError}
+import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Item}
@@ -119,10 +119,10 @@ object PureDAO {
       Statement.CreateTable(Fragment.const0("CREATE events"))
 
     def updateTable(migration: SchemaMigration): Migration.Block =
-      throw LoaderError.RuntimeError("Not implemented in test suite")
+      throw new RuntimeException("Not implemented in test suite")
 
     def extendTable(info: ShreddedType.Info): Option[Block] =
-      throw LoaderError.RuntimeError("Not implemented in test suite")
+      throw new RuntimeException("Not implemented in test suite")
 
     def createTable(schemas: SchemaList): Migration.Block = {
       val subschemas = FlatSchema.extractProperties(schemas)

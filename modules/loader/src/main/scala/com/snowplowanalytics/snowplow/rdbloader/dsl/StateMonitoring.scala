@@ -55,7 +55,7 @@ object StateMonitoring {
                 case None => Concurrent[F].unit
                 case Some(error) => Logging[F].error(error) *> Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
               }
-            case Outcome.Errored(e) => Concurrent[F].raiseError[Unit](LoaderError.RuntimeError(e.getMessage))
+            case Outcome.Errored(e) => Concurrent[F].raiseError[Unit](e)
             case Outcome.Canceled() => Concurrent[F].unit
           }
       }

@@ -13,10 +13,10 @@
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
 import java.time.Instant
+import java.sql.SQLException
 import scala.concurrent.duration.FiniteDuration
 import cats.syntax.option._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -357,5 +357,5 @@ object LoadSpec {
     }
 
   val failCommit: Pure[Int] =
-    Pure.fail(LoaderError.StorageTargetError("Commit failed"))
+    Pure.fail(new SQLException("Commit failed"))
 }
