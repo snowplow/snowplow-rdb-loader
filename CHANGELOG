@@ -1,3 +1,22 @@
+Version 5.5.0 (2023-05-24)
+--------------------------
+Bump Snowflake driver to 3.13.30 (#1256)
+Upgrade Databricks JDBC driver (#1254)
+Config parsing improvements (#1252)
+Loader: limit the total time spent retrying a failed load (#1251)
+Loader: do not skip batches on warehouse connection failures (#1250)
+Loader: Do not attempt rollback when connection is already closed (#1240)
+Use sbt-snowplow-release to build docker images (#1222)
+Loader: Improvements to webhook alerts (#1238)
+Add load_tstamp column to table definitions (#1233)
+Loader: Disable warnings on incomplete shredding for the streaming transformer (#967)
+Batch Transformer: emit transform_duration metric (#1236)
+Batch Transformer: use JDK 11 in assembly (#1241)
+Bump dependencies with CVEs (#1234)
+Loader: Retry failures for all warehouse operations (#1225)
+Loader: Avoid errors for "Connection is not available" (#1223)
+Upgrade to Cats Effect 3 (#1219)
+
 Version 5.4.3 (2023-05-05)
 --------------------------
 Bump schema-ddl to 0.18.2 (#1248)
