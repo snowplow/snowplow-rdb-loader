@@ -180,6 +180,10 @@ object BuildSettings {
   lazy val gcpBuildSettings = {
     buildSettings
   }
+  
+  lazy val azureBuildSettings = {
+    buildSettings
+  }
 
   lazy val commonBuildSettings = {
     Seq(

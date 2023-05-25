@@ -29,6 +29,7 @@ lazy val root = project.in(file("."))
   .aggregate(
     aws,
     gcp,
+    azure,
     common,
     commonTransformerStream,
     loader,
@@ -57,6 +58,13 @@ lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpBuildSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+  .dependsOn(common % "compile->compile;test->test")
+  .enablePlugins(BuildInfoPlugin)
+
+lazy val azure: Project = project
+  .in(file("modules/azure"))
+  .settings(BuildSettings.azureBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies)
   .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 

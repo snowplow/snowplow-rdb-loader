@@ -32,6 +32,7 @@ object Dependencies {
     val fs2Blobstore     = "0.9.7"
     val fs2Cron          = "0.7.2"
     val fs2PubSub        = "0.21.0"
+    val fs2Kafka         = "3.0.0"
     val secretManager    = "2.7.0"
     val gcpStorage       = "2.16.0"
     val doobie           = "1.0.0-RC2"
@@ -99,11 +100,14 @@ object Dependencies {
   val cron4sCirce       = ("com.github.alonsodomin.cron4s" %% "cron4s-circe"                   % V.cron4sCirce)
     .exclude("io.circe", "circe-core_2.12") // cron4s-circe lacks circe 0.13 support
   val fs2               = "co.fs2"                     %% "fs2-core"                          % V.fs2
+  val fs2Kafka          = "com.github.fd4s"            %% "fs2-kafka"                         % V.fs2Kafka
   val fs2Kinesis        = ("io.laserdisc"              %% "fs2-aws-kinesis"              % V.fs2Aws)
     .exclude("com.amazonaws", "amazon-kinesis-producer")
     .exclude("software.amazon.kinesis", "amazon-kinesis-client")
   val fs2BlobstoreS3    = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val fs2BlobstoreGCS   = "com.github.fs2-blobstore"   %% "gcs"                               % V.fs2Blobstore
+  val fs2BlobstoreAzure = "com.github.fs2-blobstore"   %% "azure"                             % V.fs2Blobstore
+  val azureIdentity     = "com.azure"                  % "azure-identity"                     % "1.9.0"
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val fs2PubSub         = "com.permutive"              %% "fs2-google-pubsub-grpc"            % V.fs2PubSub
   val secretManager     = "com.google.cloud"           % "google-cloud-secretmanager"         % V.secretManager
@@ -204,6 +208,12 @@ object Dependencies {
     fs2PubSub,
     secretManager,
     gcpStorage
+  )
+
+  val azureDependencies = Seq(
+    fs2BlobstoreAzure,
+    azureIdentity,
+    fs2Kafka
   )
 
   val commonDependencies = Seq(
