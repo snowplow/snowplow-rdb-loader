@@ -17,6 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 import cats.Id
 import cats.implicits._
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage

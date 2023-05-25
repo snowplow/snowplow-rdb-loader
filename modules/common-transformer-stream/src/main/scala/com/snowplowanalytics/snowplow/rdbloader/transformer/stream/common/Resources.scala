@@ -21,7 +21,7 @@ import org.typelevel.log4cats.Logger
 
 import io.circe.Json
 
-import cats.Applicative
+import cats.{Applicative, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect._
 import cats.effect.std.Random
@@ -59,7 +59,8 @@ case class Resources[F[_], C](
   inputStream: Queue.Consumer[F],
   checkpointer: Queue.Consumer.Message[F] => C,
   blobStorage: BlobStorage[F],
-  badSink: BadSink[F]
+  badSink: BadSink[F],
+  registryLookup: RegistryLookup[F]
 )
 
 object Resources {
@@ -114,7 +115,8 @@ object Resources {
       inputStream,
       checkpointer,
       blobStorage,
-      badSink
+      badSink,
+      registryLookup
     )
 
   private def mkBadSink[F[_]: Applicative](
@@ -145,17 +147,21 @@ object Resources {
           case Left(error) => Sync[F].raiseError[Resolver[F]](error)
         }
     }
-  private def mkEventParser[F[_]: Sync: Clock](igluResolver: Resolver[F], config: Config): Resource[F, EventParser] = Resource.eval {
-    mkAtomicLengths(igluResolver, config).flatMap {
-      case Right(atomicLengths) => Sync[F].pure(Event.parser(atomicLengths))
-      case Left(error) => Sync[F].raiseError[EventParser](error)
+  private def mkEventParser[F[_]: MonadThrow: Clock: RegistryLookup](igluResolver: Resolver[F], config: Config): Resource[F, EventParser] =
+    Resource.eval {
+      mkAtomicLengths(igluResolver, config).flatMap {
+        case Right(atomicLengths) => Monad[F].pure(Event.parser(atomicLengths))
+        case Left(error) => MonadThrow[F].raiseError[EventParser](error)
+      }
     }
-  }
-  private def mkAtomicLengths[F[_]: Sync: Clock](igluResolver: Resolver[F], config: Config): F[Either[RuntimeException, Map[String, Int]]] =
+  private def mkAtomicLengths[F[_]: Monad: Clock: RegistryLookup](
+    igluResolver: Resolver[F],
+    config: Config
+  ): F[Either[RuntimeException, Map[String, Int]]] =
     if (config.featureFlags.truncateAtomicFields) {
       EventUtils.getAtomicLengths(igluResolver)
     } else {
-      Sync[F].pure(Right(Map.empty[String, Int]))
+      Monad[F].pure(Right(Map.empty[String, Int]))
     }
 
   private def mkTransformerInstanceId[F[_]: Sync] =

@@ -15,10 +15,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet
 
 import cats.data.EitherT
-import cats.effect.Async
+import cats.Monad
+import cats.effect.{Async, Clock}
 import cats.implicits._
 import com.github.mjakubowski84.parquet4s.{ParquetWriter, Path, RowParquetRecord}
 import com.github.mjakubowski84.parquet4s.parquet.viaParquet
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
@@ -39,7 +41,7 @@ import java.net.URI
 
 object ParquetSink {
 
-  def parquetSink[F[_]: Async, C](
+  def parquetSink[F[_]: Async: RegistryLookup, C](
     resources: Resources[F, C],
     compression: Compression,
     maxRecordsPerFile: Long,
@@ -66,7 +68,7 @@ object ParquetSink {
     }
   }
 
-  private def createSchemaFromTypes[F[_]: Async, C](
+  private def createSchemaFromTypes[F[_]: Monad: Clock: RegistryLookup, C](
     resources: Resources[F, C],
     types: List[Data.ShreddedType]
   ): EitherT[F, FailureDetails.LoaderIgluError, MessageType] =

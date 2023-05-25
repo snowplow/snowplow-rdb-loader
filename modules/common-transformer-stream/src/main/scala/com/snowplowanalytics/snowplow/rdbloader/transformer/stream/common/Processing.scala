@@ -29,6 +29,7 @@ import fs2.compression.{Compression => FS2Compression}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload, Processor}
+import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
@@ -69,6 +70,7 @@ object Processing {
     config: Config,
     processor: Processor
   ): Stream[F, Unit] = {
+    implicit val lookup: RegistryLookup[F] = resources.registryLookup
     val transformer: Transformer[F] = config.formats match {
       case f: TransformerConfig.Formats.Shred =>
         Transformer.ShredTransformer(resources.igluResolver, resources.propertiesCache, f, processor)
@@ -117,7 +119,7 @@ object Processing {
   }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
-  def getSink[F[_]: Async, C: Monoid](
+  def getSink[F[_]: Async: RegistryLookup, C: Monoid](
     resources: Resources[F, C],
     config: Config.Output,
     formats: Formats

@@ -16,6 +16,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
 import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
