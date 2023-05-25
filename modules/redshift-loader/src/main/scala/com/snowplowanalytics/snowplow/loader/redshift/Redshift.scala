@@ -37,7 +37,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item, NoPreStatements, NoStatements}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
@@ -305,10 +305,12 @@ object Redshift {
       case LoadAuthMethod.NoCreds =>
         val roleArn = roleArnOpt.getOrElse(throw new IllegalStateException("roleArn needs to be provided with 'NoCreds' auth method"))
         Fragment.const0(s"aws_iam_role=$roleArn")
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
+      case LoadAuthMethod.TempCreds.AWS(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"aws_access_key_id=$awsAccessKey;aws_secret_access_key=$awsSecretKey;token=$awsSessionToken"
         )
+      case _: LoadAuthMethod.TempCreds.Azure =>
+        throw new IllegalStateException("Azure temp credentials can't be used with Redshift")
     }
 
   val ManifestColumns = List(

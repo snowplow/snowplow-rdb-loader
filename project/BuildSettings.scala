@@ -79,6 +79,7 @@ object BuildSettings {
       case x if x.contains("javax") => MergeStrategy.first
       case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
       case x if x.endsWith("public-suffix-list.txt") => MergeStrategy.first
+      case PathList("org", "apache", "log4j", _ @ _*) => MergeStrategy.first
       case x =>
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
@@ -178,6 +179,10 @@ object BuildSettings {
   }
 
   lazy val gcpBuildSettings = {
+    buildSettings
+  }
+  
+  lazy val azureBuildSettings = {
     buildSettings
   }
 
@@ -283,5 +288,15 @@ object BuildSettings {
       buildInfoKeys := List(name, version, description),
     ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
+
+  lazy val transformerKafkaBuildSettings =
+    Seq(
+      name := "snowplow-transformer-kafka",
+      Docker / packageName := "transformer-kafka",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.generated",
+      buildInfoKeys := List(name, version, description)
+    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+
+
 
 }

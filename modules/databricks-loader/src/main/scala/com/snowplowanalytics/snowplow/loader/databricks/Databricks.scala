@@ -19,13 +19,15 @@ import doobie.implicits._
 import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.migrations.{Migration, SchemaList}
+import com.snowplowanalytics.snowplow.rdbloader.azure.AzureBlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.LoadStatements
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 
@@ -110,16 +112,18 @@ object Databricks {
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source, loadAuthMethod, _) =>
+                val updatedSource = replaceScheme(source)
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frPath = Fragment.const0(source)
+                val frPath = Fragment.const0(updatedSource)
                 val frAuth = loadAuthMethodFragment(loadAuthMethod)
 
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
               case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _) =>
+                val updatedPath = replaceScheme(path)
                 val frTableName = Fragment.const(qualify(EventsTable.MainName))
-                val frPath = Fragment.const0(path.append("output=good"))
+                val frPath = Fragment.const0(updatedPath.append("output=good"))
                 val nonNulls = toCopy.names.map(_.value)
                 val nulls = toSkip.names.map(c => s"NULL AS ${c.value}")
                 val currentTimestamp = "current_timestamp() AS load_tstamp"
@@ -207,6 +211,14 @@ object Databricks {
             case Some(c) => s"`$c`.${tgt.schema}"
             case None => s"${tgt.schema}"
           }
+
+          private def replaceScheme(path: Folder): Folder =
+            // If url scheme is https, it means that given path is Azure Blob Storage path.
+            // We need to convert it to the format suitable to be loaded to Databricks.
+            if (path.startsWith("https"))
+              Folder.coerce(AzureBlobStorage.PathParts.parse(path).toParquetPath)
+            else
+              path
         }
         Right(result)
       case other =>
@@ -223,9 +235,13 @@ object Databricks {
     loadAuthMethod match {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
+      case LoadAuthMethod.TempCreds.AWS(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"WITH ( CREDENTIAL (AWS_ACCESS_KEY = '$awsAccessKey', AWS_SECRET_KEY = '$awsSecretKey', AWS_SESSION_TOKEN = '$awsSessionToken') )"
+        )
+      case LoadAuthMethod.TempCreds.Azure(sasToken, _) =>
+        Fragment.const0(
+          s"WITH ( CREDENTIAL (AZURE_SAS_TOKEN = '$sasToken') )"
         )
     }
 

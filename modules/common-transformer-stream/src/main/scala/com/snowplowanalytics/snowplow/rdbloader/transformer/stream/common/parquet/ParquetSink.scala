@@ -34,9 +34,9 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parque
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.{SinkPath, TransformedDataOps, Window}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Resources
 import fs2.{Pipe, Stream}
+import org.apache.hadoop.conf.Configuration
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
 import org.apache.parquet.schema.MessageType
-
 import java.net.URI
 
 object ParquetSink {
@@ -52,14 +52,14 @@ object ParquetSink {
   ): Pipe[F, Transformed.Data, Unit] = { transformedData =>
     // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
     // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
-    val targetPath = s"${uri.toString}/${window.getDir}/${path.value}"
+    val targetPath = s"${resources.parquetOps.transformPath(uri.toString)}/${window.getDir}/${path.value}"
     val schemaCreation = createSchemaFromTypes(resources, types).value
 
     Stream.eval(schemaCreation).flatMap {
       case Left(error) =>
         Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
       case Right(schema) =>
-        val parquetPipe = writeAsParquet(compression, targetPath, maxRecordsPerFile, schema)
+        val parquetPipe = writeAsParquet(compression, targetPath, maxRecordsPerFile, schema, resources.parquetOps.hadoopConf)
 
         transformedData
           .mapFilter(_.fieldValues)
@@ -81,7 +81,8 @@ object ParquetSink {
     compression: Compression,
     path: String,
     maxRecordsPerFile: Long,
-    schema: MessageType
+    schema: MessageType,
+    hadoopConf: Configuration
   ) = {
     implicit val targetSchema = schema
 
@@ -94,7 +95,7 @@ object ParquetSink {
       .of[List[FieldWithValue]]
       .preWriteTransformation(buildParquetRecord)
       .maxCount(maxRecordsPerFile)
-      .options(ParquetWriter.Options(compressionCodecName = compressionCodecName))
+      .options(ParquetWriter.Options(compressionCodecName = compressionCodecName, hadoopConf = hadoopConf))
       .write(Path(path))
   }
 

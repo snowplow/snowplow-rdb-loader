@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.loader.databricks
 
 import scala.concurrent.duration._
 
+import java.net.URI
+
 import cats.effect.IO
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
@@ -63,6 +65,34 @@ class ConfigSpec extends Specification {
       val expected = Config(
         ConfigSpec.exampleStorage,
         ConfigSpec.exampleGCPCloud,
+        None,
+        monitoring,
+        exampleRetryQueue,
+        exampleSchedules,
+        exampleTimeouts,
+        exampleRetries,
+        exampleReadyCheck,
+        exampleInitRetries,
+        exampleFeatureFlags,
+        exampleTelemetry
+      )
+      result must beRight(expected)
+    }
+
+    "be able to parse extended Azure Databricks Loader config" in {
+      val result = getConfigFromResource("/loader/azure/databricks.config.reference.hocon", Config.parseAppConfig[IO])
+      val monitoring = exampleMonitoring.copy(
+        snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "databricks-loader")),
+        folders = exampleMonitoring.folders.map(
+          _.copy(
+            staging = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
+            transformerOutput = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/transformed/")
+          )
+        )
+      )
+      val expected = Config(
+        ConfigSpec.exampleStorage,
+        ConfigSpec.exampleAzureCloud,
         None,
         monitoring,
         exampleRetryQueue,
@@ -129,6 +159,32 @@ class ConfigSpec extends Specification {
       )
       result must beRight(expected)
     }
+
+    "be able to parse minimal Azure Snowflake Loader config" in {
+      val result = getConfigFromResource("/loader/azure/databricks.config.minimal.hocon", testParseConfig)
+      val storage = ConfigSpec.exampleStorage.copy(
+        catalog = None,
+        password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
+      )
+      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
+      val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
+      val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
+      val expected = Config(
+        storage,
+        ConfigSpec.exampleAzureCloud.copy(azureVaultName = None),
+        None,
+        defaultMonitoring,
+        None,
+        defaultSchedules,
+        exampleTimeouts,
+        retries,
+        readyCheck,
+        initRetries,
+        exampleFeatureFlags,
+        defaultTelemetry
+      )
+      result must beRight(expected)
+    }
   }
 
 }
@@ -155,5 +211,19 @@ object ConfigSpec {
       parallelPullCount = 1,
       bufferSize = 10
     )
+  )
+  val exampleAzureCloud = Config.Cloud.Azure(
+    blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
+    Config.Cloud.Azure.Kafka(
+      topicName = "loaderTopic",
+      bootstrapServers = "localhost:9092",
+      consumerConf = List(
+        "enable.auto.commit" -> "false",
+        "auto.offset.reset" -> "latest",
+        "group.id" -> "loader",
+        "allow.auto.create.topics" -> "false"
+      ).toMap
+    ),
+    azureVaultName = Some("azure-vault")
   )
 }

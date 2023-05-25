@@ -187,6 +187,7 @@ object StorageTarget {
       val AwsRegionsWithSegment =
         List("us-east-2", "us-east-1-gov", "ca-central-1", "eu-west-2", "ap-northeast-1", "ap-south-1")
       val GcpRegions = List("us-central1", "europe-west2", "europe-west4")
+
       // val AzureRegions = List("west-us-2", "central-us", "east-us-2", "us-gov-virginia", "canada-central", "west-europe", "switzerland-north", "southeast-asia", "australia-east")
 
       // Host corresponds to Snowflake full account name which might include cloud platform and region
@@ -371,12 +372,26 @@ object StorageTarget {
   sealed trait LoadAuthMethod extends Product with Serializable
 
   object LoadAuthMethod {
-    final case object NoCreds extends LoadAuthMethod
-    final case class TempCreds(
-      roleArn: String,
-      roleSessionName: String,
-      credentialsTtl: FiniteDuration
-    ) extends LoadAuthMethod
+    sealed trait Azure
+    sealed trait AWS
+
+    final case object NoCreds extends LoadAuthMethod with Azure with AWS
+
+    sealed trait TempCreds extends LoadAuthMethod
+
+    object TempCreds {
+      final case class AWSTempCreds(
+        roleArn: String,
+        roleSessionName: String,
+        credentialsTtl: FiniteDuration
+      ) extends TempCreds
+          with AWS
+
+      final case class AzureTempCreds(
+        credentialsTtl: FiniteDuration
+      ) extends TempCreds
+          with Azure
+    }
   }
 
   /**
@@ -457,7 +472,18 @@ object StorageTarget {
     }
 
   implicit def tempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds] =
-    deriveDecoder[LoadAuthMethod.TempCreds]
+    Decoder.instance { cur =>
+      if (cur.downField("roleArn").succeeded)
+        cur.as[LoadAuthMethod.TempCreds.AWSTempCreds]
+      else
+        cur.as[LoadAuthMethod.TempCreds.AzureTempCreds]
+    }
+
+  implicit def awsTempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds.AWSTempCreds] =
+    deriveDecoder[LoadAuthMethod.TempCreds.AWSTempCreds]
+
+  implicit def azureTempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds.AzureTempCreds] =
+    deriveDecoder[LoadAuthMethod.TempCreds.AzureTempCreds]
 
   // Custom decoder for backward compatibility
   implicit def snowflakeStageDecoder: Decoder[Snowflake.Stage] =

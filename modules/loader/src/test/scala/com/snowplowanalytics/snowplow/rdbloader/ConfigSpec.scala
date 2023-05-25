@@ -89,6 +89,57 @@ class ConfigSpec extends Specification {
         )
       )
     }
+    "return suitable results for different pairs of cloud type - load auth method" in {
+      val dest = exampleSnowflake.copy(
+        folderMonitoringStage = None,
+        transformedStage = None
+      )
+      val noCredsDest = dest.copy(
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        folderMonitoringStage = Some(exampleFolderMonitoringStage),
+        transformedStage = Some(exampleTransformedStage)
+      )
+      val awsTempCredsDest = dest.copy(
+        loadAuthMethod = exampleTempCreds
+      )
+      val azureTempCredsDest = dest.copy(
+        loadAuthMethod = StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds(1.hour)
+      )
+      val awsConfig = exampleCloud
+      val gcpConfig = Config.Cloud.GCP(
+        messageQueue = Config.Cloud.GCP.Pubsub("projects/project-id/subscriptions/subscription-id", None, 1, 1)
+      )
+      val azureConfig = Config.Cloud.Azure(
+        URI.create("https://test.blob.core.windows.net/test-container/"),
+        Config.Cloud.Azure.Kafka("test-topic", "127.0.0.1:8080", Map.empty),
+        None
+      )
+      val config = exampleConfig
+
+      Config.validateConfig(config.copy(storage = noCredsDest, cloud = awsConfig)) must beEmpty
+      Config.validateConfig(config.copy(storage = noCredsDest, cloud = gcpConfig)) must beEmpty
+      Config.validateConfig(config.copy(storage = noCredsDest, cloud = azureConfig)) must beEmpty
+      Config.validateConfig(config.copy(storage = awsTempCredsDest, cloud = awsConfig)) must beEmpty
+      Config.validateConfig(config.copy(storage = azureTempCredsDest, cloud = azureConfig)) must beEmpty
+      Config.validateConfig(config.copy(storage = awsTempCredsDest, cloud = gcpConfig)) must beEqualTo(
+        List(
+          "Only 'NoCreds' load auth method is supported with GCP",
+          "Only 'NoCreds' load auth method is supported with GCP"
+        )
+      )
+      Config.validateConfig(config.copy(storage = azureTempCredsDest, cloud = awsConfig)) must beEqualTo(
+        List(
+          "Given 'TempCreds' configuration isn't suitable for AWS",
+          "Given 'TempCreds' configuration isn't suitable for AWS"
+        )
+      )
+      Config.validateConfig(config.copy(storage = awsTempCredsDest, cloud = azureConfig)) must beEqualTo(
+        List(
+          "Given 'TempCreds' configuration isn't suitable for Azure",
+          "Given 'TempCreds' configuration isn't suitable for Azure"
+        )
+      )
+    }
   }
 }
 
@@ -166,7 +217,7 @@ object ConfigSpec {
   val exampleTimeouts: Config.Timeouts = Config.Timeouts(45.minutes, 10.minutes, 5.minutes, 20.minutes, 30.seconds)
   val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleReadyCheck: Config.Retries = Config.Retries(Config.Strategy.Constant, None, 15.seconds, Some(10.minutes))
-  val exampleTempCreds = StorageTarget.LoadAuthMethod.TempCreds(
+  val exampleTempCreds = StorageTarget.LoadAuthMethod.TempCreds.AWSTempCreds(
     "test_role_arn",
     "test_role_session_name",
     1.hour
