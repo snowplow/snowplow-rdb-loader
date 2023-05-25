@@ -88,7 +88,7 @@ object BlobStorage {
   object Folder extends tag.Tagger[BlobStorageFolderTag] {
 
     def parse(s: String): Either[String, Folder] = s match {
-      case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// or gs:// prefix".asLeft
+      case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// gs:// http:// or https:// prefix".asLeft
       case _ if s.length > 1024 => "Key length cannot be more than 1024 symbols".asLeft
       case _ => coerce(s).asRight
     }
@@ -117,7 +117,7 @@ object BlobStorage {
    * Extract `xx://path/run=YYYY-MM-dd-HH-mm-ss/atomic-events` part from Set of prefixes that can be
    * used in config.yml In the end it won't affect how blob storage is accessed
    */
-  val supportedPrefixes = Set("s3", "s3n", "s3a", "gs")
+  val supportedPrefixes = Set("s3", "s3n", "s3a", "gs", "http", "https")
 
   private def correctlyPrefixed(s: String): Boolean =
     supportedPrefixes.foldLeft(false) { (result, prefix) =>
@@ -146,7 +146,7 @@ object BlobStorage {
       fixPrefix(s).asInstanceOf[Key]
 
     def parse(s: String): Either[String, Key] = s match {
-      case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// or gs:// prefix".asLeft
+      case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// gs:// http:// or https:// prefix".asLeft
       case _ if s.length > 1024 => "Key length cannot be more than 1024 symbols".asLeft
       case _ if s.endsWith("/") => "Blob storage key cannot have trailing slash".asLeft
       case _ => coerce(s).asRight

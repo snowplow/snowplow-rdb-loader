@@ -40,7 +40,8 @@ import com.snowplowanalytics.snowplow.rdbloader.dsl.{
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Monitoring
 import com.snowplowanalytics.snowplow.rdbloader.loading.{EventsTable, Load, Retry, Stage, TargetCheck}
 import com.snowplowanalytics.snowplow.rdbloader.loading.Retry._
-import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, MakeBusy}
 
 object Loader {

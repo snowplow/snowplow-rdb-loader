@@ -84,6 +84,12 @@ object Config {
             throw new IllegalArgumentException(s"Subscription format $subscription invalid")
         }
     }
+
+    final case class Kafka(
+      topicName: String,
+      bootstrapServers: String,
+      consumerConf: Map[String, String]
+    ) extends StreamInput
   }
 
   sealed trait Output {
@@ -105,6 +111,14 @@ object Config {
     ) extends Output
 
     final case class GCS(
+      path: URI,
+      compression: Compression,
+      bufferSize: Int,
+      maxRecordsPerFile: Long,
+      bad: Bad
+    ) extends Output
+
+    final case class AzureBlobStorage(
       path: URI,
       compression: Compression,
       bufferSize: Int,
@@ -152,6 +166,12 @@ object Config {
                 throw new IllegalArgumentException(s"Subscription format $topic invalid")
             }
         }
+
+        final case class Kafka(
+          topicName: String,
+          bootstrapServers: String,
+          producerConf: Map[String, String]
+        ) extends Queue
       }
 
     }
@@ -178,6 +198,12 @@ object Config {
             throw new IllegalArgumentException(s"Subscription format $topic invalid")
         }
     }
+
+    final case class Kafka(
+      topicName: String,
+      bootstrapServers: String,
+      producerConf: Map[String, String]
+    ) extends QueueConfig
   }
 
   final case class Monitoring(sentry: Option[TransformerConfig.Sentry], metrics: MetricsReporters)
@@ -232,8 +258,15 @@ object Config {
             cur.as[StreamInput.Kinesis]
           case Right("pubsub") =>
             cur.as[StreamInput.Pubsub]
+          case Right("kafka") =>
+            cur.as[StreamInput.Kafka]
           case Right(other) =>
-            Left(DecodingFailure(s"Shredder input type $other is not supported yet. Supported types: 'kinesis', 'pubsub'", typeCur.history))
+            Left(
+              DecodingFailure(
+                s"Shredder input type $other is not supported yet. Supported types: 'kinesis', 'pubsub', 'kafka'",
+                typeCur.history
+              )
+            )
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
             Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
           case Left(other) =>
@@ -247,6 +280,9 @@ object Config {
     implicit val streamInputPubsubConfigDecoder: Decoder[StreamInput.Pubsub] =
       deriveDecoder[StreamInput.Pubsub]
 
+    implicit val streamInputKafkaConfigDecoder: Decoder[StreamInput.Kafka] =
+      deriveDecoder[StreamInput.Kafka]
+
     implicit val outputConfigDecoder: Decoder[Output] =
       Decoder.instance { cur =>
         val pathCur = cur.downField("path")
@@ -255,9 +291,14 @@ object Config {
             cur.as[Output.S3]
           case Right("gs") =>
             cur.as[Output.GCS]
+          case Right("http") | Right("https") =>
+            cur.as[Output.AzureBlobStorage]
           case Right(other) =>
             Left(
-              DecodingFailure(s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', and 'gs'", pathCur.history)
+              DecodingFailure(
+                s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', 'gs', 'http', 'https'",
+                pathCur.history
+              )
             )
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
             Left(DecodingFailure("Cannot find 'path' string in output configuration", pathCur.history))
@@ -272,6 +313,9 @@ object Config {
     implicit val pubsubBadOutputConfigDecoder: Decoder[Output.Bad.Queue.Pubsub] =
       deriveDecoder[Output.Bad.Queue.Pubsub]
 
+    implicit val kafkaBadOutputConfigDecoder: Decoder[Output.Bad.Queue.Kafka] =
+      deriveDecoder[Output.Bad.Queue.Kafka]
+
     implicit val badOutputConfigDecoder: Decoder[Output.Bad] =
       Decoder.instance { cur =>
         val typeCur = cur.downField("type")
@@ -280,12 +324,14 @@ object Config {
             cur.as[Output.Bad.Queue.Kinesis]
           case Right("pubsub") =>
             cur.as[Output.Bad.Queue.Pubsub]
+          case Right("kafka") =>
+            cur.as[Output.Bad.Queue.Kafka]
           case Right("file") =>
             Right(Output.Bad.File)
           case Right(other) =>
             Left(
               DecodingFailure(
-                s"Bad output type '$other' is not supported yet. Supported types: 'kinesis', 'pubsub', 'file'",
+                s"Bad output type '$other' is not supported yet. Supported types: 'kinesis', 'pubsub', 'kafka', 'file'",
                 typeCur.history
               )
             )
@@ -299,6 +345,9 @@ object Config {
     implicit val outputGCSConfigDecoder: Decoder[Output.GCS] =
       deriveDecoder[Output.GCS]
 
+    implicit val outputAzureBlobStorageConfigDecoder: Decoder[Output.AzureBlobStorage] =
+      deriveDecoder[Output.AzureBlobStorage]
+
     implicit val queueConfigDecoder: Decoder[QueueConfig] =
       Decoder.instance { cur =>
         val typeCur = cur.downField("type")
@@ -309,8 +358,15 @@ object Config {
             cur.as[QueueConfig.SQS]
           case Right("pubsub") =>
             cur.as[QueueConfig.Pubsub]
+          case Right("kafka") =>
+            cur.as[QueueConfig.Kafka]
           case Right(other) =>
-            Left(DecodingFailure(s"Queue type $other is not supported yet. Supported types: 'SNS', 'SQS' and 'pubsub'", typeCur.history))
+            Left(
+              DecodingFailure(
+                s"Queue type $other is not supported yet. Supported types: 'SNS', 'SQS', 'pubsub' and 'kafka'",
+                typeCur.history
+              )
+            )
           case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
             Left(DecodingFailure("Cannot find 'type' string in transformer configuration", typeCur.history))
           case Left(other) =>
@@ -326,6 +382,9 @@ object Config {
 
     implicit val pubsubConfigDecoder: Decoder[QueueConfig.Pubsub] =
       deriveDecoder[QueueConfig.Pubsub]
+
+    implicit val kafkaConfigDecoder: Decoder[QueueConfig.Kafka] =
+      deriveDecoder[QueueConfig.Kafka]
 
     implicit val configDecoder: Decoder[Config] =
       deriveDecoder[Config].ensure(validateConfig)

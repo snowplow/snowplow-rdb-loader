@@ -166,6 +166,20 @@ object Config {
           }
       }
     }
+
+    final case class Azure(
+      blobStorageEndpoint: URI,
+      messageQueue: Azure.Kafka,
+      azureVaultName: Option[String]
+    ) extends Cloud
+
+    object Azure {
+      final case class Kafka(
+        topicName: String,
+        bootstrapServers: String,
+        consumerConf: Map[String, String]
+      )
+    }
   }
 
   /**
@@ -284,8 +298,12 @@ object Config {
                 cur.up.as[Cloud.AWS]
               case Right("pubsub") =>
                 cur.up.as[Cloud.GCP]
+              case Right("kafka") =>
+                cur.up.as[Cloud.Azure]
               case Right(other) =>
-                Left(DecodingFailure(s"Message queue type $other is not supported yet. Supported types: 'sqs', 'pubsub'", cur.history))
+                Left(
+                  DecodingFailure(s"Message queue type $other is not supported yet. Supported types: 'sqs', 'pubsub', 'kafka'", cur.history)
+                )
               case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
                 Left(DecodingFailure("Cannot find 'type' field in the config", cur.history))
               case Left(other) =>
@@ -303,26 +321,55 @@ object Config {
     implicit val gcpDecoder: Decoder[Cloud.GCP] =
       deriveDecoder[Cloud.GCP]
 
+    implicit val azureDecoder: Decoder[Cloud.Azure] =
+      deriveDecoder[Cloud.Azure]
+
     implicit val pubsubDecoder: Decoder[Cloud.GCP.Pubsub] =
       deriveDecoder[Cloud.GCP.Pubsub]
+
+    implicit val kafkaDecoder: Decoder[Cloud.Azure.Kafka] =
+      deriveDecoder[Cloud.Azure.Kafka]
   }
 
   /** Post-decoding validation, making sure different parts are consistent */
   def validateConfig(config: Config[StorageTarget]): List[String] =
     List(
-      authMethodValidation(config),
+      authMethodValidation(config.storage.eventsLoadAuthMethod, config.cloud),
+      authMethodValidation(config.storage.foldersLoadAuthMethod, config.cloud),
+      azureVaultCheck(config),
       targetSnowflakeValidation(config),
       targetRedshiftValidation(config)
     ).flatten
 
-  private def authMethodValidation(config: Config[StorageTarget]): List[String] =
+  private def azureVaultCheck(config: Config[StorageTarget]): List[String] =
     config.cloud match {
-      case _: Config.Cloud.GCP =>
-        (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
-          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
-          case _ => List("Only 'NoCreds' load auth method is supported with GCP")
+      case c: Config.Cloud.Azure if c.azureVaultName.isEmpty =>
+        (config.storage.password, config.storage.sshTunnel.flatMap(_.bastion.key)) match {
+          case (_: StorageTarget.PasswordConfig.EncryptedKey, _) | (_, Some(_)) => List("Azure vault name is needed")
+          case _ => Nil
         }
       case _ => Nil
+    }
+
+  private def authMethodValidation(loadAuthMethod: StorageTarget.LoadAuthMethod, cloud: Config.Cloud): List[String] =
+    cloud match {
+      case _: Config.Cloud.GCP =>
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case _ => List("Only 'NoCreds' load auth method is supported with GCP")
+        }
+      case _: Config.Cloud.AWS =>
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case _: StorageTarget.LoadAuthMethod.TempCreds.AWSTempCreds => Nil
+          case _ => List("Given 'TempCreds' configuration isn't suitable for AWS")
+        }
+      case _: Config.Cloud.Azure =>
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case _: StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds => Nil
+          case _ => List("Given 'TempCreds' configuration isn't suitable for Azure")
+        }
     }
 
   def targetSnowflakeValidation(config: Config[StorageTarget]): List[String] =
