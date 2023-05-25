@@ -48,7 +48,7 @@ package object common {
 
   def isInputError(clientError: ClientError): Boolean =
     clientError match {
-      case ClientError.ValidationError(_) =>
+      case ClientError.ValidationError(_, _) =>
         false
       case ClientError.ResolutionError(map) =>
         map.values.toList.flatMap(_.errors.toList).exists {

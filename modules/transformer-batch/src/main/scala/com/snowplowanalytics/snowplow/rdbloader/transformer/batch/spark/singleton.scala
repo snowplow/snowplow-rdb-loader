@@ -21,6 +21,7 @@ import cats.syntax.show._
 
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.schemaddl.Properties
 
 import com.snowplowanalytics.lrumap.CreateLruMap

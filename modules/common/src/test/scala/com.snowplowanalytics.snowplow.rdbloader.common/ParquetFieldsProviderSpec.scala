@@ -2,6 +2,7 @@ package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.Id
 import com.snowplowanalytics.iglu.client.Client
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.Nullability.{Nullable, Required}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}

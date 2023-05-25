@@ -14,7 +14,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks
 
-import cats.effect.IO
+import cats.effect.{IO, Resource}
 import cats.effect.unsafe.implicits.global
 
 import java.time.Instant
@@ -24,8 +24,9 @@ import fs2.{Stream, text}
 import io.circe.Json
 import io.circe.optics.JsonPath._
 import io.circe.parser.{parse => parseCirce}
+import org.http4s.client.{Client => Http4sClient}
 import com.snowplowanalytics.iglu.client.Resolver
-import com.snowplowanalytics.iglu.client.resolver.registries.Registry
+import com.snowplowanalytics.iglu.client.resolver.registries.{Http4sRegistryLookup, Registry, RegistryLookup}
 import com.snowplowanalytics.iglu.schemaddl.Properties
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -116,6 +117,12 @@ object TransformingSpec {
     def path: SinkPath = value._1
 
     def data: Transformed.Data = value._2
+  }
+
+  implicit val registryLookup: RegistryLookup[IO] = Http4sRegistryLookup {
+    Http4sClient[IO] { _ =>
+      Resource.eval(IO.raiseError(new RuntimeException("Unexpected registry lookup")))
+    }
   }
 
   val VersionPlaceholder = "version_placeholder"

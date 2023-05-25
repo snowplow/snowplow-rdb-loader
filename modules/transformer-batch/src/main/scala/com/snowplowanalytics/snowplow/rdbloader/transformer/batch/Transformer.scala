@@ -17,6 +17,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 import cats.Id
 import cats.implicits._
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
