@@ -19,7 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Target}
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.loader.redshift.db.MigrationSpec
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers.validConfig
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity.{Context, SelfDescribingEvent}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder

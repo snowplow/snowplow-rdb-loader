@@ -29,6 +29,7 @@ lazy val root = project.in(file("."))
   .aggregate(
     aws,
     gcp,
+    azure,
     common,
     commonTransformerStream,
     loader,
@@ -38,6 +39,7 @@ lazy val root = project.in(file("."))
     transformerBatch,
     transformerKinesis,
     transformerPubsub,
+    transformerKafka 
   )
 
 lazy val common: Project = project
@@ -60,6 +62,13 @@ lazy val gcp: Project = project
   .dependsOn(common % "compile->compile;test->test")
   .enablePlugins(BuildInfoPlugin)
 
+lazy val azure: Project = project
+  .in(file("modules/azure"))
+  .settings(BuildSettings.azureBuildSettings)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies)
+  .dependsOn(common % "compile->compile;test->test")
+  .enablePlugins(BuildInfoPlugin)
+
 lazy val commonTransformerStream = project
   .in(file("modules/common-transformer-stream"))
   .settings(BuildSettings.commonStreamTransformerBuildSettings)
@@ -74,7 +83,11 @@ lazy val loader = project
   .settings(BuildSettings.loaderBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.loaderDependencies)
-  .dependsOn(aws % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
+  .dependsOn(
+    aws % "compile->compile;test->test;runtime->runtime", 
+    gcp % "compile->compile;test->test",
+    azure % "compile->compile;test->test"
+  )
 
 lazy val redshiftLoader = project
   .in(file("modules/redshift-loader"))
@@ -168,4 +181,24 @@ lazy val transformerPubsubDistroless = project
   .settings(libraryDependencies ++= Dependencies.transformerPubsubDependencies)
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
   .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, SnowplowDistrolessDockerPlugin, BuildInfoPlugin)
+
+lazy val transformerKafka = project
+  .in(file("modules/transformer-kafka"))
+  .settings(BuildSettings.transformerKafkaBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKafkaDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", azure % "compile->compile;test->test;runtime->runtime")
+  .enablePlugins(JavaAppPackaging, SnowplowDockerPlugin, BuildInfoPlugin)
+
+
+lazy val transformerKafkaDistroless = project
+  .in(file("modules/distroless/transformer-kafka"))
+  .settings(sourceDirectory := (transformerKafka / sourceDirectory).value)
+  .settings(BuildSettings.transformerKafkaBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKafkaDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", azure % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, SnowplowDistrolessDockerPlugin, BuildInfoPlugin)

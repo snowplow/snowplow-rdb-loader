@@ -19,10 +19,10 @@ import cats.effect.Clock
 import retry.Sleep
 
 // This project
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.{Control, Manifest, Migration, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Monitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
