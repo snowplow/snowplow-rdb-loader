@@ -39,6 +39,7 @@ lazy val root = project.in(file("."))
     transformerBatch,
     transformerKinesis,
     transformerPubsub,
+    transformerKafka 
   )
 
 lazy val common: Project = project
@@ -177,3 +178,13 @@ lazy val transformerPubsubDistroless = project
   .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
   .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
   .enablePlugins(JavaAppPackaging, SnowplowDistrolessDockerPlugin, BuildInfoPlugin)
+
+lazy val transformerKafka = project
+  .in(file("modules/transformer-kafka"))
+  .settings(BuildSettings.transformerKafkaBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKafkaDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", azure % "compile->compile;test->test;runtime->runtime")
+  .enablePlugins(JavaAppPackaging, SnowplowDockerPlugin, BuildInfoPlugin)
+

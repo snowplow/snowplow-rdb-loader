@@ -1,0 +1,13 @@
+{
+  "input": {
+    "topicName": "enriched"
+    "bootstrapServers": "localhost:9092"
+  }
+  "output": {
+    "path": "https://accountName.blob.core.windows.net/transformed/"
+  }
+  "queue": {
+    "topicName": "loaderTopic"
+    "bootstrapServers": "localhost:9092"
+  }
+}

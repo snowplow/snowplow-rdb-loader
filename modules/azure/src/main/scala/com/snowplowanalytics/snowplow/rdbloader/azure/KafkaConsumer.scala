@@ -19,18 +19,17 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, KafkaConsumer => Fs2KafkaConsumer}
-import org.typelevel.log4cats.Logger
 
 import java.nio.charset.StandardCharsets
 
 object KafkaConsumer {
 
-  private final case class KafkaMessage[F[_]](record: CommittableConsumerRecord[F, String, Array[Byte]]) extends Queue.Consumer.Message[F] {
+  final case class KafkaMessage[F[_]](record: CommittableConsumerRecord[F, String, Array[Byte]]) extends Queue.Consumer.Message[F] {
     override def content: String = new String(record.record.value, StandardCharsets.UTF_8)
     override def ack: F[Unit] = record.offset.commit
   }
 
-  def consumer[F[_]: Async: Logger](
+  def consumer[F[_]: Async](
     bootstrapServers: String,
     topicName: String,
     consumerConf: Map[String, String]
