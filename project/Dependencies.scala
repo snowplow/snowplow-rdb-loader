@@ -142,6 +142,7 @@ object Dependencies {
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
   val hadoopGcp         = "com.google.cloud.bigdataoss"      % "gcs-connector"             % V.hadoopGcpClient % Runtime
+  val hadoopAzure       = "org.apache.hadoop"                % "hadoop-azure"              % "3.3.5" % Runtime
   val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
@@ -326,6 +327,10 @@ object Dependencies {
 
   val transformerPubsubDependencies = Seq(
     hadoopGcp
+  )
+
+  val transformerKafkaDependencies = Seq(
+    hadoopAzure
   )
 
   val commonStreamTransformerExclusions =

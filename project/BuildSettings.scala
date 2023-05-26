@@ -287,4 +287,14 @@ object BuildSettings {
     ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }
 
+  lazy val transformerKafkaBuildSettings =
+    Seq(
+      name := "snowplow-transformer-kafka",
+      Docker / packageName := "transformer-kafka",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.generated",
+      buildInfoKeys := List(name, version, description)
+    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+
+
+
 }

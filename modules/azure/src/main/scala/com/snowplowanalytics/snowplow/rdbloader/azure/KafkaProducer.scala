@@ -18,14 +18,13 @@ import cats.effect.{Async, Resource}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 import fs2.kafka.{KafkaProducer => Fs2KafkaProducer, ProducerRecord, ProducerSettings}
-import org.typelevel.log4cats.Logger
 
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 
 object KafkaProducer {
 
-  def producer[F[_]: Async: Logger](
+  def producer[F[_]: Async](
     bootstrapServers: String,
     topicName: String,
     producerConf: Map[String, String]
@@ -50,7 +49,7 @@ object KafkaProducer {
     }
   }
 
-  def chunkProducer[F[_]: Async: Logger](
+  def chunkProducer[F[_]: Async](
     bootstrapServers: String,
     topicName: String,
     producerConf: Map[String, String]
