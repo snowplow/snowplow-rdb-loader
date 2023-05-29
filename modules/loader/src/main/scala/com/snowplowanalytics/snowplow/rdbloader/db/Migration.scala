@@ -214,7 +214,7 @@ object Migration {
 
         val blocks: F[List[Block]] = goodBlock.map(gb => gb.fold(recoveryBlocks)(_ :: recoveryBlocks))
 
-        Control.tableExists[F](tableName).ifM(blocks, Monad[F].pure(List(target.createTable(goodModel))))
+        Control.tableExists[F](tableName).ifM(blocks, Monad[F].pure(target.createTable(goodModel) :: recoveryBlocks))
       case Description.WideRow(info) =>
         Monad[F].pure(target.extendTable(info))
       case Description.NoMigration =>
@@ -228,7 +228,7 @@ object Migration {
     columns: List[ColumnName],
     schemaList: NonEmptyList[IgluSchema]
   ): Either[LoaderError, Block] =
-    if (schemaList.size >= 1) {
+    if (schemaList.size > 1) {
       target.updateTable(shredModel, current).asRight
     } else {
       val message =
