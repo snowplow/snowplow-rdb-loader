@@ -159,7 +159,7 @@ object TestApplication {
     val updatedOutput = config.output match {
       case c: Config.Output.S3 => c.copy(path = URI.create(c.path.toString.replace("s3:/", "file:/")))
       case c: Config.Output.GCS => c.copy(path = URI.create(c.path.toString.replace("gs:/", "file:/")))
-      case c: Config.Output.AzureBlobStorage => c.copy(path = URI.create(c.path.toString.replace("https:/", "file:/")))
+      case c: Config.Output.AzureBlobStorage => c.copy(path = URI.create(c.path.toString.replace("http:/", "file:/")))
     }
     config.copy(output = updatedOutput)
   }

@@ -12,95 +12,103 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and
  * limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.aws
+package com.snowplowanalytics.snowplow.rdbloader.azure
 
 import blobstore.azure.{AzureBlob, AzureStore}
+import blobstore.url.exception.{AuthorityParseError, MultipleUrlValidationException, Throwables}
+import blobstore.url.{Authority, Path, Url}
+import cats.data.Validated.{Invalid, Valid}
+import cats.data.ValidatedNec
 import cats.effect._
 import cats.implicits._
-import fs2.{Pipe, Stream}
-import blobstore.url.{Authority, Path, Url}
-import blobstore.url.exception.{MultipleUrlValidationException, Throwables}
 import com.azure.identity.DefaultAzureCredentialBuilder
-import com.azure.storage.blob.BlobServiceClientBuilder
+import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
+import fs2.{Pipe, Stream}
 
-class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F]) extends BlobStorage[F] {
+import java.net.URI
 
-  override def list(folder: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
-    val (authority, path) = BlobStorage.splitPath(folder)
+class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], endpoint: String) extends BlobStorage[F] {
+
+  override def list(folder: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] =
+    createStorageUrlFrom(folder) match {
+      case Valid(url) =>
+        store
+          .list(url, recursive)
+          .map(createBlobObject)
+      case Invalid(errors) =>
+        Stream.raiseError[F](new MultipleUrlValidationException(errors))
+    }
+
+  override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] =
+    createStorageUrlFrom(key) match {
+      case Valid(url) =>
+        store.put(url, overwrite)
+      case Invalid(errors) =>
+        _ => Stream.raiseError[F](new MultipleUrlValidationException(errors))
+    }
+
+  override def get(key: Key): F[Either[Throwable, String]] =
+    createStorageUrlFrom(key) match {
+      case Valid(url) =>
+        store
+          .get(url, 1024)
+          .compile
+          .to(Array)
+          .map(array => new String(array))
+          .attempt
+      case Invalid(errors) =>
+        Async[F].delay(new MultipleUrlValidationException(errors).asLeft[String])
+    }
+
+  override def keyExists(key: Key): F[Boolean] =
+    createStorageUrlFrom(key) match {
+      case Valid(url) =>
+        store.list(url).compile.toList.map(_.nonEmpty)
+      case Invalid(errors) =>
+        Async[F].raiseError(new MultipleUrlValidationException(errors))
+    }
+
+  // input path format like 'endpoint/container/blobPath', where 'endpoint' is 'scheme://host'
+  private def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] = {
+    val scheme = input.split("://").head
+    val `endpoint/` = if (endpoint.endsWith("/")) endpoint else s"$endpoint/"
+    val `container/path` = input.stripPrefix(`endpoint/`)
+    val `[container, path]` = `container/path`.split("/")
+    val container = `[container, path]`.head
+    val path = `container/path`.stripPrefix(container)
+
     Authority
-      .parse(authority)
-      .fold(
-        errors => Stream.raiseError[F](new MultipleUrlValidationException(errors)),
-        authority =>
-          // TODO
-          // fs2-blobstore uses 'authority' as a container name https://github.com/fs2-blobstore/fs2-blobstore/blob/a95a8a43ed6d4b7cfac73d85aa52356028256110/azure/src/main/scala/blobstore/azure/AzureStore.scala#L294
-          // is that correct...? It seems 'authority' is already provided when we build client with 'endpoint' method and value like "{accountName}.blob.core.windows.net"
-          store
-            .list(Url("https", authority, Path(path)), recursive)
-            .map { url: Url[AzureBlob] =>
-              val bucketName = url.authority.show
-              val keyPath = url.path.relative.show
-              val key = BlobStorage.Key.coerce(s"https://$bucketName/$keyPath")
-              BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
-            }
-      )
+      .parse(container)
+      .map(authority => Url(scheme, authority, Path(path)))
   }
 
-  override def put(key: Key, overwrite: Boolean): Pipe[F, Byte, Unit] = {
-    val (authority, path) = BlobStorage.splitKey(key)
-    Authority
-      .parse(authority)
-      .fold(
-        errors => _ => Stream.raiseError[F](new MultipleUrlValidationException(errors)),
-        authority => store.put(Url("https", authority, Path(path)), overwrite)
-      )
-  }
-
-  override def get(key: Key): F[Either[Throwable, String]] = {
-    val (authority, path) = BlobStorage.splitKey(key)
-    Authority
-      .parse(authority)
-      .fold(
-        errors => Async[F].delay(new MultipleUrlValidationException(errors).asLeft[String]),
-        authority =>
-          store
-            .get(Url("https", authority, Path(path)), 1024)
-            .compile
-            .to(Array)
-            .map(array => new String(array))
-            .attempt
-      )
-  }
-
-  override def keyExists(key: Key): F[Boolean] = {
-    val (authority, path) = BlobStorage.splitKey(key)
-    Authority
-      .parse(authority)
-      .fold(
-        errors => Async[F].raiseError(new MultipleUrlValidationException(errors)),
-        authority => store.list(Url("https", authority, Path(path))).compile.toList.map(_.nonEmpty)
-      )
+  private def createBlobObject(url: Url[AzureBlob]) = {
+    val key = BlobStorage.Key.coerce(s"$endpoint/${url.representation.container}/${url.path.relative}")
+    BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
   }
 }
 
 object AzureBlobStorage {
 
-  def create[F[_]: Async](): Resource[F, BlobStorage[F]] =
-    createStore().map(new AzureBlobStorage(_))
+  def createDefault[F[_]: Async](path: URI): Resource[F, BlobStorage[F]] = {
+    val builder = new BlobServiceClientBuilder().credential(new DefaultAzureCredentialBuilder().build)
+    create(path, builder)
+  }
 
-  private def createStore[F[_]: Async](): Resource[F, AzureStore[F]] = {
-    val credentials = new DefaultAzureCredentialBuilder().build
-    val client = new BlobServiceClientBuilder()
-      // TODO Do we need to pass 'endpoint' here?
-      // .endpoint("https://{accountName}.blob.core.windows.net")
-      .credential(credentials)
-      .buildAsyncClient()
+  def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, BlobStorage[F]] = {
+    val endpoint = extractEndpoint(path)
+    val client = builder.endpoint(endpoint).buildAsyncClient()
+    createStore(client).map(new AzureBlobStorage(_, endpoint))
+  }
 
+  private def extractEndpoint(path: URI): String =
+    path.toString.stripSuffix("/").split("/").dropRight(1).mkString("/")
+
+  private def createStore[F[_]: Async](client: BlobServiceAsyncClient): Resource[F, AzureStore[F]] =
     AzureStore
       .builder[F](client)
       .build
       .fold(errors => Resource.raiseError(errors.reduce(Throwables.collapsingSemigroup)), Resource.pure)
-  }
 }

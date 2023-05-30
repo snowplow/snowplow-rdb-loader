@@ -291,12 +291,12 @@ object Config {
             cur.as[Output.S3]
           case Right("gs") =>
             cur.as[Output.GCS]
-          case Right("https") =>
+          case Right("http") | Right("https") =>
             cur.as[Output.AzureBlobStorage]
           case Right(other) =>
             Left(
               DecodingFailure(
-                s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', 'gs', 'https'",
+                s"Output type $other is not supported yet. Supported types: 's3', 's3a', 's3n', 'gs', 'http', 'https'",
                 pathCur.history
               )
             )
