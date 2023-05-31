@@ -83,7 +83,11 @@ lazy val loader = project
   .settings(BuildSettings.loaderBuildSettings)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .settings(libraryDependencies ++= Dependencies.loaderDependencies)
-  .dependsOn(aws % "compile->compile;test->test;runtime->runtime", gcp % "compile->compile;test->test")
+  .dependsOn(
+    aws % "compile->compile;test->test;runtime->runtime", 
+    gcp % "compile->compile;test->test",
+    azure % "compile->compile;test->test"
+  )
 
 lazy val redshiftLoader = project
   .in(file("modules/redshift-loader"))

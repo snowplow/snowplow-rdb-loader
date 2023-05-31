@@ -166,6 +166,16 @@ object Config {
           }
       }
     }
+
+    final case class Azure(blobStorageEndpoint: URI, messageQueue: Azure.Kafka) extends Cloud
+
+    object Azure {
+      final case class Kafka(
+        topicName: String,
+        bootstrapServers: String,
+        consumerConf: Map[String, String]
+      )
+    }
   }
 
   /**
@@ -284,8 +294,12 @@ object Config {
                 cur.up.as[Cloud.AWS]
               case Right("pubsub") =>
                 cur.up.as[Cloud.GCP]
+              case Right("kafka") =>
+                cur.up.as[Cloud.Azure]
               case Right(other) =>
-                Left(DecodingFailure(s"Message queue type $other is not supported yet. Supported types: 'sqs', 'pubsub'", cur.history))
+                Left(
+                  DecodingFailure(s"Message queue type $other is not supported yet. Supported types: 'sqs', 'pubsub', 'kafka'", cur.history)
+                )
               case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
                 Left(DecodingFailure("Cannot find 'type' field in the config", cur.history))
               case Left(other) =>
@@ -303,8 +317,14 @@ object Config {
     implicit val gcpDecoder: Decoder[Cloud.GCP] =
       deriveDecoder[Cloud.GCP]
 
+    implicit val azureDecoder: Decoder[Cloud.Azure] =
+      deriveDecoder[Cloud.Azure]
+
     implicit val pubsubDecoder: Decoder[Cloud.GCP.Pubsub] =
       deriveDecoder[Cloud.GCP.Pubsub]
+
+    implicit val kafkaDecoder: Decoder[Cloud.Azure.Kafka] =
+      deriveDecoder[Cloud.Azure.Kafka]
   }
 
   /** Post-decoding validation, making sure different parts are consistent */
@@ -321,6 +341,11 @@ object Config {
         (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
           case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
           case _ => List("Only 'NoCreds' load auth method is supported with GCP")
+        }
+      case _: Config.Cloud.Azure =>
+        (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
+          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
+          case _ => List("Only 'NoCreds' load auth method is supported with Azure")
         }
       case _ => Nil
     }
