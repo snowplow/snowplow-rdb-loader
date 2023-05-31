@@ -1,0 +1,15 @@
+{
+  "blobStorageEndpoint": "https://accountName.blob.core.windows.net"
+  "messageQueue": {
+    "type": "kafka"
+    "bootstrapServers": "localhost:9092"
+    "topicName": "loaderTopic"
+  },
+  "storage" : {
+    "host": "abc.cloud.databricks.com"
+    "password": "Supersecret1"
+    "schema": "atomic",
+    "port": 443,
+    "httpPath": "/databricks/http/path",
+  }
+}

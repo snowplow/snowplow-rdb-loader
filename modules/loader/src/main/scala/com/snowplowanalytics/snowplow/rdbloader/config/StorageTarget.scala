@@ -194,6 +194,8 @@ object StorageTarget {
       val AwsRegionsWithSegment =
         List("us-east-2", "us-east-1-gov", "ca-central-1", "eu-west-2", "ap-northeast-1", "ap-south-1")
       val GcpRegions = List("us-central1", "europe-west2", "europe-west4")
+
+      // TODO do we have to change here anything?
       // val AzureRegions = List("west-us-2", "central-us", "east-us-2", "us-gov-virginia", "canada-central", "west-europe", "switzerland-north", "southeast-asia", "australia-east")
 
       // Host corresponds to Snowflake full account name which might include cloud platform and region
@@ -208,9 +210,10 @@ object StorageTarget {
             s"$a.$r.snowflakecomputing.com".asRight
           else if (AwsRegionsWithSegment.contains(r))
             s"$a.$r.aws.snowflakecomputing.com".asRight
-          else if (GcpRegions.contains(r))
+          else if (GcpRegions.contains(r)) {
             s"$a.$r.gcp.snowflakecomputing.com".asRight
-          else s"$a.$r.azure.snowflakecomputing.com".asRight
+            // TODO check azure regions
+          } else s"$a.$r.azure.snowflakecomputing.com".asRight
         case (_, _, _) =>
           "Snowflake config requires either jdbcHost or both account and region".asLeft
       }

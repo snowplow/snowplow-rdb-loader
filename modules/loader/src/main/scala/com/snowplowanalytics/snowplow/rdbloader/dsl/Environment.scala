@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
+import com.snowplowanalytics.snowplow.rdbloader.azure.{AzureBlobStorage, KafkaConsumer}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
@@ -179,12 +180,25 @@ object Environment {
                            )
           secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
+      case c: Cloud.Azure =>
+        for {
+          loadAuthService <- LoadAuthService.noop[F]
+          jsonPathDiscovery = JsonPathDiscovery.noop[F]
+          implicit0(blobStorage: BlobStorage[F]) <- AzureBlobStorage.createDefault[F](c.blobStorageEndpoint)
+          queueConsumer <- KafkaConsumer.consumer[F](
+                             bootstrapServers = c.messageQueue.bootstrapServers,
+                             topicName = c.messageQueue.topicName,
+                             consumerConf = c.messageQueue.consumerConf
+                           )
+          secretStore = SecretStore.noop[F] // TODO implement secret store for Azure
+        } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
 
   def getCloudForTelemetry(config: Config[_]): Option[Telemetry.Cloud] =
     config.cloud match {
       case _: Cloud.AWS => Telemetry.Cloud.Aws.some
       case _: Cloud.GCP => Telemetry.Cloud.Gcp.some
+      case _: Cloud.Azure => Telemetry.Cloud.Azure.some
     }
 
   def getRegionForTelemetry(config: Config[_]): Option[String] =
