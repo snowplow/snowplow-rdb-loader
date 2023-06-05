@@ -12,6 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader
 
+import java.sql.SQLException
 import scala.concurrent.duration._
 import cats.{Apply, Monad, MonadThrow}
 import cats.implicits._
@@ -112,9 +113,15 @@ object Loader {
     val noOperationPrepare = NoOperation.prepare(config.schedules.noOperation, control.makePaused) *>
       Logging[F].info("No operation prepare step is completed")
 
-    val eventsTableInit = initRetry(createEventsTable[F, C](target)).onError { case t: Throwable =>
-      Monitoring[F].alert(Alert.FailedToCreateEventsTable(t))
-    } *> Logging[F].info("Events table initialization is completed")
+    val dbSchemaInit = createDbSchema[F, C]
+      .onError { case t: Throwable =>
+        Monitoring[F].alert(Alert.FailedToCreateDatabaseSchema(t))
+      } *> Logging[F].info("Database schema initialization is completed")
+
+    val eventsTableInit = createEventsTable[F, C](target)
+      .onError { case t: Throwable =>
+        Monitoring[F].alert(Alert.FailedToCreateEventsTable(t))
+      } *> Logging[F].info("Events table initialization is completed")
 
     val manifestInit = initRetry(Manifest.initialize[F, C, I](config.storage, target)).onError { case t: Throwable =>
       Monitoring[F].alert(Alert.FailedToCreateManifestTable(t))
@@ -123,7 +130,10 @@ object Loader {
     val addLoadTstamp = addLoadTstampColumn[F, C](config.featureFlags.addLoadTstampColumn, config.storage) *>
       Logging[F].info("Adding load_tstamp column is completed")
 
-    val init: F[I] = blockUntilReady *> noOperationPrepare *> eventsTableInit *> manifestInit *> addLoadTstamp *> initQuery[F, C, I](target)
+    val init: F[I] =
+      blockUntilReady *> noOperationPrepare *> dbSchemaInit *> eventsTableInit *> manifestInit *> addLoadTstamp *> initQuery[F, C, I](
+        target
+      )
 
     val process = Stream.eval(init).flatMap { initQueryResult =>
       loading(initQueryResult)
@@ -281,8 +291,37 @@ object Loader {
         Monitoring[F].alert(Alert.FailedInitialConnection(t))
       }
 
-  private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: Monad](target: Target[_]): F[Unit] =
-    Transaction[F, C].transact(DAO[C].executeUpdate(target.getEventTable, DAO.Purpose.NonLoading).void)
+  private def isSQLPermissionError(t: Throwable): Boolean =
+    t match {
+      case s: SQLException =>
+        Option(s.getSQLState) match {
+          case Some("42501") => true // Sql state for insufficient permissions for Databricks, Snowflake and Redshift
+          case _ => false
+        }
+      case _ => false
+    }
+
+  private def createEventsTable[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow: Logging](target: Target[_]): F[Unit] =
+    Transaction[F, C].transact {
+      DAO[C]
+        .executeUpdate(target.getEventTable, DAO.Purpose.NonLoading)
+        .void
+        .recoverWith {
+          case t: Throwable if isSQLPermissionError(t) =>
+            Logging[C].warning(s"Failed to create events table due to permission error: ${getErrorMessage(t)}")
+        }
+    }
+
+  private def createDbSchema[F[_]: Transaction[*[_], C], C[_]: DAO: MonadThrow: Logging]: F[Unit] =
+    Transaction[F, C].transact {
+      DAO[C]
+        .executeUpdate(Statement.CreateDbSchema, DAO.Purpose.NonLoading)
+        .void
+        .recoverWith {
+          case t: Throwable if isSQLPermissionError(t) =>
+            Logging[C].warning(s"Failed to create database schema due to permission error: ${getErrorMessage(t)}")
+        }
+    }
 
   /**
    * Last level of failure handling, called when non-loading stream fail. Called on an application

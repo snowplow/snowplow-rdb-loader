@@ -196,6 +196,9 @@ object Databricks {
               case Statement.VacuumManifest => sql"""
                   OPTIMIZE ${Fragment.const0(qualify(Manifest.Name))}
                   ZORDER BY base"""
+              case Statement.CreateDbSchema =>
+                val schema = tgt.catalog.map(c => s"$c.${tgt.schema}").getOrElse(tgt.schema)
+                sql"""CREATE SCHEMA IF NOT EXISTS ${Fragment.const0(schema)}"""
             }
 
           private def qualify(tableName: String): String = tgt.catalog match {

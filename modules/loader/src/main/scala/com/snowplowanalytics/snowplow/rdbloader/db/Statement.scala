@@ -119,6 +119,7 @@ object Statement {
   case class CreateTable(ddl: Fragment) extends Statement
   case class AlterTable(ddl: Fragment) extends Statement
   case class DdlFile(ddl: Fragment) extends Statement
+  case object CreateDbSchema extends Statement
 
   // Optimize (housekeeping i.e. vacuum in redshift, optimize in databricks)
   case object VacuumManifest extends Statement

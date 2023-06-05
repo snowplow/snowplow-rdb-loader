@@ -36,6 +36,7 @@ object Alert {
   case class FailedInitialConnection(cause: Throwable) extends Alert
   case class FailedToCreateEventsTable(cause: Throwable) extends Alert
   case class FailedToCreateManifestTable(cause: Throwable) extends Alert
+  case class FailedToCreateDatabaseSchema(cause: Throwable) extends Alert
   case class FailedHealthCheck(cause: Throwable) extends Alert
   case class FailedFolderMonitoring(cause: Throwable, numFailures: Int) extends Alert
 
@@ -52,6 +53,7 @@ object Alert {
     case FailedInitialConnection(_) => None
     case FailedToCreateEventsTable(_) => None
     case FailedToCreateManifestTable(_) => None
+    case FailedToCreateDatabaseSchema(_) => None
     case FailedHealthCheck(_) => None
     case FailedFolderMonitoring(_, _) => None
   }
@@ -74,6 +76,7 @@ object Alert {
     case FailedInitialConnection(_) => Severity.Error
     case FailedToCreateEventsTable(_) => Severity.Error
     case FailedToCreateManifestTable(_) => Severity.Error
+    case FailedToCreateDatabaseSchema(_) => Severity.Error
   }
 
   def getMessage(am: Alert): String = {
@@ -88,6 +91,7 @@ object Alert {
       case FailedInitialConnection(t) => show"Failed to get connection at startup: $t"
       case FailedToCreateEventsTable(t) => show"Failed to create events table: $t"
       case FailedToCreateManifestTable(t) => show"Failed to create manifest table: $t"
+      case FailedToCreateDatabaseSchema(t) => show"Failed to create database schema: $t"
       case FailedHealthCheck(t) => show"DB failed health check: $t"
       case FailedFolderMonitoring(t, numFailures) => show"Folder monitoring failed $numFailures times in a row: $t"
     }

@@ -257,6 +257,8 @@ object Redshift {
               case Statement.AddLoadTstampColumn =>
                 sql"""ALTER TABLE ${Fragment.const0(EventsTable.withSchema(schema))}
                       ADD COLUMN load_tstamp TIMESTAMP DEFAULT GETDATE() NULL"""
+              case Statement.CreateDbSchema =>
+                sql"""CREATE SCHEMA IF NOT EXISTS ${Fragment.const0(schema)}"""
 
               case Statement.CreateTable(ddl) =>
                 ddl
