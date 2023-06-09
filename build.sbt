@@ -192,3 +192,13 @@ lazy val transformerKafka = project
   .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", azure % "compile->compile;test->test;runtime->runtime")
   .enablePlugins(JavaAppPackaging, SnowplowDockerPlugin, BuildInfoPlugin)
 
+
+lazy val transformerKafkaDistroless = project
+  .in(file("modules/distroless/transformer-kafka"))
+  .settings(sourceDirectory := (transformerKafka / sourceDirectory).value)
+  .settings(BuildSettings.transformerKafkaBuildSettings)
+  .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
+  .settings(libraryDependencies ++= Dependencies.transformerKafkaDependencies)
+  .settings(excludeDependencies ++= Dependencies.commonStreamTransformerExclusions)
+  .dependsOn(commonTransformerStream % "compile->compile;test->test;runtime->runtime", azure % "compile->compile;test->test")
+  .enablePlugins(JavaAppPackaging, SnowplowDistrolessDockerPlugin, BuildInfoPlugin)
