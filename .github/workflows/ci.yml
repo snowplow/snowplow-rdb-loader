@@ -71,6 +71,7 @@ jobs:
           - databricksLoader
           - transformerKinesis
           - transformerPubsub
+          - transformerKafka
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
@@ -191,7 +192,8 @@ jobs:
         'project databricksLoader; assembly' \
         'project transformerBatch; assembly' \
         'project transformerKinesis; assembly' \
-        'project transformerPubsub; assembly'
+        'project transformerPubsub; assembly' \
+        'project transformerKafka; assembly'
     - name: Get current version
       id: ver
       run: echo "::set-output name=project_version::${GITHUB_REF#refs/tags/}"
@@ -209,5 +211,6 @@ jobs:
           modules/transformer-batch/target/scala-2.12/snowplow-transformer-batch-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-kinesis/target/scala-2.12/snowplow-transformer-kinesis-${{ steps.ver.outputs.project_version }}.jar
           modules/transformer-pubsub/target/scala-2.12/snowplow-transformer-pubsub-${{ steps.ver.outputs.project_version }}.jar
+          modules/transformer-kafka/target/scala-2.12/snowplow-transformer-kafka-${{ steps.ver.outputs.project_version }}.jar
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
