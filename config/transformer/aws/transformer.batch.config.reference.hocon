@@ -11,6 +11,8 @@
     "compression": "GZIP",
     # number of events per parquet partition
     "maxRecordsPerFile": 10000,
+    # max number of badrows stored in memory before flushing to configured bad output (see 'bad' section)
+    "maxBadBufferSize": 1000
     # This field is optional if it can be resolved with AWS region provider chain.
     # It checks places like env variables, system properties, AWS profile file.
     # https://sdk.amazonaws.com/java/api/latest/software/amazon/awssdk/regions/providers/DefaultAwsRegionProviderChain.html

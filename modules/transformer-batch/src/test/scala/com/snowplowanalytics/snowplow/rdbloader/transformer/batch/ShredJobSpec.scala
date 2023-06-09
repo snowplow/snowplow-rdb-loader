@@ -441,6 +441,7 @@ object ShredJobSpec {
         TransformerConfig.Compression.None,
         Region("eu-central-1"),
         maxRecordsPerFile = 10000,
+        maxBadBufferSize = 1000,
         Config.Output.BadSink.File
       ),
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),

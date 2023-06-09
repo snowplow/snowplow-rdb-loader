@@ -10,8 +10,14 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
+package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.iterator
 
-trait BadrowSink {
-  def sink(badrows: List[String], partitionIndex: String): Unit
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data._
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.iterator.OnlyGoodDataIteratorSpec.{BadGenerator, GoodGenerator}
+
+class GoodJsonIteratorSpec extends GoodDataIteratorSpec {
+
+  override val goodGenerator: GoodGenerator = () => WideRow(good = true, DString("TEST GOOD DATA"))
+  override val badGenerator: BadGenerator = () => WideRow(good = false, DString("TEST BAD DATA"))
 }
