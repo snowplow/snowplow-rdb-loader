@@ -40,37 +40,40 @@ final class KinesisSink(
   config: Config.Output.BadSink.Kinesis
 ) extends BadrowSink {
 
-  override def sink(badrows: Iterator[String], partitionIndex: Int): Unit = {
-    var currentBatch = Batch.empty(partitionIndex)
+  override def sink(badrows: List[String], partitionIndex: String): Unit =
+    groupIntoBatches(badrows, partitionIndex)
+      .foreach(writeBatch)
 
-    while (badrows.hasNext) {
-      val data = KeyedData(key = Random.nextInt.toString, content = badrows.next().getBytes(UTF_8))
+  private def groupIntoBatches(badrows: List[String], partitionIndex: String): List[Batch] =
+    badrows
+      .map(KeyedData.create)
+      .foldLeft(List.empty[Batch]) { case (batches, data) =>
+        addDataToBatch(partitionIndex, batches, data)
+      }
+      .reverse
 
-      currentBatch = sinkIfLimitsExceeded(currentBatch, data)
-        .addData(data)
+  private def addDataToBatch(
+    partitionIndex: String,
+    batches: List[Batch],
+    data: KeyedData
+  ): List[Batch] =
+    batches match {
+      case currentBatch :: fullBatches if shouldStartNewBatch(data, currentBatch) =>
+        Batch.init(partitionIndex, data) :: currentBatch :: fullBatches
+      case currentBatch :: fullBatches =>
+        currentBatch.addData(data) :: fullBatches
+      case Nil =>
+        Batch.init(partitionIndex, data) :: Nil
     }
 
-    sinkPendingDataIn(currentBatch)
-  }
-
-  private def sinkIfLimitsExceeded(currentBatch: Batch, data: KeyedData): Batch =
-    if (recordLimitExceeded(currentBatch) || byteLimitExceeded(currentBatch, data)) {
-      writeBatch(currentBatch)
-      Batch.empty(currentBatch.partitionIndex)
-    } else {
-      currentBatch
-    }
+  private def shouldStartNewBatch(record: KeyedData, current: Batch): Boolean =
+    recordLimitExceeded(current) || byteLimitExceeded(current, record)
 
   private def recordLimitExceeded(currentBatch: Batch): Boolean =
     currentBatch.recordsCount + 1 > config.recordLimit
 
   private def byteLimitExceeded(currentBatch: Batch, data: KeyedData): Boolean =
     currentBatch.size + data.size > config.byteLimit
-
-  private def sinkPendingDataIn(currentBatch: Batch): Unit =
-    if (currentBatch.recordsCount > 0) {
-      writeBatch(currentBatch)
-    }
 
   /**
    * Similar approach to retrying kinesis requests as in Enrich. See sink implementation -
@@ -233,8 +236,13 @@ object KinesisSink {
     val size = content.length + key.getBytes(UTF_8).length
   }
 
+  object KeyedData {
+    def create(data: String): KeyedData =
+      KeyedData(key = Random.nextInt.toString, content = data.getBytes(UTF_8))
+  }
+
   final case class Batch(
-    partitionIndex: Int,
+    partitionIndex: String,
     size: Int,
     recordsCount: Int,
     keyedData: List[KeyedData]
@@ -246,7 +254,7 @@ object KinesisSink {
   }
 
   object Batch {
-    def empty(partition: Int) = Batch(partition, size = 0, recordsCount = 0, keyedData = List.empty)
+    def init(partitionIndex: String, data: KeyedData) = Batch(partitionIndex, size = data.size, recordsCount = 1, keyedData = List(data))
   }
 
   object Retries {
