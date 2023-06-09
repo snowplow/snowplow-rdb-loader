@@ -15,13 +15,13 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.Data.DString
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed.WideRow
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.PartitionDataFilterSpec.TestBadrowsSink
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, PartitionDataFilter}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.OnlyGoodDataIteratorSpec.TestBadrowsSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, GoodOnlyIterator}
 import org.specs2.mutable.Specification
 
 import scala.collection.mutable
 
-class PartitionDataFilterSpec extends Specification {
+class GoodDataIteratorSpec extends Specification {
 
   "Good data should be preserved in output and bad data sinked when partition contains" >> {
     "for widerow format and" >> {
@@ -93,13 +93,7 @@ class PartitionDataFilterSpec extends Specification {
     input: List[Transformed],
     sink: BadrowSink
   ) =
-    PartitionDataFilter
-      .extractGoodAndSinkBad(
-        input.iterator,
-        partitionIndex = 1,
-        sink
-      )
-      .toList
+    new GoodOnlyIterator(input.iterator.buffered, partitionIndex = 1, badrowSink = sink).toList
 
   private def goodWide(content: String) = WideRow(good = true, DString(content))
   private def badWide(content: String) = WideRow(good = false, DString(content))
@@ -108,12 +102,12 @@ class PartitionDataFilterSpec extends Specification {
   private def badShred(content: String) = Transformed.Shredded.Json(isGood = false, "vendor", "name", 1, DString(content))
 }
 
-object PartitionDataFilterSpec {
+object OnlyGoodDataIteratorSpec {
 
   final class TestBadrowsSink extends BadrowSink {
     val storedData: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-    override def sink(badrows: Iterator[String], partitionIndex: Int): Unit =
+    override def sink(badrows: Iterator[String], partitionIndex: String): Unit =
       badrows.foreach { data =>
         storedData += data
       }

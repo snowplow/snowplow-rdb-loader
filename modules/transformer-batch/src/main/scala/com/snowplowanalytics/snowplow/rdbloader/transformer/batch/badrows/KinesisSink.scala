@@ -40,7 +40,7 @@ final class KinesisSink(
   config: Config.Output.BadSink.Kinesis
 ) extends BadrowSink {
 
-  override def sink(badrows: Iterator[String], partitionIndex: Int): Unit = {
+  override def sink(badrows: Iterator[String], partitionIndex: String): Unit = {
     var currentBatch = Batch.empty(partitionIndex)
 
     while (badrows.hasNext) {
@@ -234,7 +234,7 @@ object KinesisSink {
   }
 
   final case class Batch(
-    partitionIndex: Int,
+    partitionIndex: String,
     size: Int,
     recordsCount: Int,
     keyedData: List[KeyedData]
@@ -246,7 +246,7 @@ object KinesisSink {
   }
 
   object Batch {
-    def empty(partition: Int) = Batch(partition, size = 0, recordsCount = 0, keyedData = List.empty)
+    def empty(partition: String) = Batch(partition, size = 0, recordsCount = 0, keyedData = List.empty)
   }
 
   object Retries {

@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transforme
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, PartitionDataFilter, WiderowFileSink}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, GoodOnlyIterator, KinesisSink, WiderowFileSink}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.EventParserSingleton
 import io.circe.Json
 import org.apache.spark.broadcast.Broadcast
@@ -227,8 +227,8 @@ class ShredJob[T](
 
   private def sinkBad(transformed: RDD[Transformed], sinkProvider: () => BadrowSink): RDD[Transformed] =
     transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
-      PartitionDataFilter.extractGoodAndSinkBad(
-        partitionData,
+      new GoodOnlyIterator(
+        partitionData.buffered,
         partitionIndex,
         sinkProvider()
       )
