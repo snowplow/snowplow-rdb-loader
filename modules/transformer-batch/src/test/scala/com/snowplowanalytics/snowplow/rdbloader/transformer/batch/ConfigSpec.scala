@@ -108,6 +108,7 @@ object TransformerConfigSpec {
     TransformerConfig.Compression.Gzip,
     Region("eu-central-1"),
     maxRecordsPerFile = 10000,
+    maxBadBufferSize = 1000,
     Config.Output.BadSink.Kinesis(
       "bad",
       Region("eu-central-1"),

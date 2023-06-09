@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transforme
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
-import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, PartitionDataFilter, WiderowFileSink}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, GoodOnlyIterator, KinesisSink, WiderowFileSink}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.EventParserSingleton
 import io.circe.Json
 import org.apache.spark.broadcast.Broadcast
@@ -192,7 +192,7 @@ class ShredJob[T](
     config.formats match {
       case Formats.WideRow.PARQUET =>
         val badrowSinkProvider = () => createBadrowsSinkForParquet(config.output.bad, folderName, hadoopConfigBroadcasted)
-        sinkBad(transformed, badrowSinkProvider)
+        sinkBad(transformed, badrowSinkProvider, config.output.maxBadBufferSize)
 
       // For JSON - use custom Kinesis sink when configured.
       // Current custom file sink would work, but as opposed to parquet, it's not really necessary, so we can still rely on classic Spark sink.
@@ -202,7 +202,7 @@ class ShredJob[T](
         config.output.bad match {
           case kinesisConfig: BadSink.Kinesis =>
             val badrowSinkProvider = () => KinesisSink.createFrom(kinesisConfig)
-            sinkBad(transformed, badrowSinkProvider)
+            sinkBad(transformed, badrowSinkProvider, config.output.maxBadBufferSize)
           case BadSink.File =>
             transformed // do nothing here, use Spark file sink for Json and shredded output format
         }
@@ -225,12 +225,17 @@ class ShredJob[T](
         WiderowFileSink.create(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
     }
 
-  private def sinkBad(transformed: RDD[Transformed], sinkProvider: () => BadrowSink): RDD[Transformed] =
+  private def sinkBad(
+    transformed: RDD[Transformed],
+    sinkProvider: () => BadrowSink,
+    badBufferMaxSize: Int
+  ): RDD[Transformed] =
     transformed.mapPartitionsWithIndex { case (partitionIndex, partitionData) =>
-      PartitionDataFilter.extractGoodAndSinkBad(
-        partitionData,
+      new GoodOnlyIterator(
+        partitionData.buffered,
         partitionIndex,
-        sinkProvider()
+        sinkProvider(),
+        badBufferMaxSize
       )
     }
 }

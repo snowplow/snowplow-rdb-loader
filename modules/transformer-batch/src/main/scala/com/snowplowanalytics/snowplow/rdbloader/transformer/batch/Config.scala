@@ -57,6 +57,7 @@ object Config {
     compression: Compression,
     region: Region,
     maxRecordsPerFile: Long,
+    maxBadBufferSize: Int,
     bad: Output.BadSink
   )
 

@@ -200,7 +200,7 @@ class KinesisSinkSpec extends Specification {
     val kinesis = new KinesisMock(mockedResponses.iterator)
     val writeToKinesis = kinesis.receive _
     val sink = new KinesisSink(writeToKinesis, kinesisConfig)
-    sink.sink(input.iterator, partitionIndex = 1)
+    sink.sink(input, partitionIndex = "1")
     kinesis.storedData.toList
   }
 }

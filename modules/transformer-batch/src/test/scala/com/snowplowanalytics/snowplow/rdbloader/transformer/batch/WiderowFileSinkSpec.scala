@@ -34,7 +34,7 @@ class WiderowFileSinkSpec extends Specification with SparkSpec with TempDirector
         "bad2"
       )
 
-      fileSink(Compression.None, tempOutput).sink(partitionData.iterator, partitionIndex = 1)
+      fileSink(Compression.None, tempOutput).sink(partitionData, partitionIndex = "1")
       listFilesIn(tempOutput, folderPath = "run=1970-01-01-00-00-00/output=bad").head must beEqualTo("part-1.txt")
 
       val badFromFile = readUncompressedBadrows(tempOutput, filePath = s"run=1970-01-01-00-00-00/output=bad/part-1.txt")
@@ -47,7 +47,7 @@ class WiderowFileSinkSpec extends Specification with SparkSpec with TempDirector
         "bad2"
       )
 
-      fileSink(Compression.Gzip, tempOutput).sink(partitionData.iterator, partitionIndex = 1)
+      fileSink(Compression.Gzip, tempOutput).sink(partitionData, partitionIndex = "1")
       listFilesIn(tempOutput, folderPath = "run=1970-01-01-00-00-00/output=bad").head must beEqualTo("part-1.txt.gz")
 
       val badFromFile = readCompressedBadrows(tempOutput, filePath = s"run=1970-01-01-00-00-00/output=bad/part-1.txt.gz")

@@ -30,7 +30,7 @@ final class WiderowFileSink(
   compression: Compression
 ) extends BadrowSink {
 
-  override def sink(badrows: Iterator[String], partitionIndex: Int): Unit = {
+  override def sink(badrows: List[String], partitionIndex: String): Unit = {
     val outputFile = openFile(partitionIndex)
     val outputStream = createOutputStream(outputFile)
     val writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
@@ -42,7 +42,7 @@ final class WiderowFileSink(
   }
 
   private def openFile(
-    partitionIndex: Int
+    partitionIndex: String
   ): FSDataOutputStream = {
     val fileName = s"part-$partitionIndex.$outputFileExtension"
     val path = new Path(outputFolder, fileName)
@@ -59,7 +59,7 @@ final class WiderowFileSink(
         gzipCodec.createOutputStream(outputFile)
     }
 
-  private def flushBadrowsToFile(badRows: Iterator[String], writer: BufferedWriter): Unit =
+  private def flushBadrowsToFile(badRows: List[String], writer: BufferedWriter): Unit =
     badRows
       .foreach { badRow =>
         writer.write(badRow)
