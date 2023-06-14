@@ -1,3 +1,15 @@
+/*
+ * Copyright (c) 2012-2023 Snowplow Analytics Ltd. All rights reserved.
+ *
+ * This program is licensed to you under the Apache License Version 2.0,
+ * and you may not use this file except in compliance with the Apache License Version 2.0.
+ * You may obtain a copy of the Apache License Version 2.0 at http://www.apache.org/licenses/LICENSE-2.0.
+ *
+ * Unless required by applicable law or agreed to in writing,
+ * software distributed under the Apache License Version 2.0 is distributed on an
+ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
+ */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
 
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.Transformed
@@ -13,11 +25,11 @@ import scala.collection.{AbstractIterator, mutable}
 final class GoodOnlyIterator(
   partitionData: BufferedIterator[Transformed],
   partitionIndex: Int,
-  badrowSink: BadrowSink
+  badrowSink: BadrowSink,
+  bufferMaxSize: Int
 ) extends AbstractIterator[Transformed] {
 
   private val badrowBuffer: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-  private val bufferMaxSize = 1000
 
   override def hasNext: Boolean = {
     skipBadData()
@@ -54,7 +66,7 @@ final class GoodOnlyIterator(
     }
 
   private def exceedingBufferSize: Boolean =
-    badrowBuffer.size > bufferMaxSize
+    badrowBuffer.size >= bufferMaxSize
 
   private def timeToFlushRemainingBuffer: Boolean =
     !partitionData.hasNext && badrowBuffer.nonEmpty
