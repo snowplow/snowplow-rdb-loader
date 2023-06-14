@@ -230,7 +230,8 @@ class ShredJob[T](
       new GoodOnlyIterator(
         partitionData.buffered,
         partitionIndex,
-        sinkProvider()
+        sinkProvider(),
+        bufferMaxSize = 10000
       )
     }
 }
