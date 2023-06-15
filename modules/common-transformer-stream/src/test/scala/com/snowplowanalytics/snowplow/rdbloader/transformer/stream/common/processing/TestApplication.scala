@@ -31,6 +31,7 @@ import fs2.{Pipe, Stream}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import cats.effect.unsafe.implicits.global
 import cats.Applicative
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetOps
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.{Checkpointer, ParsedC}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{CliConfig, Config, Processing, Resources}
 import fs2.io.file.Files
@@ -72,7 +73,8 @@ object TestApplication {
                        mkSink,
                        _ => mkBadQueue[IO](queueBadSink),
                        _ => queueFromRef[IO](completionsRef),
-                       _ => ()
+                       _ => (),
+                       ParquetOps.noop
                      )
                      .use { resources =>
                        logger[IO].info(s"Starting RDB Shredder with ${appConfig} config") *>

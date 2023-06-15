@@ -7,6 +7,7 @@ import cats.effect._
 
 import scala.concurrent.ExecutionContext
 import com.snowplowanalytics.snowplow.badrows.Processor
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetOps
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{Monitoring, StreamInput}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
@@ -28,7 +29,8 @@ object Run {
     mkSink: Config.Output => Resource[F, BlobStorage[F]],
     mkBadQueue: Config.Output.Bad.Queue => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
-    checkpointer: Queue.Consumer.Message[F] => C
+    checkpointer: Queue.Consumer.Message[F] => C,
+    parquetOps: ParquetOps = ParquetOps.noop
   ): F[ExitCode] =
     for {
       parsed <- CliConfig.loadConfigFrom[F](buildName, buildDescription)(args: Seq[String]).value
@@ -45,7 +47,8 @@ object Run {
                      mkSink,
                      mkBadQueue,
                      mkQueue,
-                     checkpointer
+                     checkpointer,
+                     parquetOps
                    )
                    .use { resources =>
                      val processor = Processor(buildName, buildVersion)
