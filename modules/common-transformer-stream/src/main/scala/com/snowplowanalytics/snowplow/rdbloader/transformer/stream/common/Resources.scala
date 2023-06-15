@@ -38,6 +38,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetOps
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.BadSink
@@ -59,7 +60,8 @@ case class Resources[F[_], C](
   inputStream: Queue.Consumer[F],
   checkpointer: Queue.Consumer.Message[F] => C,
   blobStorage: BlobStorage[F],
-  badSink: BadSink[F]
+  badSink: BadSink[F],
+  parquetOps: ParquetOps
 )
 
 object Resources {
@@ -76,7 +78,8 @@ object Resources {
     mkSink: Config.Output => Resource[F, BlobStorage[F]],
     mkBadQueue: Config.Output.Bad.Queue => Resource[F, Queue.ChunkProducer[F]],
     mkQueue: Config.QueueConfig => Resource[F, Queue.Producer[F]],
-    checkpointer: Queue.Consumer.Message[F] => C
+    checkpointer: Queue.Consumer.Message[F] => C,
+    parquetOps: ParquetOps
   ): Resource[F, Resources[F, C]] =
     for {
       producer <- mkQueue(config.queue)
@@ -114,7 +117,8 @@ object Resources {
       inputStream,
       checkpointer,
       blobStorage,
-      badSink
+      badSink,
+      parquetOps
     )
 
   private def mkBadSink[F[_]: Applicative](

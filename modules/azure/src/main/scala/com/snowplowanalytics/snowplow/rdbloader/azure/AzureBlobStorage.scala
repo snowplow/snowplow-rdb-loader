@@ -22,14 +22,13 @@ import cats.data.ValidatedNec
 import cats.effect._
 import cats.implicits._
 import com.azure.identity.DefaultAzureCredentialBuilder
-import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder}
+import com.azure.storage.blob.{BlobServiceAsyncClient, BlobServiceClientBuilder, BlobUrlParts}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder, Key}
 import fs2.{Pipe, Stream}
-
 import java.net.URI
 
-class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], endpoint: String) extends BlobStorage[F] {
+class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBlobStorage.PathParts) extends BlobStorage[F] {
 
   override def list(folder: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] =
     createStorageUrlFrom(folder) match {
@@ -71,21 +70,13 @@ class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], endpoint: Str
     }
 
   // input path format like 'endpoint/container/blobPath', where 'endpoint' is 'scheme://host'
-  private def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] = {
-    val scheme = input.split("://").head
-    val `endpoint/` = if (endpoint.endsWith("/")) endpoint else s"$endpoint/"
-    val `container/path` = input.stripPrefix(`endpoint/`)
-    val `[container, path]` = `container/path`.split("/")
-    val container = `[container, path]`.head
-    val path = `container/path`.stripPrefix(container)
-
+  private def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] =
     Authority
-      .parse(container)
-      .map(authority => Url(scheme, authority, Path(path)))
-  }
+      .parse(path.containerName)
+      .map(authority => Url(path.scheme, authority, Path(path.extractRelative(input))))
 
   private def createBlobObject(url: Url[AzureBlob]) = {
-    val key = BlobStorage.Key.coerce(s"$endpoint/${url.representation.container}/${url.path.relative}")
+    val key = BlobStorage.Key.coerce(s"${path.fullPath}/${url.path.relative}")
     BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
   }
 }
@@ -98,17 +89,41 @@ object AzureBlobStorage {
   }
 
   def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, BlobStorage[F]] = {
-    val endpoint = extractEndpoint(path)
-    val client = builder.endpoint(endpoint).buildAsyncClient()
-    createStore(client).map(new AzureBlobStorage(_, endpoint))
+    val pathParts = parsePath(path.toString)
+    val client = builder.endpoint(pathParts.root).buildAsyncClient()
+    createStore(client).map(new AzureBlobStorage(_, pathParts))
   }
-
-  private def extractEndpoint(path: URI): String =
-    path.toString.stripSuffix("/").split("/").dropRight(1).mkString("/")
 
   private def createStore[F[_]: Async](client: BlobServiceAsyncClient): Resource[F, AzureStore[F]] =
     AzureStore
       .builder[F](client)
       .build
       .fold(errors => Resource.raiseError(errors.reduce(Throwables.collapsingSemigroup)), Resource.pure)
+
+  final case class PathParts(
+    fullPath: String,
+    containerName: String,
+    storageAccountName: String,
+    scheme: String,
+    endpointSuffix: String,
+    relative: String
+  ) {
+    def extractRelative(p: String): String =
+      p.stripPrefix(fullPath)
+
+    def root: String =
+      s"$scheme://$storageAccountName.blob.$endpointSuffix"
+  }
+
+  def parsePath(path: String): PathParts = {
+    val parts = BlobUrlParts.parse(path)
+    PathParts(
+      fullPath = path,
+      containerName = parts.getBlobContainerName,
+      storageAccountName = parts.getAccountName,
+      scheme = parts.getScheme,
+      endpointSuffix = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
+      relative = parts.getBlobName
+    )
+  }
 }

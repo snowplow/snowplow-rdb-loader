@@ -17,9 +17,11 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka
 import cats.effect._
 import com.snowplowanalytics.snowplow.rdbloader.azure.AzureBlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetOps
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Config, Run}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.generated.BuildInfo
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+import org.apache.hadoop.conf.Configuration
 
 object Main extends IOApp {
 
@@ -34,7 +36,8 @@ object Main extends IOApp {
       c => createBlobStorage(c),
       c => Queues.createBadOutputQueue(c),
       Queues.createShreddingCompleteQueue,
-      KafkaCheckpointer.checkpointer
+      KafkaCheckpointer.checkpointer,
+      parquetOps
     )
 
   private def createBlobStorage[F[_]: Async](output: Config.Output): Resource[F, BlobStorage[F]] =
@@ -44,4 +47,20 @@ object Main extends IOApp {
       case _ =>
         Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Output is not Azure Blob Storage")))
     }
+
+  private def parquetOps: ParquetOps = new ParquetOps {
+
+    override def transformPath(p: String): String = {
+      val parts = AzureBlobStorage.parsePath(p)
+      s"abfss://${parts.containerName}@${parts.storageAccountName}.dfs.${parts.endpointSuffix}"
+    }
+
+    override def hadoopConf: Configuration = {
+      val hadoopConf = new Configuration()
+      hadoopConf.set("fs.azure.account.auth.type", "Custom")
+      hadoopConf.set("fs.azure.account.oauth.provider.type", "com.snowplowanalytics.snowplow.rdbloader.azure.AzureTokenProvider")
+      hadoopConf
+    }
+
+  }
 }

@@ -137,12 +137,13 @@ object Dependencies {
   val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"         % V.jacksonDatabind
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.jacksonModule
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
+  val hadoopCommon      = "org.apache.hadoop"                % "hadoop-common"             % V.hadoopClient
   val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
   val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
   val hadoopGcp         = "com.google.cloud.bigdataoss"      % "gcs-connector"             % V.hadoopGcpClient % Runtime
-  val hadoopAzure       = "org.apache.hadoop"                % "hadoop-azure"              % "3.3.5" % Runtime
+  val hadoopAzure       = "org.apache.hadoop"                % "hadoop-azure"              % V.hadoopClient
   val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
@@ -214,7 +215,9 @@ object Dependencies {
   val azureDependencies = Seq(
     fs2BlobstoreAzure,
     azureIdentity,
-    fs2Kafka
+    fs2Kafka,
+    hadoopCommon,
+    hadoopAzure
   )
 
   val commonDependencies = Seq(
