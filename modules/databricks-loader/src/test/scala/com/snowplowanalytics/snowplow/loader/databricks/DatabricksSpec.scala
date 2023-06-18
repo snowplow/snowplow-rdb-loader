@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.ConfigSpec._
 
 import java.time.Instant
@@ -130,7 +130,7 @@ class DatabricksSpec extends Specification {
       }
     }
 
-    "create sql with credentials for loading" in {
+    "create sql with credentials for loading from S3" in {
       val toCopy = ColumnsToCopy(
         List(
           ColumnName("app_id"),
@@ -144,13 +144,40 @@ class DatabricksSpec extends Specification {
           ColumnName("contexts_com_acme_yyy_1")
         )
       )
-      val loadAuthMethod = LoadAuthMethod.TempCreds("testAccessKey", "testSecretKey", "testSessionToken", Instant.now.plusSeconds(3600))
+      val loadAuthMethod = LoadAuthMethod.TempCreds.AWS("testAccessKey", "testSecretKey", "testSessionToken", Instant.now.plusSeconds(3600))
       val statement =
         Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain(
           s"SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 's3://somewhere/path/output=good/' WITH ( CREDENTIAL (AWS_ACCESS_KEY = '${loadAuthMethod.awsAccessKey}', AWS_SECRET_KEY = '${loadAuthMethod.awsSecretKey}', AWS_SESSION_TOKEN = '${loadAuthMethod.awsSessionToken}') )"
+        )
+      }
+    }
+
+    "create sql with credentials for loading from Azure Blob Storage" in {
+      val toCopy = ColumnsToCopy(
+        List(
+          ColumnName("app_id"),
+          ColumnName("unstruct_event_com_acme_aaa_1"),
+          ColumnName("contexts_com_acme_xxx_1")
+        )
+      )
+      val toSkip = ColumnsToSkip(
+        List(
+          ColumnName("unstruct_event_com_acme_bbb_1"),
+          ColumnName("contexts_com_acme_yyy_1")
+        )
+      )
+      val baseFolder: BlobStorage.Folder =
+        BlobStorage.Folder.coerce("https://test.blob.core.windows.net/test-container/path1/path2")
+      val loadAuthMethod = LoadAuthMethod.TempCreds.Azure("testToken", Instant.now.plusSeconds(3600))
+      val statement =
+        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
+
+      target.toFragment(statement).toString must beLike { case sql =>
+        sql must contain(
+          s"SELECT app_id,unstruct_event_com_acme_aaa_1,contexts_com_acme_xxx_1,NULL AS unstruct_event_com_acme_bbb_1,NULL AS contexts_com_acme_yyy_1,current_timestamp() AS load_tstamp from 'abfss://test-container@test.dfs.core.windows.net/path1/path2/output=good/' WITH ( CREDENTIAL (AZURE_SAS_TOKEN = '${loadAuthMethod.sasToken}') )"
         )
       }
     }

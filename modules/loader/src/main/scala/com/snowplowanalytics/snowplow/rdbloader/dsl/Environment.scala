@@ -27,7 +27,8 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.azure.{AzureBlobStorage, KafkaConsumer}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.{JsonPathDiscovery, LoadAuthService}
+import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.{AWSAuthService, AzureAuthService, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.Cloud
@@ -158,8 +159,8 @@ object Environment {
               Some(postProcess)
             )
           loadAuthService <-
-            LoadAuthService
-              .aws[F](c.region.name, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
+            AWSAuthService
+              .create[F](c.region.name, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
           jsonPathDiscovery = JsonPathDiscovery.aws[F](c.region.name)
           secretStore <- EC2ParameterStore.secretStore[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
@@ -182,7 +183,9 @@ object Environment {
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
       case c: Cloud.Azure =>
         for {
-          loadAuthService <- LoadAuthService.noop[F]
+          loadAuthService <-
+            AzureAuthService
+              .create[F](c.blobStorageEndpoint.toString, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
           implicit0(blobStorage: BlobStorage[F]) <- AzureBlobStorage.createDefault[F](c.blobStorageEndpoint)
           queueConsumer <- KafkaConsumer.consumer[F](

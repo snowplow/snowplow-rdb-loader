@@ -381,12 +381,26 @@ object StorageTarget {
   sealed trait LoadAuthMethod extends Product with Serializable
 
   object LoadAuthMethod {
-    final case object NoCreds extends LoadAuthMethod
-    final case class TempCreds(
-      roleArn: String,
-      roleSessionName: String,
-      credentialsTtl: FiniteDuration
-    ) extends LoadAuthMethod
+    sealed trait Azure
+    sealed trait AWS
+
+    final case object NoCreds extends LoadAuthMethod with Azure with AWS
+
+    sealed trait TempCreds extends LoadAuthMethod
+
+    object TempCreds {
+      final case class AWSTempCreds(
+        roleArn: String,
+        roleSessionName: String,
+        credentialsTtl: FiniteDuration
+      ) extends TempCreds
+          with AWS
+
+      final case class AzureTempCreds(
+        credentialsTtl: FiniteDuration
+      ) extends TempCreds
+          with Azure
+    }
   }
 
   /**
@@ -467,7 +481,18 @@ object StorageTarget {
     }
 
   implicit def tempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds] =
-    deriveDecoder[LoadAuthMethod.TempCreds]
+    Decoder.instance { cur =>
+      if (cur.downField("roleArn").succeeded)
+        cur.as[LoadAuthMethod.TempCreds.AWSTempCreds]
+      else
+        cur.as[LoadAuthMethod.TempCreds.AzureTempCreds]
+    }
+
+  implicit def awsTempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds.AWSTempCreds] =
+    deriveDecoder[LoadAuthMethod.TempCreds.AWSTempCreds]
+
+  implicit def azureTempCredsAuthMethodDecoder: Decoder[LoadAuthMethod.TempCreds.AzureTempCreds] =
+    deriveDecoder[LoadAuthMethod.TempCreds.AzureTempCreds]
 
   // Custom decoder for backward compatibility
   implicit def snowflakeStageDecoder: Decoder[Snowflake.Stage] =

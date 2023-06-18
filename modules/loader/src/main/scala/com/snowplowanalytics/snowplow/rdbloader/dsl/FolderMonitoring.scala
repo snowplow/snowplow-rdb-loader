@@ -19,7 +19,7 @@ import cats.{Applicative, Functor, Monad, MonadThrow}
 import cats.implicits._
 import cats.effect.kernel.{Async, Clock, Ref, Sync, Temporal}
 import cats.effect.std.Semaphore
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import doobie.util.Get

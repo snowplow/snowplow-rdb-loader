@@ -24,7 +24,7 @@ import doobie.implicits.javasql._
 import io.circe.parser.parse
 
 import com.snowplowanalytics.iglu.core.SchemaKey
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Count, ManifestType, Timestamps}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression

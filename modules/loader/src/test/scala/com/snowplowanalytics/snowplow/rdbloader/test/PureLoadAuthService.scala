@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.test
 
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 
 object PureLoadAuthService {
   def interpreter: LoadAuthService[Pure] =

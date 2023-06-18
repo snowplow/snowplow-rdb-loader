@@ -37,6 +37,26 @@
     "folderMonitoringStage": "snowplow_folders_stage"
     # An optional host name that will take a priority over automatically derived
     "jdbcHost": "acme.eu-central-1.snowflake.com"
+    # Optional, default method is 'NoCreds'
+    # Specifies the auth method to use with 'COPY INTO' statement.
+    "loadAuthMethod": {
+      # With 'NoCreds', no credentials will be passed to 'COPY INTO' statement.
+      # Instead, 'transformedStage' and 'folderMonitoringStage' specified above will be used.
+      # More information can be found here:
+      # https://docs.snowflake.com/en/user-guide/data-load-azure-config
+      "type": "NoCreds"
+    }
+    #"loadAuthMethod": {
+    #  # With 'TempCreds', temporary credentials will be created for every
+    #  # load operation and these temporary credentials will be passed to
+    #  # 'COPY INTO' statement.
+    #  "type": "TempCreds"
+    #
+    #  # If 'TempCreds' load auth method is used, this value will be used as a session duration
+    #  # of temporary credentials used for loading data and folder monitoring.
+    #  # Optional, default value "1 hour"
+    #  "credentialsTtl": "1 hour"
+    #}
     # Either "ResumeWarehouse" (the default) or "Select1". The command the loader runs to prepare the JDBC connection.
     "readyCheck": "ResumeWarehouse"
   },

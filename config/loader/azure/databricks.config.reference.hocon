@@ -30,6 +30,29 @@
 
     # Optimize period per table, that will be used as predicate for the OPTIMIZE command.
     "eventsOptimizePeriod": "2 days"
+
+    # Optional, default method is 'NoCreds'
+    # Specifies the auth method to use with 'COPY INTO' statement.
+    "loadAuthMethod": {
+      # With 'NoCreds', no credentials will be passed to 'COPY INTO' statement.
+      # Databricks cluster needs to have permission to access transformer
+      # output Azure Blob Storage container. More information can be found here:
+      # https://docs.databricks.com/storage/azure-storage.html
+      "type": "NoCreds"
+    }
+    #"loadAuthMethod": {
+    #  # With 'TempCreds', temporary credentials will be created for every
+    #  # load operation and these temporary credentials will be passed to
+    #  # 'COPY INTO' statement. With this way, Databricks cluster doesn't need
+    #  # permission to access to transformer output Azure Blob Storage container.
+    #  # This access will be provided by temporary credentials.
+    #  "type": "TempCreds"
+    #
+    #  # If 'TempCreds' load auth method is used, this value will be used as a session duration
+    #  # of temporary credentials used for loading data and folder monitoring.
+    #  # Optional, default value "1 hour"
+    #  "credentialsTtl": "1 hour"
+    #}
   },
 
   "schedules": {
