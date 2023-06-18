@@ -41,7 +41,7 @@ import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnName, ColumnsToCopy, ColumnsToSkip, EventTableColumns}
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.{Block, Entity, Item}
 import com.snowplowanalytics.snowplow.rdbloader.db.{AtomicColumns, Manifest, Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
@@ -157,7 +157,8 @@ object Snowflake {
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frManifest = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
-              case Statement.FoldersCopy(source, loadAuthMethod, initQueryResult: InitQueryResult) =>
+              case Statement.FoldersCopy(s, loadAuthMethod, initQueryResult: InitQueryResult) =>
+                val updatedSource = replaceScheme(s)
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
                 val frPath = loadAuthMethod match {
                   case LoadAuthMethod.NoCreds =>
@@ -165,25 +166,26 @@ object Snowflake {
                     val stage = tgt.folderMonitoringStage.getOrElse(
                       throw new IllegalStateException("Folder Monitoring is launched without monitoring stage being provided")
                     )
-                    val afterStage = findPathAfterStage(stage, initQueryResult.folderMonitoringStagePath, source)
+                    val afterStage = findPathAfterStage(stage, initQueryResult.folderMonitoringStagePath, updatedSource)
                     Fragment.const0(s"@${qualify(stage.name)}/$afterStage")
                   case _: LoadAuthMethod.TempCreds =>
-                    Fragment.const0(source)
+                    Fragment.const0(updatedSource)
                 }
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod)
                 sql"""|COPY INTO $frTableName
-                      |FROM $frPath $frCredentials
+                      |FROM '$frPath' $frCredentials
                       |FILE_FORMAT = (TYPE = CSV)""".stripMargin
 
               case Statement.FoldersCopy(_, _, _) =>
                 throw new IllegalStateException("Init query result has wrong format in FoldersCopy")
 
-              case Statement.EventsCopy(path, _, columns, _, typesInfo, _, initQueryResult: InitQueryResult) =>
+              case Statement.EventsCopy(p, _, columns, _, typesInfo, _, initQueryResult: InitQueryResult) =>
+                val updatedPath = replaceScheme(p)
                 // This is validated on config decoding stage
                 val stage = tgt.transformedStage.getOrElse(
                   throw new IllegalStateException("Transformed stage is tried to be used without being provided")
                 )
-                val afterStage = findPathAfterStage(stage, initQueryResult.transformedStagePath, path)
+                val afterStage = findPathAfterStage(stage, initQueryResult.transformedStagePath, updatedPath)
                 val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
                 val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
@@ -212,8 +214,9 @@ object Snowflake {
                 sql"DROP TABLE IF EXISTS $frTableName"
 
               case s: Statement.EventsCopyToTempTable =>
+                val updatedPath = replaceScheme(s.path)
                 val frCopy = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
-                val frPath = Fragment.const0(s.path.append("output=good"))
+                val frPath = Fragment.const0(updatedPath.append("output=good"))
                 val frCredentials = loadAuthMethodFragment(s.tempCreds)
                 val frOnError = buildErrorFragment(s.typesInfo)
                 val frFileFormat = buildFileFormatFragment(s.typesInfo)
@@ -318,6 +321,8 @@ object Snowflake {
             else
               columnNames
           }
+
+          private def replaceScheme(path: Folder): Folder = Folder.coerce(path.replace("https://", "azure://"))
         }
 
         Right(result)
@@ -356,9 +361,13 @@ object Snowflake {
     loadAuthMethod match {
       case LoadAuthMethod.NoCreds =>
         Fragment.empty
-      case LoadAuthMethod.TempCreds(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
+      case LoadAuthMethod.TempCreds.AWS(awsAccessKey, awsSecretKey, awsSessionToken, _) =>
         Fragment.const0(
           s"CREDENTIALS = (AWS_KEY_ID = '${awsAccessKey}' AWS_SECRET_KEY = '${awsSecretKey}' AWS_TOKEN = '${awsSessionToken}')"
+        )
+      case LoadAuthMethod.TempCreds.Azure(sasToken, _) =>
+        Fragment.const0(
+          s"CREDENTIALS = (AZURE_SAS_TOKEN = '$sasToken')"
         )
     }
 

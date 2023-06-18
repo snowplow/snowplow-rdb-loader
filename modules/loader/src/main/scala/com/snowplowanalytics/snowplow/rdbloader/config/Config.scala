@@ -330,24 +330,31 @@ object Config {
   /** Post-decoding validation, making sure different parts are consistent */
   def validateConfig(config: Config[StorageTarget]): List[String] =
     List(
-      authMethodValidation(config),
+      authMethodValidation(config.storage.eventsLoadAuthMethod, config.cloud),
+      authMethodValidation(config.storage.foldersLoadAuthMethod, config.cloud),
       targetSnowflakeValidation(config),
       targetRedshiftValidation(config)
     ).flatten
 
-  private def authMethodValidation(config: Config[StorageTarget]): List[String] =
-    config.cloud match {
+  private def authMethodValidation(loadAuthMethod: StorageTarget.LoadAuthMethod, cloud: Config.Cloud): List[String] =
+    cloud match {
       case _: Config.Cloud.GCP =>
-        (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
-          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
           case _ => List("Only 'NoCreds' load auth method is supported with GCP")
         }
-      case _: Config.Cloud.Azure =>
-        (config.storage.foldersLoadAuthMethod, config.storage.eventsLoadAuthMethod) match {
-          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) => Nil
-          case _ => List("Only 'NoCreds' load auth method is supported with Azure")
+      case _: Config.Cloud.AWS =>
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case _: StorageTarget.LoadAuthMethod.TempCreds.AWSTempCreds => Nil
+          case _ => List("Given 'TempCreds' configuration isn't suitable for AWS")
         }
-      case _ => Nil
+      case _: Config.Cloud.Azure =>
+        loadAuthMethod match {
+          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case _: StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds => Nil
+          case _ => List("Given 'TempCreds' configuration isn't suitable for Azure")
+        }
     }
 
   def targetSnowflakeValidation(config: Config[StorageTarget]): List[String] =

@@ -18,7 +18,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 

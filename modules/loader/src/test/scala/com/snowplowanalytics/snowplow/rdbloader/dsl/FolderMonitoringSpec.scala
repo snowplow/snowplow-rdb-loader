@@ -19,8 +19,8 @@ import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.test.{
   Pure,
   PureAWS,

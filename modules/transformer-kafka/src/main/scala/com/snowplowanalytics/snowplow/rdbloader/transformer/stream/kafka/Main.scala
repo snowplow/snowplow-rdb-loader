@@ -50,10 +50,8 @@ object Main extends IOApp {
 
   private def parquetOps: ParquetOps = new ParquetOps {
 
-    override def transformPath(p: String): String = {
-      val parts = AzureBlobStorage.parsePath(p)
-      s"abfss://${parts.containerName}@${parts.storageAccountName}.dfs.${parts.endpointSuffix}"
-    }
+    override def transformPath(p: String): String =
+      AzureBlobStorage.PathParts.parse(p).toParquetPath
 
     override def hadoopConf: Configuration = {
       val hadoopConf = new Configuration()

@@ -25,10 +25,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, RetryingTransaction, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.db.{Manifest, Statement}
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService
-import com.snowplowanalytics.snowplow.rdbloader.cloud.LoadAuthService.LoadAuthMethod
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethod
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry

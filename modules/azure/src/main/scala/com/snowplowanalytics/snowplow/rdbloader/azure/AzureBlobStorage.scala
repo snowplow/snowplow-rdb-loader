@@ -76,7 +76,7 @@ class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBl
       .map(authority => Url(path.scheme, authority, Path(path.extractRelative(input))))
 
   private def createBlobObject(url: Url[AzureBlob]) = {
-    val key = BlobStorage.Key.coerce(s"${path.fullPath}/${url.path.relative}")
+    val key = path.fullPath.withKey(url.path.relative.show)
     BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
   }
 }
@@ -89,7 +89,7 @@ object AzureBlobStorage {
   }
 
   def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, BlobStorage[F]] = {
-    val pathParts = parsePath(path.toString)
+    val pathParts = PathParts.parse(path.toString)
     val client = builder.endpoint(pathParts.root).buildAsyncClient()
     createStore(client).map(new AzureBlobStorage(_, pathParts))
   }
@@ -101,7 +101,7 @@ object AzureBlobStorage {
       .fold(errors => Resource.raiseError(errors.reduce(Throwables.collapsingSemigroup)), Resource.pure)
 
   final case class PathParts(
-    fullPath: String,
+    fullPath: Folder,
     containerName: String,
     storageAccountName: String,
     scheme: String,
@@ -111,19 +111,24 @@ object AzureBlobStorage {
     def extractRelative(p: String): String =
       p.stripPrefix(fullPath)
 
-    def root: String =
-      s"$scheme://$storageAccountName.blob.$endpointSuffix"
+    def root: Folder =
+      Folder.coerce(s"$scheme://$storageAccountName.blob.$endpointSuffix")
+
+    def toParquetPath: Folder =
+      Folder.coerce(s"abfss://$containerName@$storageAccountName.dfs.$endpointSuffix").append(relative)
   }
 
-  def parsePath(path: String): PathParts = {
-    val parts = BlobUrlParts.parse(path)
-    PathParts(
-      fullPath = path,
-      containerName = parts.getBlobContainerName,
-      storageAccountName = parts.getAccountName,
-      scheme = parts.getScheme,
-      endpointSuffix = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
-      relative = parts.getBlobName
-    )
+  object PathParts {
+    def parse(path: String): PathParts = {
+      val parts = BlobUrlParts.parse(path)
+      PathParts(
+        fullPath = Folder.coerce(path),
+        containerName = parts.getBlobContainerName,
+        storageAccountName = parts.getAccountName,
+        scheme = parts.getScheme,
+        endpointSuffix = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
+        relative = parts.getBlobName
+      )
+    }
   }
 }
