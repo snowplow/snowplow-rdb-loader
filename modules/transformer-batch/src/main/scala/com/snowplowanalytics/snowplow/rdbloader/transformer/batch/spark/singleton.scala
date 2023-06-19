@@ -18,12 +18,10 @@ import cats.Id
 import cats.syntax.either._
 import cats.syntax.option._
 import cats.syntax.show._
-
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
-import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
+import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup.idLookupInstance
 import com.snowplowanalytics.iglu.schemaddl.Properties
-
 import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
@@ -31,6 +29,10 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, PropertiesCache, PropertiesKey}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, WiderowFileSink}
+import org.apache.spark.broadcast.Broadcast
+import org.apache.spark.util.SerializableConfiguration
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -127,6 +129,31 @@ object singleton {
                 Map.empty[String, Int]
               }
             instance = Event.parser(atomicLengths)
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object BadrowSinkSingleton {
+    @volatile private var instance: BadrowSink = _
+
+    def get(
+      config: Config,
+      folderName: String,
+      hadoopConfigBroadcasted: Broadcast[SerializableConfiguration]
+    ): BadrowSink = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            val sink = config.output.bad match {
+              case config: BadSink.Kinesis =>
+                KinesisSink.createFrom(config)
+              case BadSink.File =>
+                WiderowFileSink.create(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
+            }
+            instance = sink
           }
         }
       }
