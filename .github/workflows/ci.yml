@@ -38,14 +38,12 @@ jobs:
     needs: test
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
+    container:
+      image: python:2.7.18-buster
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
       - uses: coursier/cache-action@v6
-      - name: Set up Python to 2.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: '2.x'
       - name: Set up JDK 1.8 for batch transformer
         uses: actions/setup-java@v1
         with:
