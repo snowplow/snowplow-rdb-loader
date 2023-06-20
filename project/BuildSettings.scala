@@ -261,6 +261,7 @@ object BuildSettings {
           "com.jcraft.jsch.**" -> "shadejsch.@1"
         ).inProject
       ),
+      assembly / target := file("modules/transformer-batch/target/scala-2.12/assembled-jar"),
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
     ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
   }

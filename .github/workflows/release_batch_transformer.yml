@@ -1,0 +1,218 @@
+name: Release batch transformer 
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  release-batch:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Github
+        uses: actions/checkout@v2
+
+      - uses: coursier/cache-action@v6
+
+      - name: Set up JDK 1.11 for batch transformer
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.11
+          name: build
+
+      - name: Get current SBT version
+        id: ver
+        run: |
+          export PROJECT_VERSION=$(sbt version -Dsbt.log.noformat=true | perl -ne 'print "$1\n" if /info.*(\d+\.\d+\.\d+[^\r\n]*)/' | tail -n 1 | tr -d '\n')
+          echo "::set-output name=project_version::$PROJECT_VERSION"
+
+      - name: Compare SBT version with git tag
+        run: |
+          tag=${GITHUB_REF##*/}
+          project_version=${{ steps.ver.outputs.project_version }}
+          if [[ "${tag}" = "${project_version}" ]]; then
+            echo "Tag version (${tag}) matches project version (${project_version}). Deploying!"
+          else
+            echo "Tag version (${tag}) doesn't match version in scala project (${project_version}). Aborting!"
+            exit 1
+          fi
+
+      - name: Build artifact
+        run: sbt "project transformerBatch" "set test in assembly := {}" assembly
+
+      - name: Set environmental variables
+        id: vars
+        run: |
+          export SOURCE_DIR=modules/transformer-batch/target/scala-2.12/assembled-jar
+          export DEST_DIR=4-storage/transformer-batch
+          echo "::set-output name=source_dir::$SOURCE_DIR"
+          echo "::set-output name=dest_dir::$DEST_DIR"
+
+      - name: Deploy to eu-west-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets
+          AWS_REGION: eu-west-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to us-east-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-us-east-1
+          AWS_REGION: us-east-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to us-west-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-us-west-1
+          AWS_REGION: us-west-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to us-west-2
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-us-west-2
+          AWS_REGION: us-west-2
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to sa-east-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-sa-east-1
+          AWS_REGION: sa-east-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to eu-central-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-eu-central-1
+          AWS_REGION: eu-central-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ap-southeast-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ap-southeast-1
+          AWS_REGION: ap-southeast-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ap-southeast-2
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ap-southeast-2
+          AWS_REGION: ap-southeast-2
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ap-northeast-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ap-northeast-1
+          AWS_REGION: ap-northeast-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ap-south-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ap-south-1
+          AWS_REGION: ap-south-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to us-east-2
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-us-east-2
+          AWS_REGION: us-east-2
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ca-central-1
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ca-central-1
+          AWS_REGION: ca-central-1
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to eu-west-2
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-eu-west-2
+          AWS_REGION: eu-west-2
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Deploy to ap-northeast-2
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --acl public-read --follow-symlinks
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_KEY }}
+          AWS_S3_BUCKET: snowplow-hosted-assets-ap-northeast-2
+          AWS_REGION: ap-northeast-2
+          SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
+          DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
