@@ -32,7 +32,8 @@ object KafkaConsumer {
   def consumer[F[_]: Async](
     bootstrapServers: String,
     topicName: String,
-    consumerConf: Map[String, String]
+    consumerConf: Map[String, String],
+    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
   ): Resource[F, Queue.Consumer[F]] = {
     val consumerSettings =
       ConsumerSettings[F, String, Array[Byte]]
@@ -49,9 +50,13 @@ object KafkaConsumer {
       .evalMap { consumer =>
         consumer.subscribeTo(topicName) *> Async[F].pure {
           new Queue.Consumer[F] {
-            override def read: fs2.Stream[F, Consumer.Message[F]] =
-              consumer.records
-                .map(KafkaMessage(_))
+            override def read: fs2.Stream[F, Consumer.Message[F]] = {
+              val stream = consumer.records.map(KafkaMessage(_))
+              postProcess match {
+                case None => stream
+                case Some(p) => stream.flatMap(p.process(_))
+              }
+            }
           }
         }
       }

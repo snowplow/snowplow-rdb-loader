@@ -188,10 +188,12 @@ object Environment {
               .create[F](c.blobStorageEndpoint.toString, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
           implicit0(blobStorage: BlobStorage[F]) <- AzureBlobStorage.createDefault[F](c.blobStorageEndpoint)
+          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- KafkaConsumer.consumer[F](
                              bootstrapServers = c.messageQueue.bootstrapServers,
                              topicName = c.messageQueue.topicName,
-                             consumerConf = c.messageQueue.consumerConf
+                             consumerConf = c.messageQueue.consumerConf,
+                             postProcess = Some(postProcess)
                            )
           secretStore = SecretStore.noop[F] // TODO implement secret store for Azure
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
