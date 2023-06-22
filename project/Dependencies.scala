@@ -35,6 +35,8 @@ object Dependencies {
     val fs2Kafka         = "3.0.0"
     val secretManager    = "2.7.0"
     val gcpStorage       = "2.16.0"
+    val azureIdentity    = "1.9.0"
+    val azureKeyVault    = "4.6.2"
     val doobie           = "1.0.0-RC2"
     val monocle          = "2.0.3"
     val catsRetry        = "3.1.0"
@@ -107,7 +109,8 @@ object Dependencies {
   val fs2BlobstoreS3    = "com.github.fs2-blobstore"   %% "s3"                                % V.fs2Blobstore
   val fs2BlobstoreGCS   = "com.github.fs2-blobstore"   %% "gcs"                               % V.fs2Blobstore
   val fs2BlobstoreAzure = "com.github.fs2-blobstore"   %% "azure"                             % V.fs2Blobstore
-  val azureIdentity     = "com.azure"                  % "azure-identity"                     % "1.9.0"
+  val azureIdentity     = "com.azure"                  % "azure-identity"                     % V.azureIdentity
+  val azureKeyVault     = "com.azure"                  % "azure-security-keyvault-secrets"    % V.azureKeyVault
   val fs2Cron           = "eu.timepit"                 %% "fs2-cron-cron4s"                   % V.fs2Cron
   val fs2PubSub         = "com.permutive"              %% "fs2-google-pubsub-grpc"            % V.fs2PubSub
   val secretManager     = "com.google.cloud"           % "google-cloud-secretmanager"         % V.secretManager
@@ -215,6 +218,7 @@ object Dependencies {
   val azureDependencies = Seq(
     fs2BlobstoreAzure,
     azureIdentity,
+    azureKeyVault,
     fs2Kafka,
     hadoopCommon,
     hadoopAzure

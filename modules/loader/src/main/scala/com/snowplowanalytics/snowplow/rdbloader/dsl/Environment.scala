@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.Sentry
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue, SecretStore}
 import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
-import com.snowplowanalytics.snowplow.rdbloader.azure.{AzureBlobStorage, KafkaConsumer}
+import com.snowplowanalytics.snowplow.rdbloader.azure.{AzureBlobStorage, AzureKeyVault, KafkaConsumer}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.{AWSAuthService, AzureAuthService, LoadAuthService}
@@ -195,7 +195,7 @@ object Environment {
                              consumerConf = c.messageQueue.consumerConf,
                              postProcess = Some(postProcess)
                            )
-          secretStore = SecretStore.noop[F] // TODO implement secret store for Azure
+          secretStore <- AzureKeyVault.create(c.azureVaultName)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
 

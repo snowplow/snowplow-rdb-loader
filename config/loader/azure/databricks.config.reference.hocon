@@ -14,9 +14,13 @@
   "storage" : {
     # Hostname of Databricks cluster
     "host": "abc.cloud.databricks.com",
-    # DB password 
-    # TODO handle secret store params instead of plaintext
-    "password": "secret" 
+    # DB password
+    "password": {
+      # A password can be placed in Azure Key Vault or be a plain text
+      "secretStore": {
+        "parameterName": "snowplow.databricks.password"
+      }
+    },
     # Optional. Override the Databricks default catalog, e.g. with a Unity catalog name.
     "catalog": "hive_metastore",
     # DB schema

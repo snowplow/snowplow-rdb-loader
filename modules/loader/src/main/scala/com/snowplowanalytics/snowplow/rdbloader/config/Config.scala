@@ -167,7 +167,11 @@ object Config {
       }
     }
 
-    final case class Azure(blobStorageEndpoint: URI, messageQueue: Azure.Kafka) extends Cloud
+    final case class Azure(
+      blobStorageEndpoint: URI,
+      messageQueue: Azure.Kafka,
+      azureVaultName: Option[String]
+    ) extends Cloud
 
     object Azure {
       final case class Kafka(
@@ -332,9 +336,20 @@ object Config {
     List(
       authMethodValidation(config.storage.eventsLoadAuthMethod, config.cloud),
       authMethodValidation(config.storage.foldersLoadAuthMethod, config.cloud),
+      azureVaultCheck(config),
       targetSnowflakeValidation(config),
       targetRedshiftValidation(config)
     ).flatten
+
+  private def azureVaultCheck(config: Config[StorageTarget]): List[String] =
+    config.cloud match {
+      case c: Config.Cloud.Azure if c.azureVaultName.isEmpty =>
+        (config.storage.password, config.storage.sshTunnel.flatMap(_.bastion.key)) match {
+          case (_: StorageTarget.PasswordConfig.EncryptedKey, _) | (_, Some(_)) => List("Azure vault name is needed")
+          case _ => Nil
+        }
+      case _ => Nil
+    }
 
   private def authMethodValidation(loadAuthMethod: StorageTarget.LoadAuthMethod, cloud: Config.Cloud): List[String] =
     cloud match {

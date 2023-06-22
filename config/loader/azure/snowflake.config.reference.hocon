@@ -20,8 +20,12 @@
     # DB user with permissions to load data
     "username": "admin",
     # DB password
-    # TODO handle secret store params instead of plaintext
-    "password": "secret" 
+    "password": {
+      # A password can be placed in Azure Key Vault or be a plain text
+      "secretStore": {
+        "parameterName": "snowplow.snowflake.password"
+      }
+    },
     # Snowflake account
     "account": "acme",
     # A warehouse to use for loading

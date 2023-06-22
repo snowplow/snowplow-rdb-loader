@@ -111,7 +111,8 @@ class ConfigSpec extends Specification {
       )
       val azureConfig = Config.Cloud.Azure(
         URI.create("https://test.blob.core.windows.net/test-container/"),
-        Config.Cloud.Azure.Kafka("test-topic", "127.0.0.1:8080", Map.empty)
+        Config.Cloud.Azure.Kafka("test-topic", "127.0.0.1:8080", Map.empty),
+        None
       )
       val config = exampleConfig
 
