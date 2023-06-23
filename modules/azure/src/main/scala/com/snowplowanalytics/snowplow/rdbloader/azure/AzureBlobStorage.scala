@@ -70,25 +70,25 @@ class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBl
     }
 
   // input path format like 'endpoint/container/blobPath', where 'endpoint' is 'scheme://host'
-  private def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] =
+  protected[azure] def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] =
     Authority
       .parse(path.containerName)
       .map(authority => Url(path.scheme, authority, Path(path.extractRelative(input))))
 
-  private def createBlobObject(url: Url[AzureBlob]) = {
-    val key = path.fullPath.withKey(url.path.relative.show)
+  protected[azure] def createBlobObject(url: Url[AzureBlob]): BlobStorage.BlobObject = {
+    val key = path.root.append(path.containerName).withKey(url.path.relative.show)
     BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
   }
 }
 
 object AzureBlobStorage {
 
-  def createDefault[F[_]: Async](path: URI): Resource[F, BlobStorage[F]] = {
+  def createDefault[F[_]: Async](path: URI): Resource[F, AzureBlobStorage[F]] = {
     val builder = new BlobServiceClientBuilder().credential(new DefaultAzureCredentialBuilder().build)
     create(path, builder)
   }
 
-  def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, BlobStorage[F]] = {
+  def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, AzureBlobStorage[F]] = {
     val pathParts = PathParts.parse(path.toString)
     val client = builder.endpoint(pathParts.root).buildAsyncClient()
     createStore(client).map(new AzureBlobStorage(_, pathParts))
@@ -101,7 +101,6 @@ object AzureBlobStorage {
       .fold(errors => Resource.raiseError(errors.reduce(Throwables.collapsingSemigroup)), Resource.pure)
 
   final case class PathParts(
-    fullPath: Folder,
     containerName: String,
     storageAccountName: String,
     scheme: String,
@@ -109,7 +108,7 @@ object AzureBlobStorage {
     relative: String
   ) {
     def extractRelative(p: String): String =
-      p.stripPrefix(fullPath)
+      p.stripPrefix(root.append(containerName))
 
     def root: Folder =
       Folder.coerce(s"$scheme://$storageAccountName.blob.$endpointSuffix")
@@ -122,12 +121,11 @@ object AzureBlobStorage {
     def parse(path: String): PathParts = {
       val parts = BlobUrlParts.parse(path)
       PathParts(
-        fullPath = Folder.coerce(path),
         containerName = parts.getBlobContainerName,
         storageAccountName = parts.getAccountName,
         scheme = parts.getScheme,
         endpointSuffix = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
-        relative = parts.getBlobName
+        relative = Option(parts.getBlobName).getOrElse("")
       )
     }
   }
