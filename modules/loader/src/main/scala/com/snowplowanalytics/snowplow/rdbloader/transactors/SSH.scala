@@ -42,7 +42,8 @@ object SSH {
     inner: Transactor.Aux[F, A]
   ): Resource[F, Transactor.Aux[F, A]] =
     for {
-      _ <- Resource.eval(configureLogging)
+      dispatcher <- Dispatcher.sequential[F](await = false)
+      _ <- Resource.eval(configureLogging(dispatcher))
       identity <- Resource.eval(getIdentity(config))
       hs <- Hotswap.create[F, Session]
       ref <- Resource.eval(Ref.of[F, Option[Session]](None))
@@ -79,9 +80,9 @@ object SSH {
       }
     }
 
-  def configureLogging[F[_]: Async]: F[Unit] =
-    Dispatcher.parallel[F].use { dispatcher =>
-      Sync[F].delay(JSch.setLogger(new JLogger {
+  def configureLogging[F[_]: Sync](dispatcher: Dispatcher[F]): F[Unit] =
+    Sync[F].delay {
+      JSch.setLogger(new JLogger {
         override def isEnabled(level: Int): Boolean = true
 
         override def log(level: Int, message: String): Unit = dispatcher.unsafeRunSync(level match {
@@ -92,7 +93,7 @@ object SSH {
           case JLogger.FATAL => Logger[F].error("JCsh: " + message)
           case _ => Logger[F].warn("NO LOG LEVEL JCsh: " + message)
         })
-      }))
+      })
     }
 
   /** Convert pure tunnel configuration to configuration with actual key and passphrase */
