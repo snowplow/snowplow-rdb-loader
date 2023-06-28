@@ -37,8 +37,7 @@ class AzureTokenProvider extends CustomTokenProviderAdaptee {
 
   override def getAccessToken: String = {
     val creds = new DefaultAzureCredentialBuilder().build()
-    val request = new TokenRequestContext()
-    request.addScopes("https://" + accountName)
+    val request = new TokenRequestContext().addScopes(s"https://$accountName/.default")
     val token = creds.getToken(request).block()
     this.expiryTime = new Date(token.getExpiresAt.toInstant.toEpochMilli)
     token.getToken
