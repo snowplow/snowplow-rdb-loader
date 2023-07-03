@@ -65,21 +65,23 @@ object GCS {
                              )
                          }
 
-                         override def get(key: Key): F[Either[Throwable, String]] = {
+                         override def getBytes(key: Key): Stream[F, Byte] = {
                            val (bucket, path) = BlobStorage.splitKey(key)
                            Authority
                              .parse(bucket)
                              .fold(
-                               errors => Async[F].delay(new MultipleUrlValidationException(errors).asLeft[String]),
+                               errors => Stream.raiseError[F](new MultipleUrlValidationException(errors)),
                                authority =>
                                  client
                                    .get(Url("gs", authority, Path(path)), 1024)
-                                   .compile
-                                   .to(Array)
-                                   .map(array => new String(array))
-                                   .attempt
                              )
                          }
+
+                         override def get(key: Key): F[Either[Throwable, String]] =
+                           getBytes(key).compile
+                             .to(Array)
+                             .map(array => new String(array))
+                             .attempt
 
                          override def keyExists(key: Key): F[Boolean] = {
                            val (bucket, path) = BlobStorage.splitKey(key)

@@ -21,6 +21,9 @@ object PureAWS {
     def get(path: Key): Pure[Either[Throwable, String]] =
       Pure.pure(Left(new NotImplementedError("Not used in tests")))
 
+    def getBytes(path: Key): Stream[Pure, Byte] =
+      Stream.empty
+
     def keyExists(key: Key): Pure[Boolean] =
       Pure.pure(results.keyExists(key))
   }

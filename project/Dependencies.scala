@@ -80,7 +80,8 @@ object Dependencies {
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
+    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
+    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true)
   )
 
   // Scala (Common)
@@ -125,6 +126,7 @@ object Dependencies {
   val http4sClient      = "org.http4s"                 %% "http4s-blaze-client"               % V.http4sBlaze
   val scalaTracker      = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"       % V.scalaTracker
   val scalaTrackerEmit  = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.scalaTracker
+  val eventGenerator = "com.snowplowanalytics" %% "snowplow-event-generator-core" % "0.4.0" % Test
 
   // Scala (Shredder)
   val eventsManifest    = "com.snowplowanalytics"        %% "snowplow-events-manifest" % V.eventsManifest
@@ -337,7 +339,8 @@ object Dependencies {
   )
 
   val transformerKafkaDependencies = Seq(
-    hadoopAzure
+    hadoopAzure,
+    eventGenerator
   )
 
   val commonStreamTransformerExclusions =

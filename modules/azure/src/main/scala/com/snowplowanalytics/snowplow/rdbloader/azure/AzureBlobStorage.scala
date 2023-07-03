@@ -49,16 +49,18 @@ class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBl
     }
 
   override def get(key: Key): F[Either[Throwable, String]] =
+    getBytes(key).compile
+      .to(Array)
+      .map(array => new String(array))
+      .attempt
+
+  override def getBytes(key: Key): Stream[F, Byte] =
     createStorageUrlFrom(key) match {
       case Valid(url) =>
         store
           .get(url, 1024)
-          .compile
-          .to(Array)
-          .map(array => new String(array))
-          .attempt
       case Invalid(errors) =>
-        Async[F].delay(new MultipleUrlValidationException(errors).asLeft[String])
+        Stream.raiseError[F](new MultipleUrlValidationException(errors))
     }
 
   override def keyExists(key: Key): F[Boolean] =

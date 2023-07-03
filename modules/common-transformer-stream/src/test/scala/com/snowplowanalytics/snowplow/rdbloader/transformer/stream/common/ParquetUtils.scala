@@ -14,8 +14,11 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 
+import cats.effect.IO
 import com.github.mjakubowski84.parquet4s._
+import com.github.mjakubowski84.parquet4s.parquet.fromParquet
 import io.circe.Json
+import com.github.mjakubowski84.parquet4s.{Path => ParquetPath, RowParquetRecord}
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{Path => HadoopPath}
 import org.apache.parquet.column.ColumnDescriptor
@@ -35,15 +38,15 @@ import java.time.temporal.ChronoUnit
 import java.time.{Instant, ZoneOffset}
 import java.util.TimeZone
 import scala.jdk.CollectionConverters._
-
 import fs2.io.file.Path
+
+import scala.annotation.nowarn
 
 object ParquetUtils {
 
   val config = ValueCodecConfiguration(TimeZone.getTimeZone(ZoneOffset.UTC))
 
   def readParquetColumns(path: Path): Map[File, List[ColumnDescriptor]] = {
-    val conf = new Configuration();
     val parquetFileFilter = new FileFilter {
       override def accept(pathname: File): Boolean = pathname.toString.endsWith(".parquet")
     }
@@ -51,13 +54,20 @@ object ParquetUtils {
     new File(path.toString)
       .listFiles(parquetFileFilter)
       .map { parquetFile =>
-        @annotation.nowarn("cat=deprecation")
-        val parquetMetadata = ParquetFileReader.readFooter(conf, new HadoopPath(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
-        val columns = parquetMetadata.getFileMetaData.getSchema.getColumns.asScala.toList
-        (parquetFile, columns)
+        (parquetFile, readFileColumns(parquetFile))
       }
       .toMap
   }
+
+  @nowarn("cat=deprecation")
+  def readFileColumns(parquetFile: File): List[ColumnDescriptor] =
+    ParquetFileReader
+      .readFooter(new Configuration(), new HadoopPath(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
+      .getFileMetaData
+      .getSchema
+      .getColumns
+      .asScala
+      .toList
 
   def extractColumnsFromSchemaString(schema: String) =
     MessageTypeParser
@@ -65,6 +75,18 @@ object ParquetUtils {
       .getColumns
       .asScala
       .toList
+
+  def readParquetRowsAsJsonFrom(path: Path, columns: List[ColumnDescriptor]): IO[List[Json]] =
+    fromParquet[IO]
+      .as[RowParquetRecord]
+      .read(ParquetPath(path.toNioPath.toUri.toString))
+      .map { record =>
+        convertParquetRecordToJson(record, List.empty, columns)
+      }
+      .compile
+      .toList
+      .map(_.sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString)))
+      .map(_.map(_.deepDropNullValues))
 
   def convertParquetRecordToJson(
     record: RowParquetRecord,

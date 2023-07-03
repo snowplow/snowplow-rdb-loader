@@ -50,21 +50,23 @@ object S3 {
                            BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
                          }
 
-                         def get(path: Key): F[Either[Throwable, String]] = {
+                         override def getBytes(path: Key): Stream[F, Byte] = {
                            val (bucketName, keyPath) = BlobStorage.splitKey(path)
                            Authority
                              .parse(bucketName)
                              .fold(
-                               errors => Async[F].delay(new MultipleUrlValidationException(errors).asLeft[String]),
+                               errors => Stream.raiseError[F](new MultipleUrlValidationException(errors)),
                                authority =>
                                  client
                                    .get(Url("s3", authority, Path(keyPath)), 1024)
-                                   .compile
-                                   .to(Array)
-                                   .map(array => new String(array, UTF_8))
-                                   .attempt
                              )
                          }
+
+                         def get(path: Key): F[Either[Throwable, String]] =
+                           getBytes(path).compile
+                             .to(Array)
+                             .map(array => new String(array, UTF_8))
+                             .attempt
 
                          def list(folder: BlobStorage.Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] = {
                            val (bucketName, folderPath) = BlobStorage.splitPath(folder)
