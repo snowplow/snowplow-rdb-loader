@@ -28,6 +28,8 @@ trait BlobStorage[F[_]] {
 
   def get(path: BlobStorage.Key): F[Either[Throwable, String]]
 
+  def getBytes(path: BlobStorage.Key): Stream[F, Byte]
+
   /** Check if blob storage key exist */
   def keyExists(key: BlobStorage.Key): F[Boolean]
 }
@@ -209,6 +211,9 @@ object BlobStorage {
 
     override def get(path: Key): F[Either[Throwable, String]] =
       MonadThrow[F].raiseError(new IllegalArgumentException("noop blobstorage interpreter"))
+
+    override def getBytes(path: Key): Stream[F, Byte] =
+      Stream.empty
 
     override def keyExists(key: Key): F[Boolean] =
       MonadThrow[F].raiseError(new IllegalArgumentException("noop blobstorage interpreter"))

@@ -9,18 +9,13 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.proce
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-
-import fs2.io.file.Path
-
-import com.github.mjakubowski84.parquet4s.{Path => ParquetPath, RowParquetRecord}
-import com.github.mjakubowski84.parquet4s.parquet.fromParquet
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils.readParquetColumns
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{AppId, ParquetUtils}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils.{readParquetColumns, readParquetRowsAsJsonFrom}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowParquetProcessingSpec.{appConfig, igluConfig}
+import fs2.io.file.Path
 import io.circe.syntax.EncoderOps
 import io.circe.{Json, JsonObject}
 import org.apache.parquet.column.ColumnDescriptor
@@ -54,7 +49,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
             expectedParquetColumns <- readParquetColumnsFromResource(
                                         "/processing-spec/4/output/good/parquet/schema"
                                       ) // the same schema as in resource file used in WideRowParquetSpec for batch transformer
-            actualParquetRows <- readParquetRowsFrom(goodPath, expectedParquetColumns)
+            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
             actualParquetColumns = readParquetColumns(goodPath)
             actualBadRows <- readStringRowsFrom(badPath)
 
@@ -90,7 +85,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           for {
             output <- process(inputStream, config)
             expectedParquetColumns <- readParquetColumnsFromResource("/processing-spec/5/output/good/parquet/schema")
-            actualParquetRows <- readParquetRowsFrom(goodPath, expectedParquetColumns)
+            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
             actualParquetColumns = readParquetColumns(goodPath)
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/5/output/good/parquet/completion.json", outputDirectory)
             expectedParquetRows <- readGoodParquetEventsFromResource(
@@ -123,7 +118,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           for {
             output <- process(inputStream, config)
             expectedParquetColumns <- readParquetColumnsFromResource("/processing-spec/6/output/good/parquet/schema")
-            actualParquetRows <- readParquetRowsFrom(goodPath, expectedParquetColumns)
+            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
             actualParquetColumns = readParquetColumns(goodPath)
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/6/output/good/parquet/completion.json", outputDirectory)
             expectedParquetRows <-
@@ -159,7 +154,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
             expectedParquetColumns <- readParquetColumnsFromResource(
                                         "/processing-spec/7/output/good/parquet/schema"
                                       ) // the same schema as in resource file used in WideRowParquetSpec for batch transformer
-            actualParquetRows <- readParquetRowsFrom(goodPath, expectedParquetColumns)
+            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
             actualParquetColumns = readParquetColumns(goodPath)
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/7/output/good/parquet/completion.json", outputDirectory)
           } yield {
@@ -197,18 +192,6 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           .sortBy(_.event_id.toString)
           .map(transformEventForParquetTest(columnToAdjust.getOrElse("none")))
       }
-
-  private def readParquetRowsFrom(path: Path, columns: List[ColumnDescriptor]) =
-    fromParquet[IO]
-      .as[RowParquetRecord]
-      .read(ParquetPath(path.toNioPath.toUri.toString))
-      .map { record =>
-        ParquetUtils.convertParquetRecordToJson(record, List.empty, columns)
-      }
-      .compile
-      .toList
-      .map(_.sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString)))
-      .map(_.map(_.deepDropNullValues))
 
   private def readParquetColumnsFromResource(path: String): IO[List[ColumnDescriptor]] =
     readLinesFromResource(path)

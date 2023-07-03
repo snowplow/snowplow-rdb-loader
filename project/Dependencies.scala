@@ -72,13 +72,15 @@ object Dependencies {
     val catsTesting      = "1.5.0"
     val catsEffectTestkit = "3.4.5"
     val scalaCheck       = "1.17.0"
+    val eventGenerator   = "0.4.0"
 
     val betterMonadicFor = "0.3.1"
   }
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true)
+    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
+    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true)
   )
 
   // Scala (Common)
@@ -184,14 +186,14 @@ object Dependencies {
   val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
 
   // Scala (test only)
-  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2       % Test
-  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"          % V.specs2       % Test
-  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                 % V.scalaCheck   % Test
-  val catsTesting       = "org.typelevel"              %% "cats-effect-testing-specs2"  % V.catsTesting  % Test
-  val catsEffectTestkit = "org.typelevel"              %% "cats-effect-testkit"        % V.catsEffectTestkit  % Test
-  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"           % V.catsEffect   % Test
-  val fs2BlobstoreCore  = "com.github.fs2-blobstore"   %% "core"                       % V.fs2Blobstore % Test
-
+  val specs2            = "org.specs2"                 %% "specs2-core"                   % V.specs2            % Test
+  val specs2ScalaCheck  = "org.specs2"                 %% "specs2-scalacheck"             % V.specs2            % Test
+  val scalaCheck        = "org.scalacheck"             %% "scalacheck"                    % V.scalaCheck        % Test
+  val catsTesting       = "org.typelevel"              %% "cats-effect-testing-specs2"    % V.catsTesting       % Test
+  val catsEffectTestkit = "org.typelevel"              %% "cats-effect-testkit"           % V.catsEffectTestkit % Test
+  val catsEffectLaws    = "org.typelevel"              %% "cats-effect-laws"              % V.catsEffect        % Test
+  val fs2BlobstoreCore  = "com.github.fs2-blobstore"   %% "core"                          % V.fs2Blobstore      % Test
+  val eventGenerator    = "com.snowplowanalytics"      %% "snowplow-event-generator-core" % V.eventGenerator    % Test
 
   // compiler plugins
   val betterMonadicFor = "com.olegpy" %% "better-monadic-for" % V.betterMonadicFor
@@ -342,7 +344,8 @@ object Dependencies {
   )
 
   val transformerKafkaDependencies = Seq(
-    hadoopAzure
+    hadoopAzure,
+    eventGenerator
   )
 
   val commonStreamTransformerExclusions =
