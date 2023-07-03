@@ -76,7 +76,8 @@ class AzureBlobStorageSpec extends Specification {
 
   "createStorageUrlFrom" should {
     "return expected URL" in {
-      AzureBlobStorage.createDefault[IO](URI.create(s"$testContainerPath/path1/path2"))
+      AzureBlobStorage
+        .createDefault[IO](URI.create(s"$testContainerPath/path1/path2"))
         .use { blobStorage =>
           IO.delay {
             blobStorage.createStorageUrlFrom(s"$testContainerPath/path1/path2/path3/path4")
@@ -86,7 +87,8 @@ class AzureBlobStorageSpec extends Specification {
         Valid(Url("https", Authority.unsafe("test-container"), Path.plain("path1/path2/path3/path4")))
       )
 
-      AzureBlobStorage.createDefault[IO](URI.create(s"$testContainerPath"))
+      AzureBlobStorage
+        .createDefault[IO](URI.create(s"$testContainerPath"))
         .use { blobStorage =>
           IO.delay {
             blobStorage.createStorageUrlFrom(s"$testContainerPath/path1/path2/path3/path4")
@@ -100,7 +102,8 @@ class AzureBlobStorageSpec extends Specification {
 
   "createBlobObject" should {
     "create blob object from given url correctly" in {
-      AzureBlobStorage.createDefault[IO](URI.create(s"$testContainerPath/path1/path2"))
+      AzureBlobStorage
+        .createDefault[IO](URI.create(s"$testContainerPath/path1/path2"))
         .use { blobStorage =>
           IO.delay {
             blobStorage.createBlobObject(
@@ -116,10 +119,11 @@ class AzureBlobStorageSpec extends Specification {
           }
         }
         .unsafeRunSync() must beEqualTo(
-          BlobStorage.BlobObject(Key.coerce(s"$testContainerPath/path1/path2/path3/path4"), 0L)
-        )
+        BlobStorage.BlobObject(Key.coerce(s"$testContainerPath/path1/path2/path3/path4"), 0L)
+      )
 
-      AzureBlobStorage.createDefault[IO](URI.create(s"$testContainerPath"))
+      AzureBlobStorage
+        .createDefault[IO](URI.create(s"$testContainerPath"))
         .use { blobStorage =>
           IO.delay {
             blobStorage.createBlobObject(
@@ -135,8 +139,8 @@ class AzureBlobStorageSpec extends Specification {
           }
         }
         .unsafeRunSync() must beEqualTo(
-          BlobStorage.BlobObject(Key.coerce(s"$testContainerPath/path1/path2/path3/path4"), 0L)
-        )
+        BlobStorage.BlobObject(Key.coerce(s"$testContainerPath/path1/path2/path3/path4"), 0L)
+      )
     }
   }
 

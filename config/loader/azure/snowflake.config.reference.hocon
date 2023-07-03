@@ -1,7 +1,11 @@
 {
 
   # Azure Blob Storage endpoint, should contain container with transformer's output
-  "blobStorageEndpoint": "https://accountName.blob.core.windows.net"
+  "blobStorageEndpoint": "https://accountName.blob.core.windows.net/container-name"
+
+  # Name of the Azure Key Vault where application secrets are stored.
+  # Required if secret store is used in storage.password field.
+  "azureVaultName": "azure-vault"
   
   # Kafka topic used by Transformer and Loader to communicate
   "messageQueue": {

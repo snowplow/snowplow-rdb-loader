@@ -14,6 +14,8 @@ package com.snowplowanalytics.snowplow.loader.snowflake
 
 import scala.concurrent.duration._
 
+import java.net.URI
+
 import cats.effect.IO
 import cats.syntax.all._
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
@@ -92,6 +94,52 @@ class ConfigSpec extends Specification {
       result must beRight(expected)
     }
 
+    "be able to parse extended Azure Snowflake Loader config" in {
+      val storage = exampleSnowflake
+        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
+        .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
+        .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
+        .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
+      val result = getConfigFromResource("/loader/azure/snowflake.config.reference.hocon", Config.parseAppConfig[IO])
+      val azureCloud = Config.Cloud.Azure(
+        blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
+        Config.Cloud.Azure.Kafka(
+          topicName = "loaderTopic",
+          bootstrapServers = "localhost:9092",
+          consumerConf = List(
+            "enable.auto.commit" -> "false",
+            "auto.offset.reset" -> "latest",
+            "group.id" -> "loader"
+          ).toMap
+        ),
+        azureVaultName = Some("azure-vault")
+      )
+      val monitoring = exampleMonitoring.copy(
+        snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "snowflake-loader")),
+        folders = exampleMonitoring.folders.map(
+          _.copy(
+            staging = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
+            transformerOutput = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/transformed/")
+          )
+        )
+      )
+      val expected = Config(
+        storage,
+        azureCloud,
+        None,
+        monitoring,
+        exampleRetryQueue,
+        exampleSchedules,
+        exampleTimeouts,
+        exampleRetries,
+        exampleReadyCheck,
+        exampleInitRetries,
+        exampleFeatureFlags,
+        exampleTelemetry
+      )
+      result must beRight(expected)
+    }
+
     "be able to parse minimal AWS Snowflake Loader config" in {
       val result = getConfigFromResource("/loader/aws/snowflake.config.minimal.hocon", testParseConfig)
       val expected = Config(
@@ -130,6 +178,41 @@ class ConfigSpec extends Specification {
             transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
           ),
         gcpCloud,
+        None,
+        defaultMonitoring,
+        None,
+        defaultSchedules,
+        exampleTimeouts,
+        exampleRetries.copy(cumulativeBound = Some(20.minutes)),
+        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleFeatureFlags,
+        defaultTelemetry
+      )
+      result must beRight(expected)
+    }
+
+    "be able to parse minimal Azure Snowflake Loader config" in {
+      val result = getConfigFromResource("/loader/azure/snowflake.config.minimal.hocon", testParseConfig)
+      val azureCloud = Config.Cloud.Azure(
+        blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
+        Config.Cloud.Azure.Kafka(
+          topicName = "loaderTopic",
+          bootstrapServers = "localhost:9092",
+          consumerConf = List(
+            "enable.auto.commit" -> "false",
+            "auto.offset.reset" -> "latest",
+            "group.id" -> "loader"
+          ).toMap
+        ),
+        azureVaultName = None
+      )
+      val expected = Config(
+        exampleSnowflake
+          .copy(
+            transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
+          ),
+        azureCloud,
         None,
         defaultMonitoring,
         None,
