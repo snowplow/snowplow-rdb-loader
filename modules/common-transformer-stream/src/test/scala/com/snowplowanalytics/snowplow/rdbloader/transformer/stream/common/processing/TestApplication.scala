@@ -135,6 +135,9 @@ object TestApplication {
                          override def get(path: Key): F[Either[Throwable, String]] =
                            Concurrent[F].raiseError(new Exception("readKey isn't implemented for blob storage file type"))
 
+                         override def getBytes(path: Key): Stream[F, Byte] =
+                           Stream.empty
+
                          override def keyExists(key: Key): F[Boolean] =
                            Concurrent[F].raiseError(new Exception(s"keyExists isn't implemented for blob storage file type"))
                        }
