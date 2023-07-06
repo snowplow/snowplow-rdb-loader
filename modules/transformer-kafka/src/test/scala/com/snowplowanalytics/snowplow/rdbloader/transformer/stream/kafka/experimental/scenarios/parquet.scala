@@ -1,14 +1,11 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.scenarios
 
-import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.InputBatch.{Content, bad, good}
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.TransformerSpecification.CountExpectations
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.{
-  AppConfiguration,
-  AzureTransformerSpecification,
-  InputBatch
-}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.InputBatch
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.InputBatch.{Content, bad, good}
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.ItUtils._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.{AppConfiguration, AzureTransformerSpecification}
 import io.circe.parser
 
 import scala.concurrent.duration.DurationInt

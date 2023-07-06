@@ -1,12 +1,9 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.scenarios
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.InputBatch.Content
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.TransformerSpecification.CountExpectations
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.{
-  AppConfiguration,
-  AzureTransformerSpecification,
-  InputBatch
-}
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.InputBatch
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.InputBatch.Content
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.ItUtils._
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.{AppConfiguration, AzureTransformerSpecification}
 
 class BadDetailsScenario extends AzureTransformerSpecification {
 

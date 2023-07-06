@@ -253,7 +253,8 @@ object Dependencies {
     scalaTrackerEmit,
     http4sClient,
     slf4jApi,
-    sentry
+    sentry,
+    eventGenerator
   )
 
   val loaderDependencies = Seq(
@@ -339,8 +340,7 @@ object Dependencies {
   )
 
   val transformerKafkaDependencies = Seq(
-    hadoopAzure,
-    eventGenerator
+    hadoopAzure
   )
 
   val commonStreamTransformerExclusions =

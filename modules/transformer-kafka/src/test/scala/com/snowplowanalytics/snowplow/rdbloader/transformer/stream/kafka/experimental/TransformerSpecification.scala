@@ -2,18 +2,18 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experi
 
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
-import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{BlobObject, Folder}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.InputBatch
+import com.snowplowanalytics.snowplow.rdbloader.common.integrationtestutils.ItUtils._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.experimental.TransformerSpecification._
 import fs2.Stream
 import fs2.compression.{Compression => FS2Compression}
-import fs2.concurrent.Signal.SignalOps
-import fs2.concurrent.{Signal, SignallingRef}
+import fs2.concurrent.SignallingRef
 import io.circe.Json
 import org.specs2.matcher.MatchResult
 import org.specs2.mutable.Specification
@@ -21,7 +21,6 @@ import org.specs2.mutable.Specification
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import scala.concurrent.duration.DurationInt
 
 // format: off
 /**
@@ -51,8 +50,6 @@ import scala.concurrent.duration.DurationInt
 
 abstract class TransformerSpecification extends Specification with AppDependencies.Provider {
 
-  private val timeout = 15.minutes
-
   protected def description: String
   protected def inputBatches: List[InputBatch]
   protected def countExpectations: CountExpectations
@@ -67,9 +64,14 @@ abstract class TransformerSpecification extends Specification with AppDependenci
     createDependencies()
       .use { dependencies =>
         for {
-          windowsAccumulator <- SignallingRef.of[IO, WindowsAccumulator](WindowsAccumulator(List.empty))
-          consuming = consumeAllIncomingWindows(dependencies, countExpectations, windowsAccumulator)
-          producing = produceInput(inputBatches, dependencies)
+          windowsAccumulator <- SignallingRef.of[IO, WindowsAccumulator[WindowOutput]](WindowsAccumulator(List.empty))
+          consuming = consumeAllIncomingWindows[WindowOutput](
+                        dependencies.queueConsumer,
+                        countExpectations,
+                        windowsAccumulator,
+                        getWindowOutput = readWindowOutput(dependencies.blobClient)
+                      )
+          producing = produceInput(inputBatches, dependencies.producer)
           _ <- consuming.concurrently(producing).compile.drain
           collectedWindows <- windowsAccumulator.get
         } yield {
@@ -82,35 +84,11 @@ abstract class TransformerSpecification extends Specification with AppDependenci
         }
       }
 
-  private def produceInput(batches: List[InputBatch], dependencies: AppDependencies): Stream[IO, Unit] =
-    Stream.eval {
-      IO.sleep(10.seconds) *> batches.traverse_ { batch =>
-        IO.sleep(batch.delay) *> InputBatch
-          .asTextLines(batch.content)
-          .parTraverse_(dependencies.producer.send)
-      }
-    }
-
-  private def consumeAllIncomingWindows(
-    dependencies: AppDependencies,
-    countExpectations: CountExpectations,
-    windowsAccumulator: SignallingRef[IO, WindowsAccumulator]
-  ): Stream[IO, Unit] =
-    dependencies.queueConsumer.read
-      .map(_.content)
-      .map(parseShreddingCompleteMessage)
-      .evalMap(readWindowOutput(dependencies.blobClient))
-      .evalMap { windowOutput =>
-        windowsAccumulator.update(_.addWindow(windowOutput))
-      }
-      .interruptWhen(allEventsProcessed(windowsAccumulator, countExpectations))
-      .interruptAfter(timeout)
-
   private def assertSingleWindow(output: WindowOutput): MatchResult[Any] = {
-    output.`shredding_complete.json`.compression must beEqualTo(requiredAppConfig.compression)
-    output.`shredding_complete.json`.count.get.good must beEqualTo(output.goodEvents.size)
-    output.`shredding_complete.json`.count.get.bad.get must beEqualTo(output.badEvents.size)
-    output.`shredding_complete.json`.typesInfo must beLike { case TypesInfo.WideRow(fileFormat, _) =>
+    output.shredding_complete.compression must beEqualTo(requiredAppConfig.compression)
+    output.shredding_complete.count.get.good must beEqualTo(output.goodEvents.size)
+    output.shredding_complete.count.get.bad.get must beEqualTo(output.badEvents.size)
+    output.shredding_complete.typesInfo must beLike { case TypesInfo.WideRow(fileFormat, _) =>
       fileFormat must beEqualTo(requiredAppConfig.fileFormat)
     }
   }
@@ -129,20 +107,13 @@ abstract class TransformerSpecification extends Specification with AppDependenci
 
   private def aggregateDataFromAllWindows(windows: List[WindowOutput]): AggregatedData =
     windows.foldLeft(AggregatedData.empty) { case (aggregated, window) =>
-      val windowTypes = window.`shredding_complete.json`.typesInfo.asInstanceOf[TypesInfo.WideRow].types
+      val windowTypes = window.shredding_complete.typesInfo.asInstanceOf[TypesInfo.WideRow].types
       AggregatedData(
         good = window.goodEvents ::: aggregated.good,
         bad = window.badEvents ::: aggregated.bad,
         types = windowTypes ::: aggregated.types
       )
     }
-
-  private def allEventsProcessed(
-    windowsAccumulator: SignallingRef[IO, WindowsAccumulator],
-    countExpectations: CountExpectations
-  ): Signal[IO, Boolean] =
-    windowsAccumulator
-      .map(_.getTotalNumberOfEvents >= countExpectations.total)
 
   private def readWindowOutput(blobClient: BlobStorage[IO])(message: LoaderMessage.ShreddingComplete): IO[WindowOutput] =
     for {
@@ -228,13 +199,6 @@ abstract class TransformerSpecification extends Specification with AppDependenci
       .get(message.base.withKey("shredding_complete.json"))
       .map(value => parseShreddingCompleteMessage(value.right.get))
 
-  private def parseShreddingCompleteMessage(message: String): LoaderMessage.ShreddingComplete =
-    LoaderMessage
-      .fromString(message)
-      .right
-      .get
-      .asInstanceOf[LoaderMessage.ShreddingComplete]
-
 }
 
 object TransformerSpecification {
@@ -243,29 +207,13 @@ object TransformerSpecification {
   type DataRow = Json
   type DataAssertion = AggregatedData => MatchResult[Any]
 
-  final case class CountExpectations(good: Int, bad: Int) {
-    def total = good + bad
-  }
-
-  final case class WindowsAccumulator(value: List[WindowOutput]) {
-    def addWindow(window: WindowOutput): WindowsAccumulator =
-      WindowsAccumulator(value :+ window)
-
-    def getTotalNumberOfEvents: Long =
-      value.map { window =>
-        val good = window.`shredding_complete.json`.count.map(_.good).getOrElse(0L)
-        val bad = window.`shredding_complete.json`.count.flatMap(_.bad).getOrElse(0L)
-        good + bad
-      }.sum
-  }
-
   final case class WindowOutput(
     appId: String,
     producedAt: LocalDateTime,
-    `shredding_complete.json`: LoaderMessage.ShreddingComplete,
+    shredding_complete: LoaderMessage.ShreddingComplete,
     goodEvents: List[DataRow],
     badEvents: List[DataRow]
-  )
+  ) extends GetShreddingComplete
 
   final case class AggregatedData(
     good: List[DataRow],
