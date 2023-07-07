@@ -21,7 +21,6 @@ import io.circe._
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
 
-import doobie.free.connection.setAutoCommit
 import doobie.util.transactor.Strategy
 
 import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
@@ -40,13 +39,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def doobieCommitStrategy(timeouts: Config.Timeouts): Strategy = Transaction.defaultStrategy(timeouts)
-
-  /**
-   * Surprisingly, for statements disallowed in transaction block we need to set autocommit
-   * @see
-   *   https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
-   */
-  def doobieNoCommitStrategy: Strategy = Strategy.void.copy(before = setAutoCommit(true), always = setAutoCommit(false))
+  def doobieNoCommitStrategy: Strategy = Transaction.defaultNoCommitStrategy
   def driver: String
   def withAutoCommit: Boolean = false
   def connectionUrl: String

@@ -20,12 +20,14 @@ import cats.effect.{Async, Resource, Sync}
 import cats.effect.kernel.Spawn
 import cats.effect.std.Dispatcher
 import doobie._
-import doobie.free.connection.{isValid => cxnIsValid, unit => cxnUnit}
+import doobie.free.connection.{isValid => cxnIsValid, setAutoCommit, unit => cxnUnit}
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
 import com.zaxxer.hikari.HikariConfig
 import retry.Sleep
+
+import java.sql.SQLException
 
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.transactors.{RetryingTransactor, SSH}
@@ -153,6 +155,19 @@ object Transaction {
       HPS.setQueryTimeout(commitTimeout).flatMap(_ => HPS.executeUpdate)
     }.void
     Strategy.default.copy(after = commit, oops = rollback)
+  }
+
+  /**
+   * Surprisingly, for statements disallowed in transaction block we need to set autocommit
+   * @see
+   *   https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
+   */
+  def defaultNoCommitStrategy: Strategy = {
+    val alwaysAfter = setAutoCommit(false).recoverWith {
+      case e: SQLException if e.getMessage === "Connection is closed" =>
+        ().pure[ConnectionIO]
+    }
+    Strategy.void.copy(before = setAutoCommit(true), always = alwaysAfter)
   }
 
   /** Real-world (opposed to dry-run) interpreter */
