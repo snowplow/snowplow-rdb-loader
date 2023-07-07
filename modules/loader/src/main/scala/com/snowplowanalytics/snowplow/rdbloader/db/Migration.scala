@@ -262,11 +262,14 @@ object Migration {
           migration.addInTransaction(inAction)
 
         case (migration, b @ Block(pre, Nil, Entity.Table(_, _))) =>
+          // Uses two-step pre-transaction, because first step can result in a closed connection if
+          // we catch and ignore an exception
           val preAction = Logging[F].info(s"Migrating ${b.getName} (pre-transaction)") *>
-            pre.traverse_(item => DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading).void) *>
+            pre.traverse_(item => DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading).void)
+          val commentAction =
             DAO[F].executeUpdate(b.getCommentOn, DAO.Purpose.NonLoading).void *>
-            Logging[F].info(s"${b.getName} migration completed")
-          migration.addPreTransaction(preAction)
+              Logging[F].info(s"${b.getName} migration completed")
+          migration.addPreTransaction(preAction).addPreTransaction(commentAction)
 
         case (migration, Block(pre, Nil, column)) =>
           val preAction = preMigration[F](shouldAdd, column, pre)
