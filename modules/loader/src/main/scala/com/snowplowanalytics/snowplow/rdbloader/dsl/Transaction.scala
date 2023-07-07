@@ -20,7 +20,7 @@ import cats.effect.{Async, Resource, Sync}
 import cats.effect.kernel.Spawn
 import cats.effect.std.Dispatcher
 import doobie._
-import doobie.free.connection.{isValid => cxnIsValid, unit => cxnUnit}
+import doobie.free.connection.{isValid => cxnIsValid, setAutoCommit, unit => cxnUnit}
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
@@ -155,6 +155,22 @@ object Transaction {
     Strategy.default.copy(after = commit, oops = rollback)
   }
 
+  /**
+   * Surprisingly, for statements disallowed in transaction block we need to set autocommit
+   * @see
+   *   https://awsbytes.com/alter-table-alter-column-cannot-run-inside-a-transaction-block/
+   */
+  def defaultNoCommitStrategy(timeouts: Config.Timeouts): Strategy = {
+    val isValidTimeout = timeouts.connectionIsValid.toSeconds.toInt
+    val unsetAutoCommit = cxnIsValid(isValidTimeout).flatMap {
+      case true =>
+        setAutoCommit(false)
+      case false =>
+        cxnUnit
+    }
+    Strategy.void.copy(before = setAutoCommit(true), always = unsetAutoCommit)
+  }
+
   /** Real-world (opposed to dry-run) interpreter */
   def jdbcRealInterpreter[F[_]: Async: Dispatcher: Spawn](
     target: StorageTarget,
@@ -163,7 +179,7 @@ object Transaction {
   ): Transaction[F, ConnectionIO] = {
 
     val NoCommitTransactor: Transactor[F] =
-      conn.copy(strategy0 = target.doobieNoCommitStrategy)
+      conn.copy(strategy0 = target.doobieNoCommitStrategy(timeouts))
 
     val DefaultTransactor: Transactor[F] =
       conn.copy(strategy0 = target.doobieCommitStrategy(timeouts))

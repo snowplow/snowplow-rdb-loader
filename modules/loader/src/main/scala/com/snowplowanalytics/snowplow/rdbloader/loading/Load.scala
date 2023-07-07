@@ -96,10 +96,7 @@ object Load {
     for {
       _ <- TargetCheck.prepareTarget[F, C]
       migrations <- Migration.build[F, C, I](discovery.discovery, target)
-      _ <- Transaction[F, C].run {
-             getPreTransaction[C](setStage, migrations.preTransaction)
-               .onError { case _: Throwable => incrementAttempt }
-           }
+      _ <- getPreTransactions(setStage, migrations.preTransaction, incrementAttempt).traverse_(Transaction[F, C].run(_))
       result <- Transaction[F, C].transact {
                   getTransaction[C, I](setStage, discovery, initQueryResult, target)(migrations.inTransaction)
                     .onError { case _: Throwable => incrementAttempt }
@@ -158,22 +155,31 @@ object Load {
     } yield result
 
   val awsColumnResizeError: String =
-    raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different; - SqlState: 0A000"""
+    raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different;"""
 
-  def getPreTransaction[C[_]: Logging: MonadThrow: DAO](
+  // It is important we return a _list_ of C[Unit] so that each migration step can be transacted indepdendently.
+  // Otherwise, Hikari will not let us catch/handle/ignore the exceptions we encounter along the way.
+  def getPreTransactions[C[_]: Logging: MonadThrow: DAO](
     setStage: Stage => C[Unit],
-    preTransactionMigrations: List[C[Unit]]
-  ): C[Unit] = for {
-    _ <- setStage(Stage.MigrationPre)
-    _ <- preTransactionMigrations.map { io =>
-           io.recoverWith {
-             // If premigration was successful, but migration failed. It would leave the columns resized.
-             // This recovery makes it so resizing error would be ignored.
-             // Note: AWS will return 500310 error code other SQL errors (i.e. COPY errors), don't use for pattern matching.
-             case e if e.getMessage.matches(awsColumnResizeError) => ().pure[C]
-           }
-         }.sequence_
-  } yield ()
+    preTransactionMigrations: List[C[Unit]],
+    incrementAttempt: C[Unit]
+  ): List[C[Unit]] =
+    preTransactionMigrations.map { io =>
+      setStage(Stage.MigrationPre) *>
+        io
+          .recoverWith {
+            // If premigration was successful, but migration failed. It would leave the columns resized.
+            // This recovery makes it so resizing error would be ignored.
+            // Note: AWS will return 500310 error code other SQL errors (i.e. COPY errors), don't use
+            // for pattern matching.
+            //
+            // Note2: After receiving this exception, Hikari will raise another exception if we try
+            // to use the same connection again.
+            case e if e.getMessage.matches(awsColumnResizeError) =>
+              ().pure[C]
+          }
+          .onError { case _: Throwable => incrementAttempt }
+    }
 
   /**
    * Run loading actions for atomic and shredded data

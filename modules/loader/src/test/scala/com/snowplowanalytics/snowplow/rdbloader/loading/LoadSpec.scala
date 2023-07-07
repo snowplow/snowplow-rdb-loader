@@ -66,7 +66,6 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
-        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -112,7 +111,6 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
-        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -145,7 +143,6 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
-        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
@@ -184,8 +181,6 @@ class LoadSpec extends Specification {
         LogEntry.Sql(Statement.ReadyCheck),
         LogEntry.Message("TICK REALTIME"),
         PureTransaction.NoTransactionMessage, // Migration.build
-        LogEntry.Message("TICK REALTIME"),
-        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
         LogEntry.Message("TICK REALTIME"),
         PureTransaction.StartMessage,
@@ -257,7 +252,6 @@ class LoadSpec extends Specification {
         PureTransaction.NoTransactionMessage,
         LogEntry.Sql(Statement.ReadyCheck),
         PureTransaction.NoTransactionMessage, // Migration.build
-        PureTransaction.NoTransactionMessage, // setStage and migrations.preTransactions
 
         PureTransaction.StartMessage,
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
