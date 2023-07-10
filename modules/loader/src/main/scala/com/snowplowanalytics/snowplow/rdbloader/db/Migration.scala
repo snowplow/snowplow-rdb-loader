@@ -184,11 +184,7 @@ object Migration {
     description match {
       case Description.Table(schemas) =>
         val schemaKeysWithModels = foldMapMergeRedshiftSchemas(schemas)
-
-        val goodModel = schemaKeysWithModels.values.collectFirst { case model: ShredModel.GoodModel =>
-          model
-        }.get
-
+        val goodModel = schemaKeysWithModels.goodModel
         val goodTableName = goodModel.tableName
 
         val optUpdateGoodTable: F[Option[Block]] =
@@ -199,11 +195,7 @@ object Migration {
                      else Monad[F].pure(target.updateTable(goodModel, schemaKeyInTable).some)
           } yield block
 
-        val createMissingRecoveryTables: F[List[Block]] = schemaKeysWithModels.values
-          .collect { case model: ShredModel.RecoveryModel =>
-            model
-          }
-          .toList
+        val createMissingRecoveryTables: F[List[Block]] = schemaKeysWithModels.recoveryModels.values.toList
           .traverseFilter(rm =>
             Control.tableExists[F](rm.tableName).ifM(Applicative[F].pure(Option.empty[RecoveryModel]), Applicative[F].pure(rm.some))
           )
