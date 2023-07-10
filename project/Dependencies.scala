@@ -52,6 +52,7 @@ object Dependencies {
     val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
     val jsonSmart        = "2.4.9" // Fix CVE
+    val snappyJava       = "1.1.10.1" // Fix CVE
     val commonsText      = "1.10.0" // Fix CVE
     val ivy              = "2.5.1" // Fix CVE
 
@@ -140,6 +141,7 @@ object Dependencies {
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
   val hadoopGcp         = "com.google.cloud.bigdataoss"      % "gcs-connector"             % V.hadoopGcpClient % Runtime
   val jsonSmart         = "net.minidev"                      % "json-smart"                % V.jsonSmart
+  val snappyJava        = "org.xerial.snappy"                % "snappy-java"               % V.snappyJava
   val kinesisClient     = ("software.amazon.kinesis"         %  "amazon-kinesis-client"    % V.kinesisClient)
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
@@ -304,6 +306,7 @@ object Dependencies {
     hadoop,
     parquetHadoop,
     jsonSmart,
+    snappyJava,
     specs2,
     specs2ScalaCheck,
     scalaCheck,
