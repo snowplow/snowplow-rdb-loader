@@ -59,7 +59,7 @@ object Redshift {
             val inTransactions = shredModel.migrations.inTransaction(Some(currentSchemaKey), Some(highestSchemaKey))
             val outTransactionToSql =
               outTransactions.map { varcharExtension =>
-                sql"""ALTER TABLE $schema.${shredModel.tableName}
+                s"""ALTER TABLE $schema.${shredModel.tableName}
                  |    ALTER COLUMN "${varcharExtension.old.columnName}" TYPE ${varcharExtension.newEntry.columnType.show}
                  |""".stripMargin
               }
@@ -69,21 +69,21 @@ object Redshift {
                    |    ADD COLUMN "${columnAddition.column.columnName}" ${columnAddition.column.columnType.show} ${columnAddition.column.compressionEncoding.show};
                    |""".stripMargin
               } match {
-                case Nil => sql"""|
+                case Nil => s"""|
                                 |-- NO ADDED COLUMNS CAN BE EXPRESSED IN SQL MIGRATION
                                 |
                                 |COMMENT ON TABLE $schema.${shredModel.tableName} IS '${shredModel.schemaKey.toSchemaUri}';
                                 |""".stripMargin
-                case h :: t => sql"""|
+                case h :: t => s"""|
                                    |${(h :: t).mkString}
                                    |  COMMENT ON TABLE $schema.${shredModel.tableName} IS '${shredModel.schemaKey.toSchemaUri}';
                                    |  """.stripMargin
               }
             val preTransaction =
-              if (outTransactions.nonEmpty) outTransactionToSql.map(Item.AlterColumn)
+              if (outTransactions.nonEmpty) outTransactionToSql.map(s => Item.AlterColumn(Fragment.const0(s)))
               else Nil
             val inTransaction =
-              if (inTransactions.nonEmpty) Item.AddColumn(inTransactionToSql, Nil) :: Nil
+              if (inTransactions.nonEmpty) Item.AddColumn(Fragment.const0(inTransactionToSql), Nil) :: Nil
               else Nil
 
             Block(preTransaction, inTransaction, Entity.Table(schema, shredModel.schemaKey, shredModel.tableName))
