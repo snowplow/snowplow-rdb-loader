@@ -55,34 +55,31 @@ object Redshift {
             val inTransactions = shredModel.migrations.inTransaction(Some(currentSchemaKey))
             val outTransactionToSql =
               outTransactions.map { varcharExtension =>
-                s"""  ALTER TABLE $schema.${shredModel.tableName}
-                 |    ALTER COLUMN "${varcharExtension.old.columnName}" TYPE ${varcharExtension.newEntry.columnType.show};
+                sql"""ALTER TABLE $schema.${shredModel.tableName}
+                 |    ALTER COLUMN "${varcharExtension.old.columnName}" TYPE ${varcharExtension.newEntry.columnType.show}
                  |""".stripMargin
-              }.mkString
+              }
             val inTransactionToSql =
               inTransactions.map { columnAddition =>
                 s"""  ALTER TABLE $schema.${shredModel.tableName}
                    |    ADD COLUMN "${columnAddition.column.columnName}" ${columnAddition.column.columnType.show} ${columnAddition.column.compressionEncoding.show};
                    |""".stripMargin
               } match {
-                case Nil => s"""|
+                case Nil => sql"""|
                                 |-- NO ADDED COLUMNS CAN BE EXPRESSED IN SQL MIGRATION
                                 |
                                 |COMMENT ON TABLE $schema.${shredModel.tableName} IS '${shredModel.schemaKey.toSchemaUri}';
                                 |""".stripMargin
-                case h :: t => s"""|
-                                  |BEGIN TRANSACTION;
-                                   |
+                case h :: t => sql"""|
                                    |${(h :: t).mkString}
                                    |  COMMENT ON TABLE $schema.${shredModel.tableName} IS '${shredModel.schemaKey.toSchemaUri}';
-                                   |
-                                   |END TRANSACTION;""".stripMargin
+                                   |  """.stripMargin
               }
             val preTransaction =
-              if (outTransactions.nonEmpty) Item.AlterColumn(Fragment.const0(outTransactionToSql)) :: Nil
+              if (outTransactions.nonEmpty) outTransactionToSql.map(Item.AlterColumn)
               else Nil
             val inTransaction =
-              if (inTransactions.nonEmpty) Item.AddColumn(Fragment.const0(inTransactionToSql), Nil) :: Nil
+              if (inTransactions.nonEmpty) Item.AddColumn(inTransactionToSql, Nil) :: Nil
               else Nil
 
             Block(preTransaction, inTransaction, Entity.Table(schema, shredModel.schemaKey, shredModel.tableName))
