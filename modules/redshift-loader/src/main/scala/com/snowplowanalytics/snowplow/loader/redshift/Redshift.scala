@@ -64,9 +64,10 @@ object Redshift {
                  |""".stripMargin
               }
             val inTransactionToSql =
-              if (inTransactions.isEmpty)
+              if (inTransactions.isEmpty) {
+                // No added columns can be expressed in SQL migration
                 s"COMMENT ON TABLE $schema.${shredModel.tableName} IS '${shredModel.schemaKey.toSchemaUri}'" :: Nil
-              else {
+              } else {
                 inTransactions.map { columnAddition =>
                   s"""ALTER TABLE $schema.${shredModel.tableName}
                      |    ADD COLUMN "${columnAddition.column.columnName}" ${columnAddition.column.columnType.show} ${columnAddition.column.compressionEncoding.show}
