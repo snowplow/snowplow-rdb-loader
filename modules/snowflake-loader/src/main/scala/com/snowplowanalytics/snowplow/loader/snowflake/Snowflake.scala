@@ -54,7 +54,7 @@ object Snowflake {
 
           override val requiresEventsColumns: Boolean = false
 
-          def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block = {
+          def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey, highestSchemaKey: SchemaKey): Block = {
             val entity = Entity.Table(schema, currentSchemaKey, shredModel.tableName)
             Block(Nil, Nil, entity)
           }

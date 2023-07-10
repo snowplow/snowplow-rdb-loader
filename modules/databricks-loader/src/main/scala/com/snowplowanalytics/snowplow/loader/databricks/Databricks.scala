@@ -42,7 +42,7 @@ object Databricks {
 
           override val requiresEventsColumns: Boolean = true
 
-          override def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block =
+          override def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey, highestSchemaKey: SchemaKey): Block =
             Block(Nil, Nil, Entity.Table(tgt.schema, currentSchemaKey, shredModel.tableName))
 
           override def extendTable(info: ShreddedType.Info): List[Block] = List.empty

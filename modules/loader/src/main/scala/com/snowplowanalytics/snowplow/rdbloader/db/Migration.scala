@@ -186,13 +186,14 @@ object Migration {
         val schemaKeysWithModels = foldMapMergeRedshiftSchemas(schemas)
         val goodModel = schemaKeysWithModels.goodModel
         val goodTableName = goodModel.tableName
+        val highestSchemaKey = schemas.last.self.schemaKey
 
         val optUpdateGoodTable: F[Option[Block]] =
           for {
             schemaKeyInTable <- getVersion[F](goodTableName)
             matches = goodModel.schemaKey == schemaKeyInTable
             block <- if (matches) Monad[F].pure(None)
-                     else Monad[F].pure(target.updateTable(goodModel, schemaKeyInTable).some)
+                     else Monad[F].pure(target.updateTable(goodModel, schemaKeyInTable, highestSchemaKey).some)
           } yield block
 
         val createMissingRecoveryTables: F[List[Block]] = schemaKeysWithModels.recoveryModels.values.toList

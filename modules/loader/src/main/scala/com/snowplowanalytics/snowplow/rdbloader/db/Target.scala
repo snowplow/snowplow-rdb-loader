@@ -57,7 +57,7 @@ trait Target[I] {
   def getEventTable: Statement
 
   /** Generate a DB-specification migration Block for updating a *separate* table */
-  def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block
+  def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey, highestSchemaKey: SchemaKey): Block
 
   /** Create a table with columns dervived from list of Iglu schemas */
   def createTable(shredModel: ShredModel): Block

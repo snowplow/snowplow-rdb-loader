@@ -50,9 +50,13 @@ object Redshift {
 
           override val requiresEventsColumns: Boolean = false
 
-          override def updateTable(shredModel: ShredModel.GoodModel, currentSchemaKey: SchemaKey): Block = {
-            val outTransactions = shredModel.migrations.outTransaction(Some(currentSchemaKey))
-            val inTransactions = shredModel.migrations.inTransaction(Some(currentSchemaKey))
+          override def updateTable(
+            shredModel: ShredModel.GoodModel,
+            currentSchemaKey: SchemaKey,
+            highestSchemaKey: SchemaKey
+          ): Block = {
+            val outTransactions = shredModel.migrations.outTransaction(Some(currentSchemaKey), Some(highestSchemaKey))
+            val inTransactions = shredModel.migrations.inTransaction(Some(currentSchemaKey), Some(highestSchemaKey))
             val outTransactionToSql =
               outTransactions.map { varcharExtension =>
                 sql"""ALTER TABLE $schema.${shredModel.tableName}
