@@ -223,7 +223,7 @@ object Migration {
           migration.addPreTransaction(action)
 
         case (migration, b @ Block(pre, in, entity)) if pre.nonEmpty && in.nonEmpty =>
-          val preActions = preMigration[F](shouldAdd, entity, pre)
+          val preActions = preMigrations[F](shouldAdd, entity, pre)
           val inAction = Logging[F].info(s"Migrating ${b.getName} (in-transaction)") *>
             in.traverse_(item => DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading)) *>
             DAO[F].executeUpdate(b.getCommentOn, DAO.Purpose.NonLoading) *>
@@ -247,7 +247,7 @@ object Migration {
 
         case (migration, b @ Block(pre, Nil, Entity.Table(_, _, _))) =>
           val preActions = pre.map { item =>
-            Logging[F].info(show"Migrating ${b.getName} $item (pre-transaction)") *>
+            Logging[F].info(s"Migrating ${b.getName} $item (pre-transaction)") *>
             DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading).void
           }
           val commentAction =
@@ -257,8 +257,8 @@ object Migration {
             .addPreTransaction(commentAction)
 
         case (migration, Block(pre, Nil, column)) =>
-          val preAction = preMigration[F](shouldAdd, column, pre)
-          migration.addPreTransaction(preAction)
+          val preActions = preMigrations[F](shouldAdd, column, pre)
+          preActions.foldLeft(migration)(_.addPreTransaction(_))
       }
     }
 
@@ -269,7 +269,7 @@ object Migration {
   ): List[F[Unit]] =
     if (shouldAdd(entity))
       items.map { item =>
-        Logging[F].info(show"Migrating ${entity.getName} $item (pre-transaction)") *>
+        Logging[F].info(s"Migrating ${entity.getName} $item (pre-transaction)") *>
         DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading).void
       }
     else List(Monad[F].unit)
