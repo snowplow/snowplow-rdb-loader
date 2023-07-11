@@ -197,13 +197,15 @@ object Databricks {
                   OPTIMIZE ${Fragment.const0(qualify(Manifest.Name))}
                   ZORDER BY base"""
               case Statement.CreateDbSchema =>
-                val schema = tgt.catalog.map(c => s"$c.${tgt.schema}").getOrElse(tgt.schema)
-                sql"""CREATE SCHEMA IF NOT EXISTS ${Fragment.const0(schema)}"""
+                sql"""CREATE SCHEMA IF NOT EXISTS ${Fragment.const0(qualifySchemaName)}"""
             }
 
-          private def qualify(tableName: String): String = tgt.catalog match {
-            case Some(catalog) => s"${catalog}.${tgt.schema}.$tableName"
-            case None => s"${tgt.schema}.$tableName"
+          private def qualify(tableName: String): String =
+            s"$qualifySchemaName.$tableName"
+
+          private def qualifySchemaName: String = tgt.catalog match {
+            case Some(c) => s"`$c`.${tgt.schema}"
+            case None => s"${tgt.schema}"
           }
         }
         Right(result)

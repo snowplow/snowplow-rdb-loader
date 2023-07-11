@@ -154,6 +154,37 @@ class DatabricksSpec extends Specification {
         )
       }
     }
+
+    "surround catalog name with backquotes" in {
+      val toCopy = ColumnsToCopy(
+        List(
+          ColumnName("app_id"),
+          ColumnName("unstruct_event_com_acme_aaa_1"),
+          ColumnName("contexts_com_acme_xxx_1")
+        )
+      )
+      val toSkip = ColumnsToSkip(List())
+      val statement =
+        Statement.EventsCopy(
+          baseFolder,
+          Compression.Gzip,
+          toCopy,
+          toSkip,
+          TypesInfo.WideRow(PARQUET, List.empty),
+          LoadAuthMethod.NoCreds,
+          ()
+        )
+
+      val testTarget = Databricks
+        .build(targetConfig.copy(storage = targetConfig.storage.copy(catalog = Some("test_catalog"))))
+        .right
+        .get
+      testTarget.toFragment(statement).toString must beLike { case sql =>
+        sql must contain(
+          "COPY INTO `test_catalog`.snowplow.events"
+        )
+      }
+    }
   }
 }
 
@@ -162,38 +193,38 @@ object DatabricksSpec {
   val baseFolder: BlobStorage.Folder =
     BlobStorage.Folder.coerce("s3://somewhere/path")
 
+  val targetConfig: Config[StorageTarget.Databricks] = Config(
+    StorageTarget.Databricks(
+      "host",
+      None,
+      "snowplow",
+      443,
+      "some/path",
+      StorageTarget.PasswordConfig.PlainText("xxx"),
+      None,
+      "useragent",
+      StorageTarget.LoadAuthMethod.NoCreds,
+      2.days,
+      logLevel = 3
+    ),
+    Config.Cloud.AWS(
+      Region("eu-central-1"),
+      Config.Cloud.AWS.SQS("my-queue.fifo", Some(Region("eu-central-1")))
+    ),
+    None,
+    Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
+    None,
+    Config.Schedules(Nil),
+    Config.Timeouts(1.minute, 1.minute, 1.minute, 1.minute, 30.seconds),
+    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+    Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
+    Config.FeatureFlags(addLoadTstampColumn = true),
+    exampleTelemetry
+  )
+
   val target: Target[Unit] = Databricks
-    .build(
-      Config(
-        StorageTarget.Databricks(
-          "host",
-          None,
-          "snowplow",
-          443,
-          "some/path",
-          StorageTarget.PasswordConfig.PlainText("xxx"),
-          None,
-          "useragent",
-          StorageTarget.LoadAuthMethod.NoCreds,
-          2.days,
-          logLevel = 3
-        ),
-        Config.Cloud.AWS(
-          Region("eu-central-1"),
-          Config.Cloud.AWS.SQS("my-queue.fifo", Some(Region("eu-central-1")))
-        ),
-        None,
-        Config.Monitoring(None, None, Config.Metrics(None, None, 1.minute), None, None, None),
-        None,
-        Config.Schedules(Nil),
-        Config.Timeouts(1.minute, 1.minute, 1.minute, 1.minute, 30.seconds),
-        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-        Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-        Config.FeatureFlags(addLoadTstampColumn = true),
-        exampleTelemetry
-      )
-    )
+    .build(targetConfig)
     .right
     .get
 
