@@ -1,3 +1,10 @@
+Version 5.6.3 (2023-07-12)
+--------------------------
+Databricks Loader: allow any character in catalog name (#1288)
+Bump nimbus-jose-jwt to 9.31 (#1291)
+Bump snappy-java to 1.1.10.1 (#1291)
+Bump json-smart to 2.4.9 (#1291)
+
 Version 5.6.2 (2023-07-10)
 --------------------------
 Fix pattern matching on known exception for alter table failures (#1283)
