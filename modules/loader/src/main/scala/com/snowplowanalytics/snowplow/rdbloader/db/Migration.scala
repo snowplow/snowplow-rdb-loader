@@ -206,7 +206,7 @@ object Migration {
           .tableExists[F](goodTableName)
           .ifM(createMissingRecoveryTables, createMissingRecoveryTables.map(_.::(target.createTable(goodModel))))
 
-        createTables.flatMap(blocks => optUpdateGoodTable.map(_.fold(blocks)(blocks :+ _)))
+        optUpdateGoodTable.flatMap(_.fold(createTables)(ugt => createTables.map(_ :+ ugt)))
 
       case Description.WideRow(info) =>
         Monad[F].pure(target.extendTable(info))
