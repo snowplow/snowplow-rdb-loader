@@ -8,7 +8,8 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
 import cats.Id
-import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.{Client, Resolver}
+import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
@@ -42,8 +43,6 @@ import io.circe.parser.{parse => parseCirce}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse}
 
-import com.snowplowanalytics.iglu.core.SelfDescribingData
-import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
@@ -390,6 +389,7 @@ object ShredJobSpec {
     json"""{
       "schema": "iglu:com.snowplowanalytics.snowplow.storage/amazon_dynamodb_config/jsonschema/2-0-0",
       "data": {
+        "id": "72512e4c-d52e-4f41-abc2-87e341d8c49a",
         "name": "local",
         "auth": null,
         "awsRegion": $dynamodbDuplicateStorageRegion,
@@ -478,17 +478,12 @@ trait ShredJobSpec extends SparkSpec {
       storageConfig(shredder, tsv, jsonSchemas, wideRow)
     )
 
-    val (dedupeConfigCli, dedupeConfig) = if (crossBatchDedupe) {
+    val dedupeConfigCli = if (crossBatchDedupe) {
       val encoder = Base64.getUrlEncoder
       val encoded = new String(encoder.encode(duplicateStorageConfig.noSpaces.getBytes()))
-      val config = SelfDescribingData
-        .parse(duplicateStorageConfig)
-        .leftMap(_.code)
-        .flatMap(EventsManifestConfig.DynamoDb.extract)
-        .valueOr(e => throw new RuntimeException(e))
-      (Array("--duplicate-storage-config", encoded), Some(config))
+      Array("--duplicate-storage-config", encoded)
     } else {
-      (Array.empty[String], None)
+      Array.empty[String]
     }
 
     CliConfig.loadConfigFrom("snowplow-rdb-shredder", "Test specification for RDB Shrederr")(config ++ dedupeConfigCli) match {
@@ -496,7 +491,15 @@ trait ShredJobSpec extends SparkSpec {
         val resolverConfig = Resolver
           .parseConfig(cli.igluConfig)
           .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
-
+        val dedupeConfig = if (crossBatchDedupe) {
+          val igluClient = Client[Id, Json](IgluSingleton.get(resolverConfig), CirceValidator)
+          val config = EventsManifestConfig
+            .parseJson[Id](igluClient, duplicateStorageConfig)
+            .valueOr(err => throw new IllegalArgumentException(err))
+          Some(config)
+        } else {
+          None
+        }
         val transformer = cli.config.formats match {
           case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, 0)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()

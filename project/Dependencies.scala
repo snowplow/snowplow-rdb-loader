@@ -41,7 +41,7 @@ object Dependencies {
     val scalaTracker     = "2.0.0"
 
     val spark            = "3.3.1"
-    val eventsManifest   = "0.3.0"
+    val eventsManifest   = "0.4.0"
     val schemaDdl        = "0.18.2"
     val jacksonModule    = "2.14.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.14.2"
