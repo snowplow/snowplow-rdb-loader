@@ -28,7 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.{Folder
 import fs2.{Pipe, Stream}
 import java.net.URI
 
-class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBlobStorage.PathParts) extends BlobStorage[F] {
+class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], configuredPath: AzureBlobStorage.PathParts) extends BlobStorage[F] {
 
   override def list(folder: Folder, recursive: Boolean): Stream[F, BlobStorage.BlobObject] =
     createStorageUrlFrom(folder) match {
@@ -70,13 +70,15 @@ class AzureBlobStorage[F[_]: Async] private (store: AzureStore[F], path: AzureBl
     }
 
   // input path format like 'endpoint/container/blobPath', where 'endpoint' is 'scheme://host'
-  protected[azure] def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] =
+  protected[azure] def createStorageUrlFrom(input: String): ValidatedNec[AuthorityParseError, Url[String]] = {
+    val inputParts = AzureBlobStorage.PathParts.parse(input)
     Authority
-      .parse(path.containerName)
-      .map(authority => Url(path.scheme, authority, Path(path.extractRelative(input))))
+      .parse(inputParts.containerName)
+      .map(authority => Url(configuredPath.scheme, authority, Path(inputParts.relative)))
+  }
 
   protected[azure] def createBlobObject(url: Url[AzureBlob]): BlobStorage.BlobObject = {
-    val key = path.root.append(path.containerName).withKey(url.path.relative.show)
+    val key = configuredPath.root.append(url.representation.container).withKey(url.path.relative.show)
     BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
   }
 }

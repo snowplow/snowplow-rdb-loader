@@ -13,80 +13,68 @@
 
 package com.snowplowanalytics.snowplow.rdbloader.cloud.authservice
 
-import java.time.OffsetDateTime
-
 import cats.effect._
-
+import cats.implicits._
 import com.azure.identity.DefaultAzureCredentialBuilder
 import com.azure.storage.blob.sas.{BlobContainerSasPermission, BlobServiceSasSignatureValues}
 import com.azure.storage.blob.{BlobContainerClient, BlobServiceClient, BlobServiceClientBuilder}
-
-import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
 import com.snowplowanalytics.snowplow.rdbloader.azure.AzureBlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService._
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget
+import com.snowplowanalytics.snowplow.rdbloader.config.StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds
+
+import java.time.OffsetDateTime
+import scala.concurrent.duration.FiniteDuration
 
 object AzureAuthService {
 
   def create[F[_]: Async](
     blobStorageEndpoint: String,
-    eventsLoadAuthMethodConfig: StorageTarget.LoadAuthMethod,
-    foldersLoadAuthMethodConfig: StorageTarget.LoadAuthMethod
-  ): Resource[F, LoadAuthService[F]] =
-    (eventsLoadAuthMethodConfig, foldersLoadAuthMethodConfig) match {
-      case (e: StorageTarget.LoadAuthMethod.Azure, f: StorageTarget.LoadAuthMethod.Azure) =>
-        (e, f) match {
-          case (StorageTarget.LoadAuthMethod.NoCreds, StorageTarget.LoadAuthMethod.NoCreds) =>
-            noop[F]
-          case (_, _) =>
-            for {
-              (blobServiceClient, blobContainerClient) <- createClients(blobStorageEndpoint)
-              provider = authMethodProvider[F](blobServiceClient, blobContainerClient)(_)
-              s <- LoadAuthService.create(provider(e), provider(f))
-            } yield s
-        }
-      case (_, _) =>
-        Resource.raiseError[F, LoadAuthService[F], Throwable](
+    loadAuthMethodConfig: StorageTarget.LoadAuthMethod
+  ): F[LoadAuthMethodProvider[F]] =
+    loadAuthMethodConfig match {
+      case StorageTarget.LoadAuthMethod.NoCreds =>
+        LoadAuthMethodProvider.noop
+      case azureTempCreds: AzureTempCreds =>
+        for {
+          (blobServiceClient, blobContainerClient) <- createClients[F](blobStorageEndpoint)
+          provider <- authMethodProvider[F](blobServiceClient, blobContainerClient, azureTempCreds.credentialsTtl)
+        } yield provider
+      case _ =>
+        Async[F].raiseError(
           new IllegalStateException("Azure auth service needs Azure temp credentials configuration")
         )
     }
 
   private def createClients[F[_]: Async](
     blobStorageEndpoint: String
-  ): Resource[F, (BlobServiceClient, BlobContainerClient)] =
-    Resource.eval(
-      Async[F].delay {
-        val builder = new BlobServiceClientBuilder()
-          .credential(new DefaultAzureCredentialBuilder().build)
-          .endpoint(blobStorageEndpoint)
-        val pathParts = AzureBlobStorage.PathParts.parse(blobStorageEndpoint)
-        val blobServiceClient = builder.buildClient()
-        val blobContainerClient = blobServiceClient.getBlobContainerClient(pathParts.containerName)
-        (blobServiceClient, blobContainerClient)
-      }
-    )
+  ): F[(BlobServiceClient, BlobContainerClient)] =
+    Async[F].delay {
+      val builder = new BlobServiceClientBuilder()
+        .credential(new DefaultAzureCredentialBuilder().build)
+        .endpoint(blobStorageEndpoint)
+      val pathParts = AzureBlobStorage.PathParts.parse(blobStorageEndpoint)
+      val blobServiceClient = builder.buildClient()
+      val blobContainerClient = blobServiceClient.getBlobContainerClient(pathParts.containerName)
+      (blobServiceClient, blobContainerClient)
+    }
 
   private def authMethodProvider[F[_]: Async](
     blobServiceClient: BlobServiceClient,
-    blobContainerClient: BlobContainerClient
-  )(
-    loadAuthConfig: StorageTarget.LoadAuthMethod.Azure
+    blobContainerClient: BlobContainerClient,
+    credentialsTtl: FiniteDuration
   ): F[LoadAuthMethodProvider[F]] =
-    loadAuthConfig match {
-      case StorageTarget.LoadAuthMethod.NoCreds =>
-        LoadAuthMethodProvider.noop
-      case tc: StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds =>
-        credsCache(
-          credentialsTtl = tc.credentialsTtl,
-          getCreds = Async[F].delay {
-            val keyStart = OffsetDateTime.now()
-            val keyExpiry = OffsetDateTime.now().plusSeconds(tc.credentialsTtl.toSeconds)
-            val userDelegationKey = blobServiceClient.getUserDelegationKey(keyStart, keyExpiry)
-            val blobContainerSas = new BlobContainerSasPermission()
-            blobContainerSas.setReadPermission(true).setListPermission(true)
-            val blobServiceSasSignatureValues = new BlobServiceSasSignatureValues(keyExpiry, blobContainerSas)
-            val sasToken = blobContainerClient.generateUserDelegationSas(blobServiceSasSignatureValues, userDelegationKey)
-            LoadAuthMethod.TempCreds.Azure(sasToken, keyExpiry.toInstant)
-          }
-        )
-    }
+    credsCache(
+      credentialsTtl = credentialsTtl,
+      getCreds = Async[F].delay {
+        val keyStart = OffsetDateTime.now()
+        val keyExpiry = OffsetDateTime.now().plusSeconds(credentialsTtl.toSeconds)
+        val userDelegationKey = blobServiceClient.getUserDelegationKey(keyStart, keyExpiry)
+        val blobContainerSas = new BlobContainerSasPermission()
+        blobContainerSas.setReadPermission(true).setListPermission(true)
+        val blobServiceSasSignatureValues = new BlobServiceSasSignatureValues(keyExpiry, blobContainerSas)
+        val sasToken = blobContainerClient.generateUserDelegationSas(blobServiceSasSignatureValues, userDelegationKey)
+        LoadAuthMethod.TempCreds.Azure(sasToken, keyExpiry.toInstant)
+      }
+    )
 }

@@ -28,6 +28,7 @@ import com.snowplowanalytics.snowplow.rdbloader.aws.{EC2ParameterStore, S3, SQS}
 import com.snowplowanalytics.snowplow.rdbloader.azure.{AzureBlobStorage, AzureKeyVault, KafkaConsumer}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub, SecretManager}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService.LoadAuthMethodProvider
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.{AWSAuthService, AzureAuthService, LoadAuthService}
 import com.snowplowanalytics.snowplow.rdbloader.state.{Control, State}
 import com.snowplowanalytics.snowplow.rdbloader.config.{CliConfig, Config, StorageTarget}
@@ -183,9 +184,7 @@ object Environment {
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
       case c: Cloud.Azure =>
         for {
-          loadAuthService <-
-            AzureAuthService
-              .create[F](c.blobStorageEndpoint.toString, config.storage.eventsLoadAuthMethod, config.storage.foldersLoadAuthMethod)
+          loadAuthService <- createAzureAuthService(c, config)
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
           implicit0(blobStorage: BlobStorage[F]) <- AzureBlobStorage.createDefault[F](c.blobStorageEndpoint)
           postProcess = Queue.Consumer.postProcess[F]
@@ -198,6 +197,19 @@ object Environment {
           secretStore <- AzureKeyVault.create(c.azureVaultName)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
     }
+
+  private def createAzureAuthService[F[_]: Async](azure: Cloud.Azure, config: Config[StorageTarget]): Resource[F, LoadAuthService[F]] = {
+    val forLoading = AzureAuthService.create[F](azure.blobStorageEndpoint.toString, config.storage.eventsLoadAuthMethod)
+
+    val forFolderMonitoring = config.monitoring.folders match {
+      case Some(monitoringEnabled) =>
+        AzureAuthService.create[F](monitoringEnabled.staging, config.storage.foldersLoadAuthMethod)
+      case None =>
+        LoadAuthMethodProvider.noop[F]
+    }
+
+    LoadAuthService.create[F](forLoading, forFolderMonitoring)
+  }
 
   def getCloudForTelemetry(config: Config[_]): Option[Telemetry.Cloud] =
     config.cloud match {
