@@ -1,16 +1,9 @@
 /*
- * copyright (c) 2012-2019 snowplow analytics ltd. all rights reserved.
+ * Copyright (c) 2012-present Snowplow Analytics Ltd. All rights reserved.
  *
- * this program is licensed to you under the apache license version 2.0,
- * and you may not use this file except in compliance with the apache license version 2.0.
- * you may obtain a copy of the apache license version 2.0 at
- * http://www.apache.org/licenses/license-2.0.
- *
- * unless required by applicable law or agreed to in writing,
- * software distributed under the apache license version 2.0 is distributed on an
- * "as is" basis, without warranties or conditions of any kind, either express or implied.
- * see the apache license version 2.0 for the specific language governing permissions and
- * limitations there under.
+ * This program is licensed to you under the Snowplow Community License Version 1.0,
+ * and you may not use this file except in compliance with the Snowplow Community License Version 1.0.
+ * You may obtain a copy of the Snowplow Community License Version 1.0 at https://docs.snowplow.io/community-license-1.0
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.bad
 
