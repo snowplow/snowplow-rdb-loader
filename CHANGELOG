@@ -1,3 +1,8 @@
+Version 5.7.0 (2023-07-26)
+--------------------------
+Add Snowplow Community License (#1297)
+Add Azure support (#1294)
+
 Version 5.6.3 (2023-07-12)
 --------------------------
 Databricks Loader: allow any character in catalog name (#1288)
