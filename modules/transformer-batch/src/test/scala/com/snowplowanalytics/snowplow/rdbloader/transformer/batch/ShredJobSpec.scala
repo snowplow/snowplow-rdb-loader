@@ -42,9 +42,8 @@ import io.circe.parser.{parse => parseCirce}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods.{compact, parse}
 
-import com.snowplowanalytics.iglu.core.SelfDescribingData
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SelfDescribingData}
 import com.snowplowanalytics.iglu.core.circe.implicits._
-import com.snowplowanalytics.iglu.core.SchemaCriterion
 
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
@@ -262,6 +261,7 @@ object ShredJobSpec {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
+    val skipSchemas = shredder.skipSchemas.map(x => s""""${x.asString}"""").mkString(",")
     val formatsSection = wideRow match {
       case Some(WideRow.PARQUET) =>
         s"""
@@ -314,6 +314,7 @@ object ShredJobSpec {
     |"validations": {
     |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
     |}
+    |"skipSchemas": [$skipSchemas]
     |"monitoring": {"snowplow": null, "sentry": null}
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
@@ -418,10 +419,14 @@ object ShredJobSpec {
     case None => s"Environment variable [$envvar] is not available".invalidNel
   }
 
+  def inSkipSchemas(skipSchemas: List[SchemaCriterion], schemaKey: SchemaKey): Boolean =
+    skipSchemas.exists(_.matches(schemaKey))
+
   def getShredder(
     events: Events,
     dirs: OutputDirs,
-    deduplication: Config.Deduplication
+    deduplication: Config.Deduplication,
+    skipSchemas: List[SchemaCriterion]
   ): Config = {
     val input = events match {
       case r: ResourceFile => r.toUri
@@ -443,6 +448,7 @@ object ShredJobSpec {
       deduplication,
       Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None, false, false),
+      skipSchemas,
       TransformerConfig.Validations(None)
     )
   }
@@ -468,9 +474,10 @@ trait ShredJobSpec extends SparkSpec {
     jsonSchemas: List[SchemaCriterion] = Nil,
     wideRow: Option[WideRow] = None,
     outputDirs: Option[OutputDirs] = None,
-    deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
+    deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true),
+    skipSchemas: List[SchemaCriterion] = Nil
   ): LoaderMessage.ShreddingComplete = {
-    val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication)
+    val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication, skipSchemas)
     val config = Array(
       "--iglu-config",
       igluConfigWithLocal,

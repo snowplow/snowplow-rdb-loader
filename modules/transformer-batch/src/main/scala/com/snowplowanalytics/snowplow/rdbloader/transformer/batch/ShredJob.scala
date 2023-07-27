@@ -170,7 +170,7 @@ class ShredJob[T](
 
     LoaderMessage.ShreddingComplete(
       outFolder,
-      transformer.typesInfo,
+      transformer.typesInfo(config.skipSchemas),
       timestamps,
       config.output.compression,
       MessageProcessor,

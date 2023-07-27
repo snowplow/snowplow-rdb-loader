@@ -14,7 +14,8 @@ import io.circe._
 import io.circe.generic.semiauto._
 
 import scala.concurrent.duration.FiniteDuration
-import com.snowplowanalytics.snowplow.rdbloader.common.Common
+import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -30,6 +31,7 @@ final case class Config(
   deduplication: Config.Deduplication,
   runInterval: Config.RunInterval,
   featureFlags: TransformerConfig.FeatureFlags,
+  skipSchemas: List[SchemaCriterion],
   validations: TransformerConfig.Validations
 )
 

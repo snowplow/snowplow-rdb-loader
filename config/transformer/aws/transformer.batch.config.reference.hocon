@@ -127,6 +127,15 @@
   #  "fileFormat": "json"
   #}
 
+  # Schemas that won't be loaded
+  # Optional, default value []
+  "skipSchemas": [
+    "iglu:com.acme/skipped1/jsonschema/1-0-0",
+    "iglu:com.acme/skipped2/jsonschema/1-0-*",
+    "iglu:com.acme/skipped3/jsonschema/1-*-*",
+    "iglu:com.acme/skipped4/jsonschema/*-*-*"
+  ]
+
   # Specifies interval Transformer will work on
   "runInterval": {
     # Optional, Transformer will start to process after given timestamp

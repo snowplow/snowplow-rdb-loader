@@ -35,6 +35,7 @@ class ConfigSpec extends Specification {
         exampleDeduplication,
         exampleRunInterval,
         exampleDefaultFeatureFlags,
+        exampleSkipSchemas,
         exampleValidations
       )
       result must beRight(expected)
@@ -51,6 +52,7 @@ class ConfigSpec extends Specification {
         exampleDeduplication,
         emptyRunInterval,
         exampleDefaultFeatureFlags,
+        Nil,
         emptyValidations
       )
       result must beRight(expected)
@@ -156,6 +158,12 @@ object TransformerConfigSpec {
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
+  val exampleSkipSchemas = List(
+    SchemaCriterion("com.acme", "skipped1", "jsonschema", Some(1), Some(0), Some(0)),
+    SchemaCriterion("com.acme", "skipped2", "jsonschema", Some(1), Some(0), None),
+    SchemaCriterion("com.acme", "skipped3", "jsonschema", Some(1), None, None),
+    SchemaCriterion("com.acme", "skipped4", "jsonschema", None, None, None)
+  )
 
   def getConfigFromResource[A](resourcePath: String, parse: HoconOrPath => Either[String, A]): Either[String, A] =
     parse(Right(pathOf(resourcePath)))
