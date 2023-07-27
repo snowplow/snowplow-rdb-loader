@@ -25,7 +25,7 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.util.LongAccumulator
 
 // Snowplow
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.BadRow
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
@@ -50,7 +50,7 @@ sealed trait Transformer[T] extends Product with Serializable {
   def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed
   def typesAccumulator: TypesAccumulator[T]
   def timestampsAccumulator: TimestampsAccumulator
-  def typesInfo: TypesInfo
+  def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo
   def sink(
     sc: SparkSession,
     compression: TransformerConfig.Compression,
@@ -107,7 +107,10 @@ object Transformer {
       Transformed.Shredded.Json(false, vendor, name, model, data)
     }
 
-    def typesInfo: TypesInfo = TypesInfo.Shredded(typesAccumulator.value.toList)
+    def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
+      val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+      TypesInfo.Shredded(types)
+    }
 
     def sink(
       spark: SparkSession,
@@ -145,8 +148,10 @@ object Transformer {
       Transformed.WideRow(false, data)
     }
 
-    def typesInfo: TypesInfo =
-      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, typesAccumulator.value.toList)
+    def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
+      val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, types)
+    }
 
     def sink(
       spark: SparkSession,
@@ -188,8 +193,10 @@ object Transformer {
       Transformed.WideRow(false, data)
     }
 
-    def typesInfo: TypesInfo =
-      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, typesAccumulator.value.toList)
+    def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
+      val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+      TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, types)
+    }
 
     def sink(
       spark: SparkSession,
@@ -245,4 +252,7 @@ object Transformer {
     }
 
   }
+
+  def inSkipSchemas(skipSchemas: List[SchemaCriterion], schemaKey: SchemaKey): Boolean =
+    skipSchemas.exists(_.matches(schemaKey))
 }

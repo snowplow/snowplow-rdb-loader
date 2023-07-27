@@ -14,6 +14,7 @@ import org.apache.spark.sql.types._
 import io.circe.{Json, JsonObject}
 import io.circe.syntax._
 
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec
@@ -77,6 +78,27 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
 
     "have SparkConf with outputTimestampType property is set to TIMESTAMP_MICROS" in {
       Main.sparkConfig.get("spark.sql.parquet.outputTimestampType") must beEqualTo("TIMESTAMP_MICROS")
+    }
+  }
+
+  "A job which is configured for wide row parquet output with skipSchemas" should {
+    val skipSchemas = List(
+      SchemaCriterion("com.snowplowanalytics.snowplow", "geolocationContext", "jsonschema", Some(1))
+    )
+    val testOutputDirs = OutputDirs(randomFile("output"))
+    runShredJob(
+      events = ResourceFile("/widerow/parquet/input-events-skip-schemas"),
+      wideRow = Some(WideRow.PARQUET),
+      outputDirs = Some(testOutputDirs),
+      skipSchemas = skipSchemas
+    )
+
+    "transform the enriched event to wide row parquet" in {
+      val lines = readParquetFile(spark, testOutputDirs.goodRows)
+        .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
+
+      assertGeneratedParquetSchema(testOutputDirs)
+      lines.size must beEqualTo(46)
     }
   }
 

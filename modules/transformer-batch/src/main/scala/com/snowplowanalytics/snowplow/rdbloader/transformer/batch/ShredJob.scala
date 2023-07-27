@@ -170,7 +170,7 @@ class ShredJob[T](
 
     LoaderMessage.ShreddingComplete(
       outFolder,
-      transformer.typesInfo,
+      transformer.typesInfo(config.skipSchemas),
       timestamps,
       config.output.compression,
       MessageProcessor,
@@ -231,7 +231,9 @@ class TypeAccumJob(@transient val spark: SparkSession, config: Config) extends S
       }
       .flatMap {
         case Right(event) =>
-          event.inventory.map(TypesAccumulator.wideRowTypeConverter)
+          event.inventory
+            .filterNot(t => Transformer.inSkipSchemas(config.skipSchemas, t.schemaKey))
+            .map(TypesAccumulator.wideRowTypeConverter)
         case Left(_) =>
           List.empty
       }
