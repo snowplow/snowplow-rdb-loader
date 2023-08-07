@@ -142,6 +142,7 @@ object Dependencies {
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
   val hadoopCommon      = ("org.apache.hadoop"               % "hadoop-common"             % V.hadoopClient)
     .exclude("com.jcraft", "jsch")
+    .exclude("org.apache.zookeeper", "zookeeper")
   val hadoop            = "org.apache.hadoop"                % "hadoop-client"             % V.hadoopClient
   val parquetHadoop     = "org.apache.parquet"               % "parquet-hadoop"            % V.parquetHadoop
   val hadoopAws         = ("org.apache.hadoop"               % "hadoop-aws"                % V.hadoopClient % Runtime)
@@ -358,4 +359,3 @@ object Dependencies {
       ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7"),
     )
 }
-
