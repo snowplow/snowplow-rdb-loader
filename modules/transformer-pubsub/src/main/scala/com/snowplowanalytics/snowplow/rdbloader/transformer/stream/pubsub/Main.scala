@@ -23,10 +23,14 @@ import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
-
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 
+import scala.concurrent.duration.DurationInt
+
 object Main extends IOApp {
+
+  override def runtimeConfig =
+    super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
   implicit private def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 

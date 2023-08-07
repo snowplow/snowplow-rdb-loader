@@ -16,7 +16,12 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.generat
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 import org.apache.hadoop.conf.Configuration
 
+import scala.concurrent.duration.DurationInt
+
 object Main extends IOApp {
+
+  override def runtimeConfig =
+    super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
   def run(args: List[String]): IO[ExitCode] =
     Run.run[IO, KafkaCheckpointer[IO]](

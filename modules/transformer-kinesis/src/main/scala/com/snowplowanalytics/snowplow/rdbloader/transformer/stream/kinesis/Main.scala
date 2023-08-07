@@ -14,11 +14,15 @@ import com.snowplowanalytics.snowplow.rdbloader.aws._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{Config, Run}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated.BuildInfo
-
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+
+import scala.concurrent.duration.DurationInt
 
 object Main extends IOApp {
   final val QueueMessageGroupId = "shredding"
+
+  override def runtimeConfig =
+    super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
   def run(args: List[String]): IO[ExitCode] =
     Run.run[IO, KinesisCheckpointer[IO]](

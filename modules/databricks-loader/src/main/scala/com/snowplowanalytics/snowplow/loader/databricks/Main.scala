@@ -9,11 +9,15 @@ package com.snowplowanalytics.snowplow.loader.databricks
 
 import cats.effect.{ExitCode, IO, IOApp}
 
-import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
+import scala.concurrent.duration.DurationInt
 
+import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 import com.snowplowanalytics.snowplow.rdbloader.Runner
 
 object Main extends IOApp {
+
+  override def runtimeConfig =
+    super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
   def run(args: List[String]): IO[ExitCode] =
     Runner.run[IO, Unit](
