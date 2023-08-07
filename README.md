@@ -21,7 +21,7 @@ There are two types of Transformers: Batch and Streaming
 Stream Transformers read enriched events from respective stream service, transform them, then write transformed events to specified blob storage path.
 They write transformed events in periodic windows.
 
-There are two different Stream Transformer applications: Transformer Kinesis and Transformer Pubsub. As one can predict, they are different variants for GCP and AWS.
+There are two different Stream Transformer applications: Transformer Kinesis and Transformer Pubsub. As one can predict, they are different variants for GCP, AWS and Azure.
 
 
 #### Batch Transformer
@@ -65,7 +65,7 @@ Licensed under the [Snowplow Community License](https://docs.snowplow.io/communi
 [build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/CI/badge.svg
 [build]: https://github.com/snowplow/snowplow-rdb-loader/actions/workflows/ci.yml
 
-[release-image]: https://img.shields.io/badge/release-5.7.0-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-5.7.1-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license]: https://docs.snowplow.io/docs/contributing/community-license-faq/

@@ -1,3 +1,12 @@
+Version 5.7.1 (2023-08-08)
+--------------------------
+Lower sensitivity of cats-effect responsiveness warning (#1309)
+Reduce log level for test suite (#1307)
+Exclude zookeeper transitive dependency from loaders (#1305)
+Batch Transformer: make it possible to skip schemas with all transformations (#1300)
+Bump Snowplow Events Manifest to 0.4.0 (#1303)
+transformer-kafka: add semi-automatic test scenarios using cloud resources (#1302)
+
 Version 5.7.0 (2023-07-26)
 --------------------------
 Add Snowplow Community License (#1297)
