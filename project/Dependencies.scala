@@ -45,6 +45,7 @@ object Dependencies {
     val schemaDdl        = "0.18.2"
     val jacksonModule    = "2.14.2" // Override incompatible version in spark runtime
     val jacksonDatabind  = "2.14.2"
+    val jacksonMapper    = "1.9.14-atlassian-6" // Fix CVE
     val parquet4s        = "2.10.0"
     val hadoopClient     = "3.3.4"
     val hadoopGcpClient  = "hadoop3-2.2.5"
@@ -81,7 +82,8 @@ object Dependencies {
   val resolutionRepos = Seq(
     // Redshift native driver
     ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
-    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true)
+    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true),
+    ("Atlassian Maven repo" at "https://packages.atlassian.com/mvn/maven-3rdparty/")
   )
 
   // Scala (Common)
@@ -140,6 +142,7 @@ object Dependencies {
   val jacksonModule     = "com.fasterxml.jackson.module"     %% "jackson-module-scala"     % V.jacksonModule
   val jacksonDatabind   = "com.fasterxml.jackson.core"       %  "jackson-databind"         % V.jacksonDatabind
   val jacksonCbor       = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"   % V.jacksonModule
+  val jacksonMapper     = "org.codehaus.jackson"             % "jackson-mapper-asl"        % V.jacksonMapper
   val parquet4s         = "com.github.mjakubowski84"         %% "parquet4s-fs2"            % V.parquet4s
   val hadoopCommon      = ("org.apache.hadoop"               % "hadoop-common"             % V.hadoopClient)
     .exclude("com.jcraft", "jsch")
@@ -246,6 +249,7 @@ object Dependencies {
     http4sCore,
     aws2regions,
     jacksonDatabind,
+    jacksonMapper,
     specs2,
     monocle,
     monocleMacro,
