@@ -66,6 +66,7 @@ object Dependencies {
     val protobuf         = "3.21.7" // Fix CVE
     val kinesisClient    = "2.4.3"
     val nettyCodec       = "4.1.86.Final" // Fix CVE
+    val jettison         = "1.5.4" // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.17.0"
@@ -166,6 +167,7 @@ object Dependencies {
   val sentry            = "io.sentry"             % "sentry"                    % V.sentry
   val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
   val enumeratum        = "com.beachape"          %% "enumeratum"               % V.enumeratum
+  val jettison          = "org.codehaus.jettison" % "jettison"                  % V.jettison
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
@@ -277,6 +279,7 @@ object Dependencies {
     specs2,
     specs2ScalaCheck,
     scalaCheck,
+    jettison,
     catsEffectLaws,
     catsTesting,
     catsEffectTestkit
@@ -346,6 +349,7 @@ object Dependencies {
 
   val transformerKafkaDependencies = Seq(
     hadoopAzure,
+    jettison,
     eventGenerator
   )
 
