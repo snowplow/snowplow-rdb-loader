@@ -354,7 +354,7 @@ object Dependencies {
     eventGenerator
   )
 
-  val commonStreamTransformerExclusions =
+  val commonExclusions =
     Seq(
       ExclusionRule(organization = "ch.qos.logback"),
       ExclusionRule(organization = "org.apache.hadoop", name = "hadoop-yarn-api"),
