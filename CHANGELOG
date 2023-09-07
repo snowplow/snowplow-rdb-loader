@@ -1,3 +1,10 @@
+Version 5.7.3 (2023-09-07)
+--------------------------
+Bump jackson-mapper-asl to 1.9.14-atlassian-6 (#1312)
+Loader: exclude unnecessary hadoop dependencies (#1312)
+Bump snappy-java to 1.1.10.3 (#1312)
+Bump jettison to 1.5.4 (#1312)
+
 Version 5.7.2 (2023-08-24)
 --------------------------
 Ensure docker image has the latest jdk version (#1311)
