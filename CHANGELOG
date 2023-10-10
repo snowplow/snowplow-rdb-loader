@@ -1,3 +1,7 @@
+Version 5.7.4 (2023-10-10)
+--------------------------
+Bump snappy-java to 1.1.10.4 (#1313)
+
 Version 5.7.3 (2023-09-07)
 --------------------------
 Bump jackson-mapper-asl to 1.9.14-atlassian-6 (#1312)
