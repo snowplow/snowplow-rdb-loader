@@ -166,6 +166,10 @@
     # When enabled, event's atomic fields are truncated (based on the length limits from the atomic JSON schema) before transformation.
     # Optional, default "false".
     "truncateAtomicFields": false
+
+    # Use old directory structure, i.e. vendor/name/format/model , for transformed events or not
+    # This should be enabled during upgrade from older versions of the loader
+    "legacyPartitioning": false
   }
 
   # Observability and reporting options

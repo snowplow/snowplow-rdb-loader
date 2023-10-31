@@ -161,7 +161,7 @@ object ConfigSpec {
       None,
       None
     )
-  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
+  val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
   val emptyValidations = Validations(None)
   val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)

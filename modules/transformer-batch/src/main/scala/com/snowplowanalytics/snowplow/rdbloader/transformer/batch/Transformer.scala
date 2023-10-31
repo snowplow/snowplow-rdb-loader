@@ -65,7 +65,8 @@ object Transformer {
   case class ShredTransformer(
     resolverConfig: ResolverConfig,
     formats: Formats.Shred,
-    maxRecordsPerFile: Long
+    maxRecordsPerFile: Long,
+    legacyPartitioning: Boolean
   ) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
@@ -119,7 +120,10 @@ object Transformer {
       outFolder: Folder,
       maxRecordsPerFile: Long
     ): Unit =
-      Sink.writeShredded(spark, compression, transformed.flatMap(_.shredded), outFolder)
+      if (legacyPartitioning)
+        Sink.legacyWriteShredded(spark, compression, transformed.flatMap(_.legacyShredded), outFolder)
+      else
+        Sink.writeShredded(spark, compression, transformed.flatMap(_.shredded), outFolder)
 
     def register(sc: SparkContext): Unit = {
       sc.register(typesAccumulator)
@@ -215,6 +219,7 @@ object Transformer {
 
   type WideRowTuple = (String, String)
   type ShreddedTuple = (String, String, String, String, Int, Int, Int, String)
+  type LegacyShreddedTuple = (String, String, String, String, Int, String)
 
   private implicit class TransformedOps(t: Transformed) {
     def wideRow: Option[WideRowTuple] = t match {
@@ -228,6 +233,13 @@ object Transformer {
       case p: Transformed.Shredded =>
         val outputType = if (p.isGood) "good" else "bad"
         (outputType, p.vendor, p.name, p.format.path, p.model, p.revision, p.addition, p.data.value).some
+      case _ => None
+    }
+
+    def legacyShredded: Option[LegacyShreddedTuple] = t match {
+      case p: Transformed.Shredded =>
+        val outputType = if (p.isGood) "good" else "bad"
+        (outputType, p.vendor, p.name, p.format.path, p.model, p.data.value).some
       case _ => None
     }
 
