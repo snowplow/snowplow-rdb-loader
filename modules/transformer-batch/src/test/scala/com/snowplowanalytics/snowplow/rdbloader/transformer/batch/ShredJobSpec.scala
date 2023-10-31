@@ -62,6 +62,7 @@ object ShredJobSpec {
   val Version = BuildInfo.version
 
   val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
+  val LegacyAtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1"
 
   sealed trait Events
 
@@ -256,7 +257,8 @@ object ShredJobSpec {
     shredder: Config,
     tsv: Boolean,
     jsonSchemas: List[SchemaCriterion],
-    wideRow: Option[WideRow]
+    wideRow: Option[WideRow],
+    legacyPartitioning: Boolean
   ) = {
     val encoder = Base64.getUrlEncoder
     val format = if (tsv) "TSV" else "JSON"
@@ -313,6 +315,9 @@ object ShredJobSpec {
     |}
     |"validations": {
     |    "minimumTimestamp": "0000-01-02T00:00:00.00Z"
+    |}
+    |"featureFlags": {
+    |  "legacyPartitioning": $legacyPartitioning
     |}
     |"skipSchemas": [$skipSchemas]
     |"monitoring": {"snowplow": null, "sentry": null}
@@ -448,7 +453,7 @@ object ShredJobSpec {
       Config.Monitoring(None, Config.Monitoring.Metrics(None)),
       deduplication,
       Config.RunInterval(None, None, None),
-      TransformerConfig.FeatureFlags(false, None, false, false),
+      TransformerConfig.FeatureFlags(false, None, false, false, false),
       skipSchemas,
       TransformerConfig.Validations(None)
     )
@@ -476,14 +481,15 @@ trait ShredJobSpec extends SparkSpec {
     wideRow: Option[WideRow] = None,
     outputDirs: Option[OutputDirs] = None,
     deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true),
-    skipSchemas: List[SchemaCriterion] = Nil
+    skipSchemas: List[SchemaCriterion] = Nil,
+    legacyPartitioning: Boolean = false
   ): LoaderMessage.ShreddingComplete = {
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication, skipSchemas)
     val config = Array(
       "--iglu-config",
       igluConfigWithLocal,
       "--config",
-      storageConfig(shredder, tsv, jsonSchemas, wideRow)
+      storageConfig(shredder, tsv, jsonSchemas, wideRow, legacyPartitioning)
     )
 
     val dedupeConfigCli = if (crossBatchDedupe) {
@@ -509,7 +515,7 @@ trait ShredJobSpec extends SparkSpec {
           None
         }
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, 0)
+          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, 0, legacyPartitioning)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
             val resolver = IgluSingleton.get(resolverConfig)

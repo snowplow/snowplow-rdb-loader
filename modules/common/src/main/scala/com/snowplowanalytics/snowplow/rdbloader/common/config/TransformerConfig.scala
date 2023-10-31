@@ -144,7 +144,8 @@ object TransformerConfig {
     legacyMessageFormat: Boolean,
     sparkCacheEnabled: Option[Boolean],
     enableMaxRecordsPerFile: Boolean,
-    truncateAtomicFields: Boolean
+    truncateAtomicFields: Boolean,
+    legacyPartitioning: Boolean
   )
 
   object FeatureFlags {

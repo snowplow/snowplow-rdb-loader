@@ -42,11 +42,11 @@ class TransformingSpec extends Specification {
       val testFileNameMap = List(
         Transformed.Shredded
           .Tabular("com.snowplowanalytics.snowplow", "atomic", 1, 0, 0, dummyTransformedData)
-          .getPath -> "com.snowplowanalytics.snowplow-atomic",
+          .getPath(false) -> "com.snowplowanalytics.snowplow-atomic",
         Transformed.Shredded
           .Tabular("com.snowplowanalytics.snowplow", "consent_document", 1, 0, 0, dummyTransformedData)
-          .getPath -> "com.snowplowanalytics.snowplow-consent_document",
-        Transformed.Shredded.Tabular("com.optimizely", "state", 1, 0, 0, dummyTransformedData).getPath -> "com.optimizely-state"
+          .getPath(false) -> "com.snowplowanalytics.snowplow-consent_document",
+        Transformed.Shredded.Tabular("com.optimizely", "state", 1, 0, 0, dummyTransformedData).getPath(false) -> "com.optimizely-state"
       ).toMap
 
       val expectedTransformedMap =
@@ -149,7 +149,7 @@ object TransformingSpec {
 
     val eventStream = parsedEventStream(resourcePath)
       .through(Processing.transform(transformer, validations, TestProcessor))
-      .through(Processing.handleTransformResult(transformer))
+      .through(Processing.handleTransformResult(transformer, legacyPartitioning = false))
 
     val transformed = eventStream.compile.toList.unsafeRunSync().flatMap(_._1)
     (transformed.flatMap(_.getGood), transformed.flatMap(_.getBad))

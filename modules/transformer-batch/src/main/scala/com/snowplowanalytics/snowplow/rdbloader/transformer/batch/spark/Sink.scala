@@ -11,13 +11,30 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.{DataFrameWriter, Row, SaveMode, SparkSession}
 import org.apache.spark.sql.types.StructType
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Transformer.{LegacyShreddedTuple, ShreddedTuple}
 
 object Sink {
+
+  def legacyWriteShredded(
+    spark: SparkSession,
+    compression: Compression,
+    data: RDD[LegacyShreddedTuple],
+    outFolder: String
+  ): Unit = {
+    import spark.implicits._
+    data
+      .toDF("output", "vendor", "name", "format", "model", "data")
+      .write
+      .withCompression(compression)
+      .partitionBy("output", "vendor", "name", "format", "model")
+      .mode(SaveMode.Append)
+      .text(outFolder)
+  }
 
   def writeShredded(
     spark: SparkSession,
     compression: Compression,
-    data: RDD[(String, String, String, String, Int, Int, Int, String)],
+    data: RDD[ShreddedTuple],
     outFolder: String
   ): Unit = {
     import spark.implicits._

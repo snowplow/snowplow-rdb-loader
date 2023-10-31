@@ -100,7 +100,7 @@ object Processing {
       source
         .through(transform(transformer, config.validations, processor))
         .through(incrementMetrics(resources.metrics))
-        .through(handleTransformResult(transformer))
+        .through(handleTransformResult(transformer, config.featureFlags.legacyPartitioning))
         .through(windowing)
 
     val sink: Pipe[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]], Unit] =
@@ -226,14 +226,15 @@ object Processing {
    * to where it should sink. Processes in batches for efficiency.
    */
   def handleTransformResult[F[_], C: Checkpointer[F, *]](
-    transformer: Transformer[F]
+    transformer: Transformer[F],
+    legacyPartitioning: Boolean
   ): Pipe[F, TransformationResults[C], SerializationResults[C]] =
     _.map { case (items, checkpointer) =>
       val state = State.fromEvents(items).withCheckpointer(checkpointer)
       val mapped = items.flatMap(
         _.fold(
-          bad => transformer.badTransform(bad).split :: Nil,
-          success => success.output.map(_.split)
+          bad => transformer.badTransform(bad).split(legacyPartitioning) :: Nil,
+          success => success.output.map(_.split(legacyPartitioning))
         )
       )
       (mapped, state)
@@ -255,11 +256,15 @@ object Processing {
     }
 
   implicit class TransformedOps(t: Transformed) {
-    def getPath: SinkPath = t match {
+    def getPath(legacyPartitioning: Boolean): SinkPath = t match {
       case p: Transformed.Shredded =>
-        val suffix = Some(
-          s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/revision=${p.revision}/addition=${p.addition}"
-        )
+        val suffix =
+          if (legacyPartitioning)
+            Some(s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/")
+          else
+            Some(
+              s"vendor=${p.vendor}/name=${p.name}/format=${p.format.path.toLowerCase}/model=${p.model}/revision=${p.revision}/addition=${p.addition}"
+            )
         val pathType = if (p.isGood) SinkPath.PathType.Good else SinkPath.PathType.Bad
         SinkPath(suffix, pathType)
       case p: Transformed.WideRow =>
@@ -269,6 +274,6 @@ object Processing {
       case _: Transformed.Parquet =>
         SinkPath(None, SinkPath.PathType.Good)
     }
-    def split: (SinkPath, Transformed.Data) = (getPath, t.data)
+    def split(legacyPartitioning: Boolean): (SinkPath, Transformed.Data) = (getPath(legacyPartitioning), t.data)
   }
 }
