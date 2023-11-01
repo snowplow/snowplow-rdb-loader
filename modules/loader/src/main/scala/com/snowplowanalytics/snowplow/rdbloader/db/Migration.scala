@@ -253,7 +253,7 @@ object Migration {
           val inAction = Logging[F].info(s"Creating ${b.getName} table for ${target.getInfo.toSchemaUri}") *>
             in.traverse_(item => DAO[F].executeUpdate(item.statement, DAO.Purpose.NonLoading)) *>
             DAO[F].executeUpdate(b.getCommentOn, DAO.Purpose.NonLoading) *>
-            Logging[F].info("Table created")
+            Logging[F].info(s"Table ${b.getName} created")
           migration.addInTransaction(inAction)
 
         case (migration, b @ Block(Nil, in, _)) =>

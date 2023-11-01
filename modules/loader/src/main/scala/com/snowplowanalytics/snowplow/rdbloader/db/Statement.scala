@@ -75,7 +75,7 @@ object Statement {
     tableName: String
   ) extends Statement
       with Loading {
-    def table: String = shreddedType.info.getName
+    def table: String = tableName
     def path: String = shreddedType.getLoadPath
     def title = s"COPY $table FROM $path"
   }
