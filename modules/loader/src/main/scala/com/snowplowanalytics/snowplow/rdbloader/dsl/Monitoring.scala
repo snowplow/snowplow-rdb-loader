@@ -62,7 +62,7 @@ object Monitoring {
 
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
-  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 0))
+  val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 1))
   val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =
@@ -109,6 +109,7 @@ object Monitoring {
     attempt: Int,
     loadingStarted: Instant,
     loadingCompleted: Instant,
+    recoveryTableNames: Option[List[String]],
     tags: Map[String, String]
   )
 
@@ -134,9 +135,12 @@ object Monitoring {
       shredding: ShreddingComplete,
       attempts: Int,
       start: Instant,
-      ingestion: Instant
-    ): SuccessPayload =
-      SuccessPayload(shredding, Application, attempts, start, ingestion, Map.empty)
+      ingestion: Instant,
+      recoveryTableNames: List[String]
+    ): SuccessPayload = {
+      val tableNames = if (recoveryTableNames.isEmpty) None else recoveryTableNames.some
+      SuccessPayload(shredding, Application, attempts, start, ingestion, tableNames, Map.empty)
+    }
   }
 
   def monitoringInterpreter[F[_]: Sync: Logging](

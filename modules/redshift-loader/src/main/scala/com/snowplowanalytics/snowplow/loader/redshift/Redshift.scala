@@ -97,6 +97,7 @@ object Redshift {
               .map(_.head) // So we get only one copy statement for given path
               .map { shreddedType =>
                 val mergeResult = discovery.shredModels(shreddedType.info.getSchemaKey)
+                val isRecovery = mergeResult.recoveryModels.isDefinedAt(shreddedType.info.getSchemaKey)
                 val shredModel =
                   mergeResult.recoveryModels.getOrElse(shreddedType.info.getSchemaKey, mergeResult.goodModel)
                 val isMigrationDisabled = disableMigration.contains(shreddedType.info.toCriterion)
@@ -107,7 +108,8 @@ object Redshift {
                     discovery.compression,
                     loadAuthMethod,
                     shredModel,
-                    tableName
+                    tableName,
+                    isRecovery
                   )
               }
               .toList
@@ -128,7 +130,11 @@ object Redshift {
 
           override def initQuery[F[_]: DAO: Monad]: F[Unit] = Monad[F].unit
 
-          override def createTable(shredModel: ShredModel): Block =
+          override def createTable(shredModel: ShredModel): Block = {
+            val isRecovery = shredModel match {
+              case ShredModel.GoodModel(_, _, _) => false
+              case ShredModel.RecoveryModel(_, _, _) => true
+            }
             Block(
               Nil,
               List(
@@ -143,11 +149,13 @@ object Redshift {
                        |DISTKEY (root_id)
                        |SORTKEY (root_tstamp);
                        |""".stripMargin
-                  )
+                  ),
+                  isRecovery
                 )
               ),
               Entity.Table(schema, shredModel.schemaKey, shredModel.tableName)
             )
+          }
 
           override def getManifest: Statement =
             Statement.CreateTable(
@@ -221,7 +229,7 @@ object Redshift {
                      | ACCEPTINVCHARS
                      | $frCompression""".stripMargin
 
-              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName) =>
+              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName, _) =>
                 val frTableName = Fragment.const0(qualify(tableName))
                 val frPath = Fragment.const0(shreddedType.getLoadPath)
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
