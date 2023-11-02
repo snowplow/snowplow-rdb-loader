@@ -86,7 +86,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
@@ -212,7 +212,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
@@ -229,7 +229,7 @@ class LoadSpec extends Specification {
             ()
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
