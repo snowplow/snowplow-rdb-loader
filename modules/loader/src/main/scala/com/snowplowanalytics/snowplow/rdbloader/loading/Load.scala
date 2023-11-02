@@ -22,6 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthServic
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.{Control, Manifest, Migration, Target}
+import com.snowplowanalytics.snowplow.rdbloader.db.Statement.ShreddedCopy
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Monitoring, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics
@@ -59,7 +60,7 @@ object Load {
 
   sealed trait LoadResult
 
-  case class LoadSuccess(ingestionTimestamp: Option[Instant]) extends LoadResult
+  case class LoadSuccess(ingestionTimestamp: Option[Instant], recoveryTableNames: List[String]) extends LoadResult
 
   case class FolderAlreadyLoaded(folder: BlobStorage.Folder) extends LoadResult {
     def toAlert: Alert =
@@ -146,12 +147,14 @@ object Load {
                     Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
                       setStage(Stage.MigrationIn) *>
                       inTransactionMigrations *>
-                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration) *>
-                      setStage(Stage.Committing) *>
-                      Manifest.add[F](discovery.origin.toManifestItem) *>
-                      Manifest
-                        .get[F](discovery.discovery.base)
-                        .map(opt => LoadSuccess(opt.map(_.ingestion)))
+                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration).flatMap {
+                        loadedRecoveryTableNames =>
+                          setStage(Stage.Committing) *>
+                            Manifest.add[F](discovery.origin.toManifestItem) *>
+                            Manifest
+                              .get[F](discovery.discovery.base)
+                              .map(opt => LoadSuccess(opt.map(_.ingestion), loadedRecoveryTableNames))
+                      }
                 }
     } yield result
 
@@ -202,34 +205,40 @@ object Load {
     initQueryResult: I,
     target: Target[I],
     disableMigration: List[SchemaCriterion]
-  ): F[Unit] =
+  ): F[List[String]] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
       existingEventTableColumns <- if (target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
-      _ <- target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration).traverse_ { genStatement =>
-             for {
-               loadAuthMethod <- LoadAuthService[F].forLoadingEvents
-               // statement must be generated as late as possible, to have fresh and valid credentials.
-               statement = genStatement(loadAuthMethod)
-               _ <- Logging[F].info(statement.title)
-               _ <- setLoading(statement.table)
-               _ <- DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
-             } yield ()
-           }
+      loadedRecoveryTableNames <-
+        target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration).toList.traverseFilter {
+          genStatement =>
+            for {
+              loadAuthMethod <- LoadAuthService[F].forLoadingEvents
+              // statement must be generated as late as possible, to have fresh and valid credentials.
+              statement = genStatement(loadAuthMethod)
+              _ <- Logging[F].info(statement.title)
+              _ <- setLoading(statement.table)
+              _ <- DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
+            } yield statement match {
+              case ShreddedCopy(_, _, _, _, tableName, isRecovered) if isRecovered => tableName.some
+              case _ => None
+            }
+        }
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
-    } yield ()
+    } yield loadedRecoveryTableNames
 
   /** A function to call after successful loading */
   def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
     attempts: Int,
     started: Instant,
     ingestion: Instant,
-    loaded: LoaderMessage.ShreddingComplete
+    loaded: LoaderMessage.ShreddingComplete,
+    recoveryTableNames: List[String]
   ): F[Unit] = {
     val attemptsSuffix = if (attempts > 0) s" after ${attempts} attempts" else ""
     for {
       _ <- Logging[F].info(s"Folder ${loaded.base} loaded successfully$attemptsSuffix")
-      success = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion)
+      success = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion, recoveryTableNames)
       _ <- Monitoring[F].success(success)
       metrics <- Metrics.getCompletedMetrics[F](loaded)
       _ <- loaded.timestamps.max.map(t => Monitoring[F].periodicMetrics.setMaxTstampOfLoadedData(t)).sequence.void

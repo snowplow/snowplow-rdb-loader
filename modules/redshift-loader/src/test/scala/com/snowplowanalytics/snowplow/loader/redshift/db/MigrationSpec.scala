@@ -100,7 +100,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Creating public.com_acme_some_context_2 table for iglu:com.acme/some_context/jsonschema/2-0-0"),
         LogEntry.Sql(Statement.CreateTable(Fragment.const0(createToDdl))),
         LogEntry.Sql(Statement.CommentOn("public.com_acme_some_context_2", "iglu:com.acme/some_context/jsonschema/2-0-0")),
-        LogEntry.Message("Table created")
+        LogEntry.Message("Table public.com_acme_some_context_2 created")
       )
 
       val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget, Nil).run
@@ -187,7 +187,7 @@ class MigrationSpec extends Specification {
         LogEntry.Message("Creating public.com_acme_some_event_1 table for iglu:com.acme/some_event/jsonschema/1-0-0"),
         LogEntry.Sql(Statement.CreateTable(Fragment.const0(createToDdl))),
         LogEntry.Sql(Statement.CommentOn("public.com_acme_some_event_1", "iglu:com.acme/some_event/jsonschema/1-0-0")),
-        LogEntry.Message("Table created")
+        LogEntry.Message("Table public.com_acme_some_event_1 created")
       )
 
       val (state, value) = Migration.build[Pure, Pure, Unit](input, PureDAO.DummyTarget, Nil).run

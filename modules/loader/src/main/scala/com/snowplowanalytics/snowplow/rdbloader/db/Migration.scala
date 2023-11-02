@@ -75,7 +75,13 @@ object Migration {
 
     def isCreation: Boolean =
       inTransaction match {
-        case List(Item.CreateTable(_)) => true
+        case List(Item.CreateTable(_, _)) => true
+        case _ => false
+      }
+
+    def isRecovery: Boolean =
+      inTransaction match {
+        case List(Item.CreateTable(_, ir)) => ir
         case _ => false
       }
 
@@ -141,7 +147,7 @@ object Migration {
     }
 
     /** `CREATE TABLE`. Always just one per [[Block]]. Must be in-transaction */
-    final case class CreateTable(createTable: Fragment) extends Item {
+    final case class CreateTable(createTable: Fragment, isRecovery: Boolean) extends Item {
       val statement: Statement = Statement.CreateTable(createTable)
     }
 

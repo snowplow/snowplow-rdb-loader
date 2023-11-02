@@ -103,11 +103,12 @@ object PureDAO {
           ),
         discovery.shreddedTypes.map { shredded =>
           val mergeResult = discovery.shredModels(shredded.info.getSchemaKey)
+          val isRecovery = mergeResult.recoveryModels.isDefinedAt(shredded.info.getSchemaKey)
           val shredModel =
             mergeResult.recoveryModels.getOrElse(shredded.info.getSchemaKey, mergeResult.goodModel)
           val isMigrationDisabled = disableMigration.contains(shredded.info.toCriterion)
           val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
-          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName)
+          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName, isRecovery)
         }
       )
 
@@ -129,8 +130,12 @@ object PureDAO {
       throw new Throwable("Not implemented in test suite")
 
     def createTable(shredModel: ShredModel): Migration.Block = {
+      val isRecovery = shredModel match {
+        case ShredModel.GoodModel(_, _, _) => false
+        case ShredModel.RecoveryModel(_, _, _) => true
+      }
       val entity = Migration.Entity.Table("public", shredModel.schemaKey, shredModel.tableName)
-      Block(Nil, List(Item.CreateTable(Fragment.const0(shredModel.toTableSql("public")))), entity)
+      Block(Nil, List(Item.CreateTable(Fragment.const0(shredModel.toTableSql("public")), isRecovery)), entity)
     }
 
     def requiresEventsColumns: Boolean = false

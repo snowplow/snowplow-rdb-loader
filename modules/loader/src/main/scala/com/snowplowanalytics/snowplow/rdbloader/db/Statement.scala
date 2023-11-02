@@ -75,7 +75,8 @@ object Statement {
     compression: Compression,
     loadAuthMethod: LoadAuthMethod,
     shredModel: ShredModel,
-    tableName: String
+    tableName: String,
+    isRecovered: Boolean
   ) extends Statement
       with Loading {
     def table: String = tableName
