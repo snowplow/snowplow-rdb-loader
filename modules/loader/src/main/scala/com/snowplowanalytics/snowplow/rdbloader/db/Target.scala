@@ -44,7 +44,8 @@ trait Target[I] {
     discovery: DataDiscovery,
     eventTableColumns: EventTableColumns,
     initQueryResult: I,
-    disableMigration: List[SchemaCriterion]
+    disableMigration: List[SchemaCriterion],
+    legacyPartitioning: Boolean
   ): LoadStatements
 
   /** Get DDL of a manifest table */

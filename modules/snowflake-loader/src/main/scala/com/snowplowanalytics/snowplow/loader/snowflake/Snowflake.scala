@@ -67,7 +67,8 @@ object Snowflake {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             initQueryResult: InitQueryResult,
-            disableMigration: List[SchemaCriterion]
+            disableMigration: List[SchemaCriterion],
+            legacyPartitioning: Boolean
           ): LoadStatements = {
             val columnsToCopy = columnsToCopyFromDiscoveredData(discovery)
 
@@ -81,7 +82,8 @@ object Snowflake {
                     ColumnsToSkip.none,
                     discovery.typesInfo,
                     loadAuthMethod,
-                    initQueryResult
+                    initQueryResult,
+                    legacyPartitioning
                   )
                 )
               case _: StorageTarget.LoadAuthMethod.TempCreds =>
@@ -165,7 +167,7 @@ object Snowflake {
               case Statement.FoldersCopy(_, _, _) =>
                 throw new IllegalStateException("Init query result has wrong format in FoldersCopy")
 
-              case Statement.EventsCopy(p, _, columns, _, typesInfo, _, initQueryResult: InitQueryResult) =>
+              case Statement.EventsCopy(p, _, columns, _, typesInfo, _, initQueryResult: InitQueryResult, _) =>
                 val updatedPath = replaceScheme(p)
                 // This is validated on config decoding stage
                 val stage = tgt.transformedStage.getOrElse(
@@ -184,7 +186,7 @@ object Snowflake {
                       |$frFileFormat
                       |$frOnError""".stripMargin
 
-              case Statement.EventsCopy(_, _, _, _, _, _, _) =>
+              case Statement.EventsCopy(_, _, _, _, _, _, _, _) =>
                 throw new IllegalStateException("Init query result has wrong format in EventsCopy")
 
               case Statement.StagePath(stage) =>

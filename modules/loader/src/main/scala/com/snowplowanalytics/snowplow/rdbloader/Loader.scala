@@ -208,7 +208,15 @@ object Loader {
         start <- Clock[F].realTimeInstant
         _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
         result <-
-          Load.load[F, C, I](setStageC, incrementAttemptsC, discovery, initQueryResult, target, config.featureFlags.disableMigration)
+          Load.load[F, C, I](
+            setStageC,
+            incrementAttemptsC,
+            discovery,
+            initQueryResult,
+            target,
+            config.featureFlags.disableMigration,
+            config.featureFlags.legacyPartitioning
+          )
         attempts <- control.getAndResetAttempts
         _ <- result match {
                case Load.LoadSuccess(ingested) =>

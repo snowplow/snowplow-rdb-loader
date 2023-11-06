@@ -64,10 +64,10 @@ class DatabricksSpec extends Specification {
       )
 
       val results = target
-        .getLoadStatements(discovery, eventsColumns, (), Nil)
+        .getLoadStatements(discovery, eventsColumns, (), Nil, false)
         .map(f => f(LoadAuthMethod.NoCreds))
 
-      results should be like { case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _), Nil) =>
+      results should be like { case NonEmptyList(Statement.EventsCopy(path, compression, columnsToCopy, columnsToSkip, _, _, _, _), Nil) =>
         path must beEqualTo(baseFolder)
         compression must beEqualTo(Compression.Gzip)
 
@@ -117,7 +117,8 @@ class DatabricksSpec extends Specification {
           toSkip,
           TypesInfo.WideRow(PARQUET, List.empty),
           LoadAuthMethod.NoCreds,
-          ()
+          (),
+          false
         )
 
       target.toFragment(statement).toString must beLike { case sql =>
@@ -143,7 +144,16 @@ class DatabricksSpec extends Specification {
       )
       val loadAuthMethod = LoadAuthMethod.TempCreds.AWS("testAccessKey", "testSecretKey", "testSessionToken", Instant.now.plusSeconds(3600))
       val statement =
-        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
+        Statement.EventsCopy(
+          baseFolder,
+          Compression.Gzip,
+          toCopy,
+          toSkip,
+          TypesInfo.WideRow(PARQUET, List.empty),
+          loadAuthMethod,
+          (),
+          false
+        )
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain(
@@ -169,7 +179,8 @@ class DatabricksSpec extends Specification {
           toSkip,
           TypesInfo.WideRow(PARQUET, List.empty),
           LoadAuthMethod.NoCreds,
-          ()
+          (),
+          false
         )
 
       val testTarget = Databricks
@@ -201,7 +212,16 @@ class DatabricksSpec extends Specification {
         BlobStorage.Folder.coerce("https://test.blob.core.windows.net/test-container/path1/path2")
       val loadAuthMethod = LoadAuthMethod.TempCreds.Azure("testToken", Instant.now.plusSeconds(3600))
       val statement =
-        Statement.EventsCopy(baseFolder, Compression.Gzip, toCopy, toSkip, TypesInfo.WideRow(PARQUET, List.empty), loadAuthMethod, ())
+        Statement.EventsCopy(
+          baseFolder,
+          Compression.Gzip,
+          toCopy,
+          toSkip,
+          TypesInfo.WideRow(PARQUET, List.empty),
+          loadAuthMethod,
+          (),
+          false
+        )
 
       target.toFragment(statement).toString must beLike { case sql =>
         sql must contain(
@@ -243,7 +263,7 @@ object DatabricksSpec {
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
-    Config.FeatureFlags(addLoadTstampColumn = true, disableMigration = Nil),
+    Config.FeatureFlags(addLoadTstampColumn = true, disableMigration = Nil, false),
     exampleTelemetry
   )
 

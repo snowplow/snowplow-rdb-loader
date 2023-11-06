@@ -83,10 +83,11 @@ class LoadSpec extends Specification {
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
             LoadAuthMethod.NoCreds,
-            ()
+            (),
+            false
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
@@ -99,7 +100,8 @@ class LoadSpec extends Specification {
           LoadSpec.dataDiscoveryWithOrigin,
           (),
           PureDAO.DummyTarget,
-          Nil
+          Nil,
+          false
         )
         .runS
 
@@ -131,7 +133,8 @@ class LoadSpec extends Specification {
           LoadSpec.dataDiscoveryWithOrigin,
           (),
           PureDAO.DummyTarget,
-          Nil
+          Nil,
+          false
         )
         .runS
 
@@ -164,7 +167,8 @@ class LoadSpec extends Specification {
           LoadSpec.dataDiscoveryWithOrigin,
           (),
           PureDAO.DummyTarget,
-          Nil
+          Nil,
+          false
         )
         .runS
 
@@ -209,10 +213,11 @@ class LoadSpec extends Specification {
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
             LoadAuthMethod.NoCreds,
-            ()
+            (),
+            false
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         PureTransaction.RollbackMessage,
         LogEntry.Message("TICK REALTIME"),
         LogEntry.Message("SLEEP 30000000000 nanoseconds"),
@@ -226,10 +231,11 @@ class LoadSpec extends Specification {
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
             LoadAuthMethod.NoCreds,
-            ()
+            (),
+            false
           )
         ),
-        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName)),
+        LogEntry.Sql(Statement.ShreddedCopy(info, Compression.Gzip, LoadAuthMethod.NoCreds, model, model.tableName, false)),
         LogEntry.Sql(Statement.ManifestAdd(LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem)),
         LogEntry.Sql(Statement.ManifestGet("s3://shredded/base/".dir)),
         PureTransaction.CommitMessage
@@ -241,7 +247,8 @@ class LoadSpec extends Specification {
           LoadSpec.dataDiscoveryWithOrigin,
           (),
           PureDAO.DummyTarget,
-          Nil
+          Nil,
+          false
         )
         .runS
 
@@ -282,7 +289,8 @@ class LoadSpec extends Specification {
           LoadSpec.dataDiscoveryWithOrigin,
           (),
           PureDAO.DummyTarget,
-          Nil
+          Nil,
+          false
         )
         .runS
 

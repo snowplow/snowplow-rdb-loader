@@ -124,7 +124,11 @@ object Config {
     backoff: FiniteDuration,
     cumulativeBound: Option[FiniteDuration]
   )
-  final case class FeatureFlags(addLoadTstampColumn: Boolean, disableMigration: List[SchemaCriterion])
+  final case class FeatureFlags(
+    addLoadTstampColumn: Boolean,
+    disableMigration: List[SchemaCriterion],
+    legacyPartitioning: Boolean
+  )
 
   sealed trait Strategy
   object Strategy {

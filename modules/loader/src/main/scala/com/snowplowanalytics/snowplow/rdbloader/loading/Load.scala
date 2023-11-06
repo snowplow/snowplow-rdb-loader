@@ -88,14 +88,17 @@ object Load {
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableMigration: List[SchemaCriterion],
+    legacyPartitioning: Boolean
   ): F[LoadResult] =
     for {
       _ <- TargetCheck.prepareTarget[F, C]
       migrations <- Migration.build[F, C, I](discovery.discovery, target, disableMigration)
       _ <- getPreTransactions(setStage, migrations.preTransaction, incrementAttempt).traverse_(Transaction[F, C].run(_))
       result <- Transaction[F, C].transact {
-                  getTransaction[C, I](setStage, discovery, initQueryResult, target, disableMigration)(migrations.inTransaction)
+                  getTransaction[C, I](setStage, discovery, initQueryResult, target, disableMigration, legacyPartitioning)(
+                    migrations.inTransaction
+                  )
                     .onError { case _: Throwable => incrementAttempt }
                 }
     } yield result
@@ -124,7 +127,8 @@ object Load {
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableMigration: List[SchemaCriterion],
+    legacyPartitioning: Boolean
   )(
     inTransactionMigrations: F[Unit]
   ): F[LoadResult] =
@@ -143,7 +147,7 @@ object Load {
                     Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
                       setStage(Stage.MigrationIn) *>
                       inTransactionMigrations *>
-                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration) *>
+                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration, legacyPartitioning) *>
                       setStage(Stage.Committing) *>
                       Manifest.add[F](discovery.origin.toManifestItem) *>
                       Manifest
@@ -198,20 +202,22 @@ object Load {
     discovery: DataDiscovery,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableMigration: List[SchemaCriterion],
+    legacyPartitioning: Boolean
   ): F[Unit] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
       existingEventTableColumns <- if (target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
-      _ <- target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration).traverse_ { genStatement =>
-             for {
-               loadAuthMethod <- LoadAuthService[F].forLoadingEvents
-               // statement must be generated as late as possible, to have fresh and valid credentials.
-               statement = genStatement(loadAuthMethod)
-               _ <- Logging[F].info(statement.title)
-               _ <- setLoading(statement.table)
-               _ <- DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
-             } yield ()
+      _ <- target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration, legacyPartitioning).traverse_ {
+             genStatement =>
+               for {
+                 loadAuthMethod <- LoadAuthService[F].forLoadingEvents
+                 // statement must be generated as late as possible, to have fresh and valid credentials.
+                 statement = genStatement(loadAuthMethod)
+                 _ <- Logging[F].info(statement.title)
+                 _ <- setLoading(statement.table)
+                 _ <- DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
+               } yield ()
            }
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")
     } yield ()

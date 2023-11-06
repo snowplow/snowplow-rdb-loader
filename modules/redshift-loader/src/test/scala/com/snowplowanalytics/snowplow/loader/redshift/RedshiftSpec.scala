@@ -82,7 +82,7 @@ class RedshiftSpec extends Specification {
       }
     }
 
-    "getLoadStatements should return one COPY per unique schema (vendor, name, model)" in {
+    "getLoadStatements should return one COPY per unique schema (vendor, name, model, revision, addition)" in {
       val shreddedTypes = List(
         Info(
           vendor = "com.acme",
@@ -128,7 +128,7 @@ class RedshiftSpec extends Specification {
       )
 
       val result = redshift
-        .getLoadStatements(discovery, List.empty, (), Nil)
+        .getLoadStatements(discovery, List.empty, (), Nil, false)
         .map(f => f(LoadAuthService.LoadAuthMethod.NoCreds).title)
 
       result.size must beEqualTo(3)
@@ -137,6 +137,65 @@ class RedshiftSpec extends Specification {
           "COPY events FROM s3://my-bucket/my-path/", // atomic
           "COPY com_acme_event_2 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=2/revision=0/addition=0",
           "COPY com_acme_event_3 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=3/revision=0/addition=0"
+        )
+      )
+    }
+
+    "getLoadStatements should respect legacyPartitioning flag" in {
+      val shreddedTypes = List(
+        Info(
+          vendor = "com.acme",
+          name = "event",
+          version = SchemaVer.Full(2, 0, 0),
+          entity = SelfDescribingEvent,
+          base = Folder.coerce("s3://my-bucket/my-path")
+        ),
+        Info(
+          vendor = "com.acme",
+          name = "event",
+          version = SchemaVer.Full(2, 0, 0),
+          entity = Context,
+          base = Folder.coerce("s3://my-bucket/my-path")
+        ),
+        Info(
+          vendor = "com.acme",
+          name = "event",
+          version = SchemaVer.Full(3, 0, 0),
+          entity = SelfDescribingEvent,
+          base = Folder.coerce("s3://my-bucket/my-path")
+        ),
+        Info(
+          vendor = "com.acme",
+          name = "event",
+          version = SchemaVer.Full(3, 0, 0),
+          entity = Context,
+          base = Folder.coerce("s3://my-bucket/my-path")
+        )
+      ).map(Tabular)
+
+      val discovery = DataDiscovery(
+        Folder.coerce("s3://my-bucket/my-path"),
+        shreddedTypes,
+        Compression.None,
+        TypesInfo.Shredded(List.empty),
+        Nil,
+        shreddedTypes.map { s =>
+          s.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s.info.getSchemaKey), Schema()))
+          )
+        }.toMap
+      )
+
+      val result = redshift
+        .getLoadStatements(discovery, List.empty, (), Nil, legacyPartitioning = true)
+        .map(f => f(LoadAuthService.LoadAuthMethod.NoCreds).title)
+
+      result.size must beEqualTo(3)
+      result.toList must containTheSameElementsAs(
+        List(
+          "COPY events FROM s3://my-bucket/my-path/", // atomic
+          "COPY com_acme_event_2 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=2",
+          "COPY com_acme_event_3 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=3"
         )
       )
     }

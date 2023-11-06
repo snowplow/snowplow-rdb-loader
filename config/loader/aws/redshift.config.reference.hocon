@@ -275,5 +275,9 @@
     # e.g. [ "iglu:com.example/myschema1/jsonschema/1-*-*", "iglu:com.example/myschema2/jsonschema/1-*-*"]
     # Optional, empty list by default
     "disableMigration": []
+
+    # Use legacy file hierarchy, i.e. vendor/name/format/model , to decide which path to load transformed events from
+    # This should be in sync with transformer configuration
+    "legacyPartitioning": false
   }
 }

@@ -48,13 +48,23 @@ object Databricks {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             i: Unit,
-            disableMigration: List[SchemaCriterion]
+            disableMigration: List[SchemaCriterion],
+            legacyPartitioning: Boolean
           ): LoadStatements = {
             val toCopy = columnsToCopyFromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))
 
             NonEmptyList.one(loadAuthMethod =>
-              Statement.EventsCopy(discovery.base, discovery.compression, toCopy, toSkip, discovery.typesInfo, loadAuthMethod, i)
+              Statement.EventsCopy(
+                discovery.base,
+                discovery.compression,
+                toCopy,
+                toSkip,
+                discovery.typesInfo,
+                loadAuthMethod,
+                i,
+                legacyPartitioning
+              )
             )
           }
 
@@ -117,7 +127,7 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
-              case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _) =>
+              case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _, _) =>
                 val updatedPath = replaceScheme(path)
                 val frTableName = Fragment.const(qualify(EventsTable.MainName))
                 val frPath = Fragment.const0(updatedPath.append("output=good"))

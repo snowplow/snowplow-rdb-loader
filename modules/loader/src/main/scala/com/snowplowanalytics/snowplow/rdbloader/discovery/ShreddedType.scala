@@ -31,7 +31,7 @@ sealed trait ShreddedType {
   def info: ShreddedType.Info
 
   /** Get S3 prefix which DB should COPY FROM */
-  def getLoadPath: String
+  def getLoadPath(legacyPartitioning: Boolean): String
 
   /** Human-readable form */
   def show: String
@@ -60,8 +60,11 @@ object ShreddedType {
    *   existing JSONPaths file
    */
   final case class Json(info: Info, jsonPaths: BlobStorage.Key) extends ShreddedType {
-    def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
+    def getLoadPath(legacyPartitioning: Boolean): String =
+      if (legacyPartitioning)
+        s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}"
+      else
+        s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -74,14 +77,17 @@ object ShreddedType {
    *   raw metadata extracted from S3 Key
    */
   final case class Tabular(info: Info) extends ShreddedType {
-    def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
+    def getLoadPath(legacyPartitioning: Boolean): String =
+      if (legacyPartitioning)
+        s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}"
+      else
+        s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
 
   final case class Widerow(info: Info) extends ShreddedType {
-    def getLoadPath: String = s"${info.base}${Common.GoodPrefix}"
+    def getLoadPath(legacyPartitioning: Boolean): String = s"${info.base}${Common.GoodPrefix}"
 
     def show: String = s"${info.toCriterion.asString} WIDEROW"
   }

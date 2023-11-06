@@ -61,7 +61,8 @@ object Statement {
     columnsToSkip: ColumnsToSkip,
     typesInfo: TypesInfo,
     loadAuthMethod: LoadAuthMethod,
-    initQueryResult: T
+    initQueryResult: T,
+    legacyPartitioning: Boolean
   ) extends Statement
       with Loading {
     def table: String = EventsTable.MainName
@@ -72,11 +73,12 @@ object Statement {
     compression: Compression,
     loadAuthMethod: LoadAuthMethod,
     shredModel: ShredModel,
-    tableName: String
+    tableName: String,
+    legacyPartitioning: Boolean
   ) extends Statement
       with Loading {
     def table: String = shreddedType.info.getName
-    def path: String = shreddedType.getLoadPath
+    def path: String = shreddedType.getLoadPath(legacyPartitioning)
     def title = s"COPY $table FROM $path"
   }
   case class CreateTempEventTable(table: String) extends Loading {

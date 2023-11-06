@@ -85,11 +85,12 @@ object Redshift {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             i: Unit,
-            disableMigration: List[SchemaCriterion]
+            disableMigration: List[SchemaCriterion],
+            legacyPartitioning: Boolean
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
-              .groupBy(_.getLoadPath)
+              .groupBy(_.getLoadPath(legacyPartitioning))
               .values
               .map(_.head) // So we get only one copy statement for given path
               .map { shreddedType =>
@@ -104,7 +105,8 @@ object Redshift {
                     discovery.compression,
                     loadAuthMethod,
                     shredModel,
-                    tableName
+                    tableName,
+                    legacyPartitioning
                   )
               }
               .toList
@@ -117,7 +119,8 @@ object Redshift {
                 ColumnsToSkip.none,
                 discovery.typesInfo,
                 loadAuthMethod,
-                i
+                i,
+                legacyPartitioning
               )
             }
             NonEmptyList(atomic, shreddedStatements)
@@ -196,10 +199,10 @@ object Redshift {
                      | CREDENTIALS '$frCredentials'
                      | REGION '$frRegion'
                      | DELIMITER '$EventFieldSeparator'""".stripMargin
-              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, loadAuthMethod, _) =>
+              case Statement.EventsCopy(path, compression, columnsToCopy, _, _, loadAuthMethod, _, legacyPartitioning) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
                 val frTableName = Fragment.const(EventsTable.withSchema(schema))
-                val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
+                val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType, legacyPartitioning))
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
@@ -218,9 +221,9 @@ object Redshift {
                      | ACCEPTINVCHARS
                      | $frCompression""".stripMargin
 
-              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName) =>
+              case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName, legacyPartitioning) =>
                 val frTableName = Fragment.const0(qualify(tableName))
-                val frPath = Fragment.const0(shreddedType.getLoadPath)
+                val frPath = Fragment.const0(shreddedType.getLoadPath(legacyPartitioning))
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)

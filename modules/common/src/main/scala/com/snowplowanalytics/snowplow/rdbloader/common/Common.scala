@@ -26,16 +26,22 @@ object Common {
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1, 0, 0))
   val AtomicType = TypesInfo.Shredded.Type(AtomicSchema, TypesInfo.Shredded.ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
-  val AtomicPath: String = entityPath(AtomicType)
 
   val FolderTimeFormatter: DateTimeFormatter =
     DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss").withZone(ZoneId.from(ZoneOffset.UTC))
 
-  def entityPath(entity: TypesInfo.Shredded.Type) =
-    s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}/revision=${entity.schemaKey.version.revision}/addition=${entity.schemaKey.version.addition}"
+  def entityPath(entity: TypesInfo.Shredded.Type, legacyPartitioning: Boolean) =
+    if (legacyPartitioning)
+      s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}"
+    else
+      s"$GoodPrefix/vendor=${entity.schemaKey.vendor}/name=${entity.schemaKey.name}/format=${entity.format.path}/model=${entity.schemaKey.version.model}/revision=${entity.schemaKey.version.revision}/addition=${entity.schemaKey.version.addition}"
 
-  def entityPathFull(base: BlobStorage.Folder, entity: TypesInfo.Shredded.Type): BlobStorage.Folder =
-    BlobStorage.Folder.append(base, entityPath(entity))
+  def entityPathFull(
+    base: BlobStorage.Folder,
+    entity: TypesInfo.Shredded.Type,
+    legacyPartitioning: Boolean
+  ): BlobStorage.Folder =
+    BlobStorage.Folder.append(base, entityPath(entity, legacyPartitioning))
 
   /**
    * Remove all occurrences of access key id and secret access key from message Helps to avoid

@@ -85,7 +85,8 @@ object PureDAO {
       discovery: DataDiscovery,
       eventTableColumns: EventTableColumns,
       i: Unit,
-      disableMigration: List[SchemaCriterion]
+      disableMigration: List[SchemaCriterion],
+      legacyPartitioning: Boolean
     ): LoadStatements =
       NonEmptyList(
         loadAuthMethod =>
@@ -96,7 +97,8 @@ object PureDAO {
             ColumnsToSkip(List.empty),
             TypesInfo.Shredded(List.empty),
             loadAuthMethod,
-            i
+            i,
+            legacyPartitioning
           ),
         discovery.shreddedTypes.map { shredded =>
           val mergeResult = discovery.shredModels(shredded.info.getSchemaKey)
@@ -104,7 +106,7 @@ object PureDAO {
             mergeResult.recoveryModels.getOrElse(shredded.info.getSchemaKey, mergeResult.goodModel)
           val isMigrationDisabled = disableMigration.contains(shredded.info.toCriterion)
           val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
-          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName)
+          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName, false)
         }
       )
 
