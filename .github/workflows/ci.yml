@@ -57,6 +57,7 @@ jobs:
         run: |
           curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.34/DatabricksJDBC42-2.6.34.1058.zip --output DatabricksJDBC42.jar.zip
           unzip DatabricksJDBC42.jar.zip
+          cp ./*/DatabricksJDBC42.jar . # 2.6.34 download changes directory structure - grab the jar from nested directory (which has entropy in its name)
       - name: Docker login
         uses: docker/login-action@v1
         with:
