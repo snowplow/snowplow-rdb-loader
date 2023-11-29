@@ -13,10 +13,9 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import org.typelevel.log4cats.Logger
 
 import com.google.api.gax.batching.FlowControlSettings
-import com.google.api.gax.core.ExecutorProvider
-import com.google.common.util.concurrent.{ForwardingListeningExecutorService, MoreExecutors}
+import com.google.api.gax.core.FixedExecutorProvider
+import com.google.common.util.concurrent.ForwardingExecutorService
 
-import java.util.concurrent.{Callable, ScheduledExecutorService, ScheduledFuture, ScheduledThreadPoolExecutor, TimeUnit}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.gcp.{GCS, Pubsub}
 
@@ -26,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Run
 import com.snowplowanalytics.snowplow.scalatracker.emitters.http4s.ceTracking
 
 import scala.concurrent.duration.DurationInt
+import java.util.concurrent.{Callable, ExecutorService, Executors, ScheduledExecutorService, ScheduledFuture, TimeUnit}
 
 object Main extends IOApp {
 
@@ -53,73 +53,105 @@ object Main extends IOApp {
   ): Resource[F, Queue.Consumer[F]] =
     streamInput match {
       case conf: Config.StreamInput.Pubsub =>
-        Pubsub.consumer[F](
-          conf.projectId,
-          conf.subscriptionId,
-          parallelPullCount = conf.parallelPullCount,
-          bufferSize = conf.bufferSize,
-          maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
-          customPubsubEndpoint = conf.customPubsubEndpoint,
-          customizeSubscriber = { s =>
-            s.setFlowControlSettings {
-              val builder = FlowControlSettings.newBuilder()
-              // In here, we are only setting request bytes because it is safer choice
-              // in term of memory safety.
-              // Also, buffer size set above doesn't have to be inline with flow control settings.
-              // Even if more items than given buffer size arrives, it wouldn't create problem because
-              // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
-              // memory problem again.
-              (conf.maxOutstandingMessagesSize match {
-                case Some(v) => builder.setMaxOutstandingRequestBytes(v * 1000000)
-                case None => builder.setMaxOutstandingRequestBytes(null)
-              }).build()
-            }
-            s.setExecutorProvider {
-              new ExecutorProvider {
-                def shouldAutoClose: Boolean = true
-                def getExecutor: ScheduledExecutorService = scheduledExecutorService
-              }
-            }
-          }
-        )
+        for {
+          executorService <- scheduledExecutorService[F](conf)
+          consumer <- mkPubsubSource(conf, executorService)
+        } yield consumer
       case _ =>
         Resource.eval(Sync[F].raiseError(new IllegalArgumentException(s"Input is not Pubsub")))
     }
 
-  def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
-    val delegate = MoreExecutors.newDirectExecutorService
-    lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
-    override def schedule[V](
-      callable: Callable[V],
-      delay: Long,
-      unit: TimeUnit
-    ): ScheduledFuture[V] =
-      scheduler.schedule(callable, delay, unit)
-    override def schedule(
-      runnable: Runnable,
-      delay: Long,
-      unit: TimeUnit
-    ): ScheduledFuture[_] =
-      scheduler.schedule(runnable, delay, unit)
-    override def scheduleAtFixedRate(
-      runnable: Runnable,
-      initialDelay: Long,
-      period: Long,
-      unit: TimeUnit
-    ): ScheduledFuture[_] =
-      scheduler.scheduleAtFixedRate(runnable, initialDelay, period, unit)
-    override def scheduleWithFixedDelay(
-      runnable: Runnable,
-      initialDelay: Long,
-      delay: Long,
-      unit: TimeUnit
-    ): ScheduledFuture[_] =
-      scheduler.scheduleWithFixedDelay(runnable, initialDelay, delay, unit)
-    override def shutdown(): Unit = {
-      delegate.shutdown()
-      scheduler.shutdown()
+  private def mkPubsubSource[F[_]: Async](
+    conf: Config.StreamInput.Pubsub,
+    executorService: ScheduledExecutorService
+  ): Resource[F, Queue.Consumer[F]] =
+    Pubsub.consumer[F](
+      conf.projectId,
+      conf.subscriptionId,
+      parallelPullCount = conf.parallelPullCount,
+      bufferSize = conf.bufferSize,
+      maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
+      customPubsubEndpoint = conf.customPubsubEndpoint,
+      customizeSubscriber = { s =>
+        s.setFlowControlSettings {
+          val builder = FlowControlSettings.newBuilder()
+          // In here, we are only setting request bytes because it is safer choice
+          // in term of memory safety.
+          // Also, buffer size set above doesn't have to be inline with flow control settings.
+          // Even if more items than given buffer size arrives, it wouldn't create problem because
+          // incoming items will be blocked until buffer is emptied. However, making buffer too big creates
+          // memory problem again.
+          (conf.maxOutstandingMessagesSize match {
+            case Some(v) => builder.setMaxOutstandingRequestBytes(v * 1000000)
+            case None => builder.setMaxOutstandingRequestBytes(null)
+          }).build()
+        }.setExecutorProvider(FixedExecutorProvider.create(executorService))
+          .setSystemExecutorProvider(FixedExecutorProvider.create(executorService))
+      }
+    )
+
+  private def executorResource[F[_]: Sync, E <: ExecutorService](make: F[E]): Resource[F, E] =
+    Resource.make(make)(es => Sync[F].blocking(es.shutdown()))
+
+  /**
+   * Source operations are backed by two thread pools:
+   *
+   *   - A single thread pool, which is only even used for maintenance tasks like extending ack
+   *     extension periods.
+   *   - A small fixed-sized thread pool on which we deliberately run blocking tasks, like
+   *     attempting to write to the Queue.
+   *
+   * Because of this separation, even when the Queue is full, it cannot block the subscriber's
+   * maintenance tasks.
+   *
+   * Note, we use the same exact same thread pools for the subscriber's `executorProvider` and
+   * `systemExecutorProvider`. This means when the Queue is full then it blocks the subscriber from
+   * fetching more messages from pubsub. We need to do this trick because we have disabled flow
+   * control.
+   */
+  private def scheduledExecutorService[F[_]: Sync](config: Config.StreamInput.Pubsub): Resource[F, ScheduledExecutorService] =
+    for {
+      forMaintenance <- executorResource(Sync[F].delay(Executors.newSingleThreadScheduledExecutor))
+      forBlocking <- executorResource(Sync[F].delay(Executors.newFixedThreadPool(config.parallelPullCount)))
+    } yield new ForwardingExecutorService with ScheduledExecutorService {
+
+      /**
+       * Any callable/runnable which is **scheduled** must be a maintenance task, so run it on the
+       * dedicated maintenance pool
+       */
+      override def schedule[V](
+        callable: Callable[V],
+        delay: Long,
+        unit: TimeUnit
+      ): ScheduledFuture[V] =
+        forMaintenance.schedule(callable, delay, unit)
+      override def schedule(
+        runnable: Runnable,
+        delay: Long,
+        unit: TimeUnit
+      ): ScheduledFuture[_] =
+        forMaintenance.schedule(runnable, delay, unit)
+      override def scheduleAtFixedRate(
+        runnable: Runnable,
+        initialDelay: Long,
+        period: Long,
+        unit: TimeUnit
+      ): ScheduledFuture[_] =
+        forMaintenance.scheduleAtFixedRate(runnable, initialDelay, period, unit)
+      override def scheduleWithFixedDelay(
+        runnable: Runnable,
+        initialDelay: Long,
+        delay: Long,
+        unit: TimeUnit
+      ): ScheduledFuture[_] =
+        forMaintenance.scheduleWithFixedDelay(runnable, initialDelay, delay, unit)
+
+      /**
+       * Non-scheduled tasks (e.g. when a message is received), can be run on the fixed-size
+       * blocking pool
+       */
+      override val delegate = forBlocking
     }
-  }
 
   private def mkSink[F[_]: Async](output: Config.Output): Resource[F, BlobStorage[F]] =
     output match {
