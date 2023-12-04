@@ -69,7 +69,8 @@ object Config {
       parallelPullCount: Int,
       bufferSize: Int,
       maxAckExtensionPeriod: FiniteDuration,
-      maxOutstandingMessagesSize: Option[Long]
+      maxOutstandingMessagesSize: Option[Long],
+      minDurationPerAckExtension: FiniteDuration
     ) extends StreamInput {
       val (projectId, subscriptionId) =
         subscription.split("/").toList match {
