@@ -70,7 +70,7 @@ object Dependencies {
     val jettison         = "1.5.4" // Fix CVE
     val reactorNetty     = "1.0.39" // Fix CVE
     val jettyHttp        = "9.4.53.v20231009" // Fix CVE
-
+    val zookeeper        = "3.7.2" // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.17.0"
@@ -195,6 +195,7 @@ object Dependencies {
   val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2        % Runtime
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
+  val zookeeper         = "org.apache.zookeeper"   % "zookeeper"                % V.zookeeper
 
   // Scala (test only)
   val specs2            = "org.specs2"                 %% "specs2-core"                   % V.specs2            % Test
@@ -269,7 +270,8 @@ object Dependencies {
     scalaTrackerEmit,
     http4sClient,
     slf4jApi,
-    sentry
+    sentry,
+    zookeeper
   )
 
   val loaderDependencies = Seq(
