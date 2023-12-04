@@ -72,7 +72,8 @@ object ConfigSpec {
     bufferSize = 500,
     maxAckExtensionPeriod = 1.hour,
     maxOutstandingMessagesSize = None,
-    minDurationPerAckExtension = 60.seconds
+    minDurationPerAckExtension = 60.seconds,
+    awaitTerminatePeriod = 60.seconds
   )
   val exampleWindowPeriod = 5.minutes
   val exampleOutput = Config.Output.GCS(

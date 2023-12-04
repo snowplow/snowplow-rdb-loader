@@ -204,6 +204,7 @@ object ConfigSpec {
       subscription = "projects/project-id/subscriptions/subscription-id",
       customPubsubEndpoint = None,
       parallelPullCount = 1,
+      awaitTerminatePeriod = 30.seconds,
       bufferSize = 10
     )
   )

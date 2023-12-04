@@ -172,6 +172,7 @@ object Environment {
                              parallelPullCount = c.messageQueue.parallelPullCount,
                              bufferSize = c.messageQueue.bufferSize,
                              maxAckExtensionPeriod = config.timeouts.loading,
+                             awaitTerminatePeriod = c.messageQueue.awaitTerminatePeriod,
                              customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
                              postProcess = Some(postProcess)
                            )
