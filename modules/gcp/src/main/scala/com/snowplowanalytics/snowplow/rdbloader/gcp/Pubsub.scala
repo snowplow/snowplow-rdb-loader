@@ -95,6 +95,7 @@ object Pubsub {
     parallelPullCount: Int,
     bufferSize: Int,
     maxAckExtensionPeriod: FiniteDuration,
+    awaitTerminatePeriod: FiniteDuration,
     customPubsubEndpoint: Option[String] = None,
     customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
     postProcess: Option[Queue.Consumer.PostProcess[F]] = None
@@ -111,6 +112,7 @@ object Pubsub {
                          parallelPullCount = parallelPullCount,
                          maxQueueSize = bufferSize,
                          maxAckExtensionPeriod = maxAckExtensionPeriod,
+                         awaitTerminatePeriod = awaitTerminatePeriod,
                          customizeSubscriber = {
                            val customChannel: Subscriber.Builder => Subscriber.Builder = channelProvider
                              .map { c => b: Subscriber.Builder =>
@@ -133,6 +135,7 @@ object Pubsub {
                          errorHandler,
                          pubSubConfig
                        )
+                       .onFinalize(Logger[F].info("Pubsub consumer has shut down"))
                        .map(r => Message(new String(r.value, "UTF-8"), r.ack))
 
                      postProcess match {
