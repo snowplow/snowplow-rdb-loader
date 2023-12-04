@@ -71,7 +71,8 @@ object ConfigSpec {
     parallelPullCount = 1,
     bufferSize = 500,
     maxAckExtensionPeriod = 1.hour,
-    maxOutstandingMessagesSize = None
+    maxOutstandingMessagesSize = None,
+    minDurationPerAckExtension = 60.seconds
   )
   val exampleWindowPeriod = 5.minutes
   val exampleOutput = Config.Output.GCS(
