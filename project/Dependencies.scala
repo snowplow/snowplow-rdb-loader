@@ -68,6 +68,7 @@ object Dependencies {
     val kinesisClient    = "2.4.3"
     val nettyCodec       = "4.1.86.Final" // Fix CVE
     val jettison         = "1.5.4" // Fix CVE
+    val reactorNetty     = "1.0.39" // Fix CVE
 
     // Scala (test only)
     val specs2           = "4.17.0"
@@ -171,6 +172,7 @@ object Dependencies {
   val snowflakeJdbc     = "net.snowflake"         % "snowflake-jdbc"            % V.snowflakeJdbc
   val enumeratum        = "com.beachape"          %% "enumeratum"               % V.enumeratum
   val jettison          = "org.codehaus.jettison" % "jettison"                  % V.jettison
+  val reactorNetty      = "io.projectreactor.netty" % "reactor-netty-http"      % V.reactorNetty
 
   // Java (Shredder)
   val dynamodb          = "com.amazonaws"         % "aws-java-sdk-dynamodb"     % V.aws
@@ -231,7 +233,9 @@ object Dependencies {
     azureKeyVault,
     fs2Kafka,
     hadoopCommon,
-    hadoopAzure
+    hadoopAzure,
+    reactorNetty,
+    jettyHttp
   )
 
   val commonDependencies = Seq(
