@@ -61,7 +61,7 @@ object Dependencies {
     val snowflakeJdbc    = "3.13.30"
     val enumeratum       = "1.7.0"
     val aws              = "1.12.261"
-    val aws2             = "2.18.8"
+    val aws2             = "2.21.33"
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
     val protobuf         = "3.21.7" // Fix CVE
@@ -70,6 +70,7 @@ object Dependencies {
     val jettison         = "1.5.4" // Fix CVE
     val reactorNetty     = "1.0.39" // Fix CVE
     val jettyHttp        = "9.4.53.v20231009" // Fix CVE
+
 
     // Scala (test only)
     val specs2           = "4.17.0"
