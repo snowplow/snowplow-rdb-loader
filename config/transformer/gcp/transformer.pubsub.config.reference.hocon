@@ -12,6 +12,10 @@
 
     # Optional. Default value '1 hour'. The maximum period a message ack deadline will be extended.
     "maxAckExtensionPeriod": "1 hour"
+
+    # Optional. Sets a lower-bound on how the pubsub Subscriber extends ack deadlines.  Most relevant after the app
+    # first starts up, until the underlying Subscriber has metrics on how long we take to process an event.
+    "minDurationPerAckExtension": "60 seconds"
   }
 
   # Path to transformed archive

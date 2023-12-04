@@ -65,6 +65,7 @@ object Dependencies {
     val enumeratum       = "1.7.0"
     val aws              = "1.12.261"
     val aws2             = "2.21.33"
+    val pubsub           = "1.125.13"
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
     val protobuf         = "3.21.7" // Fix CVE
@@ -196,6 +197,7 @@ object Dependencies {
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
   val aws2regions       = "software.amazon.awssdk" % "regions"                  % V.aws2
   val aws2sts           = "software.amazon.awssdk" % "sts"                      % V.aws2        % Runtime
+  val pubsub            = "com.google.cloud"       % "google-cloud-pubsub"      % V.pubsub
   val protobuf          = "com.google.protobuf"    % "protobuf-java"            % V.protobuf
   val nettyCodec        = "io.netty"               % "netty-codec"              % V.nettyCodec
   val zookeeper         = "org.apache.zookeeper"   % "zookeeper"                % V.zookeeper
@@ -230,6 +232,7 @@ object Dependencies {
   val gcpDependencies = Seq(
     fs2BlobstoreGCS,
     fs2PubSub,
+    pubsub,
     secretManager,
     gcpStorage
   )

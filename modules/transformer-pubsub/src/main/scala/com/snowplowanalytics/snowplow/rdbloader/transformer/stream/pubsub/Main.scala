@@ -18,6 +18,7 @@ import org.typelevel.log4cats.Logger
 import com.google.api.gax.batching.FlowControlSettings
 import com.google.api.gax.core.ExecutorProvider
 import com.google.common.util.concurrent.{ForwardingListeningExecutorService, MoreExecutors}
+import org.threeten.bp.{Duration => ThreetenDuration}
 
 import java.util.concurrent.{Callable, ScheduledExecutorService, ScheduledFuture, ScheduledThreadPoolExecutor, TimeUnit}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
@@ -83,6 +84,7 @@ object Main extends IOApp {
                 def getExecutor: ScheduledExecutorService = scheduledExecutorService
               }
             }
+            s.setMinDurationPerAckExtension(ThreetenDuration.ofMillis(conf.minDurationPerAckExtension.toMillis))
           }
         )
       case _ =>
