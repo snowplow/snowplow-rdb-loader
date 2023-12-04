@@ -65,6 +65,8 @@ object QueueBadSinkSpec {
         |   "parallelPullCount": 1
         |   "bufferSize": 500
         |   "maxAckExtensionPeriod": "1 hours"
+        |   "minDurationPerAckExtension": "60 seconds"
+        |   "awaitTerminatePeriod": "5 seconds"
         | }
         | "output": {
         |   "path": "${outputPath.toNioPath.toUri.toString}"
