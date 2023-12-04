@@ -16,6 +16,9 @@
     # Optional. Sets a lower-bound on how the pubsub Subscriber extends ack deadlines.  Most relevant after the app
     # first starts up, until the underlying Subscriber has metrics on how long we take to process an event.
     "minDurationPerAckExtension": "60 seconds"
+
+    # Optional. How long we allow the pubsub Subscriber to ack any outstanding events during clean shutdown
+    "awaitTerminatePeriod": "60 seconds"
   }
 
   # Path to transformed archive

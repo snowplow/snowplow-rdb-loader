@@ -105,7 +105,7 @@ class ConfigSpec extends Specification {
       )
       val awsConfig = exampleCloud
       val gcpConfig = Config.Cloud.GCP(
-        messageQueue = Config.Cloud.GCP.Pubsub("projects/project-id/subscriptions/subscription-id", None, 1, 1)
+        messageQueue = Config.Cloud.GCP.Pubsub("projects/project-id/subscriptions/subscription-id", None, 1, 30.seconds, 1)
       )
       val azureConfig = Config.Cloud.Azure(
         URI.create("https://test.blob.core.windows.net/test-container/"),
