@@ -60,6 +60,7 @@ object Main extends IOApp {
           parallelPullCount = conf.parallelPullCount,
           bufferSize = conf.bufferSize,
           maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
+          awaitTerminatePeriod = conf.awaitTerminatePeriod,
           customPubsubEndpoint = conf.customPubsubEndpoint,
           customizeSubscriber = { s =>
             s.setFlowControlSettings {

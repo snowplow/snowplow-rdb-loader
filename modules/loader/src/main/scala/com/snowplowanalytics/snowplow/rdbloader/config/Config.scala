@@ -151,6 +151,7 @@ object Config {
         subscription: String,
         customPubsubEndpoint: Option[String],
         parallelPullCount: Int,
+        awaitTerminatePeriod: FiniteDuration,
         bufferSize: Int
       ) {
         val (projectId, subscriptionId) =

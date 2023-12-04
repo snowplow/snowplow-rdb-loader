@@ -70,7 +70,8 @@ object Config {
       bufferSize: Int,
       maxAckExtensionPeriod: FiniteDuration,
       maxOutstandingMessagesSize: Option[Long],
-      minDurationPerAckExtension: FiniteDuration
+      minDurationPerAckExtension: FiniteDuration,
+      awaitTerminatePeriod: FiniteDuration
     ) extends StreamInput {
       val (projectId, subscriptionId) =
         subscription.split("/").toList match {
