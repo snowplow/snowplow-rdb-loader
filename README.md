@@ -65,7 +65,7 @@ Licensed under the [Snowplow Community License](https://docs.snowplow.io/communi
 [build-image]: https://github.com/snowplow/snowplow-rdb-loader/workflows/CI/badge.svg
 [build]: https://github.com/snowplow/snowplow-rdb-loader/actions/workflows/ci.yml
 
-[release-image]: https://img.shields.io/badge/release-5.7.4-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-5.7.5-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
 [license]: https://docs.snowplow.io/docs/contributing/community-license-faq/

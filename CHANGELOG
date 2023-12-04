@@ -1,3 +1,11 @@
+Version 5.7.5 (2023-12-04)
+--------------------------
+Bump zookeeper to 3.7.2 (#1325)
+Bump aws sdk to 2.21.33 (#1325)
+Bump jetty-http to 9.4.53.v20231009 (#1325)
+Bump reactor-netty-http to 1.0.39 (#1325)
+Use databricks JDBC 2.6.34 (#1325)
+
 Version 5.7.4 (2023-10-10)
 --------------------------
 Bump snappy-java to 1.1.10.4 (#1313)
