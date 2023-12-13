@@ -9,7 +9,10 @@ package com.snowplowanalytics.snowplow.rdbloader.db
 
 object Columns {
 
-  final case class ColumnName(value: String) extends AnyVal
+  final case class ColumnName(value: String) extends AnyVal {
+    def quoted: String = s""""$value""""
+  }
+
   type EventTableColumns = List[ColumnName]
 
   final case class ColumnsToCopy(names: List[ColumnName]) extends AnyVal

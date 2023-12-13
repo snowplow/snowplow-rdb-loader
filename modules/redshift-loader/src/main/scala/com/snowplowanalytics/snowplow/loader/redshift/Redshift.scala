@@ -212,7 +212,7 @@ object Redshift {
                 val frRegion = Fragment.const0(region.name)
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
-                val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
+                val frColumns = Fragment.const0(columnsToCopy.names.map(_.quoted).mkString(","))
 
                 sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                      | CREDENTIALS '$frCredentials'
