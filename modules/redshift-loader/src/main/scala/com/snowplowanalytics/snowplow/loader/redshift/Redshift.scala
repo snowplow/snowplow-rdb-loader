@@ -234,7 +234,7 @@ object Redshift {
                 val frMaxError = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
                 val columns = shredModel.entries.map(_.columnName)
-                val frColumns = Fragment.const0((ShredModelEntry.commonColumnNames ::: columns).mkString(","))
+                val frColumns = Fragment.const0((ShredModelEntry.commonColumnNames ::: columns).map(quoted).mkString(","))
 
                 shreddedType match {
                   case ShreddedType.Json(_, jsonPathsFile) =>
@@ -368,4 +368,6 @@ object Redshift {
       case _: LoadAuthMethod.TempCreds.Azure =>
         throw new IllegalStateException("Azure temp credentials can't be used with Redshift")
     }
+
+  private def quoted(str: String): String = s""""$str""""
 }
