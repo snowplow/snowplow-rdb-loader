@@ -60,7 +60,7 @@ object Load {
 
   sealed trait LoadResult
 
-  case class LoadSuccess(ingestionTimestamp: Option[Instant], recoveryTableNames: List[String]) extends LoadResult
+  case class LoadSuccess(recoveryTableNames: List[String]) extends LoadResult
 
   case class FolderAlreadyLoaded(folder: BlobStorage.Folder) extends LoadResult {
     def toAlert: Alert =
@@ -149,11 +149,10 @@ object Load {
                       inTransactionMigrations *>
                       run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration).flatMap {
                         loadedRecoveryTableNames =>
-                          setStage(Stage.Committing) *>
-                            Manifest.add[F](discovery.origin.toManifestItem) *>
-                            Manifest
-                              .get[F](discovery.discovery.base)
-                              .map(opt => LoadSuccess(opt.map(_.ingestion), loadedRecoveryTableNames))
+                          for {
+                            _ <- setStage(Stage.Committing)
+                            _ <- Manifest.add[F](discovery.origin.toManifestItem)
+                          } yield LoadSuccess(loadedRecoveryTableNames)
                       }
                 }
     } yield result
@@ -231,17 +230,17 @@ object Load {
   def congratulate[F[_]: Clock: Monad: Logging: Monitoring](
     attempts: Int,
     started: Instant,
-    ingestion: Instant,
-    loaded: LoaderMessage.ShreddingComplete,
-    recoveryTableNames: List[String]
+    loadResult: LoadSuccess,
+    shreddingComplete: LoaderMessage.ShreddingComplete
   ): F[Unit] = {
     val attemptsSuffix = if (attempts > 0) s" after ${attempts} attempts" else ""
     for {
-      _ <- Logging[F].info(s"Folder ${loaded.base} loaded successfully$attemptsSuffix")
-      success = Monitoring.SuccessPayload.build(loaded, attempts, started, ingestion, recoveryTableNames)
-      _ <- Monitoring[F].success(success)
-      metrics <- Metrics.getCompletedMetrics[F](loaded)
-      _ <- loaded.timestamps.max.map(t => Monitoring[F].periodicMetrics.setMaxTstampOfLoadedData(t)).sequence.void
+      now <- Clock[F].realTimeInstant
+      _ <- Logging[F].info(s"Folder ${shreddingComplete.base} loaded successfully$attemptsSuffix")
+      monitoringPayload = Monitoring.SuccessPayload.build(shreddingComplete, attempts, started, now, loadResult)
+      _ <- Monitoring[F].success(monitoringPayload)
+      metrics <- Metrics.getCompletedMetrics[F](shreddingComplete, loadResult)
+      _ <- shreddingComplete.timestamps.max.map(t => Monitoring[F].periodicMetrics.setMaxTstampOfLoadedData(t)).sequence.void
       _ <- Monitoring[F].reportMetrics(metrics)
       _ <- Logging[F].info((metrics: Metrics.KVMetrics).show)
     } yield ()

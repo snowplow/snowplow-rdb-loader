@@ -44,6 +44,8 @@ sealed trait StorageTarget extends Product with Serializable {
   def properties: Properties
   def eventsLoadAuthMethod: StorageTarget.LoadAuthMethod
   def foldersLoadAuthMethod: StorageTarget.LoadAuthMethod
+
+  def reportRecoveryTableMetrics: Boolean
 }
 
 object StorageTarget {
@@ -95,6 +97,8 @@ object StorageTarget {
 
     override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
     override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+
+    override def reportRecoveryTableMetrics: Boolean = true
   }
 
   final case class Databricks(
@@ -134,6 +138,8 @@ object StorageTarget {
 
     override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
     override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+
+    override def reportRecoveryTableMetrics: Boolean = false
   }
 
   final case class Snowflake(
@@ -212,6 +218,8 @@ object StorageTarget {
       transformedStage.fold(loadAuthMethod)(_ => LoadAuthMethod.NoCreds)
     override def foldersLoadAuthMethod: LoadAuthMethod =
       folderMonitoringStage.fold(loadAuthMethod)(_ => LoadAuthMethod.NoCreds)
+
+    override def reportRecoveryTableMetrics: Boolean = false
   }
 
   object Snowflake {
