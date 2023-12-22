@@ -107,7 +107,15 @@ object Environment {
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
       implicit0(monitoring: Monitoring[F]) =
-        Monitoring.monitoringInterpreter[F](tracker, sentry, reporters, cli.config.monitoring.webhook, httpClient, periodicMetrics)
+        Monitoring.monitoringInterpreter[F](
+          tracker,
+          sentry,
+          reporters,
+          cli.config.monitoring.webhook,
+          httpClient,
+          periodicMetrics,
+          cli.config.storage.reportRecoveryTableMetrics
+        )
       implicit0(secretStore: SecretStore[F]) = cloudServices.secretStore
       implicit0(dispatcher: Dispatcher[F]) <- Dispatcher.parallel[F]
       transaction <- Transaction.interpreter[F](cli.config.storage, cli.config.timeouts, cli.config.readyCheck)

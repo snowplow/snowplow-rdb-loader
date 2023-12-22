@@ -29,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.PeriodicMetrics
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.{Metrics, Reporter}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.LoadSuccess
 import org.http4s.FormDataDecoder.formEntityDecoder
 
 trait Monitoring[F[_]] { self =>
@@ -133,9 +134,9 @@ object Monitoring {
       attempts: Int,
       start: Instant,
       ingestion: Instant,
-      recoveryTableNames: List[String]
+      loadResult: LoadSuccess
     ): SuccessPayload = {
-      val tableNames = if (recoveryTableNames.isEmpty) None else recoveryTableNames.some
+      val tableNames = if (loadResult.recoveryTableNames.isEmpty) None else loadResult.recoveryTableNames.some
       SuccessPayload(shredding, Application, attempts, start, ingestion, tableNames, Map.empty)
     }
   }
@@ -146,7 +147,8 @@ object Monitoring {
     reporters: List[Reporter[F]],
     webhookConfig: Option[Config.Webhook],
     httpClient: Client[F],
-    pm: PeriodicMetrics[F]
+    pm: PeriodicMetrics[F],
+    reportRecoveryTableMetrics: Boolean
   )(implicit E: EntityDecoder[F, String]
   ): Monitoring[F] =
     new Monitoring[F] {
@@ -177,7 +179,7 @@ object Monitoring {
         sentryClient.fold(Sync[F].unit)(s => Sync[F].delay(s.sendException(e)))
 
       def reportMetrics(metrics: Metrics.KVMetrics): F[Unit] =
-        reporters.traverse_(r => r.report(metrics.toList))
+        reporters.traverse_(r => r.report(metrics.toList(reportRecoveryTableMetrics)))
 
       def success(payload: SuccessPayload): F[Unit] = {
         val webhookRequest = viaWebhook[SuccessPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
