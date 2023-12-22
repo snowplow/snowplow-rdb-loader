@@ -211,13 +211,8 @@ object Loader {
           Load.load[F, C, I](setStageC, incrementAttemptsC, discovery, initQueryResult, target, config.featureFlags.disableMigration)
         attempts <- control.getAndResetAttempts
         _ <- result match {
-               case Load.LoadSuccess(ingested, recoveryTableNames) =>
-                 val now = Logging[F].warning("No ingestion timestamp available") *> Clock[F].realTimeInstant
-                 for {
-                   loaded <- ingested.map(Monad[F].pure).getOrElse(now)
-                   _ <- Load.congratulate[F](attempts, start, loaded, discovery.origin, recoveryTableNames)
-                   _ <- control.incrementLoaded
-                 } yield ()
+               case loadSuccess: Load.LoadSuccess =>
+                 Load.congratulate[F](attempts, start, loadSuccess, discovery.origin) *> control.incrementLoaded
                case fal: Load.FolderAlreadyLoaded =>
                  Monitoring[F].alert(fal.toAlert)
              }

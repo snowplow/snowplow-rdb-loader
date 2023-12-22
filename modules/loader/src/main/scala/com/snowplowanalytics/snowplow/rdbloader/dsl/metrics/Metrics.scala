@@ -15,6 +15,7 @@ import cats.implicits._
 import cats.effect.{Async, Clock, Sync}
 import cats.effect.kernel.Ref
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.LoadSuccess
 
 object Metrics {
 
@@ -69,6 +70,12 @@ object Metrics {
       val key = "minimum_age_of_loaded_data"
       val value = v.toString
       val metricType = MetricType.Gauge
+    }
+
+    final case class RecoveryTablesLoaded(v: Int) extends KVMetric {
+      val key = "recovery_tables_loaded"
+      val value = v.toString
+      val metricType = MetricType.Count
     }
 
     final case class DestinationHealthy(value: String) extends KVMetric {
@@ -150,8 +157,24 @@ object Metrics {
 
   sealed trait KVMetrics {
     def toList: List[KVMetric] = this match {
-      case KVMetrics.LoadingCompleted(countGood, countBad, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
-        List(Some(countGood), Some(countBad), minTstamp, maxTstamp, Some(shredderStart), Some(shredderEnd)).unite
+      case KVMetrics.LoadingCompleted(
+            countGood,
+            countBad,
+            minTstamp,
+            maxTstamp,
+            shredderStart,
+            shredderEnd,
+            recoveryTablesLoaded
+          ) =>
+        List(
+          Some(countGood),
+          Some(countBad),
+          minTstamp,
+          maxTstamp,
+          Some(shredderStart),
+          Some(shredderEnd),
+          Some(recoveryTablesLoaded)
+        ).unite
       case KVMetrics.PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
         List(minAgeOfLoadedData)
       case KVMetrics.HealthCheck(healthy) =>
@@ -167,7 +190,8 @@ object Metrics {
       collectorLatencyMin: Option[KVMetric.CollectorLatencyMin],
       collectorLatencyMax: Option[KVMetric.CollectorLatencyMax],
       shredderStartLatency: KVMetric.ShredderLatencyStart,
-      shredderEndLatency: KVMetric.ShredderLatencyEnd
+      shredderEndLatency: KVMetric.ShredderLatencyEnd,
+      recoveryTablesLoaded: KVMetric.RecoveryTablesLoaded
     ) extends KVMetrics
 
     final case class PeriodicMetricsSnapshot(
@@ -178,13 +202,23 @@ object Metrics {
 
     implicit val kvMetricsShow: Show[KVMetrics] =
       Show.show {
-        case LoadingCompleted(countGood, countBad, minTstamp, maxTstamp, shredderStart, shredderEnd) =>
+        case LoadingCompleted(
+              countGood,
+              countBad,
+              minTstamp,
+              maxTstamp,
+              shredderStart,
+              shredderEnd,
+              recoveryTablesLoaded
+            ) =>
           s"""${countGood.value} good events were loaded.
             | ${countBad.value} bad events were in this batch.
             | It took minimum ${minTstamp.map(_.value).getOrElse("unknown")} seconds and maximum
             | ${maxTstamp.map(_.value).getOrElse("unknown")} seconds between the collector and warehouse for these events.
             | It took ${shredderStart.value} seconds between the start of transformer and warehouse
-            | and ${shredderEnd.value} seconds between the completion of transformer and warehouse""".stripMargin.replaceAll("\n", " ")
+            | and ${shredderEnd.value} seconds between the completion of transformer and warehouse.
+            | ${recoveryTablesLoaded.value} recovery tables wered loaded with data.""".stripMargin
+            .replaceAll("\n", " ")
         case PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
           s"Minimum age of loaded data in seconds: ${minAgeOfLoadedData.value}"
         case HealthCheck(destinationHealthy) =>
@@ -193,15 +227,19 @@ object Metrics {
       }
   }
 
-  def getCompletedMetrics[F[_]: Clock: Functor](loaded: LoaderMessage.ShreddingComplete): F[KVMetrics.LoadingCompleted] =
+  def getCompletedMetrics[F[_]: Clock: Functor](
+    shreddingComplete: LoaderMessage.ShreddingComplete,
+    loadResult: LoadSuccess
+  ): F[KVMetrics.LoadingCompleted] =
     Clock[F].realTimeInstant.map { now =>
       KVMetrics.LoadingCompleted(
-        KVMetric.CountGood(loaded.count.map(_.good).getOrElse(0)),
-        KVMetric.CountBad(loaded.count.flatMap(_.bad).getOrElse(0)),
-        loaded.timestamps.max.map(max => Duration.between(max, now).toSeconds()).map(l => KVMetric.CollectorLatencyMin(l)),
-        loaded.timestamps.min.map(min => Duration.between(min, now).toSeconds()).map(l => KVMetric.CollectorLatencyMax(l)),
-        KVMetric.ShredderLatencyStart(Duration.between(loaded.timestamps.jobStarted, now).toSeconds()),
-        KVMetric.ShredderLatencyEnd(Duration.between(loaded.timestamps.jobCompleted, now).toSeconds())
+        KVMetric.CountGood(shreddingComplete.count.map(_.good).getOrElse(0)),
+        KVMetric.CountBad(shreddingComplete.count.flatMap(_.bad).getOrElse(0)),
+        shreddingComplete.timestamps.max.map(max => Duration.between(max, now).toSeconds()).map(l => KVMetric.CollectorLatencyMin(l)),
+        shreddingComplete.timestamps.min.map(min => Duration.between(min, now).toSeconds()).map(l => KVMetric.CollectorLatencyMax(l)),
+        KVMetric.ShredderLatencyStart(Duration.between(shreddingComplete.timestamps.jobStarted, now).toSeconds()),
+        KVMetric.ShredderLatencyEnd(Duration.between(shreddingComplete.timestamps.jobCompleted, now).toSeconds()),
+        KVMetric.RecoveryTablesLoaded(loadResult.recoveryTableNames.length)
       )
     }
 

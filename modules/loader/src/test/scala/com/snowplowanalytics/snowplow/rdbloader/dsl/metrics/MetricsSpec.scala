@@ -21,6 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.{Semver, Transform
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.metrics.Metrics.{KVMetric, PeriodicMetrics}
+import com.snowplowanalytics.snowplow.rdbloader.loading.Load.LoadSuccess
 
 import java.util.concurrent.TimeUnit
 import cats.effect.unsafe.implicits.global
@@ -47,7 +48,7 @@ class MetricsSpec extends Specification {
       val shredderStartLatency = 50L
       val shredderEndLatency = 10L
 
-      val loaded = ShreddingComplete(
+      val shreddingComplete = ShreddingComplete(
         BlobStorage.Folder.coerce("s3://shredded/run_id/"),
         TypesInfo.Shredded(Nil),
         Timestamps(
@@ -61,16 +62,24 @@ class MetricsSpec extends Specification {
         Some(Count(countGood, Some(countBad)))
       )
 
+      val loadResult = LoadSuccess(
+        List(
+          "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_737559706",
+          "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102"
+        )
+      )
+
       val expected = Metrics.KVMetrics.LoadingCompleted(
         KVMetric.CountGood(countGood),
         KVMetric.CountBad(countBad),
         Some(KVMetric.CollectorLatencyMin(collectorLatencyMin)),
         Some(KVMetric.CollectorLatencyMax(collectorLatencyMax)),
         KVMetric.ShredderLatencyStart(shredderStartLatency),
-        KVMetric.ShredderLatencyEnd(shredderEndLatency)
+        KVMetric.ShredderLatencyEnd(shredderEndLatency),
+        KVMetric.RecoveryTablesLoaded(2)
       )
 
-      val actual = Metrics.getCompletedMetrics[Id](loaded)
+      val actual = Metrics.getCompletedMetrics[Id](shreddingComplete, loadResult)
 
       actual === expected
     }
