@@ -167,25 +167,18 @@ object DataDiscovery {
 
   def getShredModels[F[_]: Monad: Iglu](
     nonAtomicTypes: List[ShreddedType]
-  ): EitherT[F, LoaderError, Map[SchemaKey, MergeRedshiftSchemasResult]] = {
-    val maxSchemaKeyPerTableName = getMaxSchemaKeyPerTableName(nonAtomicTypes)
+  ): EitherT[F, LoaderError, Map[SchemaKey, MergeRedshiftSchemasResult]] =
     nonAtomicTypes
       .traverse { shreddedType =>
         EitherT(Iglu[F].getSchemasWithSameModel(shreddedType.info.getSchemaKey)).map { schemas =>
-          val maxSchemaKey = maxSchemaKeyPerTableName(shreddedType.info.getName)
-          val filtered = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
+          val filtered = schemas.filter(_.self.schemaKey <= shreddedType.info.getSchemaKey).toNel.get
           val mergeRedshiftSchemasResult = foldMapMergeRedshiftSchemas(filtered)
           (shreddedType.info.getSchemaKey, mergeRedshiftSchemasResult)
         }
       }
       .map(_.toMap)
-  }
 
   implicit val ord: Ordering[SchemaKey] = ordering
-
-  /** Find the maximum SchemaKey for all table names in a given set of shredded types */
-  def getMaxSchemaKeyPerTableName(shreddedTypes: List[ShreddedType]): Map[String, SchemaKey] =
-    shreddedTypes.groupBy(_.info.getName).mapValues(_.maxBy(_.info.version).info.getSchemaKey)
 
   def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =
     Logging[F].error(error)("A problem occurred in the loading of SQS message") *> MonadThrow[F].raiseError(error)
