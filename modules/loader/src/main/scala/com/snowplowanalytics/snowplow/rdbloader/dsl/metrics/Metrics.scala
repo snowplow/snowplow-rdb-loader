@@ -120,7 +120,7 @@ object Metrics {
             for {
               _ <- Stream.fixedDelay[F](period)
               snapshot <- Stream.eval(Metrics.PeriodicMetricsRefs.snapshot(refs))
-              _ <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList)))
+              _ <- Stream.eval(reporters.traverse_(r => r.report(snapshot.toList(false))))
             } yield ()
 
           def setMaxTstampOfLoadedData(tstamp: Instant): F[Unit] =
@@ -156,7 +156,7 @@ object Metrics {
   }
 
   sealed trait KVMetrics {
-    def toList: List[KVMetric] = this match {
+    def toList(reportRecoveryTableMetrics: Boolean): List[KVMetric] = this match {
       case KVMetrics.LoadingCompleted(
             countGood,
             countBad,
@@ -173,7 +173,7 @@ object Metrics {
           maxTstamp,
           Some(shredderStart),
           Some(shredderEnd),
-          Some(recoveryTablesLoaded)
+          if (reportRecoveryTableMetrics) Some(recoveryTablesLoaded) else None
         ).unite
       case KVMetrics.PeriodicMetricsSnapshot(minAgeOfLoadedData) =>
         List(minAgeOfLoadedData)
