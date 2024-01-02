@@ -12,7 +12,12 @@ import cats.data.EitherT
 import cats.implicits._
 import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.core.SchemaKey.ordering
-import com.snowplowanalytics.iglu.schemaddl.redshift.{MergeRedshiftSchemasResult, foldMapMergeRedshiftSchemas}
+import com.snowplowanalytics.iglu.schemaddl.redshift.{
+  MergeRedshiftSchemasResult,
+  ShredModel,
+  foldMapMergeRedshiftSchemas,
+  foldMapRedshiftSchemas
+}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
@@ -22,6 +27,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.IgluError
 import com.snowplowanalytics.snowplow.rdbloader.state.State
 
@@ -42,7 +48,7 @@ case class DataDiscovery(
   compression: Compression,
   typesInfo: TypesInfo,
   wideColumns: List[String],
-  shredModels: Map[SchemaKey, MergeRedshiftSchemasResult]
+  shredModels: Map[SchemaKey, DiscoveredShredModels]
 ) {
 
   /** ETL id */
@@ -67,6 +73,17 @@ object DataDiscovery {
 
   private implicit val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
+
+  /**
+   * @param shredModel
+   *   Used to construct column names for COPY FROM query
+   * @param mergeRedshiftSchemasResult
+   *   Used for migration
+   */
+  case class DiscoveredShredModels(
+    shredModel: ShredModel,
+    mergeRedshiftSchemasResult: MergeRedshiftSchemasResult
+  )
 
   case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
 
@@ -167,15 +184,17 @@ object DataDiscovery {
 
   def getShredModels[F[_]: Monad: Iglu](
     nonAtomicTypes: List[ShreddedType]
-  ): EitherT[F, LoaderError, Map[SchemaKey, MergeRedshiftSchemasResult]] = {
+  ): EitherT[F, LoaderError, Map[SchemaKey, DiscoveredShredModels]] = {
     val maxSchemaKeyPerTableName = getMaxSchemaKeyPerTableName(nonAtomicTypes)
     nonAtomicTypes
       .traverse { shreddedType =>
         EitherT(Iglu[F].getSchemasWithSameModel(shreddedType.info.getSchemaKey)).map { schemas =>
           val maxSchemaKey = maxSchemaKeyPerTableName(shreddedType.info.getName)
-          val filtered = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
-          val mergeRedshiftSchemasResult = foldMapMergeRedshiftSchemas(filtered)
-          (shreddedType.info.getSchemaKey, mergeRedshiftSchemasResult)
+          val filtered = schemas.filter(_.self.schemaKey <= shreddedType.info.getSchemaKey).toNel.get
+          val maxFiltered = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
+          val foldMapRedshiftSchemasResult: ShredModel = foldMapRedshiftSchemas(filtered)(shreddedType.info.getSchemaKey)
+          val foldMapMergeRedshiftSchemasResult = foldMapMergeRedshiftSchemas(maxFiltered)
+          (shreddedType.info.getSchemaKey, DiscoveredShredModels(foldMapRedshiftSchemasResult, foldMapMergeRedshiftSchemasResult))
         }
       }
       .map(_.toMap)
