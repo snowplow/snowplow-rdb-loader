@@ -19,7 +19,7 @@ import cats.syntax.option._
 import cats.effect.Clock
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
-import com.snowplowanalytics.iglu.schemaddl.redshift.{ShredModel, foldMapMergeRedshiftSchemas}
+import com.snowplowanalytics.iglu.schemaddl.redshift.{ShredModel, foldMapMergeRedshiftSchemas, foldMapRedshiftSchemas}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Processor, Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -33,6 +33,7 @@ import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers._
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.LoadAuthService
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.Columns.{ColumnsToCopy, ColumnsToSkip}
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{
   Pure,
@@ -304,8 +305,13 @@ object LoadSpec {
     BlobStorage.Key.coerce("s3://assets/com.acme/json_context_1.json")
   )
   val shredModels = Map(
-    shreddedType.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-      NonEmptyList.of(SelfDescribingSchema(SchemaMap(shreddedType.info.getSchemaKey), Schema()))
+    shreddedType.info.getSchemaKey -> DiscoveredShredModels(
+      foldMapRedshiftSchemas(
+        NonEmptyList.of(SelfDescribingSchema(SchemaMap(shreddedType.info.getSchemaKey), Schema()))
+      )(shreddedType.info.getSchemaKey),
+      foldMapMergeRedshiftSchemas(
+        NonEmptyList.of(SelfDescribingSchema(SchemaMap(shreddedType.info.getSchemaKey), Schema()))
+      )
     )
   )
   val dataDiscovery = DataDiscovery(

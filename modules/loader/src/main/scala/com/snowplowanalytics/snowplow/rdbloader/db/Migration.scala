@@ -167,7 +167,7 @@ object Migration {
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
           if (!disableMigration.contains(s.info.toCriterion))
-            EitherT.rightT[F, LoaderError](Description.Table(discovery.shredModels(s.info.getSchemaKey)))
+            EitherT.rightT[F, LoaderError](Description.Table(discovery.shredModels(s.info.getSchemaKey).mergeRedshiftSchemasResult))
           else EitherT.rightT[F, LoaderError](Description.NoMigration)
         case ShreddedType.Widerow(info) =>
           EitherT.rightT[F, LoaderError](Description.WideRow(info))
