@@ -15,13 +15,14 @@ import doobie.Fragment
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{CommonProperties, ObjectProperty, StringProperty}
-import com.snowplowanalytics.iglu.schemaddl.redshift.foldMapMergeRedshiftSchemas
+import com.snowplowanalytics.iglu.schemaddl.redshift.{foldMapMergeRedshiftSchemas, foldMapRedshiftSchemas}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Statement}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, ShreddedType}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureDAO, PureIglu, PureLogging, PureTransaction}
@@ -54,11 +55,21 @@ class MigrationSpec extends Specification {
       )
       val types = List(s1, s2)
       val shredModels = Map(
-        s1.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+        s1.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )(s1.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )
         ),
-        s2.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+        s2.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )(s2.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )
         )
       )
       val input =
@@ -139,11 +150,21 @@ class MigrationSpec extends Specification {
       )
 
       val shredModels = Map(
-        s1.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+        s1.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )(s1.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )
         ),
-        s2.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+        s2.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )(s2.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )
         )
       )
 
