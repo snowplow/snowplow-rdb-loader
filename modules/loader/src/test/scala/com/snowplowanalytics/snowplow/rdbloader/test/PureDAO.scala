@@ -99,13 +99,18 @@ object PureDAO {
             i
           ),
         discovery.shreddedTypes.map { shredded =>
-          val mergeResult = discovery.shredModels(shredded.info.getSchemaKey)
-          val isRecovery = mergeResult.recoveryModels.isDefinedAt(shredded.info.getSchemaKey)
-          val shredModel =
-            mergeResult.recoveryModels.getOrElse(shredded.info.getSchemaKey, mergeResult.goodModel)
+          val discoveredShredModels = discovery.shredModels(shredded.info.getSchemaKey)
+          val isRecovery = discoveredShredModels.shredModel match {
+            case _: ShredModel.GoodModel => false
+            case _: ShredModel.RecoveryModel => true
+          }
           val isMigrationDisabled = disableMigration.contains(shredded.info.toCriterion)
-          val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
-          loadAuthMethod => Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, shredModel, tableName, isRecovery)
+          val tableName =
+            if (isMigrationDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
+            else discoveredShredModels.shredModel.tableName
+
+          loadAuthMethod =>
+            Statement.ShreddedCopy(shredded, Compression.Gzip, loadAuthMethod, discoveredShredModels.shredModel, tableName, isRecovery)
         }
       )
 

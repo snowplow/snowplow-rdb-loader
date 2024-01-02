@@ -93,18 +93,23 @@ object Redshift {
               .values
               .map(_.head) // So we get only one copy statement for given path
               .map { shreddedType =>
-                val mergeResult = discovery.shredModels(shreddedType.info.getSchemaKey)
-                val isRecovery = mergeResult.recoveryModels.isDefinedAt(shreddedType.info.getSchemaKey)
-                val shredModel =
-                  mergeResult.recoveryModels.getOrElse(shreddedType.info.getSchemaKey, mergeResult.goodModel)
+                val discoveredShredModels = discovery.shredModels(shreddedType.info.getSchemaKey)
+                val isRecovery = discoveredShredModels.shredModel match {
+                  case _: ShredModel.GoodModel => false
+                  case _: ShredModel.RecoveryModel => true
+                }
+
                 val isMigrationDisabled = disableMigration.contains(shreddedType.info.toCriterion)
-                val tableName = if (isMigrationDisabled) mergeResult.goodModel.tableName else shredModel.tableName
+                val tableName =
+                  if (isMigrationDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
+                  else discoveredShredModels.shredModel.tableName
+
                 loadAuthMethod =>
                   Statement.ShreddedCopy(
                     shreddedType,
                     discovery.compression,
                     loadAuthMethod,
-                    shredModel,
+                    discoveredShredModels.shredModel,
                     tableName,
                     isRecovery
                   )

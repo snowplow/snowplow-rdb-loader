@@ -13,7 +13,7 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.core.SchemaVer.Full
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
-import com.snowplowanalytics.iglu.schemaddl.redshift.foldMapMergeRedshiftSchemas
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.LoaderError
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
 import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureIglu, PureLogging, PureOps}
@@ -95,11 +96,21 @@ class DataDiscoverySpec extends Specification {
       )
       val shreddedTypes = List(s1, s2)
       val shredModels = Map(
-        s1.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+        s1.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )(s1.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )
         ),
-        s2.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+        s2.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )(s2.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )
         )
       )
 
@@ -206,11 +217,21 @@ class DataDiscoverySpec extends Specification {
       )
 
       val shredModels = Map(
-        s1.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+        s1.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )(s1.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s1.info.getSchemaKey), Schema()))
+          )
         ),
-        s2.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-          NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+        s2.info.getSchemaKey -> DiscoveredShredModels(
+          foldMapRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )(s2.info.getSchemaKey),
+          foldMapMergeRedshiftSchemas(
+            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s2.info.getSchemaKey), Schema()))
+          )
         )
       )
 

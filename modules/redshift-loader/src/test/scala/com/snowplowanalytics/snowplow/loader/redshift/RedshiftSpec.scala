@@ -10,7 +10,7 @@ package com.snowplowanalytics.snowplow.loader.redshift
 import cats.data.NonEmptyList
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
-import com.snowplowanalytics.iglu.schemaddl.redshift.foldMapMergeRedshiftSchemas
+import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState
 import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Target}
@@ -25,6 +25,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.db.Migration.Description
 import com.snowplowanalytics.snowplow.rdbloader.discovery.ShreddedType.{Info, Tabular}
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery
+import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import com.snowplowanalytics.snowplow.rdbloader.dsl.DAO
 import com.snowplowanalytics.snowplow.rdbloader.test.Pure
 import com.snowplowanalytics.snowplow.rdbloader.test.PureDAO
@@ -121,8 +122,13 @@ class RedshiftSpec extends Specification {
         TypesInfo.Shredded(List.empty),
         Nil,
         shreddedTypes.map { s =>
-          s.info.getSchemaKey -> foldMapMergeRedshiftSchemas(
-            NonEmptyList.of(SelfDescribingSchema(SchemaMap(s.info.getSchemaKey), Schema()))
+          s.info.getSchemaKey -> DiscoveredShredModels(
+            foldMapRedshiftSchemas(
+              NonEmptyList.of(SelfDescribingSchema(SchemaMap(s.info.getSchemaKey), Schema()))
+            )(s.info.getSchemaKey),
+            foldMapMergeRedshiftSchemas(
+              NonEmptyList.of(SelfDescribingSchema(SchemaMap(s.info.getSchemaKey), Schema()))
+            )
           )
         }.toMap
       )
