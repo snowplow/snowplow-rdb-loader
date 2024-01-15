@@ -218,7 +218,7 @@ object ConfigSpec {
     1.hour
   )
   val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
-  val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn = true, disableMigration = Nil)
+  val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn = true, disableRecovery = Nil)
   val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleMessageQueue)
   val exampleTelemetry =
     Telemetry.Config(
