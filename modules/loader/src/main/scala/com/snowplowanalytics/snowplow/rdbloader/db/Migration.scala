@@ -161,12 +161,12 @@ object Migration {
   def build[F[_]: Transaction[*[_], C]: MonadThrow: Iglu, C[_]: MonadThrow: Logging: DAO, I](
     discovery: DataDiscovery,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableRecovery: List[SchemaCriterion]
   ): F[Migration[C]] = {
     val descriptions: LoaderAction[F, List[Description]] =
       discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
         case s: ShreddedType.Tabular =>
-          if (!disableMigration.contains(s.info.toCriterion))
+          if (!disableRecovery.contains(s.info.toCriterion))
             EitherT.rightT[F, LoaderError](Description.Table(discovery.shredModels(s.info.getSchemaKey).mergeRedshiftSchemasResult))
           else EitherT.rightT[F, LoaderError](Description.NoMigration)
         case ShreddedType.Widerow(info) =>

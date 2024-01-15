@@ -88,7 +88,7 @@ object Redshift {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             i: Unit,
-            disableMigration: List[SchemaCriterion]
+            disableRecovery: List[SchemaCriterion]
           ): LoadStatements = {
             val shreddedStatements = discovery.shreddedTypes
               .filterNot(_.isAtomic)
@@ -102,9 +102,9 @@ object Redshift {
                   case _: ShredModel.RecoveryModel => true
                 }
 
-                val isMigrationDisabled = disableMigration.contains(shreddedType.info.toCriterion)
+                val isRecoveryDisabled = disableRecovery.contains(shreddedType.info.toCriterion)
                 val tableName =
-                  if (isMigrationDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
+                  if (isRecoveryDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
                   else discoveredShredModels.shredModel.tableName
 
                 loadAuthMethod =>
