@@ -111,7 +111,7 @@ object Redshift {
                     loadAuthMethod,
                     discoveredShredModels.shredModel,
                     tableName,
-                    isRecovery
+                    isRecovery && !isMigrationDisabled
                   )
               }
               .toList
