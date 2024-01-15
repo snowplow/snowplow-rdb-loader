@@ -80,6 +80,8 @@ object Load {
    *   results of the queries sent to warehouse when application is initialized
    * @param target
    *   storage target object
+   * @param disableRecovery
+   *   list of schema versions for which we must not load into a recovery table
    * @return
    *   either alert payload in case of duplicate event or ingestion timestamp in case of success
    */
@@ -89,14 +91,14 @@ object Load {
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableRecovery: List[SchemaCriterion]
   ): F[LoadResult] =
     for {
       _ <- TargetCheck.prepareTarget[F, C]
-      migrations <- Migration.build[F, C, I](discovery.discovery, target, disableMigration)
+      migrations <- Migration.build[F, C, I](discovery.discovery, target, disableRecovery)
       _ <- getPreTransactions(setStage, migrations.preTransaction, incrementAttempt).traverse_(Transaction[F, C].run(_))
       result <- Transaction[F, C].transact {
-                  getTransaction[C, I](setStage, discovery, initQueryResult, target, disableMigration)(migrations.inTransaction)
+                  getTransaction[C, I](setStage, discovery, initQueryResult, target, disableRecovery)(migrations.inTransaction)
                     .onError { case _: Throwable => incrementAttempt }
                 }
     } yield result
@@ -114,8 +116,8 @@ object Load {
    *   results of the queries sent to warehouse when application is initialized
    * @param target
    *   storage target object
-   * @param inTransactionMigrations
-   *   sequence of migration actions such as ALTER TABLE that have to run before the batch is loaded
+   * @param disableRecovery
+   *   list of schema versions for which we must not load into a recovery table
    * @return
    *   either alert payload in case of an existing folder or ingestion timestamp of the current
    *   folder
@@ -125,7 +127,7 @@ object Load {
     discovery: DataDiscovery.WithOrigin,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableRecovery: List[SchemaCriterion]
   )(
     inTransactionMigrations: F[Unit]
   ): F[LoadResult] =
@@ -144,7 +146,7 @@ object Load {
                     Logging[F].info(s"Loading transaction for ${discovery.origin.base} has started") *>
                       setStage(Stage.MigrationIn) *>
                       inTransactionMigrations *>
-                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableMigration).flatMap {
+                      run[F, I](setLoading, discovery.discovery, initQueryResult, target, disableRecovery).flatMap {
                         loadedRecoveryTableNames =>
                           for {
                             _ <- setStage(Stage.Committing)
@@ -192,6 +194,8 @@ object Load {
    *   results of the queries sent to warehouse when application is initialized
    * @param target
    *   storage target object
+   * @param disableRecovery
+   *   list of schema versions for which we must not load into a recovery table
    * @return
    *   block of VACUUM and ANALYZE statements to execute them out of a main transaction
    */
@@ -200,13 +204,13 @@ object Load {
     discovery: DataDiscovery,
     initQueryResult: I,
     target: Target[I],
-    disableMigration: List[SchemaCriterion]
+    disableRecovery: List[SchemaCriterion]
   ): F[List[String]] =
     for {
       _ <- Logging[F].info(s"Loading ${discovery.base}")
       existingEventTableColumns <- if (target.requiresEventsColumns) Control.getColumns[F](EventsTable.MainName) else Nil.pure[F]
       loadedRecoveryTableNames <-
-        target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableMigration).toList.traverseFilter {
+        target.getLoadStatements(discovery, existingEventTableColumns, initQueryResult, disableRecovery).toList.traverseFilter {
           genStatement =>
             for {
               loadAuthMethod <- LoadAuthService[F].forLoadingEvents

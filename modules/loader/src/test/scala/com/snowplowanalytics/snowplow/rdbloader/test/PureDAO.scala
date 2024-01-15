@@ -85,7 +85,7 @@ object PureDAO {
       discovery: DataDiscovery,
       eventTableColumns: EventTableColumns,
       i: Unit,
-      disableMigration: List[SchemaCriterion]
+      disableRecovery: List[SchemaCriterion]
     ): LoadStatements =
       NonEmptyList(
         loadAuthMethod =>
@@ -104,9 +104,9 @@ object PureDAO {
             case _: ShredModel.GoodModel => false
             case _: ShredModel.RecoveryModel => true
           }
-          val isMigrationDisabled = disableMigration.contains(shredded.info.toCriterion)
+          val isRecoveryDisabled = disableRecovery.contains(shredded.info.toCriterion)
           val tableName =
-            if (isMigrationDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
+            if (isRecoveryDisabled) discoveredShredModels.mergeRedshiftSchemasResult.goodModel.tableName
             else discoveredShredModels.shredModel.tableName
 
           loadAuthMethod =>
