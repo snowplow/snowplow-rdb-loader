@@ -269,11 +269,11 @@
 
   # Optional. Enable features that are still in beta, or which are here to enable smoother upgrades
   "featureFlags": {
-    # List of SchemaKey with partial SchemaVer to disable migration for, redshift only
+    # List of SchemaKey with partial SchemaVer to disable recoveries for, redshift only
     # Redshift Loader will disable all migration and recovery table creation for the tables
     # which belongs to provided schema keys
     # e.g. [ "iglu:com.example/myschema1/jsonschema/1-*-*", "iglu:com.example/myschema2/jsonschema/1-*-*"]
     # Optional, empty list by default
-    "disableMigration": []
+    "disableRecovery": []
   }
 }
