@@ -1,3 +1,21 @@
+Version 5.8.0 (2024-03-14)
+--------------------------
+Bump schema-ddl to 0.22.1 (#1342)
+Bump AWS SDK to 2.23.17 (#1339)
+pubsub transformer: increase subscriber's awaitTermiantePeriod (#1328)
+pubsub transformer: Increase default value of minDurationPerAckExtension (#1326)
+Patch missed variable in renaming to Recovery
+Rename disableMigration to disableRecovery
+Shredding complete message should not list recovery tables when feature is disabled
+Loader: Fix column names for shredded tables (#1332)
+Redshift loader: send statsd metrics for recovery tables (#1331)
+Quote column names in Redshift load statements (#1330)
+Loader: Report recovery table names in load_succeeded payload (#1318)
+Loader: Fix table name in COPY logs (#1316)
+Loader: Pre-transaction migrations must always run to completion
+Upgrade schema-ddl to 0.20.0 (#1265)
+Move to Snowplow Limited Use License
+
 Version 5.7.5 (2023-12-04)
 --------------------------
 Bump zookeeper to 3.7.2 (#1325)
