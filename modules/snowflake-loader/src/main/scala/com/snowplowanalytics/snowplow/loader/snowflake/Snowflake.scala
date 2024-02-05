@@ -70,7 +70,7 @@ object Snowflake {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             initQueryResult: InitQueryResult,
-            disableMigration: List[SchemaCriterion]
+            disableRecovery: List[SchemaCriterion]
           ): LoadStatements = {
             val columnsToCopy = columnsToCopyFromDiscoveredData(discovery)
 

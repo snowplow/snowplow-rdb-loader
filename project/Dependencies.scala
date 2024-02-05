@@ -64,7 +64,7 @@ object Dependencies {
     val snowflakeJdbc    = "3.13.30"
     val enumeratum       = "1.7.0"
     val aws              = "1.12.261"
-    val aws2             = "2.21.33"
+    val aws2             = "2.23.17"
     val pubsub           = "1.125.13"
     val jSch             = "0.2.1"
     val sentry           = "1.7.30"
@@ -192,6 +192,8 @@ object Dependencies {
   val cloudwatch        = "com.amazonaws"         % "aws-java-sdk-cloudwatch"   % V.aws
 
   val aws2s3            = "software.amazon.awssdk" % "s3"                       % V.aws2
+  val aws2cw            = "software.amazon.awssdk" % "cloudwatch"               % V.aws2
+  val aws2dynamo        = "software.amazon.awssdk" % "dynamodb"                 % V.aws2
   val aws2sqs           = "software.amazon.awssdk" % "sqs"                      % V.aws2
   val aws2sns           = "software.amazon.awssdk" % "sns"                      % V.aws2
   val aws2kinesis       = "software.amazon.awssdk" % "kinesis"                  % V.aws2
@@ -217,6 +219,8 @@ object Dependencies {
 
   val awsDependencies = Seq(
     aws2s3,
+    aws2cw,
+    aws2dynamo,
     aws2sqs,
     aws2sns,
     aws2kinesis,

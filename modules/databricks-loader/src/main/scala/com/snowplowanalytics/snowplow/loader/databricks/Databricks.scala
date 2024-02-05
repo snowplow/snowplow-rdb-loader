@@ -51,7 +51,7 @@ object Databricks {
             discovery: DataDiscovery,
             eventTableColumns: EventTableColumns,
             i: Unit,
-            disableMigration: List[SchemaCriterion]
+            disableRecovery: List[SchemaCriterion]
           ): LoadStatements = {
             val toCopy = columnsToCopyFromDiscoveredData(discovery)
             val toSkip = ColumnsToSkip(getEntityColumnsPresentInDbOnly(eventTableColumns, toCopy))

@@ -127,7 +127,7 @@ object Config {
     backoff: FiniteDuration,
     cumulativeBound: Option[FiniteDuration]
   )
-  final case class FeatureFlags(addLoadTstampColumn: Boolean, disableMigration: List[SchemaCriterion])
+  final case class FeatureFlags(addLoadTstampColumn: Boolean, disableRecovery: List[SchemaCriterion])
 
   sealed trait Strategy
   object Strategy {
@@ -272,7 +272,7 @@ object Config {
     implicit val configDecoder: Decoder[Config[StorageTarget]] =
       deriveDecoder[Config[StorageTarget]].ensure(validateConfig)
 
-    implicit val disableMigrationConfigDecoder: Decoder[SchemaCriterion] =
+    implicit val schemaCriterionConfigDecoder: Decoder[SchemaCriterion] =
       Decoder[String].emap(s => SchemaCriterion.parse(s).toRight(s"[$s] is not a valid schema criterion"))
 
     implicit val featureFlagsConfigDecoder: Decoder[FeatureFlags] =
