@@ -31,6 +31,9 @@ import sbtdynver.DynVerPlugin.autoImport._
 
 import org.scalafmt.sbt.ScalafmtPlugin.autoImport._
 
+import org.typelevel.sbt.tpolecat.TpolecatPlugin.autoImport._
+import org.typelevel.scalacoptions.ScalacOptions._
+
 /**
  * Common settings-patterns for Snowplow apps and libraries.
  * To enable any of these you need to explicitly add Settings value to build.sbt
@@ -44,14 +47,11 @@ object BuildSettings {
     organization := "com.snowplowanalytics",
     scalaVersion := "2.12.14",
 
-    Compile / console / scalacOptions := Seq(
-      "-deprecation",
-      "-encoding", "UTF-8"
-    ),
-
     Compile / unmanagedResources += file("SNOWPLOW-LICENSE.md"),
 
     addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full),
+
+    tpolecatExcludeOptions ++= Set(fatalWarnings),
 
     resolvers ++= Dependencies.resolutionRepos
   ) ++ formattingSettings
