@@ -46,11 +46,12 @@ At the moment, we have loader applications for Redshift, Databricks and Snowflak
 | ![i1][techdocs-image]      | ![i2][setup-image]   | ![i3][roadmap-image]   |
 | [Technical Docs][techdocs] | [Setup Guide][setup] | [Roadmap][roadmap]     |
 
-## Copyright and License
+
+## Copyright and license
 
 Copyright (c) 2012-present Snowplow Analytics Ltd. All rights reserved.
 
-Licensed under the [Snowplow Community License](https://docs.snowplow.io/community-license-1.0). _(If you are uncertain how it applies to your use case, check our answers to [frequently asked questions](https://docs.snowplow.io/docs/contributing/community-license-faq/).)_
+Licensed under the [Snowplow Limited Use License Agreement][license]. _(If you are uncertain how it applies to your use case, check our answers to [frequently asked questions][faq].)_
 
 
 [techdocs-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/techdocs.png
@@ -68,5 +69,7 @@ Licensed under the [Snowplow Community License](https://docs.snowplow.io/communi
 [release-image]: https://img.shields.io/badge/release-5.7.5-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplow-rdb-loader/releases
 
-[license]: https://docs.snowplow.io/docs/contributing/community-license-faq/
-[license-image]: https://img.shields.io/badge/license-Snowplow--Community-blue.svg?style=flat
+[license]: https://docs.snowplow.io/limited-use-license-1.0
+[license-image]: https://img.shields.io/badge/license-Snowplow--Limited-Use-blue.svg?style=flat
+
+[faq]: https://docs.snowplow.io/docs/contributing/limited-use-license-faq/
