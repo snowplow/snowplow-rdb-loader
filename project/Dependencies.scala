@@ -54,7 +54,7 @@ object Dependencies {
     val hadoopGcpClient  = "hadoop3-2.2.5"
     val parquetHadoop    = "1.12.3"
     val jsonSmart        = "2.4.9" // Fix CVE
-    val nimbusJose       = "9.31" // Fix CVE
+    val nimbusJose       = "9.37.2" // Fix CVE
     val snappyJava       = "1.1.10.4" // Fix CVE
     val commonsText      = "1.10.0" // Fix CVE
     val ivy              = "2.5.1" // Fix CVE
@@ -268,6 +268,7 @@ object Dependencies {
     aws2regions,
     jacksonDatabind,
     jacksonMapper,
+    nimbusJose,
     specs2,
     monocle,
     monocleMacro,
@@ -352,7 +353,6 @@ object Dependencies {
     hadoop,
     parquetHadoop,
     jsonSmart,
-    nimbusJose,
     snappyJava,
     specs2,
     specs2ScalaCheck,
