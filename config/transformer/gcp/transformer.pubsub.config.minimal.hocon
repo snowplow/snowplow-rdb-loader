@@ -1,4 +1,7 @@
 {
+  "license": {
+    "accept": true
+  }
   "input": {
     "subscription": "projects/project-id/subscriptions/subscription-id"
   }

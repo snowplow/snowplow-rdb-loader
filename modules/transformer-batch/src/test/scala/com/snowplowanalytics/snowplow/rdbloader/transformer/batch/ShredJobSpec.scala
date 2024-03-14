@@ -15,6 +15,7 @@ import com.snowplowanalytics.iglu.client.{Client, Resolver}
 import com.snowplowanalytics.iglu.client.validator.CirceValidator
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.snowplow.rdbloader.common.catsClockIdInstance
+import com.snowplowanalytics.snowplow.rdbloader.common.config.License
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{AtomicFieldsProvider, NonAtomicFieldsProvider}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.IgluSingleton
@@ -298,6 +299,7 @@ object ShredJobSpec {
     }
     val naturalDeduplication = shredder.deduplication.natural.asJson
     val configPlain = s"""|{
+    |"license": { "accept": true }
     |"input": "${shredder.input}",
     |"output" = {
     |  "path": "${shredder.output.path}",
@@ -453,7 +455,8 @@ object ShredJobSpec {
       Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None, false, false),
       skipSchemas,
-      TransformerConfig.Validations(None)
+      TransformerConfig.Validations(None),
+      License(true)
     )
   }
 }

@@ -24,7 +24,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Tran
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{License, Region}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.Output.Bad
 
 final case class Config(
@@ -36,7 +36,8 @@ final case class Config(
   monitoring: Config.Monitoring,
   telemetry: Telemetry.Config,
   featureFlags: TransformerConfig.FeatureFlags,
-  validations: TransformerConfig.Validations
+  validations: TransformerConfig.Validations,
+  license: License
 )
 
 object Config {

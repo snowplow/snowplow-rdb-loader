@@ -13,7 +13,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka
 import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.badrows.Processor
-import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{License, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
@@ -41,7 +41,8 @@ class ConfigSpec extends Specification {
         exampleMonitoringStream,
         exampleTelemetry,
         exampleDefaultFeatureFlags,
-        exampleValidations
+        exampleValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -57,7 +58,8 @@ class ConfigSpec extends Specification {
         exampleDefaultMonitoringStream,
         defaultTelemetry,
         exampleDefaultFeatureFlags,
-        emptyValidations
+        emptyValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -138,6 +140,7 @@ object ConfigSpec {
     )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, true, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense = License(true)
   val emptyValidations = Validations(None)
   val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
 }

@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   # Pubsub subscription used by Transformer and Loader to communicate
   "messageQueue": {
     "type": "pubsub"

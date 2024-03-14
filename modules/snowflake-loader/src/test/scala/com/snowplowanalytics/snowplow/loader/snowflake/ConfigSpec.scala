@@ -46,7 +46,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -88,7 +89,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -135,7 +137,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -157,7 +160,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
         exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -188,7 +192,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
         exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -224,7 +229,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
         exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }

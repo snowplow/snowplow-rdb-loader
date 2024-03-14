@@ -1,4 +1,7 @@
 {
+  "license": {
+    "accept": true
+  }
   "messageQueue": "test-queue",
   "storage" : {
     "type": "snowflake",

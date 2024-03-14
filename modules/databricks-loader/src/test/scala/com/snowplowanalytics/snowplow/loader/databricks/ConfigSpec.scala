@@ -44,7 +44,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -72,7 +73,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -100,7 +102,8 @@ class ConfigSpec extends Specification {
         exampleReadyCheck,
         exampleInitRetries,
         exampleFeatureFlags,
-        exampleTelemetry
+        exampleTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -127,7 +130,8 @@ class ConfigSpec extends Specification {
         readyCheck,
         initRetries,
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -153,7 +157,8 @@ class ConfigSpec extends Specification {
         readyCheck,
         initRetries,
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -179,7 +184,8 @@ class ConfigSpec extends Specification {
         readyCheck,
         initRetries,
         exampleFeatureFlags,
-        defaultTelemetry
+        defaultTelemetry,
+        exampleLicense
       )
       result must beRight(expected)
     }

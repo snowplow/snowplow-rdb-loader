@@ -19,7 +19,7 @@ import scala.concurrent.duration._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, License, Region, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, RegionSpec}
 import org.specs2.mutable.Specification
 
@@ -39,7 +39,8 @@ class ConfigSpec extends Specification {
         exampleRunInterval,
         exampleDefaultFeatureFlags,
         exampleSkipSchemas,
-        exampleValidations
+        exampleValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -56,7 +57,8 @@ class ConfigSpec extends Specification {
         emptyRunInterval,
         exampleDefaultFeatureFlags,
         Nil,
-        emptyValidations
+        emptyValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -160,6 +162,7 @@ object TransformerConfigSpec {
   )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense = License(true)
   val emptyValidations = Validations(None)
   val exampleSkipSchemas = List(
     SchemaCriterion("com.acme", "skipped1", "jsonschema", Some(1), Some(0), Some(0)),

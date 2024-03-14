@@ -247,7 +247,8 @@ object DatabricksSpec {
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.Retries(Config.Strategy.Constant, None, 1.minute, None),
     Config.FeatureFlags(addLoadTstampColumn = true, disableRecovery = Nil),
-    exampleTelemetry
+    exampleTelemetry,
+    exampleLicense
   )
 
   val target: Target[Unit] = Databricks

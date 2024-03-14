@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   # Path to enriched archive (must be populated separately with run=YYYY-MM-DD-hh-mm-ss-UUID directories) for S3 input
   "input": "s3://bucket/input/",
 

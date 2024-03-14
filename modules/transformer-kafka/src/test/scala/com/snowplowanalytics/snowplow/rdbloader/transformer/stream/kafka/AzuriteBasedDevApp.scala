@@ -38,6 +38,7 @@ object AzuriteBasedDevApp extends IOApp {
   val appConfig =
     """
       |{
+      |  "license": { "accept": true }
       |  "input": {
       |    "topicName": "enriched"
       |    "bootstrapServers": "localhost:9092"

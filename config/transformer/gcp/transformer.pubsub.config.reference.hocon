@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   "input": {
     # Name of the Pubsub subscription with the enriched events
     "subscription": "projects/project-id/subscriptions/subscription-id"

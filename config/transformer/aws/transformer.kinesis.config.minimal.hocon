@@ -1,4 +1,7 @@
 {
+  "license": {
+    "accept": true
+  }
   "input": {
     "streamName": "enriched-events"
   }

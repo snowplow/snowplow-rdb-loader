@@ -24,7 +24,7 @@ import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{Kinesis => AWSKinesis}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Validations
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{Region, TransformerConfig}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{License, Region, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.{LoaderMessage, RegionSpec}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ConfigUtils._
@@ -48,7 +48,8 @@ class ConfigSpec extends Specification {
         exampleMonitoringStream,
         exampleTelemetry,
         exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
-        exampleValidations
+        exampleValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -64,7 +65,8 @@ class ConfigSpec extends Specification {
         exampleDefaultMonitoringStream,
         defaultTelemetry,
         exampleDefaultFeatureFlags.copy(enableMaxRecordsPerFile = true),
-        emptyValidations
+        emptyValidations,
+        exampleLicense
       )
       result must beRight(expected)
     }
@@ -166,6 +168,7 @@ object ConfigSpec {
     )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
   val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense = License(true)
   val emptyValidations = Validations(None)
   val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
 }

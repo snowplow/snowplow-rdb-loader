@@ -33,7 +33,8 @@ object SpecHelpers {
     ConfigSpec.exampleReadyCheck,
     ConfigSpec.exampleInitRetries,
     ConfigSpec.exampleFeatureFlags,
-    ConfigSpec.exampleTelemetry
+    ConfigSpec.exampleTelemetry,
+    ConfigSpec.exampleLicense
   )
 
   def asB64(resourcePath: String): String =

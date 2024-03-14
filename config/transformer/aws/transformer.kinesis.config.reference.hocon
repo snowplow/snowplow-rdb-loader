@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   "input": {
     # kinesis and file are the only options for transformer-kinesis
     # Optional, default value kinesis

@@ -13,6 +13,7 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import cats.Parallel
 import cats.implicits._
+import cats.data.EitherT
 import cats.effect._
 
 import scala.concurrent.ExecutionContext
@@ -21,6 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parque
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Config.{Monitoring, StreamInput}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.License
 import com.snowplowanalytics.snowplow.scalatracker.Tracking
 
 object Run {
@@ -43,7 +45,10 @@ object Run {
     parquetOps: ParquetOps = ParquetOps.noop
   ): F[ExitCode] =
     for {
-      parsed <- CliConfig.loadConfigFrom[F](buildName, buildDescription)(args: Seq[String]).value
+      parsed <- CliConfig
+                  .loadConfigFrom[F](buildName, buildDescription)(args: Seq[String])
+                  .flatTap(c => EitherT.fromEither[F](License.checkLicense(c.config.license)))
+                  .value
       res <- parsed match {
                case Right(cliConfig) =>
                  Resources

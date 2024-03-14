@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   # Specifies the cloud provider that application will be deployed into
   "cloud": "aws"
   # Data Lake (S3) region

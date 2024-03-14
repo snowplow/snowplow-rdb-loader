@@ -1,4 +1,9 @@
 {
+  # Full license text available in SNOWPLOW-LICENSE.md
+  "license": {
+    "accept": true
+  }
+
   # Data Lake (S3) region
   # This field is optional if it can be resolved with AWS region provider chain.
   # It checks places like env variables, system properties, AWS profile file.

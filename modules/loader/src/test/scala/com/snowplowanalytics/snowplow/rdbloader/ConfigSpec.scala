@@ -16,7 +16,7 @@ import cats.data.EitherT
 import cats.effect.IO
 import org.http4s.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{License, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
@@ -237,6 +237,7 @@ object ConfigSpec {
       Some("rdb-loader-ce"),
       Some("1.0.0")
     )
+  val exampleLicense = License(true)
   val defaultTelemetry =
     Telemetry.Config(
       false,
@@ -263,7 +264,8 @@ object ConfigSpec {
     exampleReadyCheck,
     exampleInitRetries,
     exampleFeatureFlags,
-    exampleTelemetry
+    exampleTelemetry,
+    exampleLicense
   )
 
   def getConfigFromResource[A](resourcePath: String, parse: HoconOrPath => EitherT[IO, String, A]): Either[String, A] =

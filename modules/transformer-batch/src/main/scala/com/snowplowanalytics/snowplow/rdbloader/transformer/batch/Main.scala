@@ -16,6 +16,7 @@ import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.sql.SparkSession
 import cats.syntax.either._
 
+import com.snowplowanalytics.snowplow.rdbloader.common.config.License
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.Serialization
 
@@ -30,7 +31,10 @@ object Main {
     .registerKryoClasses(Serialization.classesToRegister)
 
   def main(args: Array[String]): Unit =
-    CliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args) match {
+    (for {
+      c <- CliConfig.loadConfigFrom(BuildInfo.name, BuildInfo.description)(args)
+      _ <- License.checkLicense(c.config.license)
+    } yield c) match {
       case Right(cli) =>
         val spark = SparkSession
           .builder()

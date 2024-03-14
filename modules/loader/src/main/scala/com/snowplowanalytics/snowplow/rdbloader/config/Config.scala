@@ -25,7 +25,7 @@ import cron4s.circe._
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
-import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, Region}
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, License, Region}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config._
 
 /**
@@ -45,7 +45,8 @@ case class Config[+D <: StorageTarget](
   readyCheck: Retries,
   initRetries: Retries,
   featureFlags: FeatureFlags,
-  telemetry: Telemetry.Config
+  telemetry: Telemetry.Config,
+  license: License
 )
 
 object Config {

@@ -1,4 +1,7 @@
 {
+  "license": {
+    "accept": true
+  }
   "messageQueue": "test-queue",
   "storage" : {
     "host": "abc.cloud.databricks.com"

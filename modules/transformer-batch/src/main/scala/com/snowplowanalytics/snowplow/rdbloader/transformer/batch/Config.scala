@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common._
 import com.snowplowanalytics.snowplow.rdbloader.common.config.args.HoconOrPath
 import com.snowplowanalytics.snowplow.rdbloader.common.config.{ConfigUtils, TransformerConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
-import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
+import com.snowplowanalytics.snowplow.rdbloader.common.config.{License, Region}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.implicits._
 
 final case class Config(
@@ -35,7 +35,8 @@ final case class Config(
   runInterval: Config.RunInterval,
   featureFlags: TransformerConfig.FeatureFlags,
   skipSchemas: List[SchemaCriterion],
-  validations: TransformerConfig.Validations
+  validations: TransformerConfig.Validations,
+  license: License
 )
 
 object Config {

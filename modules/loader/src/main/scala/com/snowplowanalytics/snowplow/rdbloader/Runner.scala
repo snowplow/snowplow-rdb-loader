@@ -18,6 +18,7 @@ import doobie.ConnectionIO
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import com.snowplowanalytics.snowplow.rdbloader.dsl._
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Environment
+import com.snowplowanalytics.snowplow.rdbloader.common.config.License
 import com.snowplowanalytics.snowplow.rdbloader.config.CliConfig
 import com.snowplowanalytics.snowplow.scalatracker.Tracking
 
@@ -40,6 +41,7 @@ object Runner {
     val result = for {
       parsed <- CliConfig.parse[F](argv)
       statements <- EitherT.fromEither[F](buildStatements(parsed.config))
+      _ <- EitherT.fromEither[F](License.checkLicense(parsed.config.license))
       application =
         Environment
           .initialize[F, I](
