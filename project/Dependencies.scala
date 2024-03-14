@@ -57,6 +57,7 @@ object Dependencies {
     val nimbusJose       = "9.37.2" // Fix CVE
     val snappyJava       = "1.1.10.4" // Fix CVE
     val commonsText      = "1.10.0" // Fix CVE
+    val commonsCompress  = "1.26.0" // Fix CVE
     val ivy              = "2.5.1" // Fix CVE
 
     val slf4j            = "2.0.3"
@@ -167,6 +168,7 @@ object Dependencies {
                           .exclude("software.amazon.glue", "schema-registry-common")
                           .exclude("software.amazon.glue", "schema-registry-serde")
   val commonsText       = "org.apache.commons"               % "commons-text"              % V.commonsText
+  val commonsCompress   = "org.apache.commons"               % "commons-compress"          % V.commonsCompress
   val ivy               = "org.apache.ivy"                   % "ivy"                       % V.ivy
 
   // Java (Loader)
@@ -269,6 +271,7 @@ object Dependencies {
     jacksonDatabind,
     jacksonMapper,
     nimbusJose,
+    commonsCompress,
     specs2,
     monocle,
     monocleMacro,
