@@ -366,6 +366,8 @@ object Snowflake {
     val shredTypeColumns = discovery.shreddedTypes
       .filterNot(_.isAtomic)
       .map(getShredTypeColumn)
+      .toSet // de-duplicate for same minor version
+      .toList
     ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
   }
 
