@@ -298,7 +298,7 @@ object Snowflake {
             s"$schema.$tableName"
 
           private def columnsForCopy(columns: ColumnsToCopy): String = {
-            val columnNames = columns.names.map(_.value).mkString(",")
+            val columnNames = columns.names.map(_.value).toSet.mkString(",")
             if (config.featureFlags.addLoadTstampColumn)
               columnNames + ",load_tstamp"
             else
