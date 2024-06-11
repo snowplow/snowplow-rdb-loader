@@ -298,7 +298,7 @@ object Snowflake {
             s"$schema.$tableName"
 
           private def columnsForCopy(columns: ColumnsToCopy): String = {
-            val columnNames = columns.names.map(_.value).toSet.mkString(",")
+            val columnNames = columns.names.map(_.value).mkString(",")
             if (config.featureFlags.addLoadTstampColumn)
               columnNames + ",load_tstamp"
             else
@@ -366,6 +366,8 @@ object Snowflake {
     val shredTypeColumns = discovery.shreddedTypes
       .filterNot(_.isAtomic)
       .map(getShredTypeColumn)
+      .toSet // de-duplicate for same minor version
+      .toList
     ColumnsToCopy(AtomicColumns.Columns ::: shredTypeColumns)
   }
 
