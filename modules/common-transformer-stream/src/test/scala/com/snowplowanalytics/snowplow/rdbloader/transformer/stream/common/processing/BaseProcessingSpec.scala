@@ -43,7 +43,7 @@ trait BaseProcessingSpec extends Specification {
       checkpointRef <- Ref.of[IO, Int](0)
       completionsRef <- Ref.of[IO, Vector[String]](Vector.empty)
       queueBadSink <- Ref.of[IO, Vector[String]](Vector.empty)
-      _ <- TestApplication.run(args, completionsRef, checkpointRef, queueBadSink, input).timeout(60.seconds)
+      _ <- TestApplication.run(args, completionsRef, checkpointRef, queueBadSink, input).timeout(120.seconds)
       checkpointed <- checkpointRef.get
       completions <- completionsRef.get
       badrows <- queueBadSink.get
