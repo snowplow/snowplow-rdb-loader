@@ -58,6 +58,7 @@ object Dependencies {
     val snappyJava       = "1.1.10.4" // Fix CVE
     val commonsText      = "1.10.0" // Fix CVE
     val commonsCompress  = "1.26.0" // Fix CVE
+    val commonsConfig2   = "2.10.1" // Fix CVE
     val ivy              = "2.5.1" // Fix CVE
 
     val slf4j            = "2.0.3"
@@ -169,6 +170,7 @@ object Dependencies {
                           .exclude("software.amazon.glue", "schema-registry-serde")
   val commonsText       = "org.apache.commons"               % "commons-text"              % V.commonsText
   val commonsCompress   = "org.apache.commons"               % "commons-compress"          % V.commonsCompress
+  val commonsConfig2    = "org.apache.commons"               %  "commons-configuration2"   % V.commonsConfig2
   val ivy               = "org.apache.ivy"                   % "ivy"                       % V.ivy
 
   // Java (Loader)
@@ -310,7 +312,8 @@ object Dependencies {
     snappyJava,
     catsEffectLaws,
     catsTesting,
-    catsEffectTestkit
+    catsEffectTestkit,
+    commonsConfig2
   )
 
   val redshiftDependencies = Seq(
