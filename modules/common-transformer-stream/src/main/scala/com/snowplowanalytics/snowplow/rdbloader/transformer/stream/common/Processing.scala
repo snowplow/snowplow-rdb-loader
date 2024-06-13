@@ -48,10 +48,10 @@ object Processing {
 
   final case class SuccessfulTransformation(original: Event, output: List[Transformed])
 
-  type Windowed[A, C] = Record[Window, A, C]
-  type TransformationResult = Either[BadRow, SuccessfulTransformation]
+  type Windowed[A, C]           = Record[Window, A, C]
+  type TransformationResult     = Either[BadRow, SuccessfulTransformation]
   type TransformationResults[C] = (List[TransformationResult], C)
-  type SerializationResults[C] = (List[(SinkPath, Transformed.Data)], State[C])
+  type SerializationResults[C]  = (List[(SinkPath, Transformed.Data)], State[C])
 
   def run[F[_]: Async: Parallel, C: Checkpointer[F, *]](
     resources: Resources[F, C],
@@ -149,12 +149,12 @@ object Processing {
         (k: SinkPath) =>
           k.pathType match {
             case PathType.Good => parquetSink(w)(s)(k)
-            case PathType.Bad => nonParquetSink(w)(s)(k)
+            case PathType.Bad  => nonParquetSink(w)(s)(k)
           }
 
     val dataSink = formats match {
       case Formats.WideRow.PARQUET => parquetCombinedSink
-      case _ => nonParquetSink
+      case _                       => nonParquetSink
     }
 
     Partitioned.write[F, Window, SinkPath, Transformed.Data, State[C]](dataSink, config.bufferSize)
@@ -266,7 +266,7 @@ object Processing {
         val pathType = if (p.isGood) SinkPath.PathType.Good else SinkPath.PathType.Bad
         SinkPath(suffix, pathType)
       case p: Transformed.WideRow =>
-        val suffix = None
+        val suffix   = None
         val pathType = if (p.good) SinkPath.PathType.Good else SinkPath.PathType.Bad
         SinkPath(suffix, pathType)
       case _: Transformed.Parquet =>

@@ -42,7 +42,7 @@ object Snowflake {
   val EventFieldSeparator = Fragment.const0("\t")
 
   val AlertingTempTableName = "rdb_folder_monitoring"
-  val TempTableColumn = "enriched_data"
+  val TempTableColumn       = "enriched_data"
 
   def build(config: Config[StorageTarget]): Either[String, Target[InitQueryResult]] = {
     config.storage match {
@@ -58,11 +58,11 @@ object Snowflake {
           }
 
           override def extendTable(info: ShreddedType.Info): List[Block] = {
-            val isContext = info.entity == SnowplowEntity.Context
-            val columnType = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
-            val columnName = info.getNameFull
+            val isContext    = info.entity == SnowplowEntity.Context
+            val columnType   = if (isContext) SnowflakeDatatype.JsonArray else SnowflakeDatatype.JsonObject
+            val columnName   = info.getNameFull
             val addColumnSql = AddColumn(schema, EventsTable.MainName, columnName, columnType)
-            val addColumn = Item.AddColumn(addColumnSql.toFragment, Nil)
+            val addColumn    = Item.AddColumn(addColumnSql.toFragment, Nil)
             List(Block(List(addColumn), Nil, Entity.Column(info)))
           }
 
@@ -144,11 +144,11 @@ object Snowflake {
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frManifest = Fragment.const(qualify(Manifest.Name))
+                val frManifest  = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(s, loadAuthMethod, initQueryResult: InitQueryResult) =>
                 val updatedSource = replaceScheme(s)
-                val frTableName = Fragment.const(qualify(AlertingTempTableName))
+                val frTableName   = Fragment.const(qualify(AlertingTempTableName))
                 val frPath = loadAuthMethod match {
                   case LoadAuthMethod.NoCreds =>
                     // This is validated on config decoding stage
@@ -174,12 +174,12 @@ object Snowflake {
                 val stage = tgt.transformedStage.getOrElse(
                   throw new IllegalStateException("Transformed stage is tried to be used without being provided")
                 )
-                val afterStage = findPathAfterStage(stage, initQueryResult.transformedStagePath, updatedPath)
-                val frPath = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
-                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
+                val afterStage      = findPathAfterStage(stage, initQueryResult.transformedStagePath, updatedPath)
+                val frPath          = Fragment.const0(s"@${qualify(stage.name)}/$afterStage/output=good/")
+                val frCopy          = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
-                val frOnError = buildErrorFragment(typesInfo)
-                val frFileFormat = buildFileFormatFragment(typesInfo)
+                val frOnError       = buildErrorFragment(typesInfo)
+                val frFileFormat    = buildFileFormatFragment(typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM (
                       |  SELECT $frSelectColumns FROM $frPath
@@ -194,7 +194,7 @@ object Snowflake {
                 Fragment.const0(s"DESC STAGE ${qualify(stage)}")
 
               case Statement.CreateTempEventTable(table) =>
-                val frTableName = Fragment.const(qualify(table))
+                val frTableName   = Fragment.const(qualify(table))
                 val frTableColumn = Fragment.const(TempTableColumn)
                 sql"CREATE TEMPORARY TABLE $frTableName ( $frTableColumn OBJECT )"
 
@@ -203,21 +203,21 @@ object Snowflake {
                 sql"DROP TABLE IF EXISTS $frTableName"
 
               case s: Statement.EventsCopyToTempTable =>
-                val updatedPath = replaceScheme(s.path)
-                val frCopy = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
-                val frPath = Fragment.const0(updatedPath.append("output=good"))
+                val updatedPath   = replaceScheme(s.path)
+                val frCopy        = Fragment.const0(s"${qualify(s.table)}($TempTableColumn)")
+                val frPath        = Fragment.const0(updatedPath.append("output=good"))
                 val frCredentials = loadAuthMethodFragment(s.tempCreds)
-                val frOnError = buildErrorFragment(s.typesInfo)
-                val frFileFormat = buildFileFormatFragment(s.typesInfo)
+                val frOnError     = buildErrorFragment(s.typesInfo)
+                val frFileFormat  = buildFileFormatFragment(s.typesInfo)
                 sql"""|COPY INTO $frCopy
                       |FROM '$frPath' $frCredentials
                       |$frFileFormat
                       |$frOnError""".stripMargin
 
               case Statement.EventsCopyFromTempTable(tempTable, columns) =>
-                val frCopy = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
+                val frCopy          = Fragment.const0(s"${qualify(EventsTable.MainName)}(${columnsForCopy(columns)})")
                 val frSelectColumns = Fragment.const0(columnsForSelect(columns))
-                val frTableName = Fragment.const(qualify(tempTable))
+                val frTableName     = Fragment.const(qualify(tempTable))
                 sql"""|INSERT INTO $frCopy
                       |SELECT $frSelectColumns FROM $frTableName""".stripMargin
 
@@ -248,16 +248,16 @@ object Snowflake {
                 Fragment.const0(s"ALTER TABLE ${qualify(from)} RENAME TO ${qualify(to)}")
               case Statement.GetColumns(tableName) =>
                 val frSchemaName = Fragment.const0(schema.toUpperCase)
-                val frTableName = Fragment.const0(tableName.toUpperCase)
+                val frTableName  = Fragment.const0(tableName.toUpperCase)
                 // Querying information_schema can be slow, but I couldn't find a way to select columns in 'show columns' query
                 sql"SELECT column_name FROM information_schema.columns WHERE table_name = '$frTableName' AND table_schema = '$frSchemaName'"
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(qualify(Manifest.Name))
-                val types = Fragment.const0(s"parse_json('${message.types.asJson.noSpaces}')")
-                val jobStarted: String = message.timestamps.jobStarted.toString
+                val tableName            = Fragment.const(qualify(Manifest.Name))
+                val types                = Fragment.const0(s"parse_json('${message.types.asJson.noSpaces}')")
+                val jobStarted: String   = message.timestamps.jobStarted.toString
                 val jobCompleted: String = message.timestamps.jobCompleted.toString
-                val minTstamp: String = message.timestamps.min.map(_.toString).getOrElse("")
-                val maxTstamp: String = message.timestamps.max.map(_.toString).getOrElse("")
+                val minTstamp: String    = message.timestamps.min.map(_.toString).getOrElse("")
+                val maxTstamp: String    = message.timestamps.max.map(_.toString).getOrElse("")
                 // Redshift JDBC doesn't accept java.time.Instant
                 sql"""INSERT INTO $tableName
                   (base, types, shredding_started, shredding_completed,
@@ -281,7 +281,7 @@ object Snowflake {
               case Statement.CreateTable(ddl) =>
                 ddl
               case Statement.CommentOn(tableName, comment) =>
-                val table = Fragment.const0(qualify(tableName))
+                val table   = Fragment.const0(qualify(tableName))
                 val content = Fragment.const0(comment)
                 sql"COMMENT IF EXISTS ON TABLE $table IS '$content'"
               case Statement.DdlFile(ddl) =>
@@ -373,7 +373,7 @@ object Snowflake {
 
   private def getShredTypeColumn(shreddedType: ShreddedType): ColumnName = {
     val shredProperty = shreddedType.getSnowplowEntity.toSdkProperty
-    val info = shreddedType.info
+    val info          = shreddedType.info
     ColumnName(SnowplowEvent.transformSchema(shredProperty, info.vendor, info.name, info.version.model))
   }
 
@@ -387,7 +387,7 @@ object Snowflake {
       case Some(loc) =>
         pathToLoad.diff(loc) match {
           case Some(diff) => diff
-          case None => throw new IllegalStateException(s"The stage path and the path to load don't match: $pathToLoad")
+          case None       => throw new IllegalStateException(s"The stage path and the path to load don't match: $pathToLoad")
         }
       case None => throw new IllegalStateException(s"The stage path cannot be empty")
     }
@@ -396,7 +396,7 @@ object Snowflake {
   private def getStagePath[F[_]: DAO: Monad](stage: Option[StorageTarget.Snowflake.Stage]): F[Option[Folder]] =
     stage match {
       case Some(s) => DAO[F].executeQueryList[StageDescRow](Statement.StagePath(s.name)).map(StageDescRow.path)
-      case None => Monad[F].pure(None)
+      case None    => Monad[F].pure(None)
     }
 
   /**

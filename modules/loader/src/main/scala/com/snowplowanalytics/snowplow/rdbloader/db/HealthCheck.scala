@@ -41,8 +41,8 @@ object HealthCheck {
                 previousHealthy.set(true) *> report *> Logging[F].info("DB is healthy and responsive")
               case Left(t) =>
                 previousHealthy.getAndSet(false).flatMap { was =>
-                  val msg = s"DB couldn't complete a healthcheck query in ${config.timeout}"
-                  val alert = if (was) Monitoring[F].alert(Alert.FailedHealthCheck(t)) else Concurrent[F].unit
+                  val msg    = s"DB couldn't complete a healthcheck query in ${config.timeout}"
+                  val alert  = if (was) Monitoring[F].alert(Alert.FailedHealthCheck(t)) else Concurrent[F].unit
                   val report = Monitoring[F].reportMetrics(Metrics.getHealthMetrics(false))
                   alert *> report *> Logging[F].warning(msg)
                 }

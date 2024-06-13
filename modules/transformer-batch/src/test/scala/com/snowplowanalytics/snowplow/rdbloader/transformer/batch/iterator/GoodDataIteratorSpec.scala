@@ -32,7 +32,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 
       assert(
         input,
-        expectedGoodCount = 30,
+        expectedGoodCount  = 30,
         expectedBadBatches = List.empty
       )
     }
@@ -77,7 +77,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 
         assert(
           input,
-          expectedGoodCount = 30,
+          expectedGoodCount  = 30,
           expectedBadBatches = List(SinkedBadBatch(batch = 1, badrowsCount = 40))
         )
       }
@@ -89,7 +89,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 
         assert(
           input,
-          expectedGoodCount = 30,
+          expectedGoodCount  = 30,
           expectedBadBatches = List(SinkedBadBatch(batch = 1, badrowsCount = 40))
         )
       }
@@ -104,7 +104,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 
         assert(
           input,
-          expectedGoodCount = 4,
+          expectedGoodCount  = 4,
           expectedBadBatches = List(SinkedBadBatch(batch = 1, badrowsCount = 17))
         )
       }
@@ -137,7 +137,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 
       assert(
         input,
-        expectedGoodCount = 100000000,
+        expectedGoodCount  = 100000000,
         expectedBadBatches = List.empty
       )
     }
@@ -149,8 +149,8 @@ abstract class GoodDataIteratorSpec extends Specification {
     expectedBadBatches: List[SinkedBadBatch]
   ) = {
     val partition = new PartitionSimulation(input, goodGenerator, badGenerator)
-    val badSink = new TestBadrowsSink
-    val iterator = new GoodOnlyIterator(partition.buffered, partitionIndex = 1, badSink, badBufferMaxSize)
+    val badSink   = new TestBadrowsSink
+    val iterator  = new GoodOnlyIterator(partition.buffered, partitionIndex = 1, badSink, badBufferMaxSize)
 
     iterator.size must beEqualTo(expectedGoodCount)
     badSink.sinkedBatches.toList must beEqualTo(expectedBadBatches)
@@ -161,7 +161,7 @@ abstract class GoodDataIteratorSpec extends Specification {
 object OnlyGoodDataIteratorSpec {
 
   type GoodGenerator = () => Transformed
-  type BadGenerator = () => Transformed
+  type BadGenerator  = () => Transformed
 
   sealed trait DataType {
     def x(times: Int) = Data(this, times)
@@ -179,7 +179,7 @@ object OnlyGoodDataIteratorSpec {
   ) extends AbstractIterator[Transformed] {
 
     private var headRepetitionCount: Int = 1
-    private var remaining: List[Data] = dataTemplate
+    private var remaining: List[Data]    = dataTemplate
 
     override def hasNext: Boolean = remaining.nonEmpty
 
@@ -192,7 +192,7 @@ object OnlyGoodDataIteratorSpec {
     private def generateNext(): Transformed =
       remaining.head.`type` match {
         case Good => generateGood()
-        case Bad => generateBad()
+        case Bad  => generateBad()
       }
 
     private def updateRemaining(): Unit =
@@ -203,7 +203,7 @@ object OnlyGoodDataIteratorSpec {
       }
 
     private def changeDataType(): Unit = {
-      remaining = remaining.tail
+      remaining           = remaining.tail
       headRepetitionCount = 1
     }
 

@@ -87,8 +87,8 @@ object BlobStorage {
 
     def parse(s: String): Either[String, Folder] = s match {
       case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// gs:// http:// or https:// prefix".asLeft
-      case _ if s.length > 1024 => "Key length cannot be more than 1024 symbols".asLeft
-      case _ => coerce(s).asRight
+      case _ if s.length > 1024       => "Key length cannot be more than 1024 symbols".asLeft
+      case _                          => coerce(s).asRight
     }
 
     /** Turn proper `xx://bucket/path/` string into `Folder` */
@@ -145,9 +145,9 @@ object BlobStorage {
 
     def parse(s: String): Either[String, Key] = s match {
       case _ if !correctlyPrefixed(s) => s"Bucket name $s doesn't start with s3:// s3a:// s3n:// gs:// http:// or https:// prefix".asLeft
-      case _ if s.length > 1024 => "Key length cannot be more than 1024 symbols".asLeft
-      case _ if s.endsWith("/") => "Blob storage key cannot have trailing slash".asLeft
-      case _ => coerce(s).asRight
+      case _ if s.length > 1024       => "Key length cannot be more than 1024 symbols".asLeft
+      case _ if s.endsWith("/")       => "Blob storage key cannot have trailing slash".asLeft
+      case _                          => coerce(s).asRight
     }
   }
 
@@ -178,9 +178,9 @@ object BlobStorage {
    */
   private[rdbloader] def splitPath(path: Folder): (String, String) =
     path.split("://").drop(1).mkString("").split("/").toList match {
-      case head :: Nil => (head, "/")
+      case head :: Nil  => (head, "/")
       case head :: tail => (head, tail.mkString("/") + "/")
-      case Nil => throw new IllegalArgumentException(s"Invalid blob storage path was passed") // Impossible
+      case Nil          => throw new IllegalArgumentException(s"Invalid blob storage path was passed") // Impossible
     }
 
   /**
@@ -194,7 +194,7 @@ object BlobStorage {
   def splitKey(key: Key): (String, String) =
     key.split("://").drop(1).mkString("").split("/").toList match {
       case head :: tail => (head, tail.mkString("/").stripSuffix("/"))
-      case _ => throw new IllegalArgumentException(s"Invalid blob storage key [$key] was passed") // Impossible
+      case _            => throw new IllegalArgumentException(s"Invalid blob storage key [$key] was passed") // Impossible
     }
 
   /** Used only to list blob storage directories, not to read and write data. */

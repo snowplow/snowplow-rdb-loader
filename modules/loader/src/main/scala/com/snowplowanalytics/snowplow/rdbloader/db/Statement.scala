@@ -68,7 +68,7 @@ object Statement {
   ) extends Statement
       with Loading {
     def table: String = EventsTable.MainName
-    def title = s"COPY $table FROM $path"
+    def title         = s"COPY $table FROM $path"
   }
   case class ShreddedCopy(
     shreddedType: ShreddedType,
@@ -80,8 +80,8 @@ object Statement {
   ) extends Statement
       with Loading {
     def table: String = tableName
-    def path: String = shreddedType.getLoadPath
-    def title = s"COPY $table FROM $path"
+    def path: String  = shreddedType.getLoadPath
+    def title         = s"COPY $table FROM $path"
   }
   case class CreateTempEventTable(table: String) extends Loading {
     def title: String = s"CREATE TEMP TABLE $table"

@@ -25,7 +25,7 @@ object PureCache {
         val result = testState.cache.get(key)
         result match {
           case Some(_) => (testState.log(s"GET $key"), result)
-          case None => (testState.log(s"GET $key (miss)"), result)
+          case None    => (testState.log(s"GET $key (miss)"), result)
         }
 
       }

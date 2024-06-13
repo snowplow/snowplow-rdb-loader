@@ -32,7 +32,7 @@ object Kinesis {
       Decoder.decodeJson.emap { json =>
         json.asString match {
           case Some("TRIM_HORIZON") => InitPosition.TrimHorizon.asRight
-          case Some("LATEST") => InitPosition.Latest.asRight
+          case Some("LATEST")       => InitPosition.Latest.asRight
           case Some(other) =>
             s"Initial position $other is unknown. Choose from LATEST and TRIM_HORIZON. AT_TIMESTAMP must provide the timestamp".asLeft
           case None =>

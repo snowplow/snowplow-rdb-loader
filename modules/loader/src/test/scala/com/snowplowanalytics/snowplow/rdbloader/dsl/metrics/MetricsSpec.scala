@@ -33,7 +33,7 @@ class MetricsSpec extends Specification {
 
   "getCompletedMetrics" should {
     val nanos = System.nanoTime()
-    val now = Instant.ofEpochSecond(0L, nanos)
+    val now   = Instant.ofEpochSecond(0L, nanos)
 
     implicit val clockIdImpl: Clock[Id] = new Clock[Id] {
       override def applicative: Applicative[Id] = Applicative[Id]
@@ -44,21 +44,21 @@ class MetricsSpec extends Specification {
     }
 
     "compute the metrics" in {
-      val countGood = 42L
-      val countBad = 21L
-      val collectorLatencyMin = 120L
-      val collectorLatencyMax = 200L
+      val countGood            = 42L
+      val countBad             = 21L
+      val collectorLatencyMin  = 120L
+      val collectorLatencyMax  = 200L
       val shredderStartLatency = 50L
-      val shredderEndLatency = 10L
+      val shredderEndLatency   = 10L
 
       val shreddingComplete = ShreddingComplete(
         BlobStorage.Folder.coerce("s3://shredded/run_id/"),
         TypesInfo.Shredded(Nil),
         Timestamps(
-          jobStarted = now.minusSeconds(shredderStartLatency),
+          jobStarted   = now.minusSeconds(shredderStartLatency),
           jobCompleted = now.minusSeconds(shredderEndLatency),
-          min = Some(now.minusSeconds(collectorLatencyMax)),
-          max = Some(now.minusSeconds(collectorLatencyMin))
+          min          = Some(now.minusSeconds(collectorLatencyMax)),
+          max          = Some(now.minusSeconds(collectorLatencyMin))
         ),
         TransformerConfig.Compression.Gzip,
         Processor("loader_unit_tests", Semver(0, 0, 0, None)),

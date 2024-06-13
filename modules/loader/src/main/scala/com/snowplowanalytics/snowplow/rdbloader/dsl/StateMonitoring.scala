@@ -50,7 +50,7 @@ object StateMonitoring {
           value match {
             case Outcome.Succeeded(fa) =>
               fa.flatMap {
-                case None => Concurrent[F].unit
+                case None        => Concurrent[F].unit
                 case Some(error) => Logging[F].error(error) *> Concurrent[F].raiseError[Unit](LoaderError.TimeoutError(error))
               }
             case Outcome.Errored(e) => Concurrent[F].raiseError[Unit](e)
@@ -120,7 +120,7 @@ object StateMonitoring {
   def isLoading(status: Load.Status): Boolean =
     status match {
       case Load.Status.Loading(_, Stage.Loading(_)) => true
-      case _ => false
+      case _                                        => false
     }
 
   def isStale(
@@ -129,8 +129,8 @@ object StateMonitoring {
     state: State
   ): Boolean = {
     val lastUpdated = state.updated
-    val passed = (now.toEpochMilli - lastUpdated.toEpochMilli).milli
-    val timeout = if (isLoading(state.loading)) timeouts.loading else timeouts.nonLoading
+    val passed      = (now.toEpochMilli - lastUpdated.toEpochMilli).milli
+    val timeout     = if (isLoading(state.loading)) timeouts.loading else timeouts.nonLoading
     // Rollback/Commit can be used in all statements therefore their timeout should be added in all cases
     passed > (timeout + timeouts.totalTimeToRollBack)
   }

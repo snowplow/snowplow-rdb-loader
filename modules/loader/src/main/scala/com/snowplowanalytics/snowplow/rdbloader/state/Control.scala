@@ -94,7 +94,7 @@ case class Control[F[_]](private val state: State.Ref[F]) {
   ): F[Boolean] =
     config match {
       case Some(config) => Retries.addFailure[F](config, state)(base, error)
-      case None => Monad[F].pure(false)
+      case None         => Monad[F].pure(false)
     }
 
   /** Remove folder from internal RetryQueue */

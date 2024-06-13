@@ -113,7 +113,7 @@ object NoOperation {
     makePaused: MakePaused[F]
   ) = {
     val duration = getPauseDuration(schedule, from)
-    val start = show"Loader has started within no-op window of ${schedule.name}, "
+    val start    = show"Loader has started within no-op window of ${schedule.name}, "
     val warn =
       if (duration.length === 0L)
         Logging[F].warning(show"$start, but couldn't find out how long to sleep. Ignoring the initial pause")

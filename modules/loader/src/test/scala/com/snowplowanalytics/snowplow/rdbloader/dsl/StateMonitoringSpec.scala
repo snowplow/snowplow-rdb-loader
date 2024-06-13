@@ -139,7 +139,7 @@ object StateMonitoringSpec {
   def setStage(stage: Stage)(state: State): State = {
     val loading = state.loading match {
       case Loading(folder, _) => Loading(folder, stage)
-      case other => other
+      case other              => other
     }
 
     state.copy(loading = loading)

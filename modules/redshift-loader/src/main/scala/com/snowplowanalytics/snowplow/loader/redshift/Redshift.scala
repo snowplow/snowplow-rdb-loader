@@ -41,8 +41,8 @@ object Redshift {
   def build(config: Config[StorageTarget]): Either[String, Target[Unit]] = {
     (config.cloud, config.storage) match {
       case (c: Config.Cloud.AWS, storage: StorageTarget.Redshift) =>
-        val region = c.region
-        val schema = storage.schema
+        val region   = c.region
+        val schema   = storage.schema
         val maxError = storage.maxError
         val result = new Target[Unit] {
 
@@ -53,7 +53,7 @@ object Redshift {
             currentSchemaKey: SchemaKey
           ): Block = {
             val outTransactions = goodModel.migrations.outTransaction(Some(currentSchemaKey), Some(goodModel.schemaKey))
-            val inTransactions = goodModel.migrations.inTransaction(Some(currentSchemaKey), Some(goodModel.schemaKey))
+            val inTransactions  = goodModel.migrations.inTransaction(Some(currentSchemaKey), Some(goodModel.schemaKey))
 
             val preTransaction =
               outTransactions.map { varcharExtension =>
@@ -98,7 +98,7 @@ object Redshift {
               .map { shreddedType =>
                 val discoveredShredModels = discovery.shredModels(shreddedType.info.getSchemaKey)
                 val isRecovery = discoveredShredModels.shredModel match {
-                  case _: ShredModel.GoodModel => false
+                  case _: ShredModel.GoodModel     => false
                   case _: ShredModel.RecoveryModel => true
                 }
 
@@ -137,7 +137,7 @@ object Redshift {
 
           override def createTable(shredModel: ShredModel): Block = {
             val isRecovery = shredModel match {
-              case ShredModel.GoodModel(_, _, _) => false
+              case ShredModel.GoodModel(_, _, _)     => false
               case ShredModel.RecoveryModel(_, _, _) => true
             }
             Block(
@@ -190,7 +190,7 @@ object Redshift {
 
           override def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Select1 => sql"SELECT 1"
+              case Statement.Select1    => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
 
               case Statement.CreateAlertingTempTable =>
@@ -201,26 +201,26 @@ object Redshift {
                 sql"DROP TABLE IF EXISTS $frTableName"
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(AlertingTempTableName)
-                val frManifest = Fragment.const(s"${schema}.manifest")
+                val frManifest  = Fragment.const(s"${schema}.manifest")
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source, loadAuthMethod, _) =>
-                val frTableName = Fragment.const(AlertingTempTableName)
+                val frTableName   = Fragment.const(AlertingTempTableName)
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
-                val frPath = Fragment.const0(source)
-                val frRegion = Fragment.const0(region.name)
+                val frPath        = Fragment.const0(source)
+                val frRegion      = Fragment.const0(region.name)
                 sql"""COPY $frTableName FROM '$frPath'
                      | CREDENTIALS '$frCredentials'
                      | REGION '$frRegion'
                      | DELIMITER '$EventFieldSeparator'""".stripMargin
               case Statement.EventsCopy(path, compression, columnsToCopy, _, _, loadAuthMethod, _) =>
                 // For some reasons Redshift JDBC doesn't handle interpolation in COPY statements
-                val frTableName = Fragment.const(EventsTable.withSchema(schema))
-                val frPath = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
+                val frTableName   = Fragment.const(EventsTable.withSchema(schema))
+                val frPath        = Fragment.const0(Common.entityPathFull(path, Common.AtomicType))
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
-                val frRegion = Fragment.const0(region.name)
-                val frMaxError = Fragment.const0(maxError.toString)
+                val frRegion      = Fragment.const0(region.name)
+                val frMaxError    = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
-                val frColumns = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
+                val frColumns     = Fragment.const0(columnsToCopy.names.map(_.value).mkString(","))
 
                 sql"""COPY $frTableName ($frColumns) FROM '$frPath'
                      | CREDENTIALS '$frCredentials'
@@ -235,14 +235,14 @@ object Redshift {
                      | $frCompression""".stripMargin
 
               case Statement.ShreddedCopy(shreddedType, compression, loadAuthMethod, shredModel, tableName, _) =>
-                val frTableName = Fragment.const0(qualify(tableName))
-                val frPath = Fragment.const0(shreddedType.getLoadPath)
+                val frTableName   = Fragment.const0(qualify(tableName))
+                val frPath        = Fragment.const0(shreddedType.getLoadPath)
                 val frCredentials = loadAuthMethodFragment(loadAuthMethod, storage.roleArn)
-                val frRegion = Fragment.const0(region.name)
-                val frMaxError = Fragment.const0(maxError.toString)
+                val frRegion      = Fragment.const0(region.name)
+                val frMaxError    = Fragment.const0(maxError.toString)
                 val frCompression = getCompressionFormat(compression)
-                val columns = shredModel.entries.map(_.columnName)
-                val frColumns = Fragment.const0((ShredModelEntry.commonColumnNames ::: columns).map(quoted).mkString(","))
+                val columns       = shredModel.entries.map(_.columnName)
+                val frColumns     = Fragment.const0((ShredModelEntry.commonColumnNames ::: columns).map(quoted).mkString(","))
 
                 shreddedType match {
                   case ShreddedType.Json(_, jsonPathsFile) =>
@@ -301,7 +301,7 @@ object Redshift {
                       WHERE table_name = $tableName and table_schema = $schema"""
               case Statement.ManifestAdd(message) =>
                 val tableName = Fragment.const(qualify(Manifest.Name))
-                val types = message.types.asJson.noSpaces
+                val types     = message.types.asJson.noSpaces
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,

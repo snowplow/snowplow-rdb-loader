@@ -44,7 +44,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
             (versions, expectedName, expectedElementType) =>
               assertOneField(
                 versions,
-                entity = Context,
+                entity        = Context,
                 expectedField = nullableArrayWithRequiredElement(expectedName, expectedElementType)
               )
           }
@@ -61,7 +61,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
             (versions, expectedName, expectedElementType) =>
               assertOneField(
                 versions,
-                entity = SelfDescribingEvent,
+                entity        = SelfDescribingEvent,
                 expectedField = Field(expectedName, expectedElementType, nullability = Nullable)
               )
           }
@@ -76,7 +76,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 
       result.value.size mustEqual 1
       result.value.head.field mustEqual nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
         elementType = DdlTypes.schema101
       )
     }
@@ -90,30 +90,30 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(
-          name = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
+          name        = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
           elementType = DdlTypes.schema100
         )
         result.value.last.field mustEqual nullableArrayWithRequiredElement(
-          name = "contexts_com_snowplowanalytics_snowplow_test_schema_2",
+          name        = "contexts_com_snowplowanalytics_snowplow_test_schema_2",
           elementType = DdlTypes.schema200
         )
       }
 
       "context and unstruct is used" in {
-        val context100 = getType(SchemaVer.Full(1, 0, 0), Context)
+        val context100  = getType(SchemaVer.Full(1, 0, 0), Context)
         val unstruct100 = getType(SchemaVer.Full(1, 0, 0), SelfDescribingEvent)
-        val inputTypes = List(context100, unstruct100)
+        val inputTypes  = List(context100, unstruct100)
 
         val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 2
         result.value.head.field mustEqual nullableArrayWithRequiredElement(
-          name = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
+          name        = "contexts_com_snowplowanalytics_snowplow_test_schema_1",
           elementType = DdlTypes.schema100
         )
         result.value.last.field mustEqual Field(
-          name = "unstruct_event_com_snowplowanalytics_snowplow_test_schema_1",
-          fieldType = DdlTypes.schema100,
+          name        = "unstruct_event_com_snowplowanalytics_snowplow_test_schema_1",
+          fieldType   = DdlTypes.schema100,
           nullability = Nullable
         )
       }
@@ -123,7 +123,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 
       "schema broken from 100 to 101 to 110 should generate 3 column if all 100-101-110-111 are seen" in {
         val inputTypes = List(context100, context101, context110, context111)
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+        val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 3
         forall(
@@ -134,7 +134,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
       }
       "schema broken from 100 to 101 to 110 should generate 1 column if only 100 is seen" in {
         val inputTypes = List(context100)
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+        val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 1
         forall(
@@ -146,7 +146,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 
       "schema broken from 100 to 101 to 110 should generate 1 column if only 110 is seen" in {
         val inputTypes = List(context110)
-        val result = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+        val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 1
         forall(
@@ -188,7 +188,7 @@ object ParquetFieldsProviderSpec {
   ) =
     Field(
       name,
-      fieldType = Type.Array(elementType, nullability = Required),
+      fieldType   = Type.Array(elementType, nullability = Required),
       nullability = Nullable,
       if (accessors.isEmpty) Set(name) else accessors
     )
@@ -370,31 +370,31 @@ object ParquetFieldsProviderSpec {
 
     val expectedContext100 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
         elementType = DdlTypes.brokenSchema100
       ),
       Set(context100.schemaKey)
     )
     val expectedContext100_110 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
         elementType = DdlTypes.brokenSchema110
       ),
       Set(context100.schemaKey, context110.schemaKey)
     )
     val expectedContext111 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_737559706",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_737559706",
         elementType = DdlTypes.brokenSchema111,
-        accessors = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
+        accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
       Set(context111.schemaKey)
     )
     val expectedContext101 = (
       nullableArrayWithRequiredElement(
-        name = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102",
         elementType = DdlTypes.brokenSchema101,
-        accessors = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
+        accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
       Set(context101.schemaKey)
     )

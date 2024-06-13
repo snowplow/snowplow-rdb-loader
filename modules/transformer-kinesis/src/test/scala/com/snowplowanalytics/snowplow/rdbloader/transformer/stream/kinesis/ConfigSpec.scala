@@ -88,7 +88,7 @@ object ConfigSpec {
   )
   val exampleDefaultStreamInput = exampleStreamInput.copy(
     appName = "snowplow-transformer",
-    region = RegionSpec.DefaultTestRegion
+    region  = RegionSpec.DefaultTestRegion
   )
   val exampleWindowPeriod = 10.minutes
   val exampleOutput = Config.Output.S3(
@@ -103,7 +103,7 @@ object ConfigSpec {
       500,
       5242880,
       Config.Output.Bad.Queue.Kinesis.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 10.seconds, maxRetries = Some(10)),
-      Config.Output.Bad.Queue.Kinesis.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None),
+      Config.Output.Bad.Queue.Kinesis.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries   = None),
       Some(URI.create("http://localhost:4566"))
     )
   )
@@ -167,8 +167,8 @@ object ConfigSpec {
       None
     )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
-  val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
-  val exampleLicense = License(true)
-  val emptyValidations = Validations(None)
-  val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
+  val exampleValidations         = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense             = License(true)
+  val emptyValidations           = Validations(None)
+  val TestProcessor              = Processor(BuildInfo.name, BuildInfo.version)
 }

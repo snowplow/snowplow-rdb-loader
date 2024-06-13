@@ -89,7 +89,7 @@ final class KinesisSink(
 
     val result = attemptToWriteBatch(recordsToWriteInBatch)
       .retryingOnFailures(
-        policy = Retries.fibonacci(config.throttledBackoffPolicy),
+        policy        = Retries.fibonacci(config.throttledBackoffPolicy),
         wasSuccessful = failedRecords => Try(failedRecords.isEmpty),
         onFailure = (failedRecords, retryDetails) =>
           Try {
@@ -119,7 +119,7 @@ final class KinesisSink(
   private def attemptToWriteBatch(records: List[PutRecordsRequestEntry]): Try[FailedWriteRecords] =
     executeKinesisRequest(records)
       .retryingOnFailuresAndAllErrors(
-        policy = Retries.fullJitter(config.backoffPolicy),
+        policy        = Retries.fullJitter(config.backoffPolicy),
         wasSuccessful = r => Try(!r.shouldRetrySameBatch),
         onFailure = (result, retryDetails) =>
           Try(println(s"${failureMessageForInternalFailures(records, result)}. Retries so far: ${retryDetails.retriesSoFar}")),
@@ -170,7 +170,7 @@ object KinesisSink {
   type FailedWriteRecords = List[PutRecordsRequestEntry]
 
   def createFrom(config: Config.Output.BadSink.Kinesis): KinesisSink = {
-    val client = Cloud.createKinesisClient(config.region)
+    val client                                 = Cloud.createKinesisClient(config.region)
     val writeDataToKinesis: WriteDataToKinesis = client.putRecords
     new KinesisSink(writeDataToKinesis, config)
   }

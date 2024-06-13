@@ -28,7 +28,7 @@ object Common {
 
   val AtomicSchema: SchemaKey =
     SchemaKey("com.snowplowanalytics.snowplow", "atomic", "jsonschema", SchemaVer.Full(1, 0, 0))
-  val AtomicType = TypesInfo.Shredded.Type(AtomicSchema, TypesInfo.Shredded.ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
+  val AtomicType         = TypesInfo.Shredded.Type(AtomicSchema, TypesInfo.Shredded.ShreddedFormat.TSV, SnowplowEntity.SelfDescribingEvent)
   val AtomicPath: String = entityPath(AtomicType)
 
   val FolderTimeFormatter: DateTimeFormatter =
@@ -86,7 +86,7 @@ object Common {
 
   /** Registry embedded into RDB Loader jar */
   private val loaderRefConf = Registry.Config("RDB Loader Embedded", 0, List("com.snowplowanalytics.snowplow.rdbloader"))
-  val LoaderRegistry = Registry.Embedded(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
+  val LoaderRegistry        = Registry.Embedded(loaderRefConf, "/com.snowplowanalytics.snowplow.rdbloader/embedded-registry")
 
   /**
    * Extract integer from string if it contains only valid number

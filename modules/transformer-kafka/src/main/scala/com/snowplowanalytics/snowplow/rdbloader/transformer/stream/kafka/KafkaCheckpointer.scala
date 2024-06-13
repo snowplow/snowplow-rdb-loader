@@ -24,7 +24,7 @@ object KafkaCheckpointer {
   def checkpointer[F[_]: Sync](message: Queue.Consumer.Message[F]): KafkaCheckpointer[F] =
     message match {
       case m: KafkaMessage[F] => KafkaCheckpointer[F](Map(m.record.record.partition -> m.ack))
-      case _ => Checkpointer[F, KafkaCheckpointer[F]].empty
+      case _                  => Checkpointer[F, KafkaCheckpointer[F]].empty
     }
 
   implicit def kafkaCheckpointer[F[_]: Applicative]: Checkpointer[F, KafkaCheckpointer[F]] =

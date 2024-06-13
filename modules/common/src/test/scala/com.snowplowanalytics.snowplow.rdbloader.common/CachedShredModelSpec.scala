@@ -54,7 +54,7 @@ class CachedShredModelSpec extends Specification {
   "Cached shred model" should {
     "original schema only, 1 field flattened" in {
 
-      val cache = getCache
+      val cache              = getCache
       val result: ShredModel = helper(schemaKey, cache, 1000, schema100)
 
       result.jsonToStrings(data) must beEqualTo(List("1"))
@@ -98,7 +98,7 @@ class CachedShredModelSpec extends Specification {
   private def getResolver: Resolver[Id] =
     Resolver.init[Id](
       cacheSize = 10,
-      cacheTtl = Some(10.seconds),
+      cacheTtl  = Some(10.seconds),
       refs = Registry.Embedded( // not used in test as we fix returned schema in custom test RegistryLookup
         Registry.Config("Test", 0, List.empty),
         path = "/fake"

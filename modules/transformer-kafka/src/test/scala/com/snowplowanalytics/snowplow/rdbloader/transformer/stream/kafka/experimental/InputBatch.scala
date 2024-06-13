@@ -38,8 +38,8 @@ object InputBatch {
         .gen(
           eventPerPayloadMin = count,
           eventPerPayloadMax = count,
-          now = Instant.now(),
-          frequencies = EventFrequencies(1, 1, 1, 1, UnstructEventFrequencies(1, 1, 1))
+          now                = Instant.now(),
+          frequencies        = EventFrequencies(1, 1, 1, 1, UnstructEventFrequencies(1, 1, 1))
         )
         .apply(Gen.Parameters.default, Seed(Random.nextLong()))
         .get
@@ -53,7 +53,7 @@ object InputBatch {
   )
 
   def asTextLines(content: Content): List[String] = content match {
-    case Content.TextLines(lines) => lines
+    case Content.TextLines(lines)  => lines
     case Content.SdkEvents(events) => events.map(_.toTsv)
   }
 }

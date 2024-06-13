@@ -229,8 +229,8 @@ object Transformed {
     hierarchy: Hierarchy
   ): EitherT[F, FailureDetails.LoaderIgluError, Transformed] = {
     val vendor = hierarchy.entity.schema.vendor
-    val name = hierarchy.entity.schema.name
-    val meta = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
+    val name   = hierarchy.entity.schema.name
+    val meta   = EventUtils.buildMetadata(hierarchy.eventId, hierarchy.collectorTstamp, hierarchy.entity.schema)
     if (tabular) {
       lookupShredModel(hierarchy.entity.schema, shredModelCache, resolver)
         .map { shredModel =>

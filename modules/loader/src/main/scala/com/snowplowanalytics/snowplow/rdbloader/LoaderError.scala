@@ -26,7 +26,7 @@ object LoaderError {
   implicit val loaderErrorShow: Show[LoaderError] = {
     case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.toList.map(_.getMessage).mkString("\n")
     case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
-    case t: TimeoutError => t.message
+    case t: TimeoutError   => t.message
   }
 
   /**

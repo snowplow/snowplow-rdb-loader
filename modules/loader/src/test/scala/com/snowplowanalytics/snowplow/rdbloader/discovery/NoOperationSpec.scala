@@ -41,8 +41,8 @@ class NoOperationSpec extends Specification {
   "NoOperation.run" should {
     "execute actions periodically" in {
       val everySecond = Cron.unsafeParse("* * * ? * *")
-      val input = Schedule("first", everySecond, 500.millis)
-      val test = NoOperationSpec.run(2)(List(input))
+      val input       = Schedule("first", everySecond, 500.millis)
+      val test        = NoOperationSpec.run(2)(List(input))
 
       test must haveJobs { case List(job1, job2) =>
         job1.duration must beEqualTo(500L)
@@ -97,24 +97,24 @@ class NoOperationSpec extends Specification {
   "NoOperation.isInWindow" should {
     "recognize when timestamp is in window" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T06:59:59.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T06:59:59.00Z")
 
       NoOperation.isInWindow(input, tstamp) must beTrue
     }
 
     "recognize when timestamp is not in window" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T07:00:01.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T07:00:01.00Z")
 
       NoOperation.isInWindow(input, tstamp) must beFalse
     }
 
     "recognize when timestamp is not in window in a month after <31 days" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-03-01T06:00:00.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-03-01T06:00:00.00Z")
 
       NoOperation.isInWindow(input, tstamp) must beTrue
     }.pendingUntilFixed("https://github.com/alonsodomin/cron4s/issues/158")
@@ -123,8 +123,8 @@ class NoOperationSpec extends Specification {
   "NoOperation.getBoundaries" should {
     "return valid window for a timestamp within boundaries" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T06:50:00.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T06:50:00.00Z")
 
       val expected = (utc("2021-02-03T06:00:00.00Z"), utc("2021-02-03T07:00:00.00Z"))
 
@@ -134,8 +134,8 @@ class NoOperationSpec extends Specification {
     "return past window for a timestamp after specified duration" in {
       // isInWindow protects from false positives
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T09:50:00.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T09:50:00.00Z")
 
       val expected = (utc("2021-02-03T06:00:00.00Z"), utc("2021-02-03T07:00:00.00Z"))
 
@@ -145,8 +145,8 @@ class NoOperationSpec extends Specification {
     "return past window for a timestamp before specified duration" in {
       // isInWindow protects from false positives
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T05:59:59.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T05:59:59.00Z")
 
       val expected = (utc("2021-02-02T06:00:00.00Z"), utc("2021-02-02T07:00:00.00Z"))
 
@@ -157,16 +157,16 @@ class NoOperationSpec extends Specification {
   "NoOperation.getPauseDuration" should {
     "return positive duration for valid window" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T06:50:00.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T06:50:00.00Z")
 
       NoOperation.getPauseDuration(input, tstamp) must beEqualTo(10.minutes)
     }
 
     "return 0 if window is behind" in {
       val every6am = Cron.unsafeParse("0 0 6 * * ?")
-      val input = Schedule("first", every6am, 1.hour)
-      val tstamp = utc("2021-02-03T07:00:10.00Z")
+      val input    = Schedule("first", every6am, 1.hour)
+      val tstamp   = utc("2021-02-03T07:00:10.00Z")
 
       NoOperation.getPauseDuration(input, tstamp) must beEqualTo(0.seconds)
     }
@@ -272,7 +272,7 @@ object NoOperationSpec {
   def create = {
     val action = for {
       initState <- SignallingRef[IO, State](State(0, List.empty[Job], Status.Idle))
-      signal = initState.map(_.status)
+      signal     = initState.map(_.status)
       makePaused = createMakePaused(initState)
     } yield (makePaused, initState.get, signal)
     Resource.eval(action)

@@ -34,7 +34,7 @@ object RegionSpec {
         else
           c.value.asString match {
             case Some(r) => Region.checkRegion(Region(r)).leftMap(DecodingFailure(_, c.history))
-            case None => Left(DecodingFailure("Region", c.history))
+            case None    => Left(DecodingFailure("Region", c.history))
           }
       case c: FailedCursor =>
         if (!c.incorrectFocus)

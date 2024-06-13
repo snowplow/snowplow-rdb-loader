@@ -74,9 +74,9 @@ object Completion {
       timestamps <- Sync[F].realTimeInstant.map { now =>
                       Timestamps(window.toInstant, now, state.minCollector, state.maxCollector)
                     }
-      base = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
+      base                  = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
       shreddingCompletePath = base.withKey(sealFile)
-      count = LoaderMessage.Count(state.total - state.bad, Some(state.bad))
+      count                 = LoaderMessage.Count(state.total - state.bad, Some(state.bad))
       message = LoaderMessage.ShreddingComplete(
                   BlobStorage.Folder.coerce(base),
                   getTypes(state.types),
@@ -96,7 +96,7 @@ object Completion {
     key: BlobStorage.Key,
     content: String
   ): F[Unit] = {
-    val pipe = blobStorage.put(key, false)
+    val pipe  = blobStorage.put(key, false)
     val bytes = Stream.emits[F, Byte](content.getBytes)
     bytes.through(pipe).compile.drain
   }

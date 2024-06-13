@@ -52,8 +52,8 @@ object Load {
 
     implicit val stateShow: Show[Status] =
       Show.show {
-        case Idle => "Idle"
-        case Paused(owner) => show"Paused by $owner"
+        case Idle                   => "Idle"
+        case Paused(owner)          => show"Paused by $owner"
         case Loading(folder, stage) => show"Ongoing processing of $folder at $stage"
       }
   }
@@ -224,7 +224,7 @@ object Load {
               _ <- DAO[F].executeUpdate(statement, DAO.Purpose.Loading).void
             } yield statement match {
               case ShreddedCopy(_, _, _, _, tableName, isRecovered) if isRecovered => tableName.some
-              case _ => None
+              case _                                                               => None
             }
         }
       _ <- Logging[F].info(s"Folder [${discovery.base}] has been loaded (not committed yet)")

@@ -57,7 +57,7 @@ trait AzureTransformerSpecification extends TransformerSpecification with AppDep
     KafkaConsumer
       .consumer[IO](
         bootstrapServers = System.getenv(eventHubsUrlEnv),
-        topicName = System.getenv(outputHubNameEnv),
+        topicName        = System.getenv(outputHubNameEnv),
         consumerConf = Map(
           "security.protocol" -> "SASL_SSL",
           "sasl.mechanism" -> "PLAIN",
@@ -73,7 +73,7 @@ trait AzureTransformerSpecification extends TransformerSpecification with AppDep
     KafkaProducer
       .producer[IO](
         bootstrapServers = System.getenv(eventHubsUrlEnv),
-        topicName = System.getenv(inputHubNameEnv),
+        topicName        = System.getenv(inputHubNameEnv),
         producerConf = Map(
           "security.protocol" -> "SASL_SSL",
           "sasl.mechanism" -> "PLAIN",
@@ -85,11 +85,11 @@ trait AzureTransformerSpecification extends TransformerSpecification with AppDep
 
 object AzureTransformerSpecification {
   val blobStorageUrlEnv = "TEST_TRANSFORMER_BLOB_STORAGE_URL"
-  val eventHubsUrlEnv = "TEST_TRANSFORMER_EVENTHUBS_URL"
-  val inputHubNameEnv = "TEST_TRANSFORMER_INPUT_HUB_NAME"
-  val outputHubNameEnv = "TEST_TRANSFORMER_OUTPUT_HUB_NAME"
-  val inputHubKeyEnv = "TEST_TRANSFORMER_INPUT_HUB_KEY"
-  val outputHubKeyEnv = "TEST_TRANSFORMER_OUTPUT_HUB_KEY"
+  val eventHubsUrlEnv   = "TEST_TRANSFORMER_EVENTHUBS_URL"
+  val inputHubNameEnv   = "TEST_TRANSFORMER_INPUT_HUB_NAME"
+  val outputHubNameEnv  = "TEST_TRANSFORMER_OUTPUT_HUB_NAME"
+  val inputHubKeyEnv    = "TEST_TRANSFORMER_INPUT_HUB_KEY"
+  val outputHubKeyEnv   = "TEST_TRANSFORMER_OUTPUT_HUB_KEY"
 
   val requiredEnvironmentVariables = List(
     blobStorageUrlEnv,

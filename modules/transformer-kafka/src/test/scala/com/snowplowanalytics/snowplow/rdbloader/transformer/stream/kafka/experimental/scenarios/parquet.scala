@@ -24,53 +24,53 @@ import io.circe.parser
 import scala.concurrent.duration.DurationInt
 
 class ParquetScenario1 extends AzureTransformerSpecification {
-  def description = "Input: 1 good, config: PARQUET, compression, windowing: 1 minute"
+  def description       = "Input: 1 good, config: PARQUET, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  def inputBatches = List(good(count = 1))
+  def inputBatches      = List(good(count = 1))
   def countExpectations = CountExpectations(good = 1, bad = 0)
 }
 
 class ParquetScenario2 extends AzureTransformerSpecification {
-  def description = "Input: 1 bad, config: PARQUET, compression, windowing: 1 minute"
+  def description       = "Input: 1 bad, config: PARQUET, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  def inputBatches = List(bad(count = 1))
+  def inputBatches      = List(bad(count = 1))
   def countExpectations = CountExpectations(good = 0, bad = 1)
 }
 
 class ParquetScenario3 extends AzureTransformerSpecification {
-  def description = "Input: 1000 good, config: PARQUET, compression, windowing: 1 minute"
+  def description       = "Input: 1000 good, config: PARQUET, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  def inputBatches = List(good(count = 1000))
+  def inputBatches      = List(good(count = 1000))
   def countExpectations = CountExpectations(good = 1000, bad = 0)
 }
 
 class ParquetScenario4 extends AzureTransformerSpecification {
-  def description = "Input: 1000 bad, config: PARQUET, compression, windowing: 1 minute"
+  def description       = "Input: 1000 bad, config: PARQUET, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  def inputBatches = List(bad(count = 1000))
+  def inputBatches      = List(bad(count = 1000))
   def countExpectations = CountExpectations(good = 0, bad = 1000)
 }
 
 class ParquetScenario5 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: PARQUET, compression, windowing: 1 minute"""
+  def description       = """Input: mixed 500 good and 500 bad, config: PARQUET, compression, windowing: 1 minute"""
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  def inputBatches = List(good(count = 500), bad(count = 500))
+  def inputBatches      = List(good(count = 500), bad(count = 500))
   def countExpectations = CountExpectations(good = 500, bad = 500)
 }
 
 //Changed defualt windowing to 2 minutes
 class ParquetScenario6 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: PARQUET, compression, windowing: 2 minutes"""
+  def description       = """Input: mixed 500 good and 500 bad, config: PARQUET, compression, windowing: 2 minutes"""
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET, windowFrequencyMinutes = 2)
-  def inputBatches = List(good(count = 500), good(count = 500).delayed(2.minutes)) // force new window by delaying second input batch
+  def inputBatches      = List(good(count = 500), good(count = 500).delayed(2.minutes)) // force new window by delaying second input batch
   def countExpectations = CountExpectations(good = 1000, bad = 0)
 }
 
 //No compression
 class ParquetScenario7 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: PARQUET, no compression, windowing: 1 minute"""
+  def description       = """Input: mixed 500 good and 500 bad, config: PARQUET, no compression, windowing: 1 minute"""
   def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET, compression = Compression.None)
-  def inputBatches = List(good(count = 500), bad(count = 500))
+  def inputBatches      = List(good(count = 500), bad(count = 500))
   def countExpectations = CountExpectations(good = 500, bad = 500)
 }
 
@@ -83,9 +83,9 @@ class ParquetScenario8 extends AzureTransformerSpecification {
     )
   )
 
-  override def description = "Asserting details of a single PARQUET transformed event"
+  override def description       = "Asserting details of a single PARQUET transformed event"
   override def requiredAppConfig = AppConfiguration.default.copy(fileFormat = WideRowFormat.PARQUET)
-  override def inputBatches = List(InputBatch(goodEvent))
+  override def inputBatches      = List(InputBatch(goodEvent))
   override def countExpectations = CountExpectations(good = 1, bad = 0)
 
   override def customDataAssertion = Some { outputData =>

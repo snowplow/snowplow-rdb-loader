@@ -31,9 +31,9 @@ class MigrationSpec extends Specification {
   "build" should {
     "build Migration with table creation for ShreddedType.Tabular" in {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val dao: DAO[Pure]                       = PureDAO.interpreter(PureDAO.init)
+      implicit val iglu: Iglu[Pure]                     = PureIglu.interpreter
+      implicit val logging: Logging[Pure]               = PureLogging.interpreter()
       val s1 = ShreddedType.Tabular(
         ShreddedType.Info(
           BlobStorage.Folder.coerce("s3://shredded/archive"),
@@ -125,9 +125,9 @@ class MigrationSpec extends Specification {
 
     "ignore atomic schema" in {
       implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val dao: DAO[Pure]                       = PureDAO.interpreter(PureDAO.init)
+      implicit val iglu: Iglu[Pure]                     = PureIglu.interpreter
+      implicit val logging: Logging[Pure]               = PureLogging.interpreter()
 
       val s1 = ShreddedType.Tabular(
         ShreddedType.Info(
@@ -253,7 +253,7 @@ object MigrationSpec {
   )
 
   val schemaListSingle = NonEmptyList.of(schema100)
-  val schemaListTwo = NonEmptyList.of(schema100, schema101)
+  val schemaListTwo    = NonEmptyList.of(schema100, schema101)
 
   val schema200 = SelfDescribingSchema(
     SchemaMap(SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(2, 0, 0))),

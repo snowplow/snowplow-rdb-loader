@@ -54,14 +54,14 @@ final class GoodOnlyIterator(
 
   private def isGood(data: Transformed): Boolean = data match {
     case shredded: Transformed.Shredded => shredded.isGood
-    case Transformed.WideRow(good, _) => good
-    case Transformed.Parquet(_) => true
+    case Transformed.WideRow(good, _)   => good
+    case Transformed.Parquet(_)         => true
   }
 
   private def stringify(bad: Transformed): String =
     bad.data match {
       case Data.DString(value) => value
-      case _ => ""
+      case _                   => ""
     }
 
   private def exceedingBufferSize: Boolean =

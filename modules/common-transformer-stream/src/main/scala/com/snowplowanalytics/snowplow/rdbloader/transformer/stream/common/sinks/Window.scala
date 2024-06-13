@@ -45,7 +45,7 @@ object Window {
   // TODO: what about 7,8,9,11 mins et other non-round periods
   // TODO: what about >60 mins
   def fromInstant(roundMins: Int, instant: Instant): Window = {
-    val now = instant.atZone(ZoneOffset.UTC)
+    val now            = instant.atZone(ZoneOffset.UTC)
     val roundedMinutes = now.getMinute - (now.getMinute % roundMins)
     Window(now.getYear, now.getMonthValue, now.getDayOfMonth, now.getHour, roundedMinutes)
   }

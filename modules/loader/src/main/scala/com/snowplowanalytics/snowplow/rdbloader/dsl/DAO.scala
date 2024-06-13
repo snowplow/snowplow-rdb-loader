@@ -50,7 +50,7 @@ object DAO {
     /** Execute single SQL statement (against target in interpreter) */
     def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] = {
       val timeout = purpose match {
-        case Purpose.Loading => timeouts.loading
+        case Purpose.Loading    => timeouts.loading
         case Purpose.NonLoading => timeouts.nonLoading
       }
       dbTarget.toFragment(sql).execWith {

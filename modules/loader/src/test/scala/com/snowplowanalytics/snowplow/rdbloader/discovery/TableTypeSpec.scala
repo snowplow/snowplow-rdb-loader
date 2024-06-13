@@ -30,8 +30,8 @@ class TableTypeSpec extends Specification with ScalaCheck {
 
   "discoverJsonPath" should {
     "respect the cache" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
+      implicit val cache: Cache[Pure]                = PureCache.interpreter
+      implicit val aws: BlobStorage[Pure]            = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
       val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-west-1")
 
       val info = ShreddedType.Info(

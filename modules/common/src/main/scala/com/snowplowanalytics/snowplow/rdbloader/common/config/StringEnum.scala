@@ -72,7 +72,7 @@ object StringEnum {
     val map = sealedDescendants[A].map(o => (o.asString, o)).toMap
     map.get(string) match {
       case Some(a) => Right(a)
-      case None => Left(s"Unknown ${typeOf[A].typeSymbol.name.toString} [$string]")
+      case None    => Left(s"Unknown ${typeOf[A].typeSymbol.name.toString} [$string]")
     }
   }
 
@@ -84,7 +84,7 @@ object StringEnum {
    *   whole set of objects
    */
   def sealedDescendants[Root: TypeTag]: Set[Root] = {
-    val symbol = typeOf[Root].typeSymbol
+    val symbol   = typeOf[Root].typeSymbol
     val internal = symbol.asInstanceOf[scala.reflect.internal.Symbols#Symbol]
     val descendants =
       if (internal.isSealed)

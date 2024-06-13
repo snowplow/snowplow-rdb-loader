@@ -73,9 +73,9 @@ object Retry {
     if (retries.attempts.contains(0)) RetryPolicies.alwaysGiveUp[F].pure[F]
     else {
       val policy = retries.strategy match {
-        case Strategy.Jitter => RetryPolicies.fullJitter[F](retries.backoff)
-        case Strategy.Constant => RetryPolicies.constantDelay[F](retries.backoff)
-        case Strategy.Fibonacci => RetryPolicies.fibonacciBackoff[F](retries.backoff)
+        case Strategy.Jitter      => RetryPolicies.fullJitter[F](retries.backoff)
+        case Strategy.Constant    => RetryPolicies.constantDelay[F](retries.backoff)
+        case Strategy.Fibonacci   => RetryPolicies.fibonacciBackoff[F](retries.backoff)
         case Strategy.Exponential => RetryPolicies.exponentialBackoff[F](retries.backoff)
       }
 
@@ -111,7 +111,7 @@ object Retry {
   implicit val detailsShow: Show[RetryDetails] =
     Show.show {
       case RetryDetails.WillDelayAndRetry(next, soFar, _) =>
-        val nextSec = show"${next.toSeconds} seconds"
+        val nextSec  = show"${next.toSeconds} seconds"
         val attempts = if (soFar == 0) "for the first time" else if (soFar == 1) s"after one retry" else s"after ${soFar} retries"
         show"Sleeping for $nextSec $attempts"
       case RetryDetails.GivingUp(soFar, _) =>

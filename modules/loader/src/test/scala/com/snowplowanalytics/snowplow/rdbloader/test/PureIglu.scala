@@ -34,10 +34,10 @@ object PureIglu {
     override def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[Pure, FailureDetails.LoaderIgluError, List[String]] =
       types.traverse { `type` =>
         val context = `type`.snowplowEntity match {
-          case SnowplowEntity.Context => "context"
+          case SnowplowEntity.Context             => "context"
           case SnowplowEntity.SelfDescribingEvent => "unstruct"
         }
-        val k = `type`.schemaKey
+        val k    = `type`.schemaKey
         val name = s"${context}_${k.vendor}_${k.name}_${k.version.model}"
         EitherT.pure[Pure, FailureDetails.LoaderIgluError](name)
       }

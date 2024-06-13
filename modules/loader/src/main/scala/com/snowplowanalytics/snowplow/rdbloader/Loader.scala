@@ -195,7 +195,7 @@ object Loader {
     discovery: DataDiscovery.WithOrigin
   ): F[Unit] = {
     val folder = discovery.origin.base
-    val busy = (control.makeBusy: MakeBusy[F]).apply(folder)
+    val busy   = (control.makeBusy: MakeBusy[F]).apply(folder)
     val backgroundCheck: F[Unit] => F[Unit] =
       StateMonitoring.inBackground[F](config.timeouts, control.get, busy)
 
@@ -291,7 +291,7 @@ object Loader {
       case s: SQLException =>
         Option(s.getSQLState) match {
           case Some("42501") => true // Sql state for insufficient permissions for Databricks, Snowflake and Redshift
-          case _ => false
+          case _             => false
         }
       case _ => false
     }

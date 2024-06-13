@@ -24,7 +24,7 @@ trait LoadAuthService[F[_]] { self =>
 
   def mapK[G[_]](arrow: F ~> G): LoadAuthService[G] =
     new LoadAuthService[G] {
-      def forLoadingEvents: G[LoadAuthService.LoadAuthMethod] = arrow(self.forLoadingEvents)
+      def forLoadingEvents: G[LoadAuthService.LoadAuthMethod]    = arrow(self.forLoadingEvents)
       def forFolderMonitoring: G[LoadAuthService.LoadAuthMethod] = arrow(self.forFolderMonitoring)
     }
 }
@@ -90,7 +90,7 @@ object LoadAuthService {
         e <- eventsAuthProvider
         f <- foldersAuthProvider
       } yield new LoadAuthService[F] {
-        override def forLoadingEvents: F[LoadAuthMethod] = e.get
+        override def forLoadingEvents: F[LoadAuthMethod]    = e.get
         override def forFolderMonitoring: F[LoadAuthMethod] = f.get
       }
     )

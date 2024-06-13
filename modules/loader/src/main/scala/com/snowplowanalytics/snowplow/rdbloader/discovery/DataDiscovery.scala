@@ -192,11 +192,11 @@ object DataDiscovery {
     nonAtomicTypes
       .traverse { shreddedType =>
         EitherT(Iglu[F].getSchemasWithSameModel(shreddedType.info.getSchemaKey)).map { schemas =>
-          val maxSchemaKey = maxSchemaKeyPerTableName(shreddedType.info.getName)
-          val filtered = schemas.filter(_.self.schemaKey <= shreddedType.info.getSchemaKey).toNel.get
-          val maxFiltered = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
+          val maxSchemaKey                             = maxSchemaKeyPerTableName(shreddedType.info.getName)
+          val filtered                                 = schemas.filter(_.self.schemaKey <= shreddedType.info.getSchemaKey).toNel.get
+          val maxFiltered                              = schemas.filter(_.self.schemaKey <= maxSchemaKey).toNel.get
           val foldMapRedshiftSchemasResult: ShredModel = foldMapRedshiftSchemas(filtered)(shreddedType.info.getSchemaKey)
-          val foldMapMergeRedshiftSchemasResult = foldMapMergeRedshiftSchemas(maxFiltered)
+          val foldMapMergeRedshiftSchemasResult        = foldMapMergeRedshiftSchemas(maxFiltered)
           (shreddedType.info.getSchemaKey, DiscoveredShredModels(foldMapRedshiftSchemasResult, foldMapMergeRedshiftSchemasResult))
         }
       }

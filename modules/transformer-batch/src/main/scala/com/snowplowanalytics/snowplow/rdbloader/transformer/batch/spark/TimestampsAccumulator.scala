@@ -24,9 +24,9 @@ class TimestampsAccumulator extends AccumulatorV2[Event, Option[BatchTimestamps]
   private def mergeWith(other: Option[BatchTimestamps]): Option[BatchTimestamps] =
     (accum, other) match {
       case (Some(t1), Some(t2)) => Some(TimestampsAccumulator.merge(t1, t2))
-      case (Some(t1), None) => Some(t1)
-      case (None, Some(t2)) => Some(t2)
-      case (None, None) => None
+      case (Some(t1), None)     => Some(t1)
+      case (None, Some(t2))     => Some(t2)
+      case (None, None)         => None
     }
 
   def merge(other: AccumulatorV2[Event, Option[BatchTimestamps]]): Unit = other match {

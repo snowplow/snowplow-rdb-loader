@@ -43,13 +43,13 @@ object PureDAO {
 
   def getResult(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
-      case Statement.TableExists(_) => false
-      case Statement.GetColumns(_) => List("some_column")
-      case Statement.ManifestGet(_) => List()
+      case Statement.GetVersion(_)        => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
+      case Statement.TableExists(_)       => false
+      case Statement.GetColumns(_)        => List("some_column")
+      case Statement.ManifestGet(_)       => List()
       case Statement.FoldersMinusManifest => List()
-      case Statement.ReadyCheck => 1
-      case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
+      case Statement.ReadyCheck           => 1
+      case _                              => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
   def custom(getResult: TestState => Statement => Any): PureDAO = {
@@ -104,7 +104,7 @@ object PureDAO {
         discovery.shreddedTypes.map { shredded =>
           val discoveredShredModels = discovery.shredModels(shredded.info.getSchemaKey)
           val isRecovery = discoveredShredModels.shredModel match {
-            case _: ShredModel.GoodModel => false
+            case _: ShredModel.GoodModel     => false
             case _: ShredModel.RecoveryModel => true
           }
           val isRecoveryDisabled = disableRecovery.contains(shredded.info.toCriterion)
@@ -136,7 +136,7 @@ object PureDAO {
 
     def createTable(shredModel: ShredModel): Migration.Block = {
       val isRecovery = shredModel match {
-        case ShredModel.GoodModel(_, _, _) => false
+        case ShredModel.GoodModel(_, _, _)     => false
         case ShredModel.RecoveryModel(_, _, _) => true
       }
       val entity = Migration.Entity.Table("public", shredModel.schemaKey, shredModel.tableName)

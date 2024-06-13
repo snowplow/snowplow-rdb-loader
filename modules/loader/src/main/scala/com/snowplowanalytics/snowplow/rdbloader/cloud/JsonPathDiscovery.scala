@@ -51,7 +51,7 @@ object JsonPathDiscovery {
      */
     override def discoverJsonPath(jsonpathAssets: Option[BlobStorage.Folder], shreddedType: Info): DiscoveryAction[F, BlobStorage.Key] = {
       val filename = s"""${toSnakeCase(shreddedType.name)}_${shreddedType.version.model}.json"""
-      val key = s"${shreddedType.vendor}/$filename"
+      val key      = s"${shreddedType.vendor}/$filename"
 
       Cache[F].getCache(key).flatMap {
         case Some(Some(jsonPath)) =>
@@ -61,7 +61,7 @@ object JsonPathDiscovery {
         case None =>
           jsonpathAssets match {
             case Some(assets) =>
-              val path = BlobStorage.Folder.append(assets, shreddedType.vendor)
+              val path  = BlobStorage.Folder.append(assets, shreddedType.vendor)
               val s3Key = BlobStorage.Key.coerce(path + filename)
               BlobStorage[F].keyExists(s3Key).flatMap {
                 case true =>
@@ -87,7 +87,7 @@ object JsonPathDiscovery {
      */
     private def getSnowplowJsonPath(key: String): DiscoveryAction[F, BlobStorage.Key] = {
       val fullDir = BlobStorage.Folder.append(getHostedAssetsBucket(region), JsonpathsPath)
-      val s3Key = BlobStorage.Key.coerce(fullDir + key)
+      val s3Key   = BlobStorage.Key.coerce(fullDir + key)
       BlobStorage[F]
         .keyExists(s3Key)
         .ifM(

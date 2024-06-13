@@ -54,11 +54,11 @@ class LoadSpec extends Specification {
 
   "load" should {
     "perform COPY statements and wrap with transaction block" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val logging: Logging[Pure]                 = PureLogging.interpreter(noop = true)
+      implicit val transaction: Transaction[Pure, Pure]   = PureTransaction.interpreter
+      implicit val dao: DAO[Pure]                         = PureDAO.interpreter(PureDAO.init)
+      implicit val iglu: Iglu[Pure]                       = PureIglu.interpreter
+      implicit val sleep: Sleep[Pure]                     = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
@@ -110,11 +110,11 @@ class LoadSpec extends Specification {
     }
 
     "abort the transaction and return alert if the folder already in manifest" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withDuplicateExistingRecord))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val logging: Logging[Pure]                 = PureLogging.interpreter(noop = true)
+      implicit val transaction: Transaction[Pure, Pure]   = PureTransaction.interpreter
+      implicit val dao: DAO[Pure]                         = PureDAO.interpreter(PureDAO.custom(LoadSpec.withDuplicateExistingRecord))
+      implicit val iglu: Iglu[Pure]                       = PureIglu.interpreter
+      implicit val sleep: Sleep[Pure]                     = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
@@ -143,11 +143,11 @@ class LoadSpec extends Specification {
 
     // See https://github.com/snowplow/snowplow-rdb-loader/issues/1213
     "abort the transaction and return alert if duplicate copies of the folder already in manifest" in {
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val logging: Logging[Pure]                 = PureLogging.interpreter(noop = true)
+      implicit val transaction: Transaction[Pure, Pure]   = PureTransaction.interpreter
+      implicit val dao: DAO[Pure]                         = PureDAO.interpreter(PureDAO.custom(LoadSpec.withExistingRecord))
+      implicit val iglu: Iglu[Pure]                       = PureIglu.interpreter
+      implicit val sleep: Sleep[Pure]                     = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
@@ -176,11 +176,11 @@ class LoadSpec extends Specification {
 
     "abort, sleep and start transaction again if first commit failed" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val clock: Clock[Pure] = PureClock.interpreter
-      implicit val transaction: Transaction[Pure, Pure] = RetryingTransaction.wrap(validConfig.retries, PureTransaction.interpreter)
+      implicit val dao: DAO[Pure]         = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isBeforeFirstCommit, failCommit))
+      implicit val iglu: Iglu[Pure]       = PureIglu.interpreter
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
+      implicit val transaction: Transaction[Pure, Pure]   = RetryingTransaction.wrap(validConfig.retries, PureTransaction.interpreter)
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val info = ShreddedType.Json(
@@ -257,14 +257,14 @@ class LoadSpec extends Specification {
           case Statement.ManifestGet(Base) =>
             List(Manifest.Entry(Instant.ofEpochMilli(1600342341145L), LoadSpec.dataDiscoveryWithOrigin.origin.toManifestItem))
           case Statement.ReadyCheck => 1
-          case _ => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
+          case _                    => throw new IllegalArgumentException(s"Unexpected query $statement with ${s.getLog}")
         }
 
-      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-      implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(getResult))
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
+      implicit val logging: Logging[Pure]                 = PureLogging.interpreter(noop = true)
+      implicit val transaction: Transaction[Pure, Pure]   = PureTransaction.interpreter
+      implicit val dao: DAO[Pure]                         = PureDAO.interpreter(PureDAO.custom(getResult))
+      implicit val iglu: Iglu[Pure]                       = PureIglu.interpreter
+      implicit val sleep: Sleep[Pure]                     = PureSleep.interpreter
       implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
       val expected = List(
@@ -334,14 +334,14 @@ object LoadSpec {
 
   def withExistingRecord(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_) => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
+      case Statement.GetVersion(_)  => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
       case Statement.TableExists(_) => false
-      case Statement.GetColumns(_) => List("some_column")
+      case Statement.GetColumns(_)  => List("some_column")
       case Statement.ManifestGet(_) =>
         List(Manifest.Entry(Instant.ofEpochMilli(1600345341145L), dataDiscoveryWithOrigin.origin.toManifestItem))
       case Statement.FoldersMinusManifest => List()
-      case Statement.ReadyCheck => 1
-      case _ => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
+      case Statement.ReadyCheck           => 1
+      case _                              => throw new IllegalArgumentException(s"Unexpected query $query with ${s.getLog}")
     }
 
   def withDuplicateExistingRecord(s: TestState)(query: Statement): Any =
@@ -385,7 +385,7 @@ object LoadSpec {
       case Statement.ManifestAdd(_) =>
         ts.getLog.count {
           case PureTransaction.StartMessage => true
-          case _ => false
+          case _                            => false
         } == 1
       case _ => false
     }

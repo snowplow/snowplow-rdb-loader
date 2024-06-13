@@ -26,7 +26,7 @@ import scala.concurrent.duration.DurationInt
 
 class KinesisSinkSpec extends Specification {
 
-  val errorPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = Some(2))
+  val errorPolicy      = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = Some(2))
   val throttlingPolicy = errorPolicy.copy(maxRetries = None) // unlimited retries for throttling
 
   val kinesisConfig =
@@ -195,9 +195,9 @@ class KinesisSinkSpec extends Specification {
   }
 
   private def processInput(input: List[String], mockedResponses: List[KinesisResult]): List[String] = {
-    val kinesis = new KinesisMock(mockedResponses.iterator)
+    val kinesis        = new KinesisMock(mockedResponses.iterator)
     val writeToKinesis = kinesis.receive _
-    val sink = new KinesisSink(writeToKinesis, kinesisConfig)
+    val sink           = new KinesisSink(writeToKinesis, kinesisConfig)
     sink.sink(input, partitionIndex = "1")
     kinesis.storedData.toList
   }
