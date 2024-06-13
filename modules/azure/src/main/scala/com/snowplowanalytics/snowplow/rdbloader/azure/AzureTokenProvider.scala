@@ -25,16 +25,16 @@ import org.apache.hadoop.conf.Configuration
  */
 class AzureTokenProvider extends CustomTokenProviderAdaptee {
 
-  private var expiryTime: Date = _
+  private var expiryTime: Date    = _
   private var accountName: String = _
 
   override def initialize(configuration: Configuration, accountName: String): Unit =
     this.accountName = accountName
 
   override def getAccessToken: String = {
-    val creds = new DefaultAzureCredentialBuilder().build()
+    val creds   = new DefaultAzureCredentialBuilder().build()
     val request = new TokenRequestContext().addScopes(s"https://$accountName/.default")
-    val token = creds.getToken(request).block()
+    val token   = creds.getToken(request).block()
     this.expiryTime = new Date(token.getExpiresAt.toInstant.toEpochMilli)
     token.getToken
   }

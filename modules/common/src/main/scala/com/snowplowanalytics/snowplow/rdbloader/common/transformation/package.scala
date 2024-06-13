@@ -22,7 +22,7 @@ package object transformation {
 
   private val Formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
 
-  type ShredModelCacheKey = (SchemaKey, StorageTime)
+  type ShredModelCacheKey    = (SchemaKey, StorageTime)
   type ShredModelCache[F[_]] = LruMap[F, ShredModelCacheKey, ShredModel]
 
   implicit class InstantOps(time: Instant) {

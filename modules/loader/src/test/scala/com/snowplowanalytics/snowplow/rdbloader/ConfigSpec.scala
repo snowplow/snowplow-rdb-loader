@@ -33,28 +33,28 @@ class ConfigSpec extends Specification {
     "not return error message when folder monitoring section is included with storage.folderMonitoringStage" in {
       val snowflake = exampleSnowflake.copy(
         folderMonitoringStage = Some(exampleFolderMonitoringStage),
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
+        loadAuthMethod        = StorageTarget.LoadAuthMethod.NoCreds
       )
       val config = exampleConfig.copy(storage = snowflake)
-      val res = Config.validateConfig(config)
+      val res    = Config.validateConfig(config)
       res must beEmpty
     }
     "not return error message when folder monitoring section is included and load auth method is TempCreds" in {
       val snowflake = exampleSnowflake.copy(folderMonitoringStage = None, loadAuthMethod = exampleTempCreds)
-      val config = exampleConfig.copy(storage = snowflake)
-      val res = Config.validateConfig(config)
+      val config    = exampleConfig.copy(storage = snowflake)
+      val res       = Config.validateConfig(config)
       res must beEmpty
     }
     "not return error message when storage.transformedStage isn't included and load auth method is TempCreds" in {
       val snowflake = exampleSnowflake.copy(folderMonitoringStage = None, transformedStage = None, loadAuthMethod = exampleTempCreds)
-      val config = exampleConfig.copy(storage = snowflake)
-      val res = Config.validateConfig(config)
+      val config    = exampleConfig.copy(storage = snowflake)
+      val res       = Config.validateConfig(config)
       res must beEmpty
     }
     "return error message when folder monitoring section is included without storage.folderMonitoringStage and load auth method is NoCreds" in {
       val snowflake = exampleSnowflake.copy(folderMonitoringStage = None, loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
-      val config = exampleConfig.copy(storage = snowflake)
-      val res = Config.validateConfig(config)
+      val config    = exampleConfig.copy(storage = snowflake)
+      val res       = Config.validateConfig(config)
       res must beEqualTo(
         List(
           "Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing"
@@ -64,11 +64,11 @@ class ConfigSpec extends Specification {
     "return error message when storage.folderMonitoringStage is included without folder monitoring section and load auth method is NoCreds" in {
       val snowflake = exampleSnowflake.copy(
         folderMonitoringStage = Some(exampleFolderMonitoringStage),
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
+        loadAuthMethod        = StorageTarget.LoadAuthMethod.NoCreds
       )
       val monitoring = exampleMonitoring.copy(folders = None)
-      val config = exampleConfig.copy(storage = snowflake, monitoring = monitoring)
-      val res = Config.validateConfig(config)
+      val config     = exampleConfig.copy(storage = snowflake, monitoring = monitoring)
+      val res        = Config.validateConfig(config)
       res must beEqualTo(
         List(
           s"Snowflake Loader is being provided with storage.folderMonitoringStage (${exampleFolderMonitoringStage.name}), but monitoring.folders is missing"
@@ -79,7 +79,7 @@ class ConfigSpec extends Specification {
       val snowflake =
         exampleSnowflake.copy(folderMonitoringStage = None, transformedStage = None, loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds)
       val config = exampleConfig.copy(storage = snowflake)
-      val res = Config.validateConfig(config)
+      val res    = Config.validateConfig(config)
       res must beEqualTo(
         List(
           "Snowflake Loader is configured with Folders Monitoring, but load auth method is specified as 'NoCreds' and appropriate storage.folderMonitoringStage is missing",
@@ -90,12 +90,12 @@ class ConfigSpec extends Specification {
     "return suitable results for different pairs of cloud type - load auth method" in {
       val dest = exampleSnowflake.copy(
         folderMonitoringStage = None,
-        transformedStage = None
+        transformedStage      = None
       )
       val noCredsDest = dest.copy(
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        loadAuthMethod        = StorageTarget.LoadAuthMethod.NoCreds,
         folderMonitoringStage = Some(exampleFolderMonitoringStage),
-        transformedStage = Some(exampleTransformedStage)
+        transformedStage      = Some(exampleTransformedStage)
       )
       val awsTempCredsDest = dest.copy(
         loadAuthMethod = exampleTempCreds
@@ -142,7 +142,7 @@ class ConfigSpec extends Specification {
 }
 
 object ConfigSpec {
-  val exampleRegion = Region("us-east-1")
+  val exampleRegion    = Region("us-east-1")
   val exampleJsonPaths = Some(BlobStorage.Folder.coerce("s3://bucket/jsonpaths/"))
   val exampleMonitoring = Config.Monitoring(
     Some(Config.SnowplowMonitoring("redshift-loader", "snplow.acme.com")),
@@ -162,10 +162,10 @@ object ConfigSpec {
     ),
     Some(Config.HealthCheck(20.minutes, 15.seconds))
   )
-  val defaultMonitoring = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
+  val defaultMonitoring   = Config.Monitoring(None, None, Config.Metrics(None, Some(Config.Stdout(None)), 5.minutes), None, None, None)
   val exampleMessageQueue = Config.Cloud.AWS.SQS("test-queue", Some(exampleRegion))
   val exampleFolderMonitoringStage = StorageTarget.Snowflake.Stage("test_folder_monitoring_stage", None)
-  val exampleTransformedStage = StorageTarget.Snowflake.Stage("test_transformed_stage", None)
+  val exampleTransformedStage      = StorageTarget.Snowflake.Stage("test_transformed_stage", None)
   val exampleRedshift = StorageTarget.Redshift(
     "redshift.amazonaws.com",
     "snowplow",
@@ -212,17 +212,17 @@ object ConfigSpec {
   )
   val defaultSchedules: Config.Schedules =
     Config.Schedules(Nil, Some(Cron.unsafeParse("0 0 0 ? * *")), Some(Cron.unsafeParse("0 0 5 ? * *")))
-  val exampleTimeouts: Config.Timeouts = Config.Timeouts(45.minutes, 10.minutes, 5.minutes, 20.minutes, 30.seconds)
-  val exampleRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleTimeouts: Config.Timeouts  = Config.Timeouts(45.minutes, 10.minutes, 5.minutes, 20.minutes, 30.seconds)
+  val exampleRetries: Config.Retries    = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleReadyCheck: Config.Retries = Config.Retries(Config.Strategy.Constant, None, 15.seconds, Some(10.minutes))
   val exampleTempCreds = StorageTarget.LoadAuthMethod.TempCreds.AWSTempCreds(
     "test_role_arn",
     "test_role_session_name",
     1.hour
   )
-  val exampleInitRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+  val exampleInitRetries: Config.Retries       = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
   val exampleFeatureFlags: Config.FeatureFlags = Config.FeatureFlags(addLoadTstampColumn = true, disableRecovery = Nil)
-  val exampleCloud: Config.Cloud = Config.Cloud.AWS(exampleRegion, exampleMessageQueue)
+  val exampleCloud: Config.Cloud               = Config.Cloud.AWS(exampleRegion, exampleMessageQueue)
   val exampleTelemetry =
     Telemetry.Config(
       false,

@@ -94,9 +94,9 @@ object TestApplication {
       }
       .flatMap {
         case Some(Outcome.Succeeded(output)) => IO.pure(output)
-        case Some(Outcome.Errored(e)) => IO.raiseError(e)
-        case Some(Outcome.Canceled()) => IO.raiseError(new RuntimeException("Program cancelled"))
-        case None => IO.raiseError(new RuntimeException("Program under test did not complete"))
+        case Some(Outcome.Errored(e))        => IO.raiseError(e)
+        case Some(Outcome.Canceled())        => IO.raiseError(new RuntimeException("Program cancelled"))
+        case None                            => IO.raiseError(new RuntimeException("Program under test did not complete"))
       }
 
   private def queueFromRef[F[_]: Concurrent](ref: Ref[F, Vector[String]]): Resource[F, Queue.Producer[F]] =
@@ -108,9 +108,9 @@ object TestApplication {
     )
 
   private def checkpointer(count: Ref[IO, Int]): Checkpointer[IO, Unit] = new Checkpointer[IO, Unit] {
-    def checkpoint(c: Unit): IO[Unit] = count.update(_ + 1)
+    def checkpoint(c: Unit): IO[Unit]           = count.update(_ + 1)
     def combine(older: Unit, newer: Unit): Unit = ()
-    def empty: Unit = ()
+    def empty: Unit                             = ()
   }
 
   private def mkSource[F[_]: Concurrent]: Resource[F, Queue.Consumer[F]] =
@@ -158,8 +158,8 @@ object TestApplication {
 
   private def updateOutputURIScheme(config: Config): Config = {
     val updatedOutput = config.output match {
-      case c: Config.Output.S3 => c.copy(path = URI.create(c.path.toString.replace("s3:/", "file:/")))
-      case c: Config.Output.GCS => c.copy(path = URI.create(c.path.toString.replace("gs:/", "file:/")))
+      case c: Config.Output.S3               => c.copy(path = URI.create(c.path.toString.replace("s3:/", "file:/")))
+      case c: Config.Output.GCS              => c.copy(path = URI.create(c.path.toString.replace("gs:/", "file:/")))
       case c: Config.Output.AzureBlobStorage => c.copy(path = URI.create(c.path.toString.replace("http:/", "file:/")))
     }
     config.copy(output = updatedOutput)

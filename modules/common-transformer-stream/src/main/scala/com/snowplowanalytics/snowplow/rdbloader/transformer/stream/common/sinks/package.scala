@@ -21,12 +21,12 @@ package object sinks {
 
   implicit class TransformedDataOps(t: Transformed.Data) {
     def str: Option[String] = t match {
-      case Transformed.Data.DString(s) => Some(s)
+      case Transformed.Data.DString(s)     => Some(s)
       case Transformed.Data.ParquetData(_) => None
     }
 
     def fieldValues: Option[List[FieldWithValue]] = t match {
-      case Data.DString(_) => None
+      case Data.DString(_)         => None
       case Data.ParquetData(value) => Some(value)
     }
   }

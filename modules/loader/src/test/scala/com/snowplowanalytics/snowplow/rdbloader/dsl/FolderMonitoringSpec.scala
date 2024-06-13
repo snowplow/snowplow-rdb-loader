@@ -39,34 +39,34 @@ class FolderMonitoringSpec extends Specification {
   "check" should {
     "return 'Incomplete shredding' alert when -> shredding_complete file doesn't exist, no UUID in folder name" in {
       assertGeneratedAlerts(
-        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
+        unloadedFolder          = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
         shreddingCompleteExists = false,
         expectedMessages = List(Alert.ShreddingIncomplete(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00"))),
-        expectedLogs = List("Incomplete shredding: s3://bucket/shredded/run=2021-07-09-12-30-00/")
+        expectedLogs     = List("Incomplete shredding: s3://bucket/shredded/run=2021-07-09-12-30-00/")
       )
     }
 
     "not return 'Incomplete shredding' alert when -> shredding_complete file doesn't exist, UUID in folder name" in {
       assertGeneratedAlerts(
-        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
+        unloadedFolder          = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
         shreddingCompleteExists = false,
-        expectedMessages = List.empty,
-        expectedLogs = List.empty
+        expectedMessages        = List.empty,
+        expectedLogs            = List.empty
       )
     }
 
     "return 'Unloaded batch' alert when -> shredding_complete file exists, no UUID in folder name" in {
       assertGeneratedAlerts(
-        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
+        unloadedFolder          = "s3://bucket/shredded/run=2021-07-09-12-30-00/",
         shreddingCompleteExists = true,
-        expectedMessages = List(Alert.FolderIsUnloaded(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00"))),
-        expectedLogs = List("Unloaded folder: s3://bucket/shredded/run=2021-07-09-12-30-00/")
+        expectedMessages        = List(Alert.FolderIsUnloaded(BlobStorage.Folder.coerce("s3://bucket/shredded/run=2021-07-09-12-30-00"))),
+        expectedLogs            = List("Unloaded folder: s3://bucket/shredded/run=2021-07-09-12-30-00/")
       )
     }
 
     "return 'Unloaded batch' alert when -> shredding_complete file exists, UUID in folder name" in {
       assertGeneratedAlerts(
-        unloadedFolder = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
+        unloadedFolder          = "s3://bucket/shredded/run=2021-07-09-12-30-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/",
         shreddingCompleteExists = true,
         expectedMessages = List(
           Alert.FolderIsUnloaded(
@@ -104,15 +104,15 @@ class FolderMonitoringSpec extends Specification {
 
   "isRecent" should {
     "return true if no duration is provided" in {
-      val input = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
+      val input  = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
       val result = FolderMonitoring.isRecent(None, None, Instant.now())(input)
       result must beTrue
     }
 
     "return true if invalid key is provided" in {
       val duration = FiniteDuration.apply(1, "day")
-      val input = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+      val input    = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
+      val result   = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
       result must beTrue
     }
     "for key with UUID" >> {
@@ -127,7 +127,7 @@ class FolderMonitoringSpec extends Specification {
 
       "return true if key is fresh enough" in {
         val duration = FiniteDuration.apply(1, "day")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now      = Instant.parse("2021-10-30T18:35:24.00Z")
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
@@ -138,7 +138,7 @@ class FolderMonitoringSpec extends Specification {
       "return false if key is fresh, but not old enough" in {
         val sinceDuration = FiniteDuration.apply(1, "day")
         val untilDuration = FiniteDuration.apply(19, "hours")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
@@ -149,7 +149,7 @@ class FolderMonitoringSpec extends Specification {
       "return true if key is fresh and old enough" in {
         val sinceDuration = FiniteDuration.apply(1, "day")
         val untilDuration = FiniteDuration.apply(17, "hours")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
@@ -161,24 +161,24 @@ class FolderMonitoringSpec extends Specification {
     "for key without UUID" >> {
       "return false if key is old enough" in {
         val duration = FiniteDuration.apply(1, "day")
-        val input = BlobStorage.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+        val input    = BlobStorage.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result   = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
         result must beFalse
       }
 
       "return true if key is fresh enough" in {
         val duration = FiniteDuration.apply(1, "day")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
-        val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+        val now      = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input    = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result   = FolderMonitoring.isRecent(Some(duration), None, now)(input)
         result must beTrue
       }
 
       "return false if key is fresh, but not old enough" in {
         val sinceDuration = FiniteDuration.apply(1, "day")
         val untilDuration = FiniteDuration.apply(19, "hours")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
-        val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input  = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
         result must beFalse
       }
@@ -186,8 +186,8 @@ class FolderMonitoringSpec extends Specification {
       "return true if key is fresh and old enough" in {
         val sinceDuration = FiniteDuration.apply(1, "day")
         val untilDuration = FiniteDuration.apply(17, "hours")
-        val now = Instant.parse("2021-10-30T18:35:24.00Z")
-        val input = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val input  = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
         val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
         result must beTrue
       }
@@ -200,15 +200,15 @@ class FolderMonitoringSpec extends Specification {
     expectedMessages: List[Alert],
     expectedLogs: List[String]
   ) = {
-    val aws = if (shreddingCompleteExists) PureAWS.init.withExistingKeys else PureAWS.init
-    val loadFrom = BlobStorage.Folder.coerce("s3://bucket/shredded/")
+    val aws         = if (shreddingCompleteExists) PureAWS.init.withExistingKeys else PureAWS.init
+    val loadFrom    = BlobStorage.Folder.coerce("s3://bucket/shredded/")
     val inputFolder = BlobStorage.Folder.coerce(unloadedFolder)
 
-    implicit val jdbc: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults(inputFolder)))
-    implicit val transaction: Transaction[Pure, Pure] = PureTransaction.interpreter
-    implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-    implicit val blobStorage: BlobStorage[Pure] = PureAWS.blobStorage(aws)
-    implicit val logging: Logging[Pure] = PureLogging.interpreter()
+    implicit val jdbc: DAO[Pure]                        = PureDAO.interpreter(PureDAO.custom(jdbcResults(inputFolder)))
+    implicit val transaction: Transaction[Pure, Pure]   = PureTransaction.interpreter
+    implicit val sleep: Sleep[Pure]                     = PureSleep.interpreter
+    implicit val blobStorage: BlobStorage[Pure]         = PureAWS.blobStorage(aws)
+    implicit val logging: Logging[Pure]                 = PureLogging.interpreter()
     implicit val loadAuthService: LoadAuthService[Pure] = PureLoadAuthService.interpreter
 
     val expectedState = TestState(
@@ -248,7 +248,7 @@ object FolderMonitoringSpec {
       case Statement.FoldersMinusManifest =>
         List(folder)
       case Statement.ReadyCheck => 1
-      case _ => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
+      case _                    => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
     }
   }
 

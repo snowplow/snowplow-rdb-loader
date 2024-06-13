@@ -43,9 +43,9 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/4/input/events" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
           val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val badPath  = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
           for {
             output <- process(inputStream, config)
@@ -82,7 +82,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/5/input/input-events-custom-contexts" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
           val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
@@ -115,7 +115,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/6/input/input-events-custom-unstruct" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
           val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
@@ -149,7 +149,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/7/input/events" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
           val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
 
           for {
@@ -223,18 +223,18 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         // Due to a bug in the Scala Analytics SDK's toJson method, derived_contexts overrides contexts with same schemas.
         // In order to circumvent this problem, contexts and derived_contexts are combined under context
         // and derived_contexts is made empty list.
-        contexts = Contexts(e.contexts.data ::: e.derived_contexts.data),
+        contexts         = Contexts(e.contexts.data ::: e.derived_contexts.data),
         derived_contexts = Contexts(List.empty),
         // Since parquet is using java.sql.Timestamp instead of Instant and
         // Timestamp's precision is less than Instant's precision, we are truncating
         // event's timestamps to match them to parquet output.
-        collector_tstamp = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
-        derived_tstamp = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        etl_tstamp = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        collector_tstamp    = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
+        derived_tstamp      = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        etl_tstamp          = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
         dvce_created_tstamp = e.dvce_created_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        dvce_sent_tstamp = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        refr_dvce_tstamp = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        true_tstamp = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
+        dvce_sent_tstamp    = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        refr_dvce_tstamp    = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        true_tstamp         = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
       )
       .toJson(true)
       .deepDropNullValues

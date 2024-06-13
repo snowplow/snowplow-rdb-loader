@@ -34,7 +34,7 @@ class WindowedRecordsSpec extends Specification {
       "nothing is emitted for empty input" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, // every minute
-          streamingDuration = 2.minutes + 5.seconds
+          streamingDuration       = 2.minutes + 5.seconds
         )
 
         val input = List()
@@ -46,7 +46,7 @@ class WindowedRecordsSpec extends Specification {
       "there is input data, 1 batch" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, // every minute
-          streamingDuration = 1.minute + 5.seconds
+          streamingDuration       = 1.minute + 5.seconds
         )
 
         val input = List(
@@ -65,11 +65,11 @@ class WindowedRecordsSpec extends Specification {
       "there is input data, 2 batches, within same window" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, // every minute
-          streamingDuration = 1.minute + 5.seconds
+          streamingDuration       = 1.minute + 5.seconds
         )
 
         val input = List(
-          InputBatch(after = 5.seconds, produce = List(1, 2, 3)),
+          InputBatch(after = 5.seconds, produce  = List(1, 2, 3)),
           InputBatch(after = 20.seconds, produce = List(4, 5, 6))
         )
 
@@ -89,12 +89,12 @@ class WindowedRecordsSpec extends Specification {
       "there is input data, 2 batches, second batch goes to different window" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, // every minute
-          streamingDuration = 2.minutes + 5.seconds
+          streamingDuration       = 2.minutes + 5.seconds
         )
 
         val input = List(
           InputBatch(after = 5.seconds, produce = List(1, 2, 3)),
-          InputBatch(after = 1.minute, produce = List(4, 5, 6))
+          InputBatch(after = 1.minute, produce  = List(4, 5, 6))
         )
 
         val expectedOutput = List(
@@ -113,7 +113,7 @@ class WindowedRecordsSpec extends Specification {
       "there is input data, 1 batch, second window without data" in {
         val windowing = Windowing(
           windowRotatingFrequency = 1, // every minute
-          streamingDuration = 2.minutes + 5.seconds
+          streamingDuration       = 2.minutes + 5.seconds
         )
 
         val input = List(
@@ -132,11 +132,11 @@ class WindowedRecordsSpec extends Specification {
       "there is input data, 2 batches, rotate window every 10 minutes" in {
         val windowing = Windowing(
           windowRotatingFrequency = 10, // every 10 minutes
-          streamingDuration = 10.minutes + 30.seconds
+          streamingDuration       = 10.minutes + 30.seconds
         )
 
         val input = List(
-          InputBatch(after = 5.seconds, produce = List(1, 2, 3)),
+          InputBatch(after = 5.seconds, produce  = List(1, 2, 3)),
           InputBatch(after = 10.minutes, produce = List(4, 5, 6))
         )
 
@@ -161,7 +161,7 @@ class WindowedRecordsSpec extends Specification {
     inputBatches: List[InputBatch],
     expectedOutput: List[Record[Window, Int, String]]
   ): IO[MatchResult[List[Record[Window, Int, String]]]] = {
-    val inputStream = createInputDataStream(inputBatches)
+    val inputStream     = createInputDataStream(inputBatches)
     val windowingAction = createWindowedStream(inputStream, windowing)
     val program = for {
       windowingRunning <- windowingAction.start

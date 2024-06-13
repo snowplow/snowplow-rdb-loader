@@ -20,6 +20,6 @@ trait ParquetOps {
 object ParquetOps {
   def noop: ParquetOps = new ParquetOps {
     override def transformPath(p: String): String = p
-    override def hadoopConf: Configuration = new Configuration()
+    override def hadoopConf: Configuration        = new Configuration()
   }
 }

@@ -29,9 +29,9 @@ final class WiderowFileSink(
 ) extends BadrowSink {
 
   override def sink(badrows: List[String], partitionIndex: String): Unit = {
-    val outputFile = openFile(partitionIndex)
+    val outputFile   = openFile(partitionIndex)
     val outputStream = createOutputStream(outputFile)
-    val writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
+    val writer       = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8))
 
     try
       flushBadrowsToFile(badrows, writer)
@@ -43,7 +43,7 @@ final class WiderowFileSink(
     partitionIndex: String
   ): FSDataOutputStream = {
     val fileName = s"part-$partitionIndex.$outputFileExtension"
-    val path = new Path(outputFolder, fileName)
+    val path     = new Path(outputFolder, fileName)
     path.getFileSystem(hadoopConfiguration).create(path, false)
   }
 

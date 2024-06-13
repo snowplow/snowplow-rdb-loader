@@ -38,8 +38,8 @@ class RetryingTransactionSpec extends Specification {
   "the retrying transactor" should {
     "not retry transaction when there are no errors" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val clock: Clock[Pure] = PureClock.interpreter
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
@@ -61,8 +61,8 @@ class RetryingTransactionSpec extends Specification {
 
     "not retry no-transaction when there are no errors" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val clock: Clock[Pure] = PureClock.interpreter
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
 
@@ -83,8 +83,8 @@ class RetryingTransactionSpec extends Specification {
 
     "retry transaction when there is an error" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val clock: Clock[Pure] = PureClock.interpreter
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isFirstAttempt, raiseException))
 
@@ -110,8 +110,8 @@ class RetryingTransactionSpec extends Specification {
 
     "retry no-transaction when there is an error" in {
       implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
-      implicit val sleep: Sleep[Pure] = PureSleep.interpreter
-      implicit val clock: Clock[Pure] = PureClock.interpreter
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
 
       val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isFirstAttempt, raiseException))
 
@@ -148,7 +148,7 @@ class RetryingTransactionSpec extends Specification {
       val resources = for {
         implicit0(dispatcher: Dispatcher[IO]) <- Dispatcher.parallel[IO]
         implicit0(logging: Logging[IO]) = Logging.noOp[IO]
-        transactor = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(targetNotReadyException))
+        transactor                      = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(targetNotReadyException))
         realTransaction = Transaction.jdbcRealInterpreter(SpecHelpers.validConfig.storage, SpecHelpers.validConfig.timeouts, transactor)
       } yield RetryingTransaction.wrap(executionRetries, realTransaction)
 
@@ -180,7 +180,7 @@ class RetryingTransactionSpec extends Specification {
       val resources = for {
         implicit0(dispatcher: Dispatcher[IO]) <- Dispatcher.parallel[IO]
         implicit0(logging: Logging[IO]) = Logging.noOp[IO]
-        transactor = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(unexpectedException))
+        transactor                      = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(unexpectedException))
         realTransaction = Transaction.jdbcRealInterpreter(SpecHelpers.validConfig.storage, SpecHelpers.validConfig.timeouts, transactor)
       } yield RetryingTransaction.wrap(executionRetries, realTransaction)
 
@@ -207,9 +207,9 @@ object RetryingTransactorSpec {
     sql match {
       case Statement.VacuumEvents =>
         ts.getLog.count {
-          case PureTransaction.StartMessage => true
+          case PureTransaction.StartMessage         => true
           case PureTransaction.NoTransactionMessage => true
-          case _ => false
+          case _                                    => false
         } == 1
       case _ => false
     }

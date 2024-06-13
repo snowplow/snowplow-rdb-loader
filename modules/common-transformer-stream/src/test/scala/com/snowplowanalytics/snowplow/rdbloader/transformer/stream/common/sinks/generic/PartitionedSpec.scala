@@ -24,14 +24,14 @@ class PartitionedSpec extends Specification {
   "write" should {
     "produce consistent windows" in {
 
-      val numWindows = 4
-      val recordsPerWindow = 8
-      val numKeys = 2
+      val numWindows           = 4
+      val recordsPerWindow     = 8
+      val numKeys              = 2
       val itemsPerKeyPerRecord = 2
 
       val action = for {
         ref <- Ref.of[IO, WindowedKV](Nil)
-        sinkFun = PartitionedSpec.getSink(ref) _
+        sinkFun   = PartitionedSpec.getSink(ref) _
         writePipe = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
         result <- wkvStream[IO](numWindows, numKeys, recordsPerWindow, itemsPerKeyPerRecord)
                     .through(writePipe)
@@ -61,9 +61,9 @@ class PartitionedSpec extends Specification {
 
     "emit on completion when there is no EndWindow" in {
 
-      val numWindows = 1
-      val recordsPerWindow = 8
-      val numKeys = 2
+      val numWindows           = 1
+      val recordsPerWindow     = 8
+      val numKeys              = 2
       val itemsPerKeyPerRecord = 2
 
       // Filter out the EndWindow
@@ -73,7 +73,7 @@ class PartitionedSpec extends Specification {
 
       val action = for {
         ref <- Ref.of[IO, WindowedKV](Nil)
-        sinkFun = PartitionedSpec.getSink(ref) _
+        sinkFun   = PartitionedSpec.getSink(ref) _
         writePipe = Partitioned.write[IO, Window, Key, Value, Data](sinkFun, BufferSize)
         result <- stream
                     .through(writePipe)
@@ -105,10 +105,10 @@ object PartitionedSpec {
 
   val BufferSize = 4096
 
-  type Window = String
-  type Key = String
-  type Value = String
-  type Data = List[Int]
+  type Window     = String
+  type Key        = String
+  type Value      = String
+  type Data       = List[Int]
   type WindowedKV = List[(Window, Key, Data, Value)]
 
   def getSink(ref: Ref[IO, WindowedKV])(window: Window)(data: Data)(key: Key): Pipe[IO, Value, Unit] =
@@ -124,9 +124,9 @@ object PartitionedSpec {
    * (inclusive) Value starts at 0 and ever growing
    */
   def wkvStream[F[_]: Sync](
-    windows: Int = 2,
-    keys: Int = 2,
-    recordsPerWindow: Int = 2,
+    windows: Int              = 2,
+    keys: Int                 = 2,
+    recordsPerWindow: Int     = 2,
     itemsPerKeyPerRecord: Int = 1
   ): Stream[F, Record[Window, List[(Key, Value)], Data]] =
     Stream

@@ -166,7 +166,7 @@ object Retries {
     queue.size.flatMap { size =>
       if (size == 0) {
         failures.map(_.keys.toList.sorted).flatMap {
-          case Nil => Logging[F].debug("No failed folders for retry, skipping the pull")
+          case Nil  => Logging[F].debug("No failed folders for retry, skipping the pull")
           case list => list.take(max).traverse_(queue.offer)
         }
       } else Logging[F].warning(show"RetryQueue is already non-empty ($size elements), skipping the pull")

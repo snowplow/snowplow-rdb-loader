@@ -42,7 +42,7 @@ class SemverSpec extends Specification {
 
   def e2 = {
     val invalidSemverList = List("1.0-M1", "-1.12.1-rc1", "0.2", "s.t.r", "-rc2")
-    val result = invalidSemverList.map(Semver.decodeSemver)
+    val result            = invalidSemverList.map(Semver.decodeSemver)
 
     result must contain((semver: Either[String, Semver]) => semver.isLeft).forall
   }

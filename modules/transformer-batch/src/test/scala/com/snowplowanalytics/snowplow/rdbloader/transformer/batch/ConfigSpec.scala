@@ -95,7 +95,7 @@ class ConfigSpec extends Specification {
       val expected = "Following schema criterions overlap in different groups (TSV, JSON, skip): " +
         "iglu:com.acme/overlap/jsonschema/1-0-0, iglu:com.acme/overlap/jsonschema/1-*-*. " +
         "Make sure every schema can have only one format"
-      val hocon = ConfigUtils.hoconFromString(input).right.get
+      val hocon  = ConfigUtils.hoconFromString(input).right.get
       val result = Config.parse(Left(hocon))
       result must beLeft(expected)
     }
@@ -103,21 +103,21 @@ class ConfigSpec extends Specification {
 }
 
 object TransformerConfigSpec {
-  val exampleBatchInput = URI.create("s3://bucket/input/")
+  val exampleBatchInput   = URI.create("s3://bucket/input/")
   val exampleWindowPeriod = 10.minutes
   val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,
     Region("eu-central-1"),
     maxRecordsPerFile = 10000,
-    maxBadBufferSize = 1000,
+    maxBadBufferSize  = 1000,
     Config.Output.BadSink.Kinesis(
       "bad",
       Region("eu-central-1"),
       500,
       5242880,
       Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 10.seconds, maxRetries = Some(10)),
-      Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries = None)
+      Config.Output.BadSink.BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second, maxRetries   = None)
     )
   )
   val exampleDefaultOutput = exampleOutput.copy(region = RegionSpec.DefaultTestRegion, bad = Config.Output.BadSink.File)
@@ -152,7 +152,7 @@ object TransformerConfigSpec {
     )
   )
   val exampleDefaultMonitoringBatch = Config.Monitoring(None, Config.Monitoring.Metrics(None))
-  val exampleDeduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
+  val exampleDeduplication          = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true)
 
   val emptyRunInterval = Config.RunInterval(None, None, None)
   val exampleRunInterval = Config.RunInterval(
@@ -161,9 +161,9 @@ object TransformerConfigSpec {
     Some(Config.RunInterval.IntervalInstant(Instant.parse("2021-12-10T18:34:52.00Z")))
   )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, false, false)
-  val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
-  val exampleLicense = License(true)
-  val emptyValidations = Validations(None)
+  val exampleValidations         = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense             = License(true)
+  val emptyValidations           = Validations(None)
   val exampleSkipSchemas = List(
     SchemaCriterion("com.acme", "skipped1", "jsonschema", Some(1), Some(0), Some(0)),
     SchemaCriterion("com.acme", "skipped2", "jsonschema", Some(1), Some(0), None),

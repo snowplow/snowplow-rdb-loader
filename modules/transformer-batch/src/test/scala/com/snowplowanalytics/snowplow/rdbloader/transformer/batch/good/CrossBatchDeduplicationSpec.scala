@@ -29,17 +29,17 @@ object CrossBatchDeduplicationSpec {
 
   // original duplicated event_id
   val dupeUuid = UUID.fromString("1799a90f-f570-4414-b91a-b0db8f39cc2e")
-  val dupeFp = "bed9a39a0917874d2ff072033a6413d8"
+  val dupeFp   = "bed9a39a0917874d2ff072033a6413d8"
 
   val uniqueUuid = UUID.fromString("e271698a-3e86-4b2f-bb1b-f9f7aa5666c1")
-  val uniqueFp = "e79bef64f3185e9d7c10d5dfdf27b9a3"
+  val uniqueFp   = "e79bef64f3185e9d7c10d5dfdf27b9a3"
 
   val inbatchDupeUuid = UUID.fromString("2718ac0f-f510-4314-a98a-cfdb8f39abe4")
-  val inbatchDupeFp = "aba1c39a091787aa231072033a647caa"
+  val inbatchDupeFp   = "aba1c39a091787aa231072033a647caa"
 
   // ETL Timestamps (use current timestamp as we cannot use timestamps from past)
   val previousEtlTstamp = Instant.now().minusSeconds(3600 * 2)
-  val currentEtlTstamp = Instant.now()
+  val currentEtlTstamp  = Instant.now()
 
   // Events, including one cross-batch duplicate and in-batch duplicates
   val lines = Lines(
@@ -167,7 +167,7 @@ object CrossBatchDeduplicationSpec {
         None,
         name = "local",
         None,
-        awsRegion = dynamodbDuplicateStorageRegion,
+        awsRegion     = dynamodbDuplicateStorageRegion,
         dynamodbTable = dynamodbDuplicateStorageTable
       )
 

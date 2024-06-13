@@ -118,7 +118,7 @@ object Config {
     )
 
     implicit val cloudwatchDecoder: Decoder[Cloudwatch] = deriveDecoder[Cloudwatch]
-    implicit val metricsDecoder: Decoder[Metrics] = deriveDecoder[Metrics]
+    implicit val metricsDecoder: Decoder[Metrics]       = deriveDecoder[Metrics]
     implicit val monitoringDecoder: Decoder[Monitoring] = deriveDecoder[Monitoring]
   }
 

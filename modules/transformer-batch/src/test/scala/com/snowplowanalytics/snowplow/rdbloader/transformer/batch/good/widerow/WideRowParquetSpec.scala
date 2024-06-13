@@ -42,10 +42,10 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   sequential
   "A job which is configured for wide row parquet output" should {
     val testOutputDirs = OutputDirs(randomFile("output"))
-    val inputEvents = readResourceFile(ResourceFile("/widerow/parquet/input-events"))
+    val inputEvents    = readResourceFile(ResourceFile("/widerow/parquet/input-events"))
     runShredJob(
-      events = ResourceFile("/widerow/parquet/input-events"),
-      wideRow = Some(WideRow.PARQUET),
+      events     = ResourceFile("/widerow/parquet/input-events"),
+      wideRow    = Some(WideRow.PARQUET),
       outputDirs = Some(testOutputDirs)
     )
 
@@ -90,9 +90,9 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
     )
     val testOutputDirs = OutputDirs(randomFile("output"))
     runShredJob(
-      events = ResourceFile("/widerow/parquet/input-events-skip-schemas"),
-      wideRow = Some(WideRow.PARQUET),
-      outputDirs = Some(testOutputDirs),
+      events      = ResourceFile("/widerow/parquet/input-events-skip-schemas"),
+      wideRow     = Some(WideRow.PARQUET),
+      outputDirs  = Some(testOutputDirs),
       skipSchemas = skipSchemas
     )
 
@@ -109,10 +109,10 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   // different versions of test schema.
   "A job which is configured for wide row parquet output" should {
     val testOutputDirs = OutputDirs(randomFile("output"))
-    val inputEvents = readResourceFile(ResourceFile("/widerow/parquet/input-events-custom-contexts"))
+    val inputEvents    = readResourceFile(ResourceFile("/widerow/parquet/input-events-custom-contexts"))
     runShredJob(
-      events = ResourceFile("/widerow/parquet/input-events-custom-contexts"),
-      wideRow = Some(WideRow.PARQUET),
+      events     = ResourceFile("/widerow/parquet/input-events-custom-contexts"),
+      wideRow    = Some(WideRow.PARQUET),
       outputDirs = Some(testOutputDirs)
     )
 
@@ -153,8 +153,8 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   "Recover from the broken schema migrations" in {
     val testOutputDirs = OutputDirs(randomFile("output"))
     runShredJob(
-      events = ResourceFile("/widerow/parquet/events_with_corrupted_migrations"),
-      wideRow = Some(WideRow.PARQUET),
+      events     = ResourceFile("/widerow/parquet/events_with_corrupted_migrations"),
+      wideRow    = Some(WideRow.PARQUET),
       outputDirs = Some(testOutputDirs)
     )
 
@@ -181,10 +181,10 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   // different versions of test schema.
   "A job which is configured for wide row parquet output" should {
     val testOutputDirs = OutputDirs(randomFile("output"))
-    val inputEvents = readResourceFile(ResourceFile("/widerow/parquet/input-events-custom-unstruct"))
+    val inputEvents    = readResourceFile(ResourceFile("/widerow/parquet/input-events-custom-unstruct"))
     runShredJob(
-      events = ResourceFile("/widerow/parquet/input-events-custom-unstruct"),
-      wideRow = Some(WideRow.PARQUET),
+      events     = ResourceFile("/widerow/parquet/input-events-custom-unstruct"),
+      wideRow    = Some(WideRow.PARQUET),
       outputDirs = Some(testOutputDirs)
     )
 
@@ -224,18 +224,18 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
         // Due to a bug in the Scala Analytics SDK's toJson method, derived_contexts overrides contexts with same schemas.
         // In order to circumvent this problem, contexts and derived_contexts are combined under context
         // and derived_contexts is made empty list.
-        contexts = Contexts(e.contexts.data ::: e.derived_contexts.data),
+        contexts         = Contexts(e.contexts.data ::: e.derived_contexts.data),
         derived_contexts = Contexts(List.empty),
         // Since parquet is using java.sql.Timestamp instead of Instant and
         // Timestamp's precision is less than Instant's precision, we are truncating
         // event's timestamps to match them to parquet output.
-        collector_tstamp = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
-        derived_tstamp = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        etl_tstamp = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        collector_tstamp    = e.collector_tstamp.truncatedTo(ChronoUnit.MILLIS),
+        derived_tstamp      = e.derived_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        etl_tstamp          = e.etl_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
         dvce_created_tstamp = e.dvce_created_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        dvce_sent_tstamp = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        refr_dvce_tstamp = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
-        true_tstamp = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
+        dvce_sent_tstamp    = e.dvce_sent_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        refr_dvce_tstamp    = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
+        true_tstamp         = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
       )
       .toJson(true)
       .deepDropNullValues
@@ -285,9 +285,9 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
   }
 
   def assertGeneratedParquetSchema(testOutputDirs: OutputDirs) = {
-    val conf = new Configuration();
+    val conf                  = new Configuration();
     val expectedParquetSchema = readResourceFile(ResourceFile("/widerow/parquet/parquet-output-schema")).mkString
-    val expectedColumns = MessageTypeParser.parseMessageType(expectedParquetSchema).getColumns.asScala
+    val expectedColumns       = MessageTypeParser.parseMessageType(expectedParquetSchema).getColumns.asScala
 
     val parquetFileFilter = new FileFilter {
       override def accept(pathname: File): Boolean = pathname.toString.endsWith(".parquet")
@@ -295,7 +295,7 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
 
     testOutputDirs.goodRows.listFiles(parquetFileFilter).forall { parquetFile =>
       val parquetMetadata = ParquetFileReader.readFooter(conf, new Path(parquetFile.toString), ParquetMetadataConverter.NO_FILTER)
-      val columns = parquetMetadata.getFileMetaData.getSchema.getColumns.asScala
+      val columns         = parquetMetadata.getFileMetaData.getSchema.getColumns.asScala
 
       foreach(columns.zip(expectedColumns)) { case (col, expectedCol) =>
         col.toString mustEqual expectedCol.toString
@@ -312,8 +312,8 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
     def find(fieldName: String): StructField =
       field.dataType match {
         case ArrayType(StructType(fields), _) => fields.toList.find(fieldName)
-        case StructType(fields) => fields.toList.find(fieldName)
-        case _ => null
+        case StructType(fields)               => fields.toList.find(fieldName)
+        case _                                => null
       }
   }
 }

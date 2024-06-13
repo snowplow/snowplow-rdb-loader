@@ -89,9 +89,9 @@ object LoaderMessage {
       object ShreddedFormat {
         def fromString(str: String): Either[String, ShreddedFormat] =
           str match {
-            case "TSV" => TSV.asRight
+            case "TSV"  => TSV.asRight
             case "JSON" => JSON.asRight
-            case _ => s"$str is unexpected format. TSV and JSON are possible options".asLeft
+            case _      => s"$str is unexpected format. TSV and JSON are possible options".asLeft
           }
 
         case object TSV extends ShreddedFormat
@@ -116,9 +116,9 @@ object LoaderMessage {
       object WideRowFormat {
         def fromString(str: String): Either[String, WideRowFormat] =
           str match {
-            case "JSON" => JSON.asRight
+            case "JSON"    => JSON.asRight
             case "PARQUET" => PARQUET.asRight
-            case _ => s"$str is unexpected format. Parquet and JSON are possible options".asLeft
+            case _         => s"$str is unexpected format. Parquet and JSON are possible options".asLeft
           }
         case object JSON extends WideRowFormat
         case object PARQUET extends WideRowFormat
@@ -138,7 +138,7 @@ object LoaderMessage {
         implicit val schemaKeyOrdering = SchemaKey.ordering
         implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] =
           math.Ordering.by {
-            case SnowplowEntity.Context => 0
+            case SnowplowEntity.Context             => 0
             case SnowplowEntity.SelfDescribingEvent => 1
           }
 
@@ -157,7 +157,7 @@ object LoaderMessage {
 
     def from(shredProperty: Data.ShredProperty): SnowplowEntity =
       shredProperty match {
-        case _: Data.Contexts => LoaderMessage.SnowplowEntity.Context
+        case _: Data.Contexts   => LoaderMessage.SnowplowEntity.Context
         case Data.UnstructEvent => LoaderMessage.SnowplowEntity.SelfDescribingEvent
       }
   }
@@ -312,7 +312,7 @@ object LoaderMessage {
       val transformationCur = cur.downField("transformation")
       transformationCur.as[String].map(_.toLowerCase) match {
         case Right("shredded") => cur.as[TypesInfo.Shredded]
-        case Right("widerow") => cur.as[TypesInfo.WideRow]
+        case Right("widerow")  => cur.as[TypesInfo.WideRow]
         case Left(DecodingFailure(_, List(CursorOp.DownField("transformation")))) =>
           Left(DecodingFailure("Cannot find 'transformation' string in loader message", transformationCur.history))
         case Left(other) =>
@@ -321,12 +321,12 @@ object LoaderMessage {
     }
   implicit val loaderMessageShredPropertyEncoder: Encoder[SnowplowEntity] =
     Encoder.encodeString.contramap {
-      case SnowplowEntity.Context => "CONTEXT"
+      case SnowplowEntity.Context             => "CONTEXT"
       case SnowplowEntity.SelfDescribingEvent => "SELF_DESCRIBING_EVENT"
     }
   implicit val loaderMessageSnowplowEntityDecoder: Decoder[SnowplowEntity] =
     Decoder.decodeString.emap {
-      case "CONTEXT" => SnowplowEntity.Context.asRight[String]
+      case "CONTEXT"               => SnowplowEntity.Context.asRight[String]
       case "SELF_DESCRIBING_EVENT" => SnowplowEntity.SelfDescribingEvent.asRight[String]
       case other =>
         s"ShredProperty $other is not supported. Supported values: CONTEXT, SELFDESCRIBING_EVENT".asLeft[SnowplowEntity]

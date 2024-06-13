@@ -60,7 +60,7 @@ object KinesisProducer {
     val withRegion = KinesisClient.builder().region(AWSRegion.of(region.name))
     customEndpoint match {
       case Some(endpoint) => withRegion.endpointOverride(endpoint).build()
-      case None => withRegion.build()
+      case None           => withRegion.build()
     }
   }
 
@@ -72,7 +72,7 @@ object KinesisProducer {
     streamName: String,
     records: List[PutRecordsRequestEntry]
   ): F[Unit] = {
-    val policyForErrors = Retries.fullJitter[F](internalErrorsPolicy)
+    val policyForErrors     = Retries.fullJitter[F](internalErrorsPolicy)
     val policyForThrottling = Retries.fibonacci[F](throttlingErrorsPolicy)
 
     def runAndCaptureFailures(ref: Ref[F, List[PutRecordsRequestEntry]]): F[List[PutRecordsRequestEntry]] =
@@ -88,7 +88,7 @@ object KinesisProducer {
       ref <- Ref.of[F, List[PutRecordsRequestEntry]](records)
       failures <- runAndCaptureFailures(ref)
                     .retryingOnFailures(
-                      policy = policyForThrottling,
+                      policy        = policyForThrottling,
                       wasSuccessful = entries => Sync[F].pure(entries.isEmpty),
                       onFailure = { case (result, retryDetails) =>
                         val msg = failureMessageForThrottling(result, streamName)
@@ -153,7 +153,7 @@ object KinesisProducer {
         .blocking(putRecords(kinesis, streamName, records))
         .map(TryBatchResult.build(records, _))
         .retryingOnFailuresAndAllErrors(
-          policy = retryPolicy,
+          policy        = retryPolicy,
           wasSuccessful = r => Sync[F].pure(!r.shouldRetrySameBatch),
           onFailure = { case (result, retryDetails) =>
             val msg = failureMessageForInternalErrors(records, streamName, result)

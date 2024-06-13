@@ -30,7 +30,7 @@ class RetriesSpec extends Specification {
     "create a new failure in global failures store" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val error = new RuntimeException("boom")
+      val error  = new RuntimeException("boom")
 
       val result = for {
         state <- State.mk[IO]
@@ -45,7 +45,7 @@ class RetriesSpec extends Specification {
 
         failures.get(folder) must beSome.like {
           case Retries.LoadFailure(e, 1, a, b) if a == b && e == error => ok
-          case other => ko(s"Failure has unexpected structure ${other}")
+          case other                                                   => ko(s"Failure has unexpected structure ${other}")
         }
       }
     }
@@ -53,7 +53,7 @@ class RetriesSpec extends Specification {
     "update an existing failure" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val error = new RuntimeException("boom two")
+      val error  = new RuntimeException("boom two")
 
       val result = for {
         state <- State.mk[IO]
@@ -71,7 +71,7 @@ class RetriesSpec extends Specification {
 
         failures.get(folder) must beSome.like {
           case Retries.LoadFailure(e, 2, a, b) if a.isBefore(b) && e == error => ok
-          case other => ko(s"Failure has unexpected structure ${other}")
+          case other                                                          => ko(s"Failure has unexpected structure ${other}")
         }
       }
     }
@@ -79,7 +79,7 @@ class RetriesSpec extends Specification {
     "drop a failure if it reached max attempts" in {
       val config = Config.RetryQueue(NotImportantDuration, 10, 3, NotImportantDuration)
       val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val error = new RuntimeException("boom final")
+      val error  = new RuntimeException("boom final")
 
       val result = for {
         state <- State.mk[IO]
@@ -99,9 +99,9 @@ class RetriesSpec extends Specification {
     }
 
     "not interfere with addFailure" in { // It's been a case in previous RCs
-      val config = Config.RetryQueue(NotImportantDuration, 10, 20, NotImportantDuration)
-      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val error = new RuntimeException("boom final")
+      val config   = Config.RetryQueue(NotImportantDuration, 10, 20, NotImportantDuration)
+      val folder   = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val error    = new RuntimeException("boom final")
       val Attempts = 10
 
       val result = for {
@@ -126,9 +126,9 @@ class RetriesSpec extends Specification {
     "not pull to a non-empty queue" in {
 
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
-      val Size = 10
-      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
+      val Size             = 10
+      val FolderOne        = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo        = BlobStorage.Folder.coerce("s3://bucket/2/")
 
       implicit val L = Logging.noOp[IO]
 
@@ -157,9 +157,9 @@ class RetriesSpec extends Specification {
 
     "pull all items" in {
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
-      val Size = 10
-      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
+      val Size             = 10
+      val FolderOne        = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo        = BlobStorage.Folder.coerce("s3://bucket/2/")
 
       implicit val L = Logging.noOp[IO]
 
@@ -188,11 +188,11 @@ class RetriesSpec extends Specification {
 
     "not block if max is the same as of queue capacity" in {
       val NotImportantTime = Instant.ofEpochMilli(100000000000L)
-      val Size = 3
-      val FolderOne = BlobStorage.Folder.coerce("s3://bucket/1/")
-      val FolderTwo = BlobStorage.Folder.coerce("s3://bucket/2/")
-      val FolderThree = BlobStorage.Folder.coerce("s3://bucket/3/")
-      val FolderFour = BlobStorage.Folder.coerce("s3://bucket/4/")
+      val Size             = 3
+      val FolderOne        = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val FolderTwo        = BlobStorage.Folder.coerce("s3://bucket/2/")
+      val FolderThree      = BlobStorage.Folder.coerce("s3://bucket/3/")
+      val FolderFour       = BlobStorage.Folder.coerce("s3://bucket/4/")
 
       implicit val L = Logging.noOp[IO]
 

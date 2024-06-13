@@ -22,13 +22,13 @@ class CommonSpec extends Specification {
 
   def e1 = {
     val message = "Outputpassword. Output username"
-    val result = Common.sanitize(message, List("password", "username"))
+    val result  = Common.sanitize(message, List("password", "username"))
     result must beEqualTo("Outputxxxxxxxx. Output xxxxxxxx")
   }
 
   def e2 = {
     val message = "Output$**^. Output username"
-    val result = Common.sanitize(message, List("""$**^""", "username"))
+    val result  = Common.sanitize(message, List("""$**^""", "username"))
     result must beEqualTo("Outputxxxx. Output xxxxxxxx")
   }
 }

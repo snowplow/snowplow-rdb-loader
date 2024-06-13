@@ -29,7 +29,7 @@ object UnskippableException {
   def unapply(t: Throwable): Option[Throwable] =
     (t, Option(t.getCause)) match {
       case (_: UnskippableException, _) => Some(t)
-      case (_, Some(cause)) => unapply(cause).map(_ => t)
-      case (_, None) => None
+      case (_, Some(cause))             => unapply(cause).map(_ => t)
+      case (_, None)                    => None
     }
 }

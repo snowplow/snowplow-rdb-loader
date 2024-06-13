@@ -40,7 +40,7 @@ package object common {
   implicit class ParseErrorOps[A](val error: Either[String, A]) extends AnyVal {
     def asDecodeResult(hCursor: HCursor): Decoder.Result[A] = error match {
       case Right(success) => Right(success)
-      case Left(message) => Left(DecodingFailure(message, hCursor.history))
+      case Left(message)  => Left(DecodingFailure(message, hCursor.history))
     }
   }
 
@@ -66,7 +66,7 @@ package object common {
 
   implicit class ShredPropertyTransformer(val snowplowEntity: LoaderMessage.SnowplowEntity) extends AnyVal {
     def toSdkProperty: Data.ShredProperty = snowplowEntity match {
-      case LoaderMessage.SnowplowEntity.Context => Data.Contexts(Data.CustomContexts)
+      case LoaderMessage.SnowplowEntity.Context             => Data.Contexts(Data.CustomContexts)
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent => Data.UnstructEvent
     }
   }
@@ -90,6 +90,6 @@ package object common {
 
   implicit val clientErrorShow: Show[ClientError] = Show.show {
     case error: ClientError.ResolutionError => error.getMessage
-    case _: ClientError.ValidationError => "Validation error" // Should not really happen as loader only lookups schemas
+    case _: ClientError.ValidationError     => "Validation error" // Should not really happen as loader only lookups schemas
   }
 }

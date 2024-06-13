@@ -22,53 +22,53 @@ import io.circe.parser
 import scala.concurrent.duration.DurationInt
 
 class JsonScenario1 extends AzureTransformerSpecification {
-  def description = "Input: 1 good, config: JSON, compression, windowing: 1 minute"
+  def description       = "Input: 1 good, config: JSON, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default
-  def inputBatches = List(good(count = 1))
+  def inputBatches      = List(good(count = 1))
   def countExpectations = CountExpectations(good = 1, bad = 0)
 }
 
 class JsonScenario2 extends AzureTransformerSpecification {
-  def description = "Input: 1 bad, config: JSON, compression, windowing: 1 minute"
+  def description       = "Input: 1 bad, config: JSON, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default
-  def inputBatches = List(bad(count = 1))
+  def inputBatches      = List(bad(count = 1))
   def countExpectations = CountExpectations(good = 0, bad = 1)
 }
 
 class JsonScenario3 extends AzureTransformerSpecification {
-  def description = "Input: 1000 good, config: JSON, compression, windowing: 1 minute"
+  def description       = "Input: 1000 good, config: JSON, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default
-  def inputBatches = List(good(count = 1000))
+  def inputBatches      = List(good(count = 1000))
   def countExpectations = CountExpectations(good = 1000, bad = 0)
 }
 
 class JsonScenario4 extends AzureTransformerSpecification {
-  def description = "Input: 1000 bad, config: JSON, compression, windowing: 1 minute"
+  def description       = "Input: 1000 bad, config: JSON, compression, windowing: 1 minute"
   def requiredAppConfig = AppConfiguration.default
-  def inputBatches = List(bad(count = 1000))
+  def inputBatches      = List(bad(count = 1000))
   def countExpectations = CountExpectations(good = 0, bad = 1000)
 }
 
 class JsonScenario5 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: JSON, compression, windowing: 1 minute"""
+  def description       = """Input: mixed 500 good and 500 bad, config: JSON, compression, windowing: 1 minute"""
   def requiredAppConfig = AppConfiguration.default
-  def inputBatches = List(good(count = 500), bad(count = 500))
+  def inputBatches      = List(good(count = 500), bad(count = 500))
   def countExpectations = CountExpectations(good = 500, bad = 500)
 }
 
 //Changed defualt windowing to 2 minutes
 class JsonScenario6 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: JSON, compression, windowing: 2 minutes"""
+  def description       = """Input: mixed 500 good and 500 bad, config: JSON, compression, windowing: 2 minutes"""
   def requiredAppConfig = AppConfiguration.default.copy(windowFrequencyMinutes = 2)
-  def inputBatches = List(good(count = 500), good(count = 500).delayed(2.minutes)) // force new window by delaying second input batch
+  def inputBatches      = List(good(count = 500), good(count = 500).delayed(2.minutes)) // force new window by delaying second input batch
   def countExpectations = CountExpectations(good = 1000, bad = 0)
 }
 
 //No compression
 class JsonScenario7 extends AzureTransformerSpecification {
-  def description = """Input: mixed 500 good and 500 bad, config: JSON, no compression, windowing: 1 minute"""
+  def description       = """Input: mixed 500 good and 500 bad, config: JSON, no compression, windowing: 1 minute"""
   def requiredAppConfig = AppConfiguration.default.copy(compression = Compression.None)
-  def inputBatches = List(good(count = 500), bad(count = 500))
+  def inputBatches      = List(good(count = 500), bad(count = 500))
   def countExpectations = CountExpectations(good = 500, bad = 500)
 }
 
@@ -80,9 +80,9 @@ class JsonScenario8 extends AzureTransformerSpecification {
       """snowplowweb	web	2014-06-01 14:04:11.639	2014-05-29 18:16:35.000	2014-05-29 18:16:35.967	unstruct	2b1b25a4-c0df-4859-8201-cf21492ad61b	114221	clojure	js-2.0.0-M2	clj-0.6.0-tom-0.0.4	hadoop-0.5.0-common-0.4.0		68.42.204.218	1242058182	58df65c46e1ac937	11	437ad25b-2006-455e-b5d8-d664b74df8f3	US	MI	Holland	49423	42.742294	-86.0661						http://snowplowanalytics.com/blog/		https://www.google.com/	http	snowplowanalytics.com	80	/blog/			https	www.google.com	80	/			search	Google							{"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-0","data":[{"schema":"iglu:org.schema/WebPage/jsonschema/1-0-0","data":{"datePublished":"2014-07-23T00:00:00Z","author":"Jonathan Almeida","inLanguage":"en-US","genre":"blog","breadcrumb":["blog","releases"],"keywords":["snowplow","analytics","java","jvm","tracker"]}}]}						{"schema":"iglu:com.snowplowanalytics.snowplow/unstruct_event/jsonschema/1-0-0","data":{"schema":"iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-0","data":{"targetUrl":"http://snowplowanalytics.com/blog/page2","elementClasses":["next"]}}}																			Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.114 Safari/537.36	Chrome	Chrome		Browser	WEBKIT	en-US	1	1	1	0	1	0	0	0	1	1	24	1241	806	Mac OS	Mac OS	Apple Inc.	America/New_York	Computer	0	1440	900	UTF-8																									"""
     )
   )
-  override def description = "Asserting details of a single JSON transformed event"
+  override def description       = "Asserting details of a single JSON transformed event"
   override def requiredAppConfig = AppConfiguration.default
-  override def inputBatches = List(InputBatch(goodEvent))
+  override def inputBatches      = List(InputBatch(goodEvent))
   override def countExpectations = CountExpectations(good = 1, bad = 0)
 
   override def customDataAssertion = Some { outputData =>

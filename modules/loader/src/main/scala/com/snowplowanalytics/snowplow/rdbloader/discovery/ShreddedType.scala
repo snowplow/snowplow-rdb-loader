@@ -111,7 +111,7 @@ object ShreddedType {
     version: SchemaVer.Full,
     entity: LoaderMessage.SnowplowEntity
   ) {
-    def getSchemaKey: SchemaKey = SchemaKey(vendor, name, "jsonschema", version)
+    def getSchemaKey: SchemaKey      = SchemaKey(vendor, name, "jsonschema", version)
     def toCriterion: SchemaCriterion = SchemaCriterion(vendor, name, "jsonschema", version.model)
 
     /** Build valid table name for the shredded type */

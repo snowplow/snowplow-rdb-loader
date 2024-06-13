@@ -55,22 +55,22 @@ class Environment[F[_], I](
   control: Control[F],
   telemetry: Telemetry[F]
 ) {
-  implicit val cacheF: Cache[F] = cache
-  implicit val loggingF: Logging[F] = logging
-  implicit val monitoringF: Monitoring[F] = monitoring
-  implicit val igluF: Iglu[F] = iglu
-  implicit val blobStorageF: BlobStorage[F] = blobStorage
-  implicit val queueConsumerF: Queue.Consumer[F] = queueConsumer
-  implicit val loadAuthServiceF: LoadAuthService[F] = loadAuthService
-  implicit val jsonPathDiscoveryF: JsonPathDiscovery[F] = jsonPathDiscovery
+  implicit val cacheF: Cache[F]                           = cache
+  implicit val loggingF: Logging[F]                       = logging
+  implicit val monitoringF: Monitoring[F]                 = monitoring
+  implicit val igluF: Iglu[F]                             = iglu
+  implicit val blobStorageF: BlobStorage[F]               = blobStorage
+  implicit val queueConsumerF: Queue.Consumer[F]          = queueConsumer
+  implicit val loadAuthServiceF: LoadAuthService[F]       = loadAuthService
+  implicit val jsonPathDiscoveryF: JsonPathDiscovery[F]   = jsonPathDiscovery
   implicit val transactionF: Transaction[F, ConnectionIO] = transaction
 
-  implicit val daoC: DAO[ConnectionIO] = DAO.connectionIO(target, timeouts)
-  implicit val loggingC: Logging[ConnectionIO] = logging.mapK(transaction.arrowBack)
+  implicit val daoC: DAO[ConnectionIO]                         = DAO.connectionIO(target, timeouts)
+  implicit val loggingC: Logging[ConnectionIO]                 = logging.mapK(transaction.arrowBack)
   implicit val loadAuthServiceC: LoadAuthService[ConnectionIO] = loadAuthService.mapK(transaction.arrowBack)
-  val controlF: Control[F] = control
-  val telemetryF: Telemetry[F] = telemetry
-  val dbTarget: Target[I] = target
+  val controlF: Control[F]                                     = control
+  val telemetryF: Telemetry[F]                                 = telemetry
+  val dbTarget: Target[I]                                      = target
 }
 
 object Environment {
@@ -178,14 +178,14 @@ object Environment {
           implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
-                             projectId = c.messageQueue.projectId,
-                             subscription = c.messageQueue.subscriptionId,
-                             parallelPullCount = c.messageQueue.parallelPullCount,
-                             bufferSize = c.messageQueue.bufferSize,
+                             projectId             = c.messageQueue.projectId,
+                             subscription          = c.messageQueue.subscriptionId,
+                             parallelPullCount     = c.messageQueue.parallelPullCount,
+                             bufferSize            = c.messageQueue.bufferSize,
                              maxAckExtensionPeriod = config.timeouts.loading,
-                             awaitTerminatePeriod = c.messageQueue.awaitTerminatePeriod,
-                             customPubsubEndpoint = c.messageQueue.customPubsubEndpoint,
-                             postProcess = Some(postProcess)
+                             awaitTerminatePeriod  = c.messageQueue.awaitTerminatePeriod,
+                             customPubsubEndpoint  = c.messageQueue.customPubsubEndpoint,
+                             postProcess           = Some(postProcess)
                            )
           secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
@@ -197,9 +197,9 @@ object Environment {
           postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- KafkaConsumer.consumer[F](
                              bootstrapServers = c.messageQueue.bootstrapServers,
-                             topicName = c.messageQueue.topicName,
-                             consumerConf = c.messageQueue.consumerConf,
-                             postProcess = Some(postProcess)
+                             topicName        = c.messageQueue.topicName,
+                             consumerConf     = c.messageQueue.consumerConf,
+                             postProcess      = Some(postProcess)
                            )
           secretStore <- AzureKeyVault.create(c.azureVaultName)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
@@ -220,15 +220,15 @@ object Environment {
 
   def getCloudForTelemetry(config: Config[_]): Option[Telemetry.Cloud] =
     config.cloud match {
-      case _: Cloud.AWS => Telemetry.Cloud.Aws.some
-      case _: Cloud.GCP => Telemetry.Cloud.Gcp.some
+      case _: Cloud.AWS   => Telemetry.Cloud.Aws.some
+      case _: Cloud.GCP   => Telemetry.Cloud.Gcp.some
       case _: Cloud.Azure => Telemetry.Cloud.Azure.some
     }
 
   def getRegionForTelemetry(config: Config[_]): Option[String] =
     config.cloud match {
       case c: Cloud.AWS => c.region.name.some
-      case _ => None
+      case _            => None
     }
 
 }

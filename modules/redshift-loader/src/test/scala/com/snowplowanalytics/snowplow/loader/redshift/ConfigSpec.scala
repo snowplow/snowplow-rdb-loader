@@ -54,8 +54,8 @@ class ConfigSpec extends Specification {
         defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = Some(20.minutes)),
-        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
-        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
         exampleFeatureFlags,
         defaultTelemetry,
         exampleLicense

@@ -40,9 +40,9 @@ object Deduplication {
 
   /** Add duplicate context */
   def withSynthetic(event: Event): Event = {
-    val newContext = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${event.event_id}}""")
+    val newContext      = SelfDescribingData(DuplicateSchema, json"""{"originalEventId":${event.event_id}}""")
     val updatedContexts = newContext :: event.derived_contexts.data
-    val newEventId = UUID.randomUUID()
+    val newEventId      = UUID.randomUUID()
     event.copy(event_id = newEventId, derived_contexts = Contexts(updatedContexts))
   }
 
@@ -63,19 +63,19 @@ object Deduplication {
   def sytheticDeduplication(config: DedupConfig, events: RDD[Either[BadRow, Event]]): Result = {
     val cardinality = config.synthetic match {
       case DedupConfig.Synthetic.Broadcast(c) => c
-      case _ => 1
+      case _                                  => 1
     }
     // Count synthetic duplicates, defined as events with the same id but different fingerprints
     // Won't be executed in case of None
     val duplicates = events
       .flatMap {
         case Right(e) => Some((e.event_id, 1L))
-        case Left(_) => None
+        case Left(_)  => None
       }
       .reduceByKey(_ + _)
       .flatMap {
         case (id, count) if count > cardinality => Some(id)
-        case _ => None
+        case _                                  => None
       }
 
     config.synthetic match {
@@ -90,8 +90,8 @@ object Deduplication {
           .leftOuterJoin(duplicates.map((id: UUID) => (id, ())))
           .map {
             case (_, (Right(event), d)) if d.isDefined => Right(withSynthetic(event))
-            case (_, (Right(event), _)) => Right(event)
-            case (_, (Left(badRow), _)) => Left(badRow)
+            case (_, (Right(event), _))                => Right(event)
+            case (_, (Left(badRow), _))                => Left(badRow)
           }
         Result(rdd, Set.empty)
       case DedupConfig.Synthetic.Broadcast(_) =>

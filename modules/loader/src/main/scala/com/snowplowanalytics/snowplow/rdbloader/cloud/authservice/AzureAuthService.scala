@@ -50,8 +50,8 @@ object AzureAuthService {
       val builder = new BlobServiceClientBuilder()
         .credential(new DefaultAzureCredentialBuilder().build)
         .endpoint(blobStorageEndpoint)
-      val pathParts = AzureBlobStorage.PathParts.parse(blobStorageEndpoint)
-      val blobServiceClient = builder.buildClient()
+      val pathParts           = AzureBlobStorage.PathParts.parse(blobStorageEndpoint)
+      val blobServiceClient   = builder.buildClient()
       val blobContainerClient = blobServiceClient.getBlobContainerClient(pathParts.containerName)
       (blobServiceClient, blobContainerClient)
     }
@@ -64,13 +64,13 @@ object AzureAuthService {
     credsCache(
       credentialsTtl = credentialsTtl,
       getCreds = Async[F].delay {
-        val keyStart = OffsetDateTime.now()
-        val keyExpiry = OffsetDateTime.now().plusSeconds(credentialsTtl.toSeconds)
+        val keyStart          = OffsetDateTime.now()
+        val keyExpiry         = OffsetDateTime.now().plusSeconds(credentialsTtl.toSeconds)
         val userDelegationKey = blobServiceClient.getUserDelegationKey(keyStart, keyExpiry)
-        val blobContainerSas = new BlobContainerSasPermission()
+        val blobContainerSas  = new BlobContainerSasPermission()
         blobContainerSas.setReadPermission(true).setListPermission(true)
         val blobServiceSasSignatureValues = new BlobServiceSasSignatureValues(keyExpiry, blobContainerSas)
-        val sasToken = blobContainerClient.generateUserDelegationSas(blobServiceSasSignatureValues, userDelegationKey)
+        val sasToken                      = blobContainerClient.generateUserDelegationSas(blobServiceSasSignatureValues, userDelegationKey)
         LoadAuthMethod.TempCreds.Azure(sasToken, keyExpiry.toInstant)
       }
     )

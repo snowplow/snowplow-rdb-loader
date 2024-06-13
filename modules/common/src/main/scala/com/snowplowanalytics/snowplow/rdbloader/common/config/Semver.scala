@@ -45,9 +45,9 @@ object Semver {
     final case class Unknown(full: String) extends Prerelease
   }
 
-  val semverPattern = """^(\d+)\.(\d+)\.(\d+)(.*)$""".r
+  val semverPattern    = """^(\d+)\.(\d+)\.(\d+)(.*)$""".r
   val milestonePattern = """-M(\d+)$""".r
-  val rcPattern = """-rc(\d+)$""".r
+  val rcPattern        = """-rc(\d+)$""".r
 
   /**
    * Alternative constructor to omit optional prerelease part
@@ -67,7 +67,7 @@ object Semver {
     def partialCompare(x: Option[Prerelease], y: Option[Prerelease]): Double = (x, y) match {
       case (Some(_), None) => -1
       case (None, Some(_)) => 1
-      case (None, None) => 0
+      case (None, None)    => 0
       case (Some(Prerelease.Milestone(xm)), Some(Prerelease.Milestone(ym))) =>
         xm.partialCompare(ym)
       case (Some(Prerelease.ReleaseCandidate(xrc)), Some(Prerelease.ReleaseCandidate(yrc))) =>
@@ -93,8 +93,8 @@ object Semver {
    */
   def decodePrerelease(s: String): Prerelease = s match {
     case milestonePattern(IntString(m)) => Prerelease.Milestone(m)
-    case rcPattern(IntString(rc)) => Prerelease.ReleaseCandidate(rc)
-    case _ => Prerelease.Unknown(s)
+    case rcPattern(IntString(rc))       => Prerelease.ReleaseCandidate(rc)
+    case _                              => Prerelease.Unknown(s)
   }
 
   /**
@@ -113,7 +113,7 @@ object Semver {
   private implicit val prereleaseShow = new Show[Option[Prerelease]] {
     def show(prerelease: Option[Prerelease]) = prerelease match {
       case Some(p) => p.full
-      case None => ""
+      case None    => ""
     }
   }
 

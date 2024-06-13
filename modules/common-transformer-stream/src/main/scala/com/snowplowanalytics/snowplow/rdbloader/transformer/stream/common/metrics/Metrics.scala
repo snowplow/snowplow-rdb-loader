@@ -33,7 +33,7 @@ trait Metrics[F[_]] {
 object Metrics {
 
   val goodCounterName = "good"
-  val badCounterName = "bad"
+  val badCounterName  = "bad"
 
   private val defaultPrefix = "snowplow.transformer"
 
@@ -46,7 +46,7 @@ object Metrics {
     config: MetricsReporters
   ): F[Metrics[F]] =
     config match {
-      case MetricsReporters(None, None, _) => noop[F].pure[F]
+      case MetricsReporters(None, None, _)     => noop[F].pure[F]
       case MetricsReporters(statsd, stdout, _) => impl[F](statsd, stdout)
     }
 
@@ -117,9 +117,9 @@ object Metrics {
 
   def noop[F[_]: Async]: Metrics[F] =
     new Metrics[F] {
-      def report: Stream[F, Unit] = Stream.never[F]
+      def report: Stream[F, Unit]        = Stream.never[F]
       def goodCount(count: Int): F[Unit] = Applicative[F].unit
-      def badCount(count: Int): F[Unit] = Applicative[F].unit
+      def badCount(count: Int): F[Unit]  = Applicative[F].unit
     }
 
   def normalizeMetric(prefix: Option[String], metric: String): String =

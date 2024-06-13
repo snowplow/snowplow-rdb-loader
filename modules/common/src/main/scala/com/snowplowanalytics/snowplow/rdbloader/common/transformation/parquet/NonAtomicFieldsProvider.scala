@@ -92,7 +92,7 @@ object NonAtomicFieldsProvider {
                 val hash = abs(typedField.field.hashCode())
                 // typedField always has a single element in matchingKeys
                 val recoverPoint = typedField.matchingKeys.head.version.asString.replaceAll("-", "_")
-                val newName = s"${typedField.field.name}_recovered_${recoverPoint}_$hash"
+                val newName      = s"${typedField.field.name}_recovered_${recoverPoint}_$hash"
                 // broken migrations go to the end of Vector
                 if (types.map(_.schemaKey).contains(typedField.matchingKeys.head))
                   endFields :+ typedField.copy(field = typedField.field.copy(name = newName))

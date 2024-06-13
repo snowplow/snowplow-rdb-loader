@@ -73,7 +73,7 @@ class TransformingSpec extends Specification {
     "transform events to wide row correctly" in {
       val (good, bad) = transformTestEvents(resourcePath = "/processing-spec/1/input/events", format = wideRowFormat)
 
-      val expectedBadEvent = getResourceLines("/processing-spec/1/output/bad").head
+      val expectedBadEvent   = getResourceLines("/processing-spec/1/output/bad").head
       val expectedGoodEvents = getResourceLines("/processing-spec/1/output/good/widerow/events")
 
       bad must have size 1
@@ -85,8 +85,8 @@ class TransformingSpec extends Specification {
     "create bad row when timestamp is invalid" in {
       val timestampLowerLimit = Instant.parse("0000-01-02T00:00:00.00Z")
       val (good, bad) = transformTestEvents(
-        resourcePath = "/processing-spec/2/input/events",
-        format = wideRowFormat,
+        resourcePath        = "/processing-spec/2/input/events",
+        format              = wideRowFormat,
         timestampLowerLimit = Some(timestampLowerLimit)
       )
 
@@ -101,7 +101,7 @@ class TransformingSpec extends Specification {
 
 object TransformingSpec {
   type TransformedList = List[(SinkPath, Transformed.Data)]
-  type TransformedMap = Map[SinkPath, List[String]]
+  type TransformedMap  = Map[SinkPath, List[String]]
 
   implicit class TransformedPathClassify(value: (SinkPath, Transformed.Data)) {
     def getBad: Option[(SinkPath, Transformed.Data)] =
@@ -122,13 +122,13 @@ object TransformingSpec {
   }
 
   val VersionPlaceholder = "version_placeholder"
-  val BadPathPrefix = "output=bad"
-  val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
+  val BadPathPrefix      = "output=bad"
+  val DefaultTimestamp   = "2020-09-29T10:38:56.653Z"
 
   val defaultIgluResolver: Resolver[IO] = Resolver(List(Registry.IgluCentral), None)
-  val wideRowFormat = TransformerConfig.Formats.WideRow.JSON
+  val wideRowFormat                     = TransformerConfig.Formats.WideRow.JSON
   val shredFormat = TransformerConfig.Formats.Shred(LoaderMessage.TypesInfo.Shredded.ShreddedFormat.TSV, List.empty, List.empty, List.empty)
-  val defaultWindow = Window(1, 1, 1, 1, 1)
+  val defaultWindow        = Window(1, 1, 1, 1, 1)
   val dummyTransformedData = Transformed.Data.DString("")
 
   def shredModelCache: ShredModelCache[IO] = CreateLruMap[IO, ShredModelCacheKey, ShredModel].create(100).unsafeRunSync()
@@ -146,8 +146,8 @@ object TransformingSpec {
     format: TransformerConfig.Formats,
     timestampLowerLimit: Option[Instant] = None
   ): (TransformedList, TransformedList) = {
-    val transformer = createTransformer(format)
-    val validations = TransformerConfig.Validations(timestampLowerLimit)
+    val transformer           = createTransformer(format)
+    val validations           = TransformerConfig.Validations(timestampLowerLimit)
     implicit val checkpointer = Checkpointer.noOpCheckpointer[IO, Unit]
 
     val eventStream = parsedEventStream(resourcePath)

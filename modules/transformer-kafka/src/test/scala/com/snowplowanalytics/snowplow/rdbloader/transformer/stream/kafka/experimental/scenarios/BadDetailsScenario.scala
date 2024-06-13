@@ -22,9 +22,9 @@ class BadDetailsScenario extends AzureTransformerSpecification {
 
   private val badEvent = Content.TextLines(List("Some example bad event"))
 
-  override def description = "Asserting details of output single bad row"
+  override def description       = "Asserting details of output single bad row"
   override def requiredAppConfig = AppConfiguration.default
-  override def inputBatches = List(InputBatch(badEvent))
+  override def inputBatches      = List(InputBatch(badEvent))
   override def countExpectations = CountExpectations(good = 0, bad = 1)
 
   override def customDataAssertion = Some { outputData =>

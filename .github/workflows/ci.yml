@@ -20,7 +20,7 @@ jobs:
           java-version: 11
       - name: Check Scala formatting
         if: ${{ always() }}
-        run: sbt scalafmtCheckAll
+        run: sbt scalafmtCheckAll scalafmtSbtCheck
       - name: Run tests
         run: sbt coverage test coverageReport
       - name: Aggregate coverage data

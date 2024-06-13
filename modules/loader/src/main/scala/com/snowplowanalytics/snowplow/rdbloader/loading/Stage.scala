@@ -45,12 +45,12 @@ object Stage {
 
   implicit val stageShow: Show[Stage] =
     Show.show {
-      case MigrationBuild => "migration building"
-      case MigrationPre => "pre-transaction migrations"
-      case ManifestCheck => "manifest check"
-      case MigrationIn => "in-transaction migrations"
-      case Loading(table) => show"copying into $table table"
-      case Committing => "committing"
+      case MigrationBuild     => "migration building"
+      case MigrationPre       => "pre-transaction migrations"
+      case ManifestCheck      => "manifest check"
+      case MigrationIn        => "in-transaction migrations"
+      case Loading(table)     => show"copying into $table table"
+      case Committing         => "committing"
       case Cancelling(reason) => show"cancelling because of $reason"
     }
 }

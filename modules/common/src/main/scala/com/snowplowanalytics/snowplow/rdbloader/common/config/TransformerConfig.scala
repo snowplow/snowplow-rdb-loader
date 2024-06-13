@@ -82,14 +82,14 @@ object TransformerConfig {
       /** Check if two version numbers (MODEL, REVISION or ADDITION) can overlap */
       private def versionOverlap(av: Option[Int], bv: Option[Int]): Boolean = (av, bv) match {
         case (Some(aam), Some(bbm)) if aam == bbm => true // Identical and explicit - overlap
-        case (Some(_), Some(_)) => false // Different and explicit
-        case _ => true // At least one is a wildcard - overlap
+        case (Some(_), Some(_))                   => false // Different and explicit
+        case _                                    => true // At least one is a wildcard - overlap
       }
 
       /** Accumulate all pairs matching predicate */
       def aggregateMatching[A](predicate: (A, A) => Boolean)(acc: Set[A], pair: (A, A)): Set[A] = (acc, pair) match {
         case (acc, (a, b)) if predicate(a, b) => acc + a + b
-        case (acc, _) => acc
+        case (acc, _)                         => acc
       }
     }
 

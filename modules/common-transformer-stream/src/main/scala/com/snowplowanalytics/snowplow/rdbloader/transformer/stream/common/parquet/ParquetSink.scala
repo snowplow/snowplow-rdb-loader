@@ -48,7 +48,7 @@ object ParquetSink {
   ): Pipe[F, Transformed.Data, Unit] = { transformedData =>
     // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
     // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
-    val targetPath = s"${resources.parquetOps.transformPath(uri.toString)}/${window.getDir}/${path.value}"
+    val targetPath     = s"${resources.parquetOps.transformPath(uri.toString)}/${window.getDir}/${path.value}"
     val schemaCreation = createSchemaFromTypes(resources, types).value
 
     Stream.eval(schemaCreation).flatMap {

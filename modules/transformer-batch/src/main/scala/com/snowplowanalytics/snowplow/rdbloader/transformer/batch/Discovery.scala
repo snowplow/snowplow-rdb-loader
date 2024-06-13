@@ -50,7 +50,7 @@ object Discovery {
     listDirs: Folder => List[Folder],
     keyExists: BlobStorage.Key => Boolean
   ): (Future[List[Folder]], List[Folder]) = {
-    val since = getConcrete(runInterval, now)
+    val since        = getConcrete(runInterval, now)
     val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
     val shreddedDirs = listDirs(shreddedFolder)
 
@@ -77,10 +77,10 @@ object Discovery {
   def getConcrete(runInterval: RunInterval, now: Instant): Option[Instant] = {
     val instantForDuration = runInterval.sinceAge.map(v => now.minusMillis(v.toMillis))
     (runInterval.sinceTimestamp.map(_.value), instantForDuration) match {
-      case (None, None) => None
+      case (None, None)                   => None
       case (i1 @ Some(v1), i2 @ Some(v2)) => if (v1.isAfter(v2)) i1 else i2
-      case (v1, None) => v1
-      case (None, v2) => v2
+      case (v1, None)                     => v1
+      case (None, v2)                     => v2
     }
   }
 
@@ -122,7 +122,7 @@ object Discovery {
     legacyMessageFormat: Boolean
   ): Unit = {
     val (bucket, key) = BlobStorage.splitKey(message.base.withKey(FinalKeyName))
-    val asString = message.selfDescribingData(legacyMessageFormat).asString
+    val asString      = message.selfDescribingData(legacyMessageFormat).asString
 
     sendToQueue("shredding", asString) match {
       case Left(e) =>

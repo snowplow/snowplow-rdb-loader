@@ -40,7 +40,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       )
       runShredJob(inputEvent).typesInfo match {
         case TypesInfo.Shredded(types) => types.toSet ==== expected
-        case _ => ko
+        case _                         => ko
       }
     }
 
@@ -56,7 +56,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       )
       runShredJob(inputEvent, false, true).typesInfo match {
         case TypesInfo.Shredded(types) => types.toSet ==== expected
-        case _ => ko
+        case _                         => ko
       }
     }
 
@@ -73,7 +73,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       )
       runShredJob(inputEvent, false, true, List(linkClickSchema)).typesInfo match {
         case TypesInfo.Shredded(types) => types.toSet ==== expected
-        case _ => ko
+        case _                         => ko
       }
     }
 
@@ -90,7 +90,7 @@ class AccumulatorSpec extends Specification with ShredJobSpec {
       )
       runShredJob(inputEvent, false, true, List(randomSchema)).typesInfo match {
         case TypesInfo.Shredded(types) => types.toSet ==== expected
-        case _ => ko
+        case _                         => ko
       }
     }
   }

@@ -68,8 +68,8 @@ case class State(
   /** Check if Loader is ready to perform a next load */
   def isBusy: Boolean =
     loading match {
-      case Load.Status.Idle => false
-      case Load.Status.Paused(_) => true
+      case Load.Status.Idle          => false
+      case Load.Status.Paused(_)     => true
       case Load.Status.Loading(_, _) => true
     }
 
@@ -79,18 +79,18 @@ case class State(
   def getFailures: Failures =
     loading match {
       case Load.Status.Loading(folder, _) => failures - folder
-      case _ => failures
+      case _                              => failures
     }
 
   def showExtended: String = {
     val statusInfo = show"Loader is in ${loading} state".some
     val attemptsInfo = loading match {
-      case Idle => none
-      case Paused(_) => none
+      case Idle          => none
+      case Paused(_)     => none
       case Loading(_, _) => show"$attempts attempts has been made to load current folder".some
     }
     val failuresInfo = if (getFailures.nonEmpty) show"${getFailures.size} failed folders in retry queue".some else none[String]
-    val updatedInfo = s"Last state update at ${updated.formatted}".some
+    val updatedInfo  = s"Last state update at ${updated.formatted}".some
     List(show.some, statusInfo, attemptsInfo, failuresInfo, updatedInfo).unite.mkString("; ")
   }
 }

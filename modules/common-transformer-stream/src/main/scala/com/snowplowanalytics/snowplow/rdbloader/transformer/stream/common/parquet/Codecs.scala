@@ -74,12 +74,12 @@ private[parquet] object Codecs {
      * com.github.mjakubowski84.parquet4s.Decimals.binaryFromDecimal
      */
     private def encodeDecimalAsByteArray(value: BigDecimal) = {
-      val unscaledBytes = value.underlying().unscaledValue().toByteArray
+      val unscaledBytes   = value.underlying().unscaledValue().toByteArray
       val bytesDifference = ParquetSchema.byteArrayLength - unscaledBytes.length
       if (bytesDifference == 0) {
         BinaryValue(unscaledBytes)
       } else {
-        val buffer = ByteBuffer.allocate(ParquetSchema.byteArrayLength)
+        val buffer     = ByteBuffer.allocate(ParquetSchema.byteArrayLength)
         val sign: Byte = if (unscaledBytes.head < 0) -1 else 0
         // sign as head, unscaled as tail of buffer
         (0 until bytesDifference).foreach(_ => buffer.put(sign))

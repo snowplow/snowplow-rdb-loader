@@ -32,11 +32,11 @@ class AzureBlobStorageSpec extends Specification {
     "parse root path" in {
       PathParts.parse(testContainerPath) must beEqualTo(
         PathParts(
-          containerName = "test-container",
+          containerName      = "test-container",
           storageAccountName = "accountName",
-          scheme = "https",
-          endpointSuffix = "core.windows.net",
-          relative = ""
+          scheme             = "https",
+          endpointSuffix     = "core.windows.net",
+          relative           = ""
         )
       )
     }
@@ -44,11 +44,11 @@ class AzureBlobStorageSpec extends Specification {
     "parse non-root path" in {
       PathParts.parse(s"$testContainerPath/path1/path2/") must beEqualTo(
         PathParts(
-          containerName = "test-container",
+          containerName      = "test-container",
           storageAccountName = "accountName",
-          scheme = "https",
-          endpointSuffix = "core.windows.net",
-          relative = "path1/path2/"
+          scheme             = "https",
+          endpointSuffix     = "core.windows.net",
+          relative           = "path1/path2/"
         )
       )
     }

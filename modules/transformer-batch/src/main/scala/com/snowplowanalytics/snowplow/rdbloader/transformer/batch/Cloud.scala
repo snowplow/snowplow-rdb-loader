@@ -30,9 +30,9 @@ import BlobStorage.Folder
 
 object Cloud {
 
-  final val MaxRetries = 10
+  final val MaxRetries     = 10
   final val RetryBaseDelay = 1000 // milliseconds
-  final val RetryMaxDelay = 20 * 1000 // milliseconds
+  final val RetryMaxDelay  = 20 * 1000 // milliseconds
 
   /** Common retry policy for S3 and SQS (jitter) */
   final val RetryPolicy =

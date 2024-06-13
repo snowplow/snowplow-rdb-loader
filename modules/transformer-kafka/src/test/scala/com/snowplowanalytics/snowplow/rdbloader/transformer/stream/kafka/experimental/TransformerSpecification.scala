@@ -141,8 +141,8 @@ abstract class TransformerSpecification extends Specification with AppDependenci
     windows.foldLeft(AggregatedData.empty) { case (aggregated, window) =>
       val windowTypes = window.`shredding_complete.json`.typesInfo.asInstanceOf[TypesInfo.WideRow].types
       AggregatedData(
-        good = window.goodEvents ::: aggregated.good,
-        bad = window.badEvents ::: aggregated.bad,
+        good  = window.goodEvents ::: aggregated.good,
+        bad   = window.badEvents ::: aggregated.bad,
         types = windowTypes ::: aggregated.types
       )
     }
@@ -164,9 +164,9 @@ abstract class TransformerSpecification extends Specification with AppDependenci
       message must beEqualTo(scMessageInStorage)
 
       // Assuming folder name structure ending like '.../run=yyyy-MM-dd-HH-mm-ss-${UUID}/'
-      val base = message.base.stripSuffix("/")
+      val base  = message.base.stripSuffix("/")
       val appID = base.takeRight(36) // extract application ID which is represented by UUID at the end of a folder name
-      val time = base.stripSuffix(appID).stripSuffix("-").takeRight(19) // extract date and time of the window, but without `run=` prefix
+      val time  = base.stripSuffix(appID).stripSuffix("-").takeRight(19) // extract date and time of the window, but without `run=` prefix
       val parsedTime = LocalDateTime.parse(time, DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss"))
 
       println(
@@ -248,8 +248,8 @@ abstract class TransformerSpecification extends Specification with AppDependenci
 
 object TransformerSpecification {
 
-  type Blob = Array[Byte]
-  type DataRow = Json
+  type Blob          = Array[Byte]
+  type DataRow       = Json
   type DataAssertion = AggregatedData => MatchResult[Any]
 
   final case class CountExpectations(good: Int, bad: Int) {
@@ -263,7 +263,7 @@ object TransformerSpecification {
     def getTotalNumberOfEvents: Long =
       value.map { window =>
         val good = window.`shredding_complete.json`.count.map(_.good).getOrElse(0L)
-        val bad = window.`shredding_complete.json`.count.flatMap(_.bad).getOrElse(0L)
+        val bad  = window.`shredding_complete.json`.count.flatMap(_.bad).getOrElse(0L)
         good + bad
       }.sum
   }

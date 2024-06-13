@@ -27,7 +27,7 @@ object Manifest {
   implicit private val LoggerName =
     Logging.LoggerName(getClass.getSimpleName.stripSuffix("$"))
 
-  val Name = "manifest"
+  val Name       = "manifest"
   val LegacyName = "manifest_legacy"
 
   // Applicable only for Redshift
@@ -80,7 +80,7 @@ object Manifest {
                case InitStatus.Migrated | InitStatus.Created =>
                  config match {
                    case _: Redshift => DAO[F].executeUpdate(Statement.CommentOn(s"$schema.$Name", "0.2.0"), DAO.Purpose.NonLoading)
-                   case _ => Monad[F].unit
+                   case _           => Monad[F].unit
                  }
                case _ =>
                  Monad[F].unit

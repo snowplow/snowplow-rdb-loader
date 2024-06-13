@@ -33,8 +33,8 @@ object PureMonitoring {
 
     def periodicMetrics: Metrics.PeriodicMetrics[Pure] =
       new Metrics.PeriodicMetrics[Pure] {
-        def report: Stream[Pure, Unit] = Stream.empty
-        def setMaxTstampOfLoadedData(tstamp: Instant): Pure[Unit] = Pure.unit
+        def report: Stream[Pure, Unit]                                = Stream.empty
+        def setMaxTstampOfLoadedData(tstamp: Instant): Pure[Unit]     = Pure.unit
         def setEarliestKnownUnloadedData(tstamp: Instant): Pure[Unit] = Pure.unit
       }
   }

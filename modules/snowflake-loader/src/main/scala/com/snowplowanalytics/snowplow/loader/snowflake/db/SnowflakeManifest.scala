@@ -16,16 +16,16 @@ import com.snowplowanalytics.snowplow.loader.snowflake.ast._
 
 object SnowflakeManifest {
   val Columns: List[Column] = List(
-    Column("base", SnowflakeDatatype.Varchar(512), notNull = true, unique = true),
-    Column("types", SnowflakeDatatype.JsonArray, notNull = true),
-    Column("shredding_started", SnowflakeDatatype.Timestamp, notNull = true),
+    Column("base", SnowflakeDatatype.Varchar(512), notNull             = true, unique = true),
+    Column("types", SnowflakeDatatype.JsonArray, notNull               = true),
+    Column("shredding_started", SnowflakeDatatype.Timestamp, notNull   = true),
     Column("shredding_completed", SnowflakeDatatype.Timestamp, notNull = true),
     Column("min_collector_tstamp", SnowflakeDatatype.Timestamp),
     Column("max_collector_tstamp", SnowflakeDatatype.Timestamp),
-    Column("ingestion_tstamp", SnowflakeDatatype.Timestamp, notNull = true),
-    Column("compression", SnowflakeDatatype.Varchar(16), notNull = true),
+    Column("ingestion_tstamp", SnowflakeDatatype.Timestamp, notNull     = true),
+    Column("compression", SnowflakeDatatype.Varchar(16), notNull        = true),
     Column("processor_artifact", SnowflakeDatatype.Varchar(64), notNull = true),
-    Column("processor_version", SnowflakeDatatype.Varchar(32), notNull = true),
+    Column("processor_version", SnowflakeDatatype.Varchar(32), notNull  = true),
     Column("count_good", SnowflakeDatatype.Integer)
   )
 

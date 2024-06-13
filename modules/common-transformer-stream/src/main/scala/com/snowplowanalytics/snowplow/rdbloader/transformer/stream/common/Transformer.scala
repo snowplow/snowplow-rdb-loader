@@ -61,7 +61,7 @@ object Transformer {
 
     def badTransform(badRow: BadRow): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, revision, addition)) = badRow.schemaKey
-      val data = Transformed.Data.DString(badRow.compact)
+      val data                                                                  = Transformed.Data.DString(badRow.compact)
       Transformed.Shredded.Json(false, vendor, name, model, revision, addition, data)
     }
 
@@ -98,7 +98,7 @@ object Transformer {
         TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
       }
       val fileFormat = format match {
-        case Formats.WideRow.JSON => TypesInfo.WideRow.WideRowFormat.JSON
+        case Formats.WideRow.JSON    => TypesInfo.WideRow.WideRowFormat.JSON
         case Formats.WideRow.PARQUET => TypesInfo.WideRow.WideRowFormat.PARQUET
       }
       TypesInfo.WideRow(fileFormat, wrapped.toList)

@@ -71,14 +71,14 @@ class ConfigSpec extends Specification {
 
 object ConfigSpec {
   val exampleStreamInput = Config.StreamInput.Pubsub(
-    subscription = "projects/project-id/subscriptions/subscription-id",
-    customPubsubEndpoint = None,
-    parallelPullCount = 1,
-    bufferSize = 500,
-    maxAckExtensionPeriod = 1.hour,
+    subscription               = "projects/project-id/subscriptions/subscription-id",
+    customPubsubEndpoint       = None,
+    parallelPullCount          = 1,
+    bufferSize                 = 500,
+    maxAckExtensionPeriod      = 1.hour,
     maxOutstandingMessagesSize = None,
     minDurationPerAckExtension = 60.seconds,
-    awaitTerminatePeriod = 60.seconds
+    awaitTerminatePeriod       = 60.seconds
   )
   val exampleWindowPeriod = 5.minutes
   val exampleOutput = Config.Output.GCS(
@@ -87,19 +87,19 @@ object ConfigSpec {
     4096,
     10000,
     Config.Output.Bad.Queue.Pubsub(
-      topic = "projects/project-id/topics/topic-id",
-      batchSize = 1000,
+      topic                = "projects/project-id/topics/topic-id",
+      batchSize            = 1000,
       requestByteThreshold = Some(8000000),
-      delayThreshold = 200.milliseconds
+      delayThreshold       = 200.milliseconds
     )
   )
   val exampleDefaultOutput = exampleOutput.copy(bad = Config.Output.Bad.File)
 
   val exampleQueueConfig = Config.QueueConfig.Pubsub(
-    topic = "projects/project-id/topics/topic-id",
-    batchSize = 100,
+    topic                = "projects/project-id/topics/topic-id",
+    batchSize            = 100,
     requestByteThreshold = Some(1000),
-    delayThreshold = 200.milliseconds
+    delayThreshold       = 200.milliseconds
   )
   val exampleFormats = TransformerConfig.Formats.WideRow.JSON
   val exampleMonitoringStream = Config.Monitoring(
@@ -143,8 +143,8 @@ object ConfigSpec {
       None
     )
   val exampleDefaultFeatureFlags = TransformerConfig.FeatureFlags(false, None, true, false)
-  val exampleValidations = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
-  val exampleLicense = License(true)
-  val emptyValidations = Validations(None)
-  val TestProcessor = Processor(BuildInfo.name, BuildInfo.version)
+  val exampleValidations         = Validations(Some(Instant.parse("2021-11-18T11:00:00.00Z")))
+  val exampleLicense             = License(true)
+  val emptyValidations           = Validations(None)
+  val TestProcessor              = Processor(BuildInfo.name, BuildInfo.version)
 }

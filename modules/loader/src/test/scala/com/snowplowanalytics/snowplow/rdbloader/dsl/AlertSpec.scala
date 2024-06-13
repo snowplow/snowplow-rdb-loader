@@ -39,8 +39,8 @@ class AlertSpec extends Specification {
     "not exceed the maximum length for an alert message" in {
       val longMsg = "x" * 10000
 
-      val e = new RuntimeException(longMsg)
-      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val e            = new RuntimeException(longMsg)
+      val folder       = BlobStorage.Folder.coerce("s3://bucket/1/")
       val alertMessage = Alert.UnskippableLoadFailure(folder, e)
 
       Alert.getMessage(alertMessage) must haveSize(4096)
