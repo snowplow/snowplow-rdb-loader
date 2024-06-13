@@ -1,3 +1,11 @@
+Version 6.0.1 (2024-06-13)
+--------------------------
+Add scalafmtSbt settings and CI Check (#1348)
+Fix commons-configuration2 to 2.10.1 (#1348)
+Extend timeout for BaseProcessingSpec (#1347)
+Bump sbt-snowplow-release (#1347)
+Fix snowflake loading error on duplicate column names (#1347)
+
 Version 6.0.0 (2024-03-18)
 --------------------------
 Bump AWS SDK to 1.12.677 (#1344)
