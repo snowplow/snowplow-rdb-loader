@@ -47,7 +47,7 @@ object EventDeduplicationSpec {
 
   /** Replace `hierarcy.rootId` UUID in shredded context JSON with dummy */
   private def eraseHierarchy(actual: String): String = {
-    val actualJson = parse(actual)
+    val actualJson     = parse(actual)
     val modifiedActual = actualJson.merge("hierarchy" -> ("rootId" -> dummyUuid): JObject)
     compact(modifiedActual)
   }
@@ -55,7 +55,7 @@ object EventDeduplicationSpec {
   /** Extract event_id from shredded context */
   private def getRootId(hierarchy: String): String = {
     implicit val formats = org.json4s.DefaultFormats
-    val json = parse(hierarchy)
+    val json             = parse(hierarchy)
     (json \ "hierarchy" \ "rootId").extract[String]
   }
 }
@@ -144,7 +144,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       val eventIds = lines.map(_.split("\t").apply(6))
 
       val exactTwoEventsIds = eventIds.size mustEqual 2
-      val distinctIds = eventIds.head mustNotEqual eventIds(1)
+      val distinctIds       = eventIds.head mustNotEqual eventIds(1)
 
       exactTwoEventsIds.and(distinctIds)
     }
@@ -226,7 +226,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
     val testOutputDirs = OutputDirs(randomFile("output"))
     runShredJob(
       EventDeduplicationSpec.lines,
-      outputDirs = Some(testOutputDirs),
+      outputDirs    = Some(testOutputDirs),
       deduplication = Config.Deduplication(synthetic = Config.Deduplication.Synthetic.None, natural = false)
     )
     val expectedFiles = scala.collection.mutable.ArrayBuffer.empty[String]
@@ -243,7 +243,7 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       val eventIds = lines.map(_.split("\t").apply(6))
 
       val exactThreeEventsIds = eventIds.size mustEqual 3
-      val duplicatedIds = eventIds.count(_ == originalUuid) mustEqual 3
+      val duplicatedIds       = eventIds.count(_ == originalUuid) mustEqual 3
 
       exactThreeEventsIds.and(duplicatedIds)
     }

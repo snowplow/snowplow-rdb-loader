@@ -91,8 +91,8 @@ class StorageTargetSpec extends Specification {
       import impl._
 
       val expected: Config.Schedules = Config.Schedules(
-        noOperation = List.empty[Config.Schedule],
-        optimizeEvents = None,
+        noOperation      = List.empty[Config.Schedule],
+        optimizeEvents   = None,
         optimizeManifest = Cron.unsafeParse("*/3 * * ? * *").some
       )
 
@@ -121,10 +121,10 @@ class StorageTargetSpec extends Specification {
         "localPort": 15151
       }"""
 
-      val key = StorageTarget.EncryptedConfig("snowplow.rdbloader.redshift.key")
-      val bastion = StorageTarget.BastionConfig("bastion.acme.com", 22, "snowplow-loader", None, Some(key))
+      val key         = StorageTarget.EncryptedConfig("snowplow.rdbloader.redshift.key")
+      val bastion     = StorageTarget.BastionConfig("bastion.acme.com", 22, "snowplow-loader", None, Some(key))
       val destination = StorageTarget.DestinationConfig("10.0.0.11", 5439)
-      val expected = StorageTarget.TunnelConfig(bastion, 15151, destination)
+      val expected    = StorageTarget.TunnelConfig(bastion, 15151, destination)
 
       sshTunnel.as[StorageTarget.TunnelConfig] must beRight(expected)
     }
@@ -172,15 +172,15 @@ class StorageTargetSpec extends Specification {
     }"""
 
       val expected: StorageTarget.Databricks = StorageTarget.Databricks(
-        host = "databricks.com",
-        catalog = None,
-        schema = "snowplow",
-        port = 443,
-        httpPath = "http/path",
-        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-        sshTunnel = None,
-        userAgent = "snowplow-rdbloader-oss",
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
+        host                 = "databricks.com",
+        catalog              = None,
+        schema               = "snowplow",
+        port                 = 443,
+        httpPath             = "http/path",
+        password             = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        sshTunnel            = None,
+        userAgent            = "snowplow-rdbloader-oss",
+        loadAuthMethod       = StorageTarget.LoadAuthMethod.NoCreds,
         eventsOptimizePeriod = 2.days,
         3
       )

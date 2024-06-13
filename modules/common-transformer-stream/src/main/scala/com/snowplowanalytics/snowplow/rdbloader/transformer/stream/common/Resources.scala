@@ -119,7 +119,7 @@ object Resources {
     mkBadQueue: Bad.Queue => Resource[F, Queue.ChunkProducer[F]]
   ): Resource[F, BadSink[F]] =
     config.output.bad match {
-      case Bad.File => Resource.pure[F, BadSink[F]](BadSink.UseBlobStorage())
+      case Bad.File               => Resource.pure[F, BadSink[F]](BadSink.UseBlobStorage())
       case queueConfig: Bad.Queue => mkBadQueue(queueConfig).map(BadSink.UseQueue(_))
     }
 
@@ -146,7 +146,7 @@ object Resources {
     Resource.eval {
       mkAtomicLengths(igluResolver, config).flatMap {
         case Right(atomicLengths) => Monad[F].pure(Event.parser(atomicLengths))
-        case Left(error) => MonadThrow[F].raiseError[EventParser](error)
+        case Left(error)          => MonadThrow[F].raiseError[EventParser](error)
       }
     }
   private def mkAtomicLengths[F[_]: Monad: Clock: RegistryLookup](
@@ -167,13 +167,13 @@ object Resources {
   private def getRegionFromConfig(config: Config): Option[String] =
     config.input match {
       case c: Config.StreamInput.Kinesis => Some(c.region.name)
-      case _ => None
+      case _                             => None
     }
 
   private def getCloudFromConfig(config: Config): Option[Telemetry.Cloud] =
     config.input match {
       case _: Config.StreamInput.Kinesis => Some(Telemetry.Cloud.Aws)
-      case _: Config.StreamInput.Pubsub => Some(Telemetry.Cloud.Gcp)
-      case _ => None
+      case _: Config.StreamInput.Pubsub  => Some(Telemetry.Cloud.Gcp)
+      case _                             => None
     }
 }

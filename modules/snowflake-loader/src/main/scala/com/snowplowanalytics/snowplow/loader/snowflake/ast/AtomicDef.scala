@@ -38,7 +38,7 @@ object AtomicDef {
     Column("name_tracker", Varchar(Some(128))),
     Column("v_tracker", Varchar(Some(100))),
     Column("v_collector", Varchar(Some(100)), notNull = true),
-    Column("v_etl", Varchar(Some(100)), notNull = true),
+    Column("v_etl", Varchar(Some(100)), notNull       = true),
 
     // User id and visit
     Column("user_id", Varchar(Some(255))),

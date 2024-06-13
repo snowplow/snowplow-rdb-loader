@@ -64,7 +64,7 @@ object Monitoring {
   def apply[F[_]](implicit ev: Monitoring[F]): Monitoring[F] = ev
 
   val LoadSucceededSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "load_succeeded", "jsonschema", SchemaVer.Full(3, 0, 1))
-  val AlertSchema = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
+  val AlertSchema         = SchemaKey("com.snowplowanalytics.monitoring.batch", "alert", "jsonschema", SchemaVer.Full(1, 0, 0))
 
   val Application: String =
     s"snowplow-rdb-loader-${BuildInfo.version}"
@@ -187,12 +187,12 @@ object Monitoring {
       def success(payload: SuccessPayload): F[Unit] = {
         val webhookRequest = viaWebhook[SuccessPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
-          case None => Logging[F].debug("Webhook monitoring is not configured, skipping success tracking")
+          case None      => Logging[F].debug("Webhook monitoring is not configured, skipping success tracking")
         }
 
         val snowplowRequest = tracker match {
           case Some(t) => t.trackSelfDescribingEvent(SuccessPayload.toSelfDescribing(payload))
-          case None => Logging[F].debug("Snowplow monitoring is not configured, skipping success tracking")
+          case None    => Logging[F].debug("Snowplow monitoring is not configured, skipping success tracking")
         }
 
         snowplowRequest *> webhookRequest
@@ -204,12 +204,12 @@ object Monitoring {
         val payload = AlertPayload.ofAlert(message)
         val webhookRequest = viaWebhook[AlertPayload](payload, (p, c) => p.copy(tags = p.tags ++ c.tags)) match {
           case Some(req) => req
-          case None => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
+          case None      => Logging[F].debug("Webhook monitoring is not configured, skipping alert")
         }
 
         val snowplowRequest = tracker match {
           case Some(t) => t.trackSelfDescribingEvent(AlertPayload.toSelfDescribing(payload))
-          case None => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
+          case None    => Logging[F].debug("Snowplow monitoring is not configured, skipping alert")
         }
 
         snowplowRequest *> webhookRequest
@@ -257,7 +257,7 @@ object Monitoring {
 
     toMsg(response) match {
       case Some(msg) => Logging[F].warning(msg)
-      case None => Logging[F].debug("Snowplow event has been submitted")
+      case None      => Logging[F].debug("Snowplow event has been submitted")
     }
   }
 
@@ -271,8 +271,8 @@ object Monitoring {
     def unapply(hostPort: String): Option[(String, Int)] =
       hostPort.split(":").toList match {
         case host :: port :: Nil if isInt(port) => Some((host, port.toInt))
-        case host :: Nil => Some((host, 80))
-        case _ => None
+        case host :: Nil                        => Some((host, 80))
+        case _                                  => None
       }
   }
 }

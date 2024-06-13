@@ -45,7 +45,7 @@ object Kinesis {
 
   case class Message[F[_]: Sync](record: CommittableRecord) extends Queue.Consumer.Message[F] {
     override def content: String = getContent(record)
-    override def ack: F[Unit] = record.checkpoint
+    override def ack: F[Unit]    = record.checkpoint
   }
 
   def consumer[F[_]: Async: Applicative](

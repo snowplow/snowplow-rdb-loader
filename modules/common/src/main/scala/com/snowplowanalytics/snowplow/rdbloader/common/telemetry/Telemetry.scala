@@ -81,7 +81,7 @@ object Telemetry {
                    EndpointParams(config.collectorUri, port = Some(config.collectorPort), https = config.secure),
                    client,
                    retryPolicy = RetryPolicy.MaxAttempts(10),
-                   callback = Some(emitterCallback[F] _)
+                   callback    = Some(emitterCallback[F] _)
                  )
     } yield new Tracker(NonEmptyList.of(emitter), "tracker-telemetry", appName)
 

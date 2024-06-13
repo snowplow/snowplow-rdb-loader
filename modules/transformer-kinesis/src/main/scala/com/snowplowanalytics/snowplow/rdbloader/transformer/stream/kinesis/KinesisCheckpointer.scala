@@ -32,7 +32,7 @@ object KinesisCheckpointer {
   def checkpointer[F[_]: Sync](message: Queue.Consumer.Message[F]): KinesisCheckpointer[F] =
     message match {
       case m: Kinesis.Message[F] => KinesisCheckpointer[F](Map(m.record.shardId -> safelyCheckpoint(m)))
-      case _ => Checkpointer[F, KinesisCheckpointer[F]].empty
+      case _                     => Checkpointer[F, KinesisCheckpointer[F]].empty
     }
 
   private def safelyCheckpoint[F[_]: Sync](message: Kinesis.Message[F]): F[Unit] =

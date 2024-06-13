@@ -39,50 +39,50 @@ object Metrics {
 
   object KVMetric {
     final case class CountGood(v: Long) extends KVMetric {
-      val key = "count_good"
-      val value = v.toString
+      val key        = "count_good"
+      val value      = v.toString
       val metricType = MetricType.Count
     }
     final case class CountBad(v: Long) extends KVMetric {
-      val key = "count_bad"
-      val value = v.toString
+      val key        = "count_bad"
+      val value      = v.toString
       val metricType = MetricType.Count
     }
     final case class CollectorLatencyMin(v: Long) extends KVMetric {
-      val key = "latency_collector_to_load_min"
-      val value = v.toString
+      val key        = "latency_collector_to_load_min"
+      val value      = v.toString
       val metricType = MetricType.Gauge
     }
     final case class CollectorLatencyMax(v: Long) extends KVMetric {
-      val key = "latency_collector_to_load_max"
-      val value = v.toString
+      val key        = "latency_collector_to_load_max"
+      val value      = v.toString
       val metricType = MetricType.Gauge
     }
     final case class ShredderLatencyStart(v: Long) extends KVMetric {
-      val key = "latency_shredder_start_to_load"
-      val value = v.toString
+      val key        = "latency_shredder_start_to_load"
+      val value      = v.toString
       val metricType = MetricType.Gauge
     }
     final case class ShredderLatencyEnd(v: Long) extends KVMetric {
-      val key = "latency_shredder_end_to_load"
-      val value = v.toString
+      val key        = "latency_shredder_end_to_load"
+      val value      = v.toString
       val metricType = MetricType.Gauge
     }
 
     final case class MinAgeOfLoadedData(v: Long) extends KVMetric {
-      val key = "minimum_age_of_loaded_data"
-      val value = v.toString
+      val key        = "minimum_age_of_loaded_data"
+      val value      = v.toString
       val metricType = MetricType.Gauge
     }
 
     final case class RecoveryTablesLoaded(v: Int) extends KVMetric {
-      val key = "recovery_tables_loaded"
-      val value = v.toString
+      val key        = "recovery_tables_loaded"
+      val value      = v.toString
       val metricType = MetricType.Count
     }
 
     final case class DestinationHealthy(value: String) extends KVMetric {
-      val key = "destination_healthy"
+      val key        = "destination_healthy"
       val metricType = MetricType.Gauge
     }
   }
@@ -129,7 +129,7 @@ object Metrics {
           def setMaxTstampOfLoadedData(tstamp: Instant): F[Unit] =
             refs.maxTstampOfLoadedData.update {
               case MaxTstampOfLoadedData.FromLoad(current) if current.isAfter(tstamp) => MaxTstampOfLoadedData.FromLoad(current)
-              case _ => MaxTstampOfLoadedData.FromLoad(tstamp)
+              case _                                                                  => MaxTstampOfLoadedData.FromLoad(tstamp)
             }
 
           def setEarliestKnownUnloadedData(tstamp: Instant): F[Unit] =

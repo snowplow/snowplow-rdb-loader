@@ -24,9 +24,9 @@ object Statements {
   ) {
     def toFragment: Fragment = {
       val frConstraint = primaryKey.map(c => fr", ${c.toDdl}").getOrElse(Fragment.empty)
-      val frCols = columns.map(_.toDdl).intercalate(fr",")
-      val frTemp = if (temporary) Fragment.const("TEMPORARY") else Fragment.empty
-      val frTableName = Fragment.const0(s"$schema.$name")
+      val frCols       = columns.map(_.toDdl).intercalate(fr",")
+      val frTemp       = if (temporary) Fragment.const("TEMPORARY") else Fragment.empty
+      val frTableName  = Fragment.const0(s"$schema.$name")
       sql"""CREATE ${frTemp}TABLE IF NOT EXISTS $frTableName (
            $frCols$frConstraint
          )"""
@@ -41,7 +41,7 @@ object Statements {
   ) {
     def toFragment: Fragment = {
       val frTableName = Fragment.const0(s"$schema.$table")
-      val frColumn = Fragment.const0(column)
+      val frColumn    = Fragment.const0(column)
       sql"ALTER TABLE $frTableName ADD COLUMN $frColumn ${datatype.toDdl}"
     }
   }

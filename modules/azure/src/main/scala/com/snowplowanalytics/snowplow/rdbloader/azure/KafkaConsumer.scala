@@ -22,7 +22,7 @@ object KafkaConsumer {
 
   final case class KafkaMessage[F[_]](record: CommittableConsumerRecord[F, String, Array[Byte]]) extends Queue.Consumer.Message[F] {
     override def content: String = new String(record.record.value, StandardCharsets.UTF_8)
-    override def ack: F[Unit] = record.offset.commit
+    override def ack: F[Unit]    = record.offset.commit
   }
 
   def consumer[F[_]: Async](
@@ -49,7 +49,7 @@ object KafkaConsumer {
             override def read: fs2.Stream[F, Consumer.Message[F]] = {
               val stream = consumer.records.map(KafkaMessage(_))
               postProcess match {
-                case None => stream
+                case None    => stream
                 case Some(p) => stream.flatMap(p.process(_))
               }
             }

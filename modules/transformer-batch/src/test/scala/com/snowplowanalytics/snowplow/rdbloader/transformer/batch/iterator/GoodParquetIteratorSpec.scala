@@ -17,5 +17,5 @@ import OnlyGoodDataIteratorSpec.{BadGenerator, GoodGenerator}
 class GoodParquetIteratorSpec extends GoodDataIteratorSpec {
 
   override val goodGenerator: GoodGenerator = () => Parquet(ParquetData(List(ParquetData.FieldWithValue(null, null))))
-  override val badGenerator: BadGenerator = () => WideRow(good = false, DString("TEST BAD DATA"))
+  override val badGenerator: BadGenerator   = () => WideRow(good = false, DString("TEST BAD DATA"))
 }

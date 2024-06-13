@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
 
 object PureClock {
 
-  val RealTimeTick = "TICK REALTIME"
+  val RealTimeTick   = "TICK REALTIME"
   val MonotonickTick = "TICK MONOTONIC"
 
   def interpreter: Clock[Pure] = new Clock[Pure] {

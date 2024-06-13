@@ -79,7 +79,7 @@ object StatsDReporter {
   )(
     m: String
   ): F[Unit] = {
-    val bytes = m.getBytes(UTF_8)
+    val bytes  = m.getBytes(UTF_8)
     val packet = new DatagramPacket(bytes, bytes.length, addr, port)
     Sync[F].blocking(socket.send(packet))
   }

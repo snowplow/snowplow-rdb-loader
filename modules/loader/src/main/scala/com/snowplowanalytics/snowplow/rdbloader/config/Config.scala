@@ -71,7 +71,7 @@ object Config {
   )
   final case class Schedules(
     noOperation: List[Schedule],
-    optimizeEvents: Option[CronExpr] = None,
+    optimizeEvents: Option[CronExpr]   = None,
     optimizeManifest: Option[CronExpr] = None
   )
   final case class Monitoring(
@@ -197,7 +197,7 @@ object Config {
         case Right(cred) =>
           cred match {
             case "" => Right(None)
-            case _ => cur.as[CronExpr].map(_.some)
+            case _  => cur.as[CronExpr].map(_.some)
           }
       }
     }
@@ -257,11 +257,11 @@ object Config {
 
     implicit val strategyDecoder: Decoder[Strategy] =
       Decoder[String].map(_.toUpperCase).emap {
-        case "JITTER" => Strategy.Jitter.asRight
-        case "CONSTANT" => Strategy.Constant.asRight
+        case "JITTER"      => Strategy.Jitter.asRight
+        case "CONSTANT"    => Strategy.Constant.asRight
         case "EXPONENTIAL" => Strategy.Exponential.asRight
-        case "FIBONACCI" => Strategy.Fibonacci.asRight
-        case other => s"$other cannot be used as retry strategy. Availble choices: JITTER, CONSTANT, EXPONENTIAL, FIBONACCI".asLeft
+        case "FIBONACCI"   => Strategy.Fibonacci.asRight
+        case other         => s"$other cannot be used as retry strategy. Availble choices: JITTER, CONSTANT, EXPONENTIAL, FIBONACCI".asLeft
       }
 
     implicit val retriesDecoder: Decoder[Retries] =
@@ -350,7 +350,7 @@ object Config {
       case c: Config.Cloud.Azure if c.azureVaultName.isEmpty =>
         (config.storage.password, config.storage.sshTunnel.flatMap(_.bastion.key)) match {
           case (_: StorageTarget.PasswordConfig.EncryptedKey, _) | (_, Some(_)) => List("Azure vault name is needed")
-          case _ => Nil
+          case _                                                                => Nil
         }
       case _ => Nil
     }
@@ -360,19 +360,19 @@ object Config {
       case _: Config.Cloud.GCP =>
         loadAuthMethod match {
           case StorageTarget.LoadAuthMethod.NoCreds => Nil
-          case _ => List("Only 'NoCreds' load auth method is supported with GCP")
+          case _                                    => List("Only 'NoCreds' load auth method is supported with GCP")
         }
       case _: Config.Cloud.AWS =>
         loadAuthMethod match {
-          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case StorageTarget.LoadAuthMethod.NoCreds                   => Nil
           case _: StorageTarget.LoadAuthMethod.TempCreds.AWSTempCreds => Nil
-          case _ => List("Given 'TempCreds' configuration isn't suitable for AWS")
+          case _                                                      => List("Given 'TempCreds' configuration isn't suitable for AWS")
         }
       case _: Config.Cloud.Azure =>
         loadAuthMethod match {
-          case StorageTarget.LoadAuthMethod.NoCreds => Nil
+          case StorageTarget.LoadAuthMethod.NoCreds                     => Nil
           case _: StorageTarget.LoadAuthMethod.TempCreds.AzureTempCreds => Nil
-          case _ => List("Given 'TempCreds' configuration isn't suitable for Azure")
+          case _                                                        => List("Given 'TempCreds' configuration isn't suitable for Azure")
         }
     }
 
@@ -400,7 +400,7 @@ object Config {
           case _: StorageTarget.LoadAuthMethod.TempCreds => None
           case StorageTarget.LoadAuthMethod.NoCreds =>
             storage.transformedStage match {
-              case None => Some("'transformedStage' needs to be provided when 'NoCreds' load auth method is chosen")
+              case None    => Some("'transformedStage' needs to be provided when 'NoCreds' load auth method is chosen")
               case Some(_) => None
             }
         }
@@ -416,7 +416,7 @@ object Config {
           case _: StorageTarget.LoadAuthMethod.TempCreds => None
           case StorageTarget.LoadAuthMethod.NoCreds =>
             storage.roleArn match {
-              case None => Some("roleArn needs to be provided with 'NoCreds' auth method")
+              case None    => Some("roleArn needs to be provided with 'NoCreds' auth method")
               case Some(_) => None
             }
         }

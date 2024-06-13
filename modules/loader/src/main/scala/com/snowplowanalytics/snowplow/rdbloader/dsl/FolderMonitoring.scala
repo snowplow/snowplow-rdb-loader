@@ -79,7 +79,7 @@ object FolderMonitoring {
     folder: BlobStorage.Folder
   ): Boolean = {
     val noRunPrefix = folder.folderName.stripPrefix("run=")
-    val dateOnly = noRunPrefix.take(TimePattern.length)
+    val dateOnly    = noRunPrefix.take(TimePattern.length)
 
     Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(dateOnly)) match {
       case Right(accessor) =>
@@ -87,7 +87,7 @@ object FolderMonitoring {
           case (Some(sinceDuration), Some(untilDuration)) =>
             val oldest = now.minusMillis(sinceDuration.toMillis)
             val newest = now.minusMillis(untilDuration.toMillis)
-            val time = accessor.query(Instant.from)
+            val time   = accessor.query(Instant.from)
             time.isAfter(oldest) && time.isBefore(newest)
           case (None, Some(untilDuration)) =>
             val newest = now.minusMillis(untilDuration.toMillis)
@@ -273,10 +273,10 @@ object FolderMonitoring {
 
               sinkAndCheck.handleErrorWith { error =>
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>
-                  val msg = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
+                  val msg          = show"Folder monitoring has failed with unhandled exception for the $failedBefore time"
                   val withErrorMsg = show"$msg, message: ${error.getMessage}"
-                  val payload = Alert.FailedFolderMonitoring(error, failedBefore)
-                  val maxAttempts = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
+                  val payload      = Alert.FailedFolderMonitoring(error, failedBefore)
+                  val maxAttempts  = folders.failBeforeAlarm.getOrElse(FailBeforeAlarm)
                   if (failedBefore >= maxAttempts) Logging[F].error(error)(msg) *> Monitoring[F].alert(payload)
                   else Logging[F].warning(withErrorMsg)
                 }

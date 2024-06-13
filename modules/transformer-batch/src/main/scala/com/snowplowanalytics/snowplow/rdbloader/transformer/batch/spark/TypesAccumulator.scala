@@ -72,20 +72,20 @@ object TypesAccumulator {
   )(
     shreddedType: Data.ShreddedType
   ): TypesInfo.Shredded.Type = {
-    val schemaKey = shreddedType.schemaKey
+    val schemaKey     = shreddedType.schemaKey
     val shredProperty = getSnowplowEntity(shreddedType.shredProperty)
     TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), shredProperty)
   }
 
   def wideRowTypeConverter(shreddedType: Data.ShreddedType): TypesInfo.WideRow.Type = {
-    val schemaKey = shreddedType.schemaKey
+    val schemaKey     = shreddedType.schemaKey
     val shredProperty = getSnowplowEntity(shreddedType.shredProperty)
     TypesInfo.WideRow.Type(schemaKey, shredProperty)
   }
 
   private def getSnowplowEntity(shredProperty: Data.ShredProperty): SnowplowEntity =
     shredProperty match {
-      case _: Data.Contexts => SnowplowEntity.Context
+      case _: Data.Contexts   => SnowplowEntity.Context
       case Data.UnstructEvent => SnowplowEntity.SelfDescribingEvent
     }
 }

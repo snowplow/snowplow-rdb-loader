@@ -28,28 +28,28 @@ abstract class WideRowJsonSpec extends Specification with ShredJobSpec {
   sequential
   "A job which is configured for wide row json output" should {
     val shreddingComplete = runShredJob(
-      events = ResourceFile(inputEventsPath),
-      wideRow = Some(WideRow.JSON),
+      events      = ResourceFile(inputEventsPath),
+      wideRow     = Some(WideRow.JSON),
       skipSchemas = skipSchemas
     )
 
     def schemaCount: Int =
       shreddingComplete.typesInfo match {
         case t: TypesInfo.Shredded => t.types.size
-        case t: TypesInfo.WideRow => t.types.size
+        case t: TypesInfo.WideRow  => t.types.size
       }
 
     def containSkipSchemas: Boolean = {
       val schemas = shreddingComplete.typesInfo match {
         case l: TypesInfo.Shredded => l.types.map(_.schemaKey)
-        case l: TypesInfo.WideRow => l.types.map(_.schemaKey)
+        case l: TypesInfo.WideRow  => l.types.map(_.schemaKey)
       }
       schemas.exists(s => ShredJobSpec.inSkipSchemas(skipSchemas, s))
     }
 
     "transform the enriched event to wide row json" in {
       val Some((lines, _)) = readPartFile(dirs.goodRows)
-      val expected = readResourceFile(ResourceFile("/widerow/json/output-widerows"))
+      val expected         = readResourceFile(ResourceFile("/widerow/json/output-widerows"))
       lines.toSet mustEqual (expected.toSet)
     }
 
@@ -68,7 +68,7 @@ abstract class WideRowJsonSpec extends Specification with ShredJobSpec {
 }
 
 class PlainWideRowJsonSpec extends WideRowJsonSpec {
-  def skipSchemas = Nil
+  def skipSchemas             = Nil
   def inputEventsPath: String = "/widerow/json/input-events"
 }
 

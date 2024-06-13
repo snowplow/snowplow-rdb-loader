@@ -17,13 +17,13 @@ case class Column(
   name: String,
   dataType: SnowflakeDatatype,
   notNull: Boolean = false,
-  unique: Boolean = false
+  unique: Boolean  = false
 ) extends Ddl {
   def toDdl: Fragment = {
-    val datatype = dataType.toDdl
+    val datatype  = dataType.toDdl
     val frNotNull = if (notNull) Fragment.const0("NOT NULL") else Fragment.empty
-    val frUnique = if (unique) Fragment.const0(" UNIQUE") else Fragment.empty
-    val frName = Fragment.const0(name)
+    val frUnique  = if (unique) Fragment.const0(" UNIQUE") else Fragment.empty
+    val frName    = Fragment.const0(name)
     sql"$frName $datatype $frNotNull$frUnique"
   }
 }

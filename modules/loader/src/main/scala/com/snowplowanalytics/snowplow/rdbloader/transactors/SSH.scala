@@ -84,12 +84,12 @@ object SSH {
         override def isEnabled(level: Int): Boolean = true
 
         override def log(level: Int, message: String): Unit = dispatcher.unsafeRunSync(level match {
-          case JLogger.INFO => Logger[F].info("JCsh: " + message)
+          case JLogger.INFO  => Logger[F].info("JCsh: " + message)
           case JLogger.ERROR => Logger[F].error("JCsh: " + message)
           case JLogger.DEBUG => Logger[F].debug("JCsh: " + message)
-          case JLogger.WARN => Logger[F].warn("JCsh: " + message)
+          case JLogger.WARN  => Logger[F].warn("JCsh: " + message)
           case JLogger.FATAL => Logger[F].error("JCsh: " + message)
-          case _ => Logger[F].warn("NO LOG LEVEL JCsh: " + message)
+          case _             => Logger[F].warn("NO LOG LEVEL JCsh: " + message)
         })
       })
     }

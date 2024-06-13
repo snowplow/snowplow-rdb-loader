@@ -74,9 +74,9 @@ class DataDiscoverySpec extends Specification {
 
   "fromLoaderMessage" should {
     "not repeat schema criterions if there are different revisions/additions" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val s1 = ShreddedType.Tabular(
@@ -142,9 +142,9 @@ class DataDiscoverySpec extends Specification {
     }
 
     "aggregate errors" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val expected = LoaderError
@@ -164,10 +164,10 @@ class DataDiscoverySpec extends Specification {
 
   "handle" should {
     "return discovery errors if JSONPath cannot be found" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val message = DataDiscoverySpec.shreddingComplete
@@ -189,10 +189,10 @@ class DataDiscoverySpec extends Specification {
     }
 
     "return discovered data if it can be handled" >> {
-      implicit val cache: Cache[Pure] = PureCache.interpreter
-      implicit val iglu: Iglu[Pure] = PureIglu.interpreter
-      implicit val aws: BlobStorage[Pure] = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
-      implicit val logging: Logging[Pure] = PureLogging.interpreter()
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init.withExistingKeys)
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
 
       val message = DataDiscoverySpec.shreddingComplete

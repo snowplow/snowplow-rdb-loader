@@ -39,7 +39,7 @@ class QueueBadSinkSpec extends BaseProcessingSpec {
           inputEventsPath = "/processing-spec/1/input/events"
         )
 
-        val config = TransformerConfig(configFromPath(outputDirectory), igluConfig)
+        val config       = TransformerConfig(configFromPath(outputDirectory), igluConfig)
         val badDirectory = outputDirectory.resolve(s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
         for {
@@ -89,8 +89,8 @@ object QueueBadSinkSpec {
         | "formats": $formats
         |}""".stripMargin
 
-  val shredConfig = appConfigTemplate("""{ "transformationType": "shred"}""")
-  val jsonConfig = appConfigTemplate("""{ "transformationType": "widerow", "fileFormat": "json"}""")
+  val shredConfig   = appConfigTemplate("""{ "transformationType": "shred"}""")
+  val jsonConfig    = appConfigTemplate("""{ "transformationType": "widerow", "fileFormat": "json"}""")
   val parquetConfig = appConfigTemplate("""{ "transformationType": "widerow", "fileFormat": "parquet"}""")
 
   val igluConfig =

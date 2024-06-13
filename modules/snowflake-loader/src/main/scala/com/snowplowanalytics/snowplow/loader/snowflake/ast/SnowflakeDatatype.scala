@@ -19,12 +19,12 @@ object SnowflakeDatatype {
   final case class Varchar(size: Option[Int]) extends SnowflakeDatatype {
     def toDdl: Fragment =
       size match {
-        case None => fr0"VARCHAR"
+        case None    => fr0"VARCHAR"
         case Some(s) => Fragment.const0(s"VARCHAR($s)")
       }
   }
   object Varchar {
-    def apply(): Varchar = Varchar(None)
+    def apply(): Varchar          = Varchar(None)
     def apply(size: Int): Varchar = Varchar(Some(size))
   }
 

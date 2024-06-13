@@ -133,9 +133,9 @@ object Transaction {
     }
 
   def defaultStrategy(timeouts: Config.Timeouts): Strategy = {
-    val isValidTimeout = timeouts.connectionIsValid.toSeconds.toInt
+    val isValidTimeout  = timeouts.connectionIsValid.toSeconds.toInt
     val rollbackTimeout = timeouts.rollbackCommit.toSeconds.toInt
-    val commitTimeout = timeouts.nonLoading.toSeconds.toInt
+    val commitTimeout   = timeouts.nonLoading.toSeconds.toInt
     val rollback = cxnIsValid(isValidTimeout).flatMap {
       case true =>
         // An exception happened, but the connection is still valid.  Roll back.

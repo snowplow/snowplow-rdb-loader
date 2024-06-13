@@ -61,10 +61,10 @@ object Pubsub {
     delayThreshold: FiniteDuration
   ): Resource[F, Queue.Producer[F]] = {
     val config = PubsubProducerConfig[F](
-      batchSize = batchSize,
+      batchSize            = batchSize,
       requestByteThreshold = requestByteThreshold,
-      delayThreshold = delayThreshold,
-      onFailedTerminate = err => Logger[F].error(err)("PubSub sink termination error")
+      delayThreshold       = delayThreshold,
+      onFailedTerminate    = err => Logger[F].error(err)("PubSub sink termination error")
     )
 
     GooglePubsubProducer
@@ -99,9 +99,9 @@ object Pubsub {
     bufferSize: Int,
     maxAckExtensionPeriod: FiniteDuration,
     awaitTerminatePeriod: FiniteDuration,
-    customPubsubEndpoint: Option[String] = None,
+    customPubsubEndpoint: Option[String]                          = None,
     customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
-    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
+    postProcess: Option[Queue.Consumer.PostProcess[F]]            = None
   ): Resource[F, Queue.Consumer[F]] =
     for {
       channelProvider <- customPubsubEndpoint.map(createPubsubChannelProvider[F]).sequence
@@ -111,11 +111,11 @@ object Pubsub {
                        e => Logger[F].error(s"Cannot terminate ${e.getMessage}")
                      val pubSubConfig =
                        PubsubGoogleConsumerConfig(
-                         onFailedTerminate = onFailedTerminate,
-                         parallelPullCount = parallelPullCount,
-                         maxQueueSize = bufferSize,
+                         onFailedTerminate     = onFailedTerminate,
+                         parallelPullCount     = parallelPullCount,
+                         maxQueueSize          = bufferSize,
                          maxAckExtensionPeriod = maxAckExtensionPeriod,
-                         awaitTerminatePeriod = awaitTerminatePeriod,
+                         awaitTerminatePeriod  = awaitTerminatePeriod,
                          customizeSubscriber = {
                            val customChannel: Subscriber.Builder => Subscriber.Builder = channelProvider
                              .map { c => b: Subscriber.Builder =>
@@ -141,7 +141,7 @@ object Pubsub {
                        .map(r => Message(new String(r.value, "UTF-8"), r.ack))
 
                      postProcess match {
-                       case None => stream
+                       case None    => stream
                        case Some(p) => stream.flatMap(p.process(_))
                      }
                    }

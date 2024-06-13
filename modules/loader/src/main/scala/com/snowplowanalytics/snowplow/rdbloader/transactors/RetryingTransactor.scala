@@ -54,8 +54,8 @@ object RetryingTransactor {
     def unapply(t: Throwable): Boolean =
       (t, Option(t.getCause)) match {
         case (_: ExceededRetriesException, _) => true
-        case (_, Some(cause)) => unapply(cause)
-        case (_, None) => false
+        case (_, Some(cause))                 => unapply(cause)
+        case (_, None)                        => false
       }
   }
 
@@ -81,7 +81,7 @@ object RetryingTransactor {
       .retryingOnSomeErrors(config, isTransientError.andThen(_.pure[Resource[F, *]]), onError[F](_, _), resource)
       .adaptError {
         case t if isTransientError(t) => new ExceededRetriesException(t)
-        case t: Throwable => new UnskippableConnectionException(t)
+        case t: Throwable             => new UnskippableConnectionException(t)
       }
 
   /**

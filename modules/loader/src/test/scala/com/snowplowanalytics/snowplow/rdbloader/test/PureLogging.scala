@@ -35,9 +35,9 @@ object PureLogging {
 
       private def log(message: String) =
         (noop, predicate) match {
-          case (true, _) => Pure.pure(message).void
+          case (true, _)                   => Pure.pure(message).void
           case (_, Some(p)) if !p(message) => Pure.pure(message).void
-          case (_, _) => Pure.modify(_.log(message))
+          case (_, _)                      => Pure.modify(_.log(message))
         }
     }
 }

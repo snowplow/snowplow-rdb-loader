@@ -91,7 +91,7 @@ package object rdbloader {
 
   // To replace Instant with sql.Timetstamp
   implicit val readTimestamps: Read[Timestamps] = {
-    val tstampDecoder = Read[java.sql.Timestamp]
+    val tstampDecoder    = Read[java.sql.Timestamp]
     val tstampOptDecoder = Read.fromGetOption[java.sql.Timestamp]
     (tstampDecoder, tstampDecoder, tstampOptDecoder, tstampOptDecoder).mapN { case (a, b, c, d) =>
       Timestamps(a.toInstant, b.toInstant, c.map(_.toInstant), d.map(_.toInstant))

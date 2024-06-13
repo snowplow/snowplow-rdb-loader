@@ -17,7 +17,7 @@ case class SinkPath(suffix: Option[String], pathType: SinkPath.PathType) {
   def value: String = {
     val prefix = pathType match {
       case PathType.Good => "output=good"
-      case PathType.Bad => "output=bad"
+      case PathType.Bad  => "output=bad"
     }
     s"$prefix/${suffix.getOrElse("")}"
   }

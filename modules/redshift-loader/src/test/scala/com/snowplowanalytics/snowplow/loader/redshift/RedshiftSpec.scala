@@ -41,8 +41,8 @@ class RedshiftSpec extends Specification {
     "create a Block with in-transaction migration" in {
 
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
-      val description = Description.Table(foldMapMergeRedshiftSchemas(MigrationSpec.schemaListTwo))
-      val (_, result) = Migration.buildBlock[Pure, Unit](description, redshift).run
+      val description             = Description.Table(foldMapMergeRedshiftSchemas(MigrationSpec.schemaListTwo))
+      val (_, result)             = Migration.buildBlock[Pure, Unit](description, redshift).run
 
       val expected =
         """Fragment("ALTER TABLE atomic.com_acme_context_1
@@ -55,18 +55,18 @@ class RedshiftSpec extends Specification {
           f.inTransaction must haveSize(1)
           f.inTransaction.head must beLike {
             case Migration.Item.AddColumn(fragment, Nil) => fragment.toString() must beEqualTo(expected)
-            case i => ko(s"unexpected migration item: $i")
+            case i                                       => ko(s"unexpected migration item: $i")
           }
         case Right(blocks) => ko(s"unexpected blocks: $blocks")
-        case Left(t) => ko(s"failed to build a block: $t")
+        case Left(t)       => ko(s"failed to build a block: $t")
       }
     }
 
     "create a Block with pre-transaction migration" in {
 
       implicit val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.custom(jdbcResults))
-      val description = Description.Table(foldMapMergeRedshiftSchemas(MigrationSpec.schemaListThree))
-      val (_, result) = Migration.buildBlock[Pure, Unit](description, redshift).run
+      val description             = Description.Table(foldMapMergeRedshiftSchemas(MigrationSpec.schemaListThree))
+      val (_, result)             = Migration.buildBlock[Pure, Unit](description, redshift).run
 
       val expected =
         """Fragment("ALTER TABLE atomic.com_acme_context_2
@@ -78,43 +78,43 @@ class RedshiftSpec extends Specification {
           f.preTransaction must haveSize(1)
           f.preTransaction.head must beLike {
             case Migration.Item.AlterColumn(fragment) => fragment.toString() must beEqualTo(expected)
-            case i => ko(s"unexpected migration item: $i")
+            case i                                    => ko(s"unexpected migration item: $i")
           }
           f.inTransaction must haveSize(0)
         case Right(blocks) => ko(s"unexpected blocks: $blocks")
-        case Left(t) => ko(s"failed to build a block: $t")
+        case Left(t)       => ko(s"failed to build a block: $t")
       }
     }
 
     "getLoadStatements should return one COPY per unique schema (vendor, name, model)" in {
       val shreddedTypes = List(
         Info(
-          vendor = "com.acme",
-          name = "event",
+          vendor  = "com.acme",
+          name    = "event",
           version = SchemaVer.Full(2, 0, 0),
-          entity = SelfDescribingEvent,
-          base = Folder.coerce("s3://my-bucket/my-path")
+          entity  = SelfDescribingEvent,
+          base    = Folder.coerce("s3://my-bucket/my-path")
         ),
         Info(
-          vendor = "com.acme",
-          name = "event",
+          vendor  = "com.acme",
+          name    = "event",
           version = SchemaVer.Full(2, 0, 0),
-          entity = Context,
-          base = Folder.coerce("s3://my-bucket/my-path")
+          entity  = Context,
+          base    = Folder.coerce("s3://my-bucket/my-path")
         ),
         Info(
-          vendor = "com.acme",
-          name = "event",
+          vendor  = "com.acme",
+          name    = "event",
           version = SchemaVer.Full(3, 0, 0),
-          entity = SelfDescribingEvent,
-          base = Folder.coerce("s3://my-bucket/my-path")
+          entity  = SelfDescribingEvent,
+          base    = Folder.coerce("s3://my-bucket/my-path")
         ),
         Info(
-          vendor = "com.acme",
-          name = "event",
+          vendor  = "com.acme",
+          name    = "event",
           version = SchemaVer.Full(3, 0, 0),
-          entity = Context,
-          base = Folder.coerce("s3://my-bucket/my-path")
+          entity  = Context,
+          base    = Folder.coerce("s3://my-bucket/my-path")
         )
       ).map(Tabular)
 
@@ -156,12 +156,12 @@ object RedshiftSpec {
   def jdbcResults(state: TestState)(statement: Statement): Any = {
     val _ = state
     statement match {
-      case Statement.GetVersion(_) => SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0))
+      case Statement.GetVersion(_)  => SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0))
       case Statement.TableExists(_) => true
-      case Statement.GetColumns(_) => List("some_column")
+      case Statement.GetColumns(_)  => List("some_column")
       case Statement.ManifestGet(_) => List()
-      case Statement.ReadyCheck => 1
-      case _ => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
+      case Statement.ReadyCheck     => 1
+      case _                        => throw new IllegalArgumentException(s"Unexpected statement $statement with ${state.getLog}")
     }
   }
 

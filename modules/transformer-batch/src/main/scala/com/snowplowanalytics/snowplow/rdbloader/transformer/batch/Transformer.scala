@@ -70,7 +70,7 @@ object Transformer {
     formats: Formats.Shred,
     maxRecordsPerFile: Long
   ) extends Transformer[TypesInfo.Shredded.Type] {
-    val typesAccumulator = new TypesAccumulator[TypesInfo.Shredded.Type]
+    val typesAccumulator                             = new TypesAccumulator[TypesInfo.Shredded.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
 
     /** Check if `shredType` should be transformed into TSV */
@@ -105,7 +105,7 @@ object Transformer {
 
     def badTransform(badRow: BadRow, badEventsCounter: LongAccumulator): Transformed = {
       val SchemaKey(vendor, name, _, SchemaVer.Full(model, revision, addition)) = badRow.schemaKey
-      val data = Transformed.Data.DString(badRow.compact)
+      val data                                                                  = Transformed.Data.DString(badRow.compact)
       badEventsCounter.add(1L)
       Transformed.Shredded.Json(false, vendor, name, model, revision, addition, data)
     }
@@ -132,7 +132,7 @@ object Transformer {
 
   case class WideRowJsonTransformer() extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
-    val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
+    val timestampsAccumulator: TimestampsAccumulator               = new TimestampsAccumulator
 
     def goodTransform(
       event: Event,
@@ -173,7 +173,7 @@ object Transformer {
 
   case class WideRowParquetTransformer(allFields: AllFields, schema: StructType) extends Transformer[TypesInfo.WideRow.Type] {
     val typesAccumulator: TypesAccumulator[TypesInfo.WideRow.Type] = new TypesAccumulator[TypesInfo.WideRow.Type]
-    val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
+    val timestampsAccumulator: TimestampsAccumulator               = new TimestampsAccumulator
 
     def goodTransform(
       event: Event,
@@ -216,7 +216,7 @@ object Transformer {
     }
   }
 
-  type WideRowTuple = (String, String)
+  type WideRowTuple  = (String, String)
   type ShreddedTuple = (String, String, String, String, Int, Int, Int, String)
 
   private implicit class TransformedOps(t: Transformed) {
@@ -236,22 +236,22 @@ object Transformer {
 
     def parquet: Option[List[Any]] = t match {
       case p: Transformed.Parquet => p.data.value.map(_.value).map(extractFieldValue).some
-      case _ => None
+      case _                      => None
     }
 
     def extractFieldValue(fv: FieldValue): Any = fv match {
-      case FieldValue.NullValue => null
-      case FieldValue.StringValue(v) => v
-      case FieldValue.BooleanValue(v) => v
-      case FieldValue.IntValue(v) => v
-      case FieldValue.LongValue(v) => v
-      case FieldValue.DoubleValue(v) => v
+      case FieldValue.NullValue          => null
+      case FieldValue.StringValue(v)     => v
+      case FieldValue.BooleanValue(v)    => v
+      case FieldValue.IntValue(v)        => v
+      case FieldValue.LongValue(v)       => v
+      case FieldValue.DoubleValue(v)     => v
       case FieldValue.DecimalValue(v, _) => v
-      case FieldValue.TimestampValue(v) => v
-      case FieldValue.DateValue(v) => v
-      case FieldValue.ArrayValue(vs) => vs.map(extractFieldValue)
-      case FieldValue.StructValue(vs) => Row.fromSeq(vs.map(v => extractFieldValue(v.value)))
-      case FieldValue.JsonValue(v) => v.noSpaces
+      case FieldValue.TimestampValue(v)  => v
+      case FieldValue.DateValue(v)       => v
+      case FieldValue.ArrayValue(vs)     => vs.map(extractFieldValue)
+      case FieldValue.StructValue(vs)    => Row.fromSeq(vs.map(v => extractFieldValue(v.value)))
+      case FieldValue.JsonValue(v)       => v.noSpaces
     }
 
   }

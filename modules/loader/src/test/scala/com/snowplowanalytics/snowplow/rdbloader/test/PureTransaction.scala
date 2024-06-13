@@ -39,7 +39,7 @@ object PureTransaction {
         Pure.modify(_.log(Start)) *> {
           EitherT(io.value.flatMap {
             case Right(a) => State.modify[TestState](_.log(Commit)).as(Right(a))
-            case Left(e) => State.modify[TestState](_.log(Rollback)).as(Left(e))
+            case Left(e)  => State.modify[TestState](_.log(Rollback)).as(Left(e))
           })
         }
 

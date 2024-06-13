@@ -28,9 +28,9 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
             inputEventsPath = "/processing-spec/1/input/events"
           )
 
-          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
+          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
           val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val badPath  = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
 
           for {
             output <- process(inputStream, config)

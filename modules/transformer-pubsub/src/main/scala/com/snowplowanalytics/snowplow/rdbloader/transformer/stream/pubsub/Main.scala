@@ -60,11 +60,11 @@ object Main extends IOApp {
         Pubsub.consumer[F](
           conf.projectId,
           conf.subscriptionId,
-          parallelPullCount = conf.parallelPullCount,
-          bufferSize = conf.bufferSize,
+          parallelPullCount     = conf.parallelPullCount,
+          bufferSize            = conf.bufferSize,
           maxAckExtensionPeriod = conf.maxAckExtensionPeriod,
-          awaitTerminatePeriod = conf.awaitTerminatePeriod,
-          customPubsubEndpoint = conf.customPubsubEndpoint,
+          awaitTerminatePeriod  = conf.awaitTerminatePeriod,
+          customPubsubEndpoint  = conf.customPubsubEndpoint,
           customizeSubscriber = { s =>
             s.setFlowControlSettings {
               val builder = FlowControlSettings.newBuilder()
@@ -76,12 +76,12 @@ object Main extends IOApp {
               // memory problem again.
               (conf.maxOutstandingMessagesSize match {
                 case Some(v) => builder.setMaxOutstandingRequestBytes(v * 1000000)
-                case None => builder.setMaxOutstandingRequestBytes(null)
+                case None    => builder.setMaxOutstandingRequestBytes(null)
               }).build()
             }
             s.setExecutorProvider {
               new ExecutorProvider {
-                def shouldAutoClose: Boolean = true
+                def shouldAutoClose: Boolean              = true
                 def getExecutor: ScheduledExecutorService = scheduledExecutorService
               }
             }
@@ -93,7 +93,7 @@ object Main extends IOApp {
     }
 
   def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
-    val delegate = MoreExecutors.newDirectExecutorService
+    val delegate       = MoreExecutors.newDirectExecutorService
     lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
     override def schedule[V](
       callable: Callable[V],
@@ -142,9 +142,9 @@ object Main extends IOApp {
           .chunkProducer(
             config.projectId,
             config.topicId,
-            batchSize = config.batchSize,
+            batchSize            = config.batchSize,
             requestByteThreshold = config.requestByteThreshold,
-            delayThreshold = config.delayThreshold
+            delayThreshold       = config.delayThreshold
           )
       case _ =>
         Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))
@@ -156,9 +156,9 @@ object Main extends IOApp {
         Pubsub.producer(
           p.projectId,
           p.topicId,
-          batchSize = p.batchSize,
+          batchSize            = p.batchSize,
           requestByteThreshold = p.requestByteThreshold,
-          delayThreshold = p.delayThreshold
+          delayThreshold       = p.delayThreshold
         )
       case _ =>
         Resource.eval(Async[F].raiseError(new IllegalArgumentException(s"Message queue is not Pubsub")))

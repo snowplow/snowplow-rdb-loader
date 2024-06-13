@@ -32,8 +32,8 @@ import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 object Databricks {
 
   val AlertingTempTableName = "rdb_folder_monitoring"
-  val UnstructPrefix = "unstruct_event_"
-  val ContextsPrefix = "contexts_"
+  val UnstructPrefix        = "unstruct_event_"
+  val ContextsPrefix        = "contexts_"
 
   def build(config: Config[StorageTarget]): Either[String, Target[Unit]] = {
     config.storage match {
@@ -98,7 +98,7 @@ object Databricks {
 
           override def toFragment(statement: Statement): Fragment =
             statement match {
-              case Statement.Select1 => sql"SELECT 1"
+              case Statement.Select1    => sql"SELECT 1"
               case Statement.ReadyCheck => sql"SELECT 1"
 
               case Statement.CreateAlertingTempTable =>
@@ -109,27 +109,27 @@ object Databricks {
                 throw new IllegalStateException("Databricks Loader does not use DropAlertingTempTable statement")
               case Statement.FoldersMinusManifest =>
                 val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frManifest = Fragment.const(qualify(Manifest.Name))
+                val frManifest  = Fragment.const(qualify(Manifest.Name))
                 sql"SELECT run_id FROM $frTableName MINUS SELECT base FROM $frManifest"
               case Statement.FoldersCopy(source, loadAuthMethod, _) =>
                 val updatedSource = replaceScheme(source)
-                val frTableName = Fragment.const(qualify(AlertingTempTableName))
-                val frPath = Fragment.const0(updatedSource)
-                val frAuth = loadAuthMethodFragment(loadAuthMethod)
+                val frTableName   = Fragment.const(qualify(AlertingTempTableName))
+                val frPath        = Fragment.const0(updatedSource)
+                val frAuth        = loadAuthMethodFragment(loadAuthMethod)
 
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
               case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _) =>
-                val updatedPath = replaceScheme(path)
-                val frTableName = Fragment.const(qualify(EventsTable.MainName))
-                val frPath = Fragment.const0(updatedPath.append("output=good"))
-                val nonNulls = toCopy.names.map(_.value)
-                val nulls = toSkip.names.map(c => s"NULL AS ${c.value}")
+                val updatedPath      = replaceScheme(path)
+                val frTableName      = Fragment.const(qualify(EventsTable.MainName))
+                val frPath           = Fragment.const0(updatedPath.append("output=good"))
+                val nonNulls         = toCopy.names.map(_.value)
+                val nulls            = toSkip.names.map(c => s"NULL AS ${c.value}")
                 val currentTimestamp = "current_timestamp() AS load_tstamp"
-                val allColumns = (nonNulls ::: nulls) :+ currentTimestamp
-                val frAuth = loadAuthMethodFragment(loadAuthMethod)
-                val frSelectColumns = Fragment.const0(allColumns.mkString(","))
+                val allColumns       = (nonNulls ::: nulls) :+ currentTimestamp
+                val frAuth           = loadAuthMethodFragment(loadAuthMethod)
+                val frSelectColumns  = Fragment.const0(allColumns.mkString(","))
 
                 sql"""COPY INTO $frTableName
                       FROM (
@@ -154,12 +154,12 @@ object Databricks {
                 val qualifiedName = Fragment.const(qualify(tableName))
                 sql"SHOW columns in $qualifiedName"
               case Statement.ManifestAdd(message) =>
-                val tableName = Fragment.const(qualify(Manifest.Name))
-                val types = message.types.asJson.noSpaces
-                val jobStarted: String = message.timestamps.jobStarted.toString
+                val tableName            = Fragment.const(qualify(Manifest.Name))
+                val types                = message.types.asJson.noSpaces
+                val jobStarted: String   = message.timestamps.jobStarted.toString
                 val jobCompleted: String = message.timestamps.jobCompleted.toString
-                val minTstamp: String = message.timestamps.min.map(_.toString).getOrElse("")
-                val maxTstamp: String = message.timestamps.max.map(_.toString).getOrElse("")
+                val minTstamp: String    = message.timestamps.min.map(_.toString).getOrElse("")
+                val maxTstamp: String    = message.timestamps.max.map(_.toString).getOrElse("")
                 sql"""INSERT INTO $tableName
                       (base, types, shredding_started, shredding_completed,
                       min_collector_tstamp, max_collector_tstamp, ingestion_tstamp,
@@ -209,7 +209,7 @@ object Databricks {
 
           private def qualifySchemaName: String = tgt.catalog match {
             case Some(c) => s"`$c`.${tgt.schema}"
-            case None => s"${tgt.schema}"
+            case None    => s"${tgt.schema}"
           }
 
           private def replaceScheme(path: Folder): Folder =

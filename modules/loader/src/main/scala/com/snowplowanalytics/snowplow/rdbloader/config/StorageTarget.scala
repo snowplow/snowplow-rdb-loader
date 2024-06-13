@@ -36,7 +36,7 @@ sealed trait StorageTarget extends Product with Serializable {
   def password: StorageTarget.PasswordConfig
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
-  def doobieCommitStrategy(timeouts: Config.Timeouts): Strategy = Transaction.defaultStrategy(timeouts)
+  def doobieCommitStrategy(timeouts: Config.Timeouts): Strategy   = Transaction.defaultStrategy(timeouts)
   def doobieNoCommitStrategy(timeouts: Config.Timeouts): Strategy = Transaction.defaultNoCommitStrategy(timeouts)
   def driver: String
   def withAutoCommit: Boolean = false
@@ -95,7 +95,7 @@ object StorageTarget {
       props
     }
 
-    override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+    override def eventsLoadAuthMethod: LoadAuthMethod  = loadAuthMethod
     override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
 
     override def reportRecoveryTableMetrics: Boolean = true
@@ -121,9 +121,9 @@ object StorageTarget {
 
     override def connectionUrl: String = s"jdbc:databricks://$host:$port"
 
-    override def doobieCommitStrategy(t: Config.Timeouts): Strategy = Strategy.void
+    override def doobieCommitStrategy(t: Config.Timeouts): Strategy   = Strategy.void
     override def doobieNoCommitStrategy(t: Config.Timeouts): Strategy = Strategy.void
-    override def withAutoCommit = true
+    override def withAutoCommit                                       = true
 
     override def properties: Properties = {
       val props: Properties = new Properties()
@@ -136,7 +136,7 @@ object StorageTarget {
       props
     }
 
-    override def eventsLoadAuthMethod: LoadAuthMethod = loadAuthMethod
+    override def eventsLoadAuthMethod: LoadAuthMethod  = loadAuthMethod
     override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
 
     override def reportRecoveryTableMetrics: Boolean = false
@@ -233,8 +233,8 @@ object StorageTarget {
       Decoder.decodeString.emap { str =>
         str.toLowerCase() match {
           case "resumewarehouse" => Right(ResumeWarehouse)
-          case "select1" => Right(Select1)
-          case _ => Left("invalid ready check")
+          case "select1"         => Right(Select1)
+          case _                 => Left("invalid ready check")
         }
       }
   }
@@ -280,7 +280,7 @@ object StorageTarget {
       } traverse (_.toValidatedNel) match {
         case Validated.Valid(updaters) => updaters.asRight[ParseError]
         case Validated.Invalid(errors) =>
-          val messages = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
+          val messages          = "Invalid JDBC options: " ++ errors.toList.mkString(", ")
           val error: ParseError = ParseError(messages)
           error.asLeft[List[Properties => Unit]]
       }
@@ -358,7 +358,7 @@ object StorageTarget {
    */
   sealed trait PasswordConfig extends Product with Serializable {
     def getUnencrypted: String = this match {
-      case PasswordConfig.PlainText(plain) => plain
+      case PasswordConfig.PlainText(plain)                             => plain
       case PasswordConfig.EncryptedKey(EncryptedConfig(parameterName)) => parameterName
     }
   }
@@ -370,7 +370,7 @@ object StorageTarget {
       def apply(hCursor: HCursor): Decoder.Result[PasswordConfig] =
         hCursor.value.asString match {
           case Some(s) => Right(PasswordConfig.PlainText(s))
-          case None => hCursor.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
+          case None    => hCursor.as[EncryptedConfig].map(PasswordConfig.EncryptedKey)
         }
     }
   }

@@ -29,7 +29,7 @@ object CliConfig {
   private def parseDuplicationConfig(raw: TransformerCliConfig.RawConfig): Either[String, Option[Json]] =
     raw.duplicateStorageConfig match {
       case Some(defined) => ConfigUtils.parseJson(defined).map(Some(_))
-      case None => Right(None)
+      case None          => Right(None)
     }
 
   private def verifyDuplicationConfig(cli: CliConfig): Either[String, CliConfig] =

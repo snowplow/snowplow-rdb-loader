@@ -30,7 +30,7 @@ final class KinesisMock(responses: Iterator[KinesisResult]) {
 
     response match {
       case KinesisResult.ReceivedResponse(output) =>
-        val requestData = extractRequestContent(request.getRecords.asScala.toList)
+        val requestData    = extractRequestContent(request.getRecords.asScala.toList)
         val responseStatus = extractResponseStatus(requestData, output)
 
         storeSuccessfulRecords(requestData, responseStatus)

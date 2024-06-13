@@ -46,31 +46,31 @@ class CliConfigSpec extends Specification {
       """
 
   val appConfigHocon = "/app-config.hocon"
-  val resolverHocon = "/resolver.hocon"
+  val resolverHocon  = "/resolver.hocon"
 
   "Cli config parse" should {
     "return valid config for" >> {
       "app config - base64, resolverConfig - base64" in {
         assertValid(
-          appConfig = asB64(appConfigHocon),
+          appConfig      = asB64(appConfigHocon),
           resolverConfig = asB64(resolverHocon)
         )
       }
       "app config - full path, resolverConfig - full path" in {
         assertValid(
-          appConfig = fullPathOf(appConfigHocon).toString,
+          appConfig      = fullPathOf(appConfigHocon).toString,
           resolverConfig = fullPathOf(resolverHocon).toString
         )
       }
       "app config - base64, resolverConfig - full path" in {
         assertValid(
-          appConfig = asB64(appConfigHocon),
+          appConfig      = asB64(appConfigHocon),
           resolverConfig = fullPathOf(resolverHocon).toString
         )
       }
       "app config - full path, resolverConfig - full path" in {
         assertValid(
-          appConfig = fullPathOf(appConfigHocon).toString,
+          appConfig      = fullPathOf(appConfigHocon).toString,
           resolverConfig = asB64(resolverHocon)
         )
       }
@@ -86,7 +86,7 @@ class CliConfigSpec extends Specification {
   }
 
   def assertValid(appConfig: String, resolverConfig: String) = {
-    val cli = Array("--config", appConfig, "--iglu-config", resolverConfig)
+    val cli    = Array("--config", appConfig, "--iglu-config", resolverConfig)
     val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
 
     result must beRight.like { case CliConfig(config, _, resolverConfig) =>

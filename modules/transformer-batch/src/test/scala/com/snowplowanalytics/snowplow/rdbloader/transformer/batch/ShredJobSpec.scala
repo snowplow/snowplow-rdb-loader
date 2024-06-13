@@ -62,7 +62,7 @@ import org.specs2.matcher.Matchers._
 
 object ShredJobSpec {
 
-  val Name = "snowplow-transformer-batch"
+  val Name    = "snowplow-transformer-batch"
   val Version = BuildInfo.version
 
   val AtomicFolder = "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
@@ -93,12 +93,12 @@ object ShredJobSpec {
   /** Case class representing the directories where the output of the job has been written. */
   case class OutputDirs(output: File) {
     val goodRows: File = new File(output, "output=good")
-    val badRows: File = new File(output, "output=bad")
+    val badRows: File  = new File(output, "output=bad")
   }
 
   def read(f: String): List[String] = {
     val source = Source.fromFile(new File(f))
-    val lines = source.getLines.toList
+    val lines  = source.getLines.toList
     source.close()
     lines
   }
@@ -142,7 +142,7 @@ object ShredJobSpec {
    * https://github.com/snowplow/snowplow-rdb-loader/issues/142)
    */
   val NonEmpty = new IOFileFilter {
-    def accept(file: File): Boolean = file.length() > 1L
+    def accept(file: File): Boolean              = file.length() > 1L
     def accept(dir: File, name: String): Boolean = true
   }
 
@@ -224,7 +224,7 @@ object ShredJobSpec {
    */
   def mkTmpFile(
     tag: String,
-    createParents: Boolean = false,
+    createParents: Boolean    = false,
     containing: Option[Lines] = None
   ): File = {
     val f = File.createTempFile(s"snowplow-shred-job-$tag-", "")
@@ -262,10 +262,10 @@ object ShredJobSpec {
     jsonSchemas: List[SchemaCriterion],
     wideRow: Option[WideRow]
   ) = {
-    val encoder = Base64.getUrlEncoder
-    val format = if (tsv) "TSV" else "JSON"
+    val encoder        = Base64.getUrlEncoder
+    val format         = if (tsv) "TSV" else "JSON"
     val jsonCriterions = jsonSchemas.map(x => s""""${x.asString}"""").mkString(",")
-    val skipSchemas = shredder.skipSchemas.map(x => s""""${x.asString}"""").mkString(",")
+    val skipSchemas    = shredder.skipSchemas.map(x => s""""${x.asString}"""").mkString(",")
     val formatsSection = wideRow match {
       case Some(WideRow.PARQUET) =>
         s"""
@@ -293,8 +293,8 @@ object ShredJobSpec {
            |""".stripMargin
     }
     val syntheticDeduplication = shredder.deduplication.synthetic match {
-      case Config.Deduplication.Synthetic.None => """{"type": "none"}"""
-      case Config.Deduplication.Synthetic.Join => """{"type": "join"}"""
+      case Config.Deduplication.Synthetic.None                   => """{"type": "none"}"""
+      case Config.Deduplication.Synthetic.Join                   => """{"type": "join"}"""
       case Config.Deduplication.Synthetic.Broadcast(cardinality) => s"""{"type": "broadcast", "cardinality": $cardinality}"""
     }
     val naturalDeduplication = shredder.deduplication.natural.asJson
@@ -382,7 +382,7 @@ object ShredJobSpec {
 
   }
 
-  val dynamodbDuplicateStorageTable = "snowplow-integration-test-crossbatch-deduplication"
+  val dynamodbDuplicateStorageTable  = "snowplow-integration-test-crossbatch-deduplication"
   val dynamodbDuplicateStorageRegion = "us-east-1"
 
   /**
@@ -422,7 +422,7 @@ object ShredJobSpec {
   /** Get environment variable wrapped into `Validation` */
   def getEnv(envvar: String): ValidatedNel[String, String] = sys.env.get(envvar) match {
     case Some(v) => v.validNel
-    case None => s"Environment variable [$envvar] is not available".invalidNel
+    case None    => s"Environment variable [$envvar] is not available".invalidNel
   }
 
   def inSkipSchemas(skipSchemas: List[SchemaCriterion], schemaKey: SchemaKey): Boolean =
@@ -436,7 +436,7 @@ object ShredJobSpec {
   ): Config = {
     val input = events match {
       case r: ResourceFile => r.toUri
-      case l: Lines => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
+      case l: Lines        => mkTmpFile("input", createParents = true, containing = Some(l)).toURI
     }
     Config(
       input,
@@ -445,7 +445,7 @@ object ShredJobSpec {
         TransformerConfig.Compression.None,
         Region("eu-central-1"),
         maxRecordsPerFile = 10000,
-        maxBadBufferSize = 1000,
+        maxBadBufferSize  = 1000,
         Config.Output.BadSink.File
       ),
       Config.QueueConfig.SQS("test-sqs", Region("eu-central-1")),
@@ -476,13 +476,13 @@ trait ShredJobSpec extends SparkSpec {
    */
   def runShredJob(
     events: Events,
-    crossBatchDedupe: Boolean = false,
-    tsv: Boolean = false,
-    jsonSchemas: List[SchemaCriterion] = Nil,
-    wideRow: Option[WideRow] = None,
-    outputDirs: Option[OutputDirs] = None,
+    crossBatchDedupe: Boolean           = false,
+    tsv: Boolean                        = false,
+    jsonSchemas: List[SchemaCriterion]  = Nil,
+    wideRow: Option[WideRow]            = None,
+    outputDirs: Option[OutputDirs]      = None,
     deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true),
-    skipSchemas: List[SchemaCriterion] = Nil
+    skipSchemas: List[SchemaCriterion]  = Nil
   ): LoaderMessage.ShreddingComplete = {
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication, skipSchemas)
     val config = Array(
@@ -515,19 +515,19 @@ trait ShredJobSpec extends SparkSpec {
           None
         }
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, 0)
+          case f: TransformerConfig.Formats.Shred     => Transformer.ShredTransformer(resolverConfig, f, 0)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
-            val resolver = IgluSingleton.get(resolverConfig)
+            val resolver       = IgluSingleton.get(resolverConfig)
             val allTypesForRun = (new TypeAccumJob(spark, cli.config)).run("")
 
             val nonAtomicFields = NonAtomicFieldsProvider.build[Id](resolver, allTypesForRun).value.right.get
-            val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
-            val schema = SparkSchema.build(allFields)
+            val allFields       = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
+            val schema          = SparkSchema.build(allFields)
 
             Transformer.WideRowParquetTransformer(allFields, schema)
         }
-        val job = new ShredJob(spark, transformer, cli.config, resolverConfig)
+        val job    = new ShredJob(spark, transformer, cli.config, resolverConfig)
         val result = job.run("", dedupeConfig)
         deleteRecursively(new File(cli.config.input))
         result

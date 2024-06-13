@@ -56,7 +56,7 @@ class ConfigSpec extends Specification {
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "databricks-loader")),
         folders = exampleMonitoring.folders.map(
           _.copy(
-            staging = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/logs/"),
+            staging           = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/logs/"),
             transformerOutput = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/transformed/")
           )
         )
@@ -85,7 +85,7 @@ class ConfigSpec extends Specification {
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "databricks-loader")),
         folders = exampleMonitoring.folders.map(
           _.copy(
-            staging = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
+            staging           = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
             transformerOutput = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/transformed/")
           )
         )
@@ -111,11 +111,11 @@ class ConfigSpec extends Specification {
     "be able to parse minimal AWS Snowflake Loader config" in {
       val result = getConfigFromResource("/loader/aws/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
-        catalog = None,
+        catalog  = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
-      val cloud = Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion)))
-      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
+      val cloud      = Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion)))
+      val retries    = exampleRetries.copy(cumulativeBound = Some(20.minutes))
       val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       val expected = Config(
@@ -139,11 +139,11 @@ class ConfigSpec extends Specification {
     "be able to parse minimal GCP Snowflake Loader config" in {
       val result = getConfigFromResource("/loader/gcp/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
-        catalog = None,
+        catalog  = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
-      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
-      val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
+      val retries     = exampleRetries.copy(cumulativeBound = Some(20.minutes))
+      val readyCheck  = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       val expected = Config(
         storage,
@@ -166,11 +166,11 @@ class ConfigSpec extends Specification {
     "be able to parse minimal Azure Snowflake Loader config" in {
       val result = getConfigFromResource("/loader/azure/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
-        catalog = None,
+        catalog  = None,
         password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
       )
-      val retries = exampleRetries.copy(cumulativeBound = Some(20.minutes))
-      val readyCheck = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
+      val retries     = exampleRetries.copy(cumulativeBound = Some(20.minutes))
+      val readyCheck  = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
       val initRetries = exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes))
       val expected = Config(
         storage,
@@ -210,17 +210,17 @@ object ConfigSpec {
   val exampleAWSCloud = Config.Cloud.AWS(Region("us-east-1"), Config.Cloud.AWS.SQS("test-queue", Some(Region("us-east-1"))))
   val exampleGCPCloud = Config.Cloud.GCP(
     Config.Cloud.GCP.Pubsub(
-      subscription = "projects/project-id/subscriptions/subscription-id",
+      subscription         = "projects/project-id/subscriptions/subscription-id",
       customPubsubEndpoint = None,
-      parallelPullCount = 1,
+      parallelPullCount    = 1,
       awaitTerminatePeriod = 30.seconds,
-      bufferSize = 10
+      bufferSize           = 10
     )
   )
   val exampleAzureCloud = Config.Cloud.Azure(
     blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
     Config.Cloud.Azure.Kafka(
-      topicName = "loaderTopic",
+      topicName        = "loaderTopic",
       bootstrapServers = "localhost:9092",
       consumerConf = List(
         "enable.auto.commit" -> "false",

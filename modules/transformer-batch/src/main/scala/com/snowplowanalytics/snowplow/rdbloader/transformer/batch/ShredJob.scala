@@ -80,9 +80,9 @@ class ShredJob[T](
    *   - writing out JSON contexts as well as properly-formed and malformed events
    */
   def run(folderName: String, eventsManifest: Option[EventsManifestConfig]): LoaderMessage.ShreddingComplete = {
-    val jobStarted: Instant = Instant.now()
+    val jobStarted: Instant             = Instant.now()
     val inputFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.input.toString).append(folderName)
-    val outFolder: BlobStorage.Folder = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
+    val outFolder: BlobStorage.Folder   = BlobStorage.Folder.coerce(config.output.path.toString).append(folderName)
     transformer.register(sc)
     // Enriched TSV lines along with their shredded components
 
@@ -126,7 +126,7 @@ class ShredJob[T](
             Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
               case Right(unique) if unique =>
                 Some(Right(first))
-              case Right(_) => None
+              case Right(_)     => None
               case Left(badRow) => Some(Left(badRow))
             }
           }
@@ -140,12 +140,12 @@ class ShredJob[T](
     // Using accumulators for counting is unreliable, but we don't
     // need a precise value and chance of retry is very small
     val goodEventsCounter = sc.longAccumulator("good-events")
-    val badEventsCounter = sc.longAccumulator("bad-events")
+    val badEventsCounter  = sc.longAccumulator("bad-events")
 
     val result: Deduplication.Result = Deduplication.sytheticDeduplication(config.deduplication, good)
 
     val syntheticDupesBroadcasted = sc.broadcast(result.duplicates)
-    val hadoopConfigBroadcasted = sc.broadcast(new SerializableConfiguration(spark.sparkContext.hadoopConfiguration))
+    val hadoopConfigBroadcasted   = sc.broadcast(new SerializableConfiguration(spark.sparkContext.hadoopConfiguration))
 
     // Join the properly-formed events with the synthetic duplicates, generate a new event ID for
     // those that are synthetic duplicates
@@ -169,7 +169,7 @@ class ShredJob[T](
     transformer.sink(spark, config.output.compression, readyToSinkRDD, outFolder, maxRecordsPerFile)
 
     val batchTimestamps = transformer.timestampsAccumulator.value
-    val timestamps = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
+    val timestamps      = Timestamps(jobStarted, Instant.now(), batchTimestamps.map(_.min), batchTimestamps.map(_.max))
 
     LoaderMessage.ShreddingComplete(
       outFolder,
@@ -297,22 +297,22 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred => Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0)
+        case f: TransformerConfig.Formats.Shred     => Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
-          val resolver = IgluSingleton.get(resolverConfig)
+          val resolver       = IgluSingleton.get(resolverConfig)
           val allTypesForRun = new TypeAccumJob(spark, config).run(folder.folderName)
 
           val nonAtomicFields = NonAtomicFieldsProvider
             .build[Id](resolver, allTypesForRun)
             .fold(error => throw new RuntimeException(s"Error while building non-atomic DDL fields. ${error.show}"), identity)
           val allFields = AllFields(AtomicFieldsProvider.static, nonAtomicFields)
-          val schema = SparkSchema.build(allFields)
+          val schema    = SparkSchema.build(allFields)
 
           Transformer.WideRowParquetTransformer(allFields, schema)
       }
       val beginning = System.currentTimeMillis()
-      val job = new ShredJob(spark, transformer, config, resolverConfig)
+      val job       = new ShredJob(spark, transformer, config, resolverConfig)
       val completed = job.run(folder.folderName, eventsManifest)
       Discovery.seal(completed, sendToQueue, putToS3, config.featureFlags.legacyMessageFormat)
 

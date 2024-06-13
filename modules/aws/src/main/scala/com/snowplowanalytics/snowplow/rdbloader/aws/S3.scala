@@ -41,8 +41,8 @@ object S3 {
                           */
                          def getKey(url: Url[S3Blob]): BlobStorage.BlobObject = {
                            val bucketName = url.authority.show
-                           val keyPath = url.path.relative.show
-                           val key = BlobStorage.Key.coerce(s"s3://${bucketName}/${keyPath}")
+                           val keyPath    = url.path.relative.show
+                           val key        = BlobStorage.Key.coerce(s"s3://${bucketName}/${keyPath}")
                            BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
                          }
 

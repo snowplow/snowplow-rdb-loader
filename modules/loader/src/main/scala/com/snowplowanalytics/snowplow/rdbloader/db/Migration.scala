@@ -76,13 +76,13 @@ object Migration {
     def isCreation: Boolean =
       inTransaction match {
         case List(Item.CreateTable(_, _)) => true
-        case _ => false
+        case _                            => false
       }
 
     def isRecovery: Boolean =
       inTransaction match {
         case List(Item.CreateTable(_, ir)) => ir
-        case _ => false
+        case _                             => false
       }
 
     def getName: String =
@@ -315,7 +315,7 @@ object Migration {
 
     def getInfo: SchemaKey = this match {
       case Entity.Table(_, schemaKey, _) => schemaKey
-      case Entity.Column(info) => SchemaKey(info.vendor, info.name, "jsonschema", SchemaVer.Full(info.version.model, 0, 0))
+      case Entity.Column(info)           => SchemaKey(info.vendor, info.name, "jsonschema", SchemaVer.Full(info.version.model, 0, 0))
     }
   }
 
@@ -328,7 +328,7 @@ object Migration {
     final case class Column(info: ShreddedType.Info) extends Entity
   }
 
-  val NoStatements: List[Item] = Nil
+  val NoStatements: List[Item]                = Nil
   val NoPreStatements: List[Item.AlterColumn] = Nil
 
   /**

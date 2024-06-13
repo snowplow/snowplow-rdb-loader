@@ -115,7 +115,7 @@ object ParquetTransformer {
 
   private def castErrorToLoaderIgluError(schemaKey: SchemaKey)(castError: CastError): FailureDetails.LoaderIgluError =
     castError match {
-      case CastError.WrongType(v, e) => FailureDetails.LoaderIgluError.WrongType(schemaKey, v, e.toString)
+      case CastError.WrongType(v, e)      => FailureDetails.LoaderIgluError.WrongType(schemaKey, v, e.toString)
       case CastError.MissingInValue(k, v) => FailureDetails.LoaderIgluError.MissingInValue(schemaKey, k, v)
     }
 

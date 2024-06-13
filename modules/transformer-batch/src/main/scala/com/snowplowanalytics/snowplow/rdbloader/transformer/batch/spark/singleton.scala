@@ -87,7 +87,7 @@ object singleton {
               case Some(EventsManifestConfig.DynamoDb(_, "local", _, _, _)) =>
                 Some(new InMemoryEventManifest)
               case Some(config) => EventsManifest.initStorage(config).fold(e => throw new IllegalArgumentException(e), _.some)
-              case None => None
+              case None         => None
             }
           }
         }

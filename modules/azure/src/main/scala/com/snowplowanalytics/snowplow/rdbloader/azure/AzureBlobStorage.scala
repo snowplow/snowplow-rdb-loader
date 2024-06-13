@@ -91,7 +91,7 @@ object AzureBlobStorage {
 
   def create[F[_]: Async](path: URI, builder: BlobServiceClientBuilder): Resource[F, AzureBlobStorage[F]] = {
     val pathParts = PathParts.parse(path.toString)
-    val client = builder.endpoint(pathParts.root).buildAsyncClient()
+    val client    = builder.endpoint(pathParts.root).buildAsyncClient()
     createStore(client).map(new AzureBlobStorage(_, pathParts))
   }
 
@@ -122,11 +122,11 @@ object AzureBlobStorage {
     def parse(path: String): PathParts = {
       val parts = BlobUrlParts.parse(path)
       PathParts(
-        containerName = parts.getBlobContainerName,
+        containerName      = parts.getBlobContainerName,
         storageAccountName = parts.getAccountName,
-        scheme = parts.getScheme,
-        endpointSuffix = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
-        relative = Option(parts.getBlobName).getOrElse("")
+        scheme             = parts.getScheme,
+        endpointSuffix     = parts.getHost.stripPrefix(s"${parts.getAccountName}.blob."),
+        relative           = Option(parts.getBlobName).getOrElse("")
       )
     }
   }

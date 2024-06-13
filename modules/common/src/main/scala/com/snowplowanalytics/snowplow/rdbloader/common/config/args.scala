@@ -28,7 +28,7 @@ object args {
     new Argument[HoconOrPath] {
       def read(string: String): ValidatedNel[String, HoconOrPath] = {
         val hocon = Argument[DecodedHocon].read(string).map(_.asLeft)
-        val path = Argument[Path].read(string).map(_.asRight)
+        val path  = Argument[Path].read(string).map(_.asRight)
         val error = show"Value $string cannot be parsed as Base64 hocon neither as FS path"
         hocon.orElse(path).leftMap(_ => NonEmptyList.one(error))
       }

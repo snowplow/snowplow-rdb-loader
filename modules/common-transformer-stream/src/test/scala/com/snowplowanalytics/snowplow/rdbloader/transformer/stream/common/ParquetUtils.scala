@@ -90,7 +90,7 @@ object ParquetUtils {
     columns: List[ColumnDescriptor]
   ): Json = {
     val fields = record.iterator.map { case (name, value) =>
-      val fullPath = parentPath :+ name
+      val fullPath   = parentPath :+ name
       val json: Json = convertValue(columns, fullPath)(value)
       (name, json)
     }

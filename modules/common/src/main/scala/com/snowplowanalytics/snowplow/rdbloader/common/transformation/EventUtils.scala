@@ -140,7 +140,7 @@ object EventUtils {
     (x: Either[BadRow, Event], y: Either[BadRow, Event]) =>
       (x.map(_.etl_tstamp), y.map(_.etl_tstamp)) match {
         case (Right(Some(xt)), Right(Some(yt))) => Ordering[Instant].compare(xt, yt)
-        case _ => 0
+        case _                                  => 0
       }
 
   private def getLength(schema: Schema): Option[Int] =

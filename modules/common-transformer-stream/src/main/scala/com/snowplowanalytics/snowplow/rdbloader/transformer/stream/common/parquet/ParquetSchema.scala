@@ -24,7 +24,7 @@ private[parquet] object ParquetSchema {
 
   def build(allFields: AllFields): MessageType = {
     val fieldsOnly = allFields.fieldsOnly
-    val types = fieldsOnly.map(asParquetField)
+    val types      = fieldsOnly.map(asParquetField)
     Types
       .buildMessage()
       .addFields(types: _*)

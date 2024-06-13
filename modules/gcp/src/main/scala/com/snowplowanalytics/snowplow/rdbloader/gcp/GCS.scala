@@ -46,8 +46,8 @@ object GCS {
                                    .list(Url("gs", authority, Path(path)), recursive)
                                    .map { url: Url[GcsBlob] =>
                                      val bucketName = url.authority.show
-                                     val keyPath = url.path.relative.show
-                                     val key = BlobStorage.Key.coerce(s"gs://${bucketName}/${keyPath}")
+                                     val keyPath    = url.path.relative.show
+                                     val key        = BlobStorage.Key.coerce(s"gs://${bucketName}/${keyPath}")
                                      BlobStorage.BlobObject(key, url.path.representation.size.getOrElse(0L))
                                    }
                              )

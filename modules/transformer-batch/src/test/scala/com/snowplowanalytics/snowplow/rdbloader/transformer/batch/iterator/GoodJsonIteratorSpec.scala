@@ -17,5 +17,5 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.iterator.OnlyG
 class GoodJsonIteratorSpec extends GoodDataIteratorSpec {
 
   override val goodGenerator: GoodGenerator = () => WideRow(good = true, DString("TEST GOOD DATA"))
-  override val badGenerator: BadGenerator = () => WideRow(good = false, DString("TEST BAD DATA"))
+  override val badGenerator: BadGenerator   = () => WideRow(good = false, DString("TEST BAD DATA"))
 }

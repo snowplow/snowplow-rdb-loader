@@ -28,7 +28,7 @@ case class TestState(genericLog: List[TestState.LogEntry], cache: Map[String, Op
 
   def getLog: List[LogEntry] = getLogUntrimmed.map {
     case LogEntry.Message(message) => LogEntry.Message(trim(message))
-    case LogEntry.Sql(statement) => LogEntry.Sql(statement)
+    case LogEntry.Sql(statement)   => LogEntry.Sql(statement)
   }
   def getLogUntrimmed: List[LogEntry] = genericLog.reverse
 
@@ -82,7 +82,7 @@ object TestState {
           case statement =>
             obj match {
               case Sql(other) => statement == other
-              case _ => false
+              case _          => false
             }
         }
     }

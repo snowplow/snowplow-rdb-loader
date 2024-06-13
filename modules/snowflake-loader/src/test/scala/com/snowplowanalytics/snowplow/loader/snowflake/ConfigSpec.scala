@@ -61,18 +61,18 @@ class ConfigSpec extends Specification {
       val result = getConfigFromResource("/loader/gcp/snowflake.config.reference.hocon", Config.parseAppConfig[IO])
       val gcpCloud = Config.Cloud.GCP(
         Config.Cloud.GCP.Pubsub(
-          subscription = "projects/project-id/subscriptions/subscription-id",
+          subscription         = "projects/project-id/subscriptions/subscription-id",
           customPubsubEndpoint = None,
-          parallelPullCount = 1,
+          parallelPullCount    = 1,
           awaitTerminatePeriod = 30.seconds,
-          bufferSize = 10
+          bufferSize           = 10
         )
       )
       val monitoring = exampleMonitoring.copy(
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "snowflake-loader")),
         folders = exampleMonitoring.folders.map(
           _.copy(
-            staging = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/logs/"),
+            staging           = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/logs/"),
             transformerOutput = BlobStorage.Folder.coerce("gs://acme-snowplow/loader/transformed/")
           )
         )
@@ -105,7 +105,7 @@ class ConfigSpec extends Specification {
       val azureCloud = Config.Cloud.Azure(
         blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
         Config.Cloud.Azure.Kafka(
-          topicName = "loaderTopic",
+          topicName        = "loaderTopic",
           bootstrapServers = "localhost:9092",
           consumerConf = List(
             "enable.auto.commit" -> "false",
@@ -120,7 +120,7 @@ class ConfigSpec extends Specification {
         snowplow = exampleMonitoring.snowplow.map(_.copy(appId = "snowflake-loader")),
         folders = exampleMonitoring.folders.map(
           _.copy(
-            staging = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
+            staging           = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/staging/"),
             transformerOutput = BlobStorage.Folder.coerce("https://accountName.blob.core.windows.net/transformed/")
           )
         )
@@ -157,8 +157,8 @@ class ConfigSpec extends Specification {
         defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = Some(20.minutes)),
-        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
-        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
         exampleFeatureFlags,
         defaultTelemetry,
         exampleLicense
@@ -170,11 +170,11 @@ class ConfigSpec extends Specification {
       val result = getConfigFromResource("/loader/gcp/snowflake.config.minimal.hocon", testParseConfig)
       val gcpCloud = Config.Cloud.GCP(
         Config.Cloud.GCP.Pubsub(
-          subscription = "projects/project-id/subscriptions/subscription-id",
+          subscription         = "projects/project-id/subscriptions/subscription-id",
           customPubsubEndpoint = None,
-          parallelPullCount = 1,
+          parallelPullCount    = 1,
           awaitTerminatePeriod = 30.seconds,
-          bufferSize = 10
+          bufferSize           = 10
         )
       )
       val expected = Config(
@@ -189,8 +189,8 @@ class ConfigSpec extends Specification {
         defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = Some(20.minutes)),
-        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
-        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
         exampleFeatureFlags,
         defaultTelemetry,
         exampleLicense
@@ -203,7 +203,7 @@ class ConfigSpec extends Specification {
       val azureCloud = Config.Cloud.Azure(
         blobStorageEndpoint = URI.create("https://accountName.blob.core.windows.net/container-name"),
         Config.Cloud.Azure.Kafka(
-          topicName = "loaderTopic",
+          topicName        = "loaderTopic",
           bootstrapServers = "localhost:9092",
           consumerConf = List(
             "enable.auto.commit" -> "false",
@@ -226,8 +226,8 @@ class ConfigSpec extends Specification {
         defaultSchedules,
         exampleTimeouts,
         exampleRetries.copy(cumulativeBound = Some(20.minutes)),
-        exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds),
-        exampleInitRetries.copy(attempts = None, cumulativeBound = Some(10.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
         exampleFeatureFlags,
         defaultTelemetry,
         exampleLicense
@@ -237,20 +237,20 @@ class ConfigSpec extends Specification {
 
     "be able to infer host" in {
       val exampleSnowflake = StorageTarget.Snowflake(
-        snowflakeRegion = Some("us-west-2"),
-        username = "admin",
-        role = None,
-        password = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
-        account = Some("acme"),
-        warehouse = "wh",
-        database = "snowplow",
-        schema = "atomic",
-        transformedStage = None,
-        appName = "Snowplow_OSS",
+        snowflakeRegion       = Some("us-west-2"),
+        username              = "admin",
+        role                  = None,
+        password              = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        account               = Some("acme"),
+        warehouse             = "wh",
+        database              = "snowplow",
+        schema                = "atomic",
+        transformedStage      = None,
+        appName               = "Snowplow_OSS",
         folderMonitoringStage = None,
-        jdbcHost = None,
-        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds,
-        readyCheck = StorageTarget.Snowflake.ResumeWarehouse
+        jdbcHost              = None,
+        loadAuthMethod        = StorageTarget.LoadAuthMethod.NoCreds,
+        readyCheck            = StorageTarget.Snowflake.ResumeWarehouse
       )
       exampleSnowflake.host must beRight("acme.snowflakecomputing.com")
       exampleSnowflake.copy(jdbcHost = "override".some).host must beRight("override")
