@@ -181,7 +181,10 @@ object DataDiscovery {
                                .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
                          }
                      }
-      models <- getShredModels[F](nonAtomicTypes)
+      models <- message.typesInfo match {
+                  case TypesInfo.Shredded(_)   => getShredModels[F](nonAtomicTypes)
+                  case TypesInfo.WideRow(_, _) => EitherT.rightT[F, LoaderError](Map.empty[SchemaKey, DiscoveredShredModels])
+                }
     } yield DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo, wideColumns, models)
   }
 
