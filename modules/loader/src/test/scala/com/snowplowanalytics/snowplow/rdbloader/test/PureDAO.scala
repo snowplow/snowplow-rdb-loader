@@ -43,7 +43,7 @@ object PureDAO {
 
   def getResult(s: TestState)(query: Statement): Any =
     query match {
-      case Statement.GetVersion(_)        => SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0))
+      case Statement.GetVersion(_)        => Some(SchemaKey("com.acme", "some_context", "jsonschema", SchemaVer.Full(2, 0, 0)))
       case Statement.TableExists(_)       => false
       case Statement.GetColumns(_)        => List("some_column")
       case Statement.ManifestGet(_)       => List()

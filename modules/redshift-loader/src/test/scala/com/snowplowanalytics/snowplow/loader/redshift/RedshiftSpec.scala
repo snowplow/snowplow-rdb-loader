@@ -156,7 +156,7 @@ object RedshiftSpec {
   def jdbcResults(state: TestState)(statement: Statement): Any = {
     val _ = state
     statement match {
-      case Statement.GetVersion(_)  => SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0))
+      case Statement.GetVersion(_)  => Some(SchemaKey("com.acme", "context", "jsonschema", SchemaVer.Full(1, 0, 0)))
       case Statement.TableExists(_) => true
       case Statement.GetColumns(_)  => List("some_column")
       case Statement.ManifestGet(_) => List()

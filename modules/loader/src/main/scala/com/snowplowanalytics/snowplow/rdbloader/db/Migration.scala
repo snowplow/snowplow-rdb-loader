@@ -21,6 +21,7 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.{DataDiscovery, Shredd
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{DAO, Iglu, Logging, Transaction}
 import com.snowplowanalytics.snowplow.rdbloader.loading.EventsTable
 import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError, readSchemaKey}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError.TableCommentError
 import doobie.Fragment
 
 import scala.math.Ordered.orderingToOrdered
@@ -205,7 +206,7 @@ object Migration {
         Control.tableExists[F](rm.tableName).ifM(Applicative[F].pure(None), Applicative[F].pure(Some(target.createTable(rm))))
       }
 
-  def updateGoodTable[F[_]: Monad: DAO, I](
+  def updateGoodTable[F[_]: MonadThrow: DAO, I](
     target: Target[I],
     goodModel: ShredModel.GoodModel
   ): F[List[Block]] =
@@ -216,7 +217,7 @@ object Migration {
                else Monad[F].pure(Nil)
     } yield block
 
-  def buildBlock[F[_]: Monad: DAO, I](description: Description, target: Target[I]): F[List[Block]] =
+  def buildBlock[F[_]: MonadThrow: DAO, I](description: Description, target: Target[I]): F[List[Block]] =
     description match {
       case Description.Table(mergeResult) =>
         val goodModel = mergeResult.goodModel
@@ -303,8 +304,14 @@ object Migration {
     else List(Monad[F].unit)
 
   /** Find the latest schema version in the table and confirm that it is the latest in `schemas` */
-  def getVersion[F[_]: DAO](tableName: String): F[SchemaKey] =
-    DAO[F].executeQuery[SchemaKey](Statement.GetVersion(tableName))(readSchemaKey)
+  def getVersion[F[_]: MonadThrow: DAO](tableName: String): F[SchemaKey] =
+    DAO[F]
+      .executeQuery[Option[SchemaKey]](Statement.GetVersion(tableName))(readSchemaKey)
+      .flatMap(
+        _.fold(
+          MonadThrow[F].raiseError[SchemaKey](TableCommentError(s"Table missing comment [$tableName]"))
+        )(_.pure[F])
+      )
 
   sealed trait Entity {
     def getName: String = this match {

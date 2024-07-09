@@ -86,8 +86,8 @@ package object rdbloader {
   implicit val getSchemaKey: Get[SchemaKey] =
     Get[String].temap(s => SchemaKey.fromUri(s).leftMap(e => s"Cannot parse $s into Iglu schema key, ${e.code}"))
 
-  implicit val readSchemaKey: Read[SchemaKey] =
-    Read.fromGet(getSchemaKey)
+  implicit val readSchemaKey: Read[Option[SchemaKey]] =
+    Read.fromGetOption(getSchemaKey)
 
   // To replace Instant with sql.Timetstamp
   implicit val readTimestamps: Read[Timestamps] = {

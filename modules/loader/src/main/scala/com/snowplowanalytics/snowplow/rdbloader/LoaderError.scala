@@ -24,9 +24,9 @@ sealed trait LoaderError extends Throwable with Product with Serializable {
 object LoaderError {
 
   implicit val loaderErrorShow: Show[LoaderError] = {
-    case d: DiscoveryError => "Data discovery error with following issues:\n" + d.failures.toList.map(_.getMessage).mkString("\n")
-    case m: MigrationError => s"Table migration error. Please check the table consistency. ${m.message}"
-    case t: TimeoutError   => t.message
+    case d: DiscoveryError    => "Data discovery error with following issues:\n" + d.failures.toList.map(_.getMessage).mkString("\n")
+    case m: TableCommentError => m.message
+    case t: TimeoutError      => t.message
   }
 
   /**
@@ -42,8 +42,11 @@ object LoaderError {
       validated.leftMap(errors => DiscoveryError(errors): LoaderError).toEither
   }
 
-  /** Error happened during DDL-statements execution. Critical */
-  final case class MigrationError(message: String) extends LoaderError
+  /**
+   * Error happened when reading redshift table comment to discover latest schema key that a table
+   * has been migrated to so far
+   */
+  final case class TableCommentError(message: String) extends LoaderError
 
   /** A timeout has reached, Loader should abort the current operation and recover */
   final case class TimeoutError(message: String) extends LoaderError

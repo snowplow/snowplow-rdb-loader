@@ -14,8 +14,10 @@ import cats.{Applicative, MonadThrow, Show}
 import cats.effect.Clock
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
+import com.snowplowanalytics.snowplow.rdbloader.LoaderError.TableCommentError
 import retry.{RetryDetails, RetryPolicies, RetryPolicy}
 import retry._
+
 import scala.concurrent.duration.{Duration, FiniteDuration}
 
 /**
@@ -32,6 +34,7 @@ object Retry {
 
   /** List of predicates, matching exceptions that should not be retried */
   val FatalFailures: List[Throwable => Boolean] = List(
+    e => e.isInstanceOf[TableCommentError],
     e => e.isInstanceOf[IllegalStateException],
     e => e.toString.toLowerCase.contains("[amazon](500310) invalid operation"),
 
