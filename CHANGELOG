@@ -1,3 +1,11 @@
+Version 6.0.2 (2024-07-10)
+--------------------------
+Improve RDB Loader behavior for table without comment
+Bump Iglu Scala Client to 3.1.1
+Loader should not call the "list" Iglu endpoint for Snowflake/Databricks tables
+RDB Redshift Loader: increase atomic field lengths when RDB Loader creates Redshift events table
+RDB Databricks Loader: remove atomic field lengths when RDB Loader creates Databricks table
+
 Version 6.0.1 (2024-06-13)
 --------------------------
 Add scalafmtSbt settings and CI Check (#1348)
