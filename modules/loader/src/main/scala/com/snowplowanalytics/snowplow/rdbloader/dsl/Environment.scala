@@ -95,8 +95,7 @@ object Environment {
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       implicit0(logger: Logger[F]) = Slf4jLogger.getLogger[F]
       iglu <- Iglu.igluInterpreter(httpClient, cli.resolverConfig)
-      implicit0(logging: Logging[F]) =
-        Logging.loggingInterpreter[F](List(cli.config.storage.password.getUnencrypted, cli.config.storage.username))
+      implicit0(logging: Logging[F]) = getLoggingInterpreter[F](cli.config)
       implicit0(random: Random[F]) <- Resource.eval(Random.scalaUtilRandom[F])
       tracker <- Monitoring.initializeTracking[F](cli.config.monitoring, httpClient)
       sentry <- Sentry.init[F](cli.config.monitoring.sentry.map(_.dsn))
@@ -147,6 +146,14 @@ object Environment {
       control,
       telemetry
     )
+
+  private def getLoggingInterpreter[F[_]: Async](config: Config[StorageTarget]): Logging[F] = {
+    val stopWords = config.storage.credentials match {
+      case Some(configuredCredentials) => List(configuredCredentials.password.getUnencrypted, configuredCredentials.username)
+      case None                        => List.empty
+    }
+    Logging.loggingInterpreter[F](stopWords)
+  }
 
   def createCloudServices[F[_]: Async: Logger: Cache](
     config: Config[StorageTarget],

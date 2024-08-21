@@ -24,6 +24,13 @@
         "parameterName": "snowplow.databricks.password"
       }
     },
+    # Optional. Settings for OAuth machine-to-machine auth flow. If specified, it's used instead of 'password' setting
+    "oauth": {
+      # OAuth client id, required when `oauth` section is defined
+      "clientId": "client-id"
+      # OAuth client secret, required when `oauth` section is defined
+      "clientSecret": ${OAUTH_CLIENT_SECRET}
+    },
     # Optional. Override the Databricks default catalog, e.g. with a Unity catalog name.
     "catalog": "hive_metastore",
     # DB schema

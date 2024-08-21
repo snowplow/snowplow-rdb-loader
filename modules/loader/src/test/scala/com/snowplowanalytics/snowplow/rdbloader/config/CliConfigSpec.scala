@@ -90,7 +90,7 @@ class CliConfigSpec extends Specification {
     val result = CliConfig.parse[IO](cli).value.unsafeRunSync()
 
     result must beRight.like { case CliConfig(config, _, resolverConfig) =>
-      config.storage.password.getUnencrypted must beEqualTo("Supersecret password from substitution!")
+      config.storage.credentials.get.password.getUnencrypted must beEqualTo("Supersecret password from substitution!")
       resolverConfig must beEqualTo(expectedResolver)
     }
 

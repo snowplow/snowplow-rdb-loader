@@ -32,8 +32,7 @@ import scala.concurrent.duration.{Duration, FiniteDuration}
  */
 sealed trait StorageTarget extends Product with Serializable {
   def schema: String
-  def username: String
-  def password: StorageTarget.PasswordConfig
+  def credentials: Option[StorageTarget.Credentials]
   def sshTunnel: Option[StorageTarget.TunnelConfig]
 
   def doobieCommitStrategy(timeouts: Config.Timeouts): Strategy   = Transaction.defaultStrategy(timeouts)
@@ -80,6 +79,9 @@ object StorageTarget {
     sshTunnel: Option[TunnelConfig],
     loadAuthMethod: LoadAuthMethod
   ) extends StorageTarget {
+
+    override def credentials: Option[Credentials] = Some(Credentials(username, password))
+
     override def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
     override def connectionUrl: String = s"jdbc:redshift://$host:$port/$database"
@@ -107,7 +109,8 @@ object StorageTarget {
     schema: String,
     port: Int,
     httpPath: String,
-    password: PasswordConfig,
+    password: Option[PasswordConfig],
+    oauth: Option[Databricks.OAuth],
     sshTunnel: Option[TunnelConfig],
     userAgent: String,
     loadAuthMethod: LoadAuthMethod,
@@ -115,7 +118,8 @@ object StorageTarget {
     logLevel: Int
   ) extends StorageTarget {
 
-    override def username: String = "token"
+    override def credentials: Option[Credentials] =
+      password.map(configuredPassword => Credentials(username = "token", password = configuredPassword))
 
     override def driver: String = "com.databricks.client.jdbc.Driver"
 
@@ -130,16 +134,35 @@ object StorageTarget {
       props.put("httpPath", httpPath)
       props.put("ssl", 1)
       props.put("LogLevel", logLevel)
-      props.put("AuthMech", 3)
       props.put("transportMode", "http")
       props.put("UserAgentEntry", userAgent)
+      setAuthProperties(props)
       props
     }
+
+    private def setAuthProperties(props: Properties) =
+      oauth match {
+        case Some(configuredOAuth) =>
+          props.put("AuthMech", 11)
+          props.put("Auth_Flow", 1)
+          props.put("OAuth2ClientId", configuredOAuth.clientId)
+          props.put("OAuth2Secret", configuredOAuth.clientSecret)
+        case None =>
+          // When no OAuth use default, legacy personal access tokens (represented by 'Credentials' class)
+          props.put("AuthMech", 3)
+      }
 
     override def eventsLoadAuthMethod: LoadAuthMethod  = loadAuthMethod
     override def foldersLoadAuthMethod: LoadAuthMethod = loadAuthMethod
 
     override def reportRecoveryTableMetrics: Boolean = false
+  }
+
+  object Databricks {
+    final case class OAuth(clientId: String, clientSecret: String)
+
+    implicit def oauthConfigDecoder: Decoder[OAuth] =
+      deriveDecoder[OAuth]
   }
 
   final case class Snowflake(
@@ -158,6 +181,8 @@ object StorageTarget {
     loadAuthMethod: LoadAuthMethod,
     readyCheck: Snowflake.ReadyCheck
   ) extends StorageTarget {
+
+    override def credentials: Option[Credentials] = Some(Credentials(username, password))
 
     override def connectionUrl: String =
       host match {
@@ -351,6 +376,8 @@ object StorageTarget {
 
   /** Destination socket for SSH tunnel - usually DB socket inside private network */
   final case class DestinationConfig(host: String, port: Int)
+
+  final case class Credentials(username: String, password: PasswordConfig)
 
   /**
    * ADT representing fact that password can be either plain-text or encrypted in EC2 Parameter

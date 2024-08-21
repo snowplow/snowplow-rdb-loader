@@ -243,7 +243,13 @@ object BuildSettings {
       Docker / packageName := "rdb-loader-databricks",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
-      Compile / unmanagedJars += file("DatabricksJDBC42.jar")
+      Compile / unmanagedJars += file("DatabricksJDBC42.jar"),
+      // used in extended configuration parsing unit tests
+      Test / envVars := Map(
+        "OAUTH_CLIENT_SECRET" -> "client-secret"
+      ),
+      // envVars works only when fork is enabled
+      Test / fork := true
     ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
 
   lazy val transformerBatchBuildSettings =
