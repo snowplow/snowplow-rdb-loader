@@ -74,12 +74,13 @@ trait Transaction[F[_], C[_]] {
 object Transaction {
 
   /** Should be enough for all monitoring and loading */
-  val PoolSize = 4
+  private val PoolSize = 4
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  def configureHikari[F[_]: Sync](target: StorageTarget, ds: HikariConfig): F[Unit] =
+  private def configureHikari[F[_]: Sync: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
     Sync[F].delay {
+      ds.setJdbcUrl(target.connectionUrl)
       ds.setAutoCommit(target.withAutoCommit)
       ds.setMaximumPoolSize(PoolSize)
 
@@ -97,26 +98,43 @@ object Transaction {
       ds.setMinimumIdle(0)
 
       ds.setDataSourceProperties(target.properties)
-    }
+    } *> setJdbcCredentials[F](target, ds)
 
-  def buildPool[F[_]: Async: SecretStore: Logging: Sleep](
+  private def buildPool[F[_]: Async: SecretStore: Logging: Sleep](
     target: StorageTarget,
     retries: Config.Retries
   ): Resource[F, Transactor[F]] =
     for {
-      ce <- ExecutionContexts.fixedThreadPool[F](2)
-      password <- target.password match {
-                    case StorageTarget.PasswordConfig.PlainText(text) =>
-                      Resource.pure[F, String](text)
-                    case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
-                      Resource.eval(SecretStore[F].getValue(parameterName))
-                  }
-      xa <- HikariTransactor
-              .newHikariTransactor[F](target.driver, target.connectionUrl, target.username, password, ce)
-      _ <- Resource.eval(xa.configure(configureHikari[F](target, _)))
+      xa <- getTransactor(target)
       xa <- Resource.pure(RetryingTransactor.wrap(retries, xa))
       xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
     } yield xa
+
+  private def getTransactor[F[_]: Async: SecretStore](target: StorageTarget): Resource[F, HikariTransactor[F]] =
+    for {
+      ec <- ExecutionContexts.fixedThreadPool[F](2)
+      _ <- Resource.eval(Async[F].delay(Class.forName(target.driver)))
+      xa <- HikariTransactor.initial[F](ec)
+      _ <- Resource.eval(xa.configure(configureHikari[F](target, _)))
+    } yield xa
+
+  private def setJdbcCredentials[F[_]: Sync: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
+    target.credentials match {
+      case Some(configuredCredentials) =>
+        getPassword[F](configuredCredentials).map { password =>
+          ds.setUsername(configuredCredentials.username)
+          ds.setPassword(password)
+        }
+      case None => Sync[F].unit
+    }
+
+  private def getPassword[F[_]: Sync: SecretStore](credentials: StorageTarget.Credentials): F[String] =
+    credentials.password match {
+      case StorageTarget.PasswordConfig.PlainText(text) =>
+        Sync[F].pure(text)
+      case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
+        SecretStore[F].getValue(parameterName)
+    }
 
   /**
    * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`, which guarantees to
