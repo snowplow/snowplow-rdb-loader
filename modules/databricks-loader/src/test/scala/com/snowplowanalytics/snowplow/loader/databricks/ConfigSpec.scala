@@ -112,7 +112,8 @@ class ConfigSpec extends Specification {
       val result = getConfigFromResource("/loader/aws/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
         catalog  = None,
-        password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
+        password = Some(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
+        oauth    = None
       )
       val cloud      = Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion)))
       val retries    = exampleRetries.copy(cumulativeBound = Some(20.minutes))
@@ -140,7 +141,8 @@ class ConfigSpec extends Specification {
       val result = getConfigFromResource("/loader/gcp/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
         catalog  = None,
-        password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
+        password = Some(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
+        oauth    = None
       )
       val retries     = exampleRetries.copy(cumulativeBound = Some(20.minutes))
       val readyCheck  = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
@@ -167,7 +169,8 @@ class ConfigSpec extends Specification {
       val result = getConfigFromResource("/loader/azure/databricks.config.minimal.hocon", testParseConfig)
       val storage = ConfigSpec.exampleStorage.copy(
         catalog  = None,
-        password = StorageTarget.PasswordConfig.PlainText("Supersecret1")
+        password = Some(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
+        oauth    = None
       )
       val retries     = exampleRetries.copy(cumulativeBound = Some(20.minutes))
       val readyCheck  = exampleReadyCheck.copy(strategy = Config.Strategy.Constant, backoff = 15.seconds)
@@ -200,7 +203,8 @@ object ConfigSpec {
     "atomic",
     443,
     "/databricks/http/path",
-    StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.databricks.password")),
+    Some(StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.databricks.password"))),
+    Some(StorageTarget.Databricks.OAuth("client-id", "client-secret")),
     None,
     "snowplow-rdbloader-oss",
     StorageTarget.LoadAuthMethod.NoCreds,
