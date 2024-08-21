@@ -24,6 +24,10 @@
         "parameterName": "snowplow.databricks.password"
       }
     },
+    "oauth": {
+      "clientId": "client-id"
+      "clientSecret": ${OAUTH_CLIENT_SECRET}
+    },
     # Optional. Override the Databricks default catalog, e.g. with a Unity catalog name.
     "catalog": "hive_metastore",
     # DB schema

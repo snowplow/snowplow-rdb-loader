@@ -348,9 +348,10 @@ object Config {
   private def azureVaultCheck(config: Config[StorageTarget]): List[String] =
     config.cloud match {
       case c: Config.Cloud.Azure if c.azureVaultName.isEmpty =>
-        (config.storage.password, config.storage.sshTunnel.flatMap(_.bastion.key)) match {
-          case (_: StorageTarget.PasswordConfig.EncryptedKey, _) | (_, Some(_)) => List("Azure vault name is needed")
-          case _                                                                => Nil
+        (config.storage.credentials, config.storage.sshTunnel.flatMap(_.bastion.key)) match {
+          case (Some(StorageTarget.Credentials(_, _: StorageTarget.PasswordConfig.EncryptedKey)), _) | (_, Some(_)) =>
+            List("Azure vault name is needed")
+          case _ => Nil
         }
       case _ => Nil
     }

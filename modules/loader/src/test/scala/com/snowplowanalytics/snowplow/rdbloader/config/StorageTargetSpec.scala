@@ -162,6 +162,10 @@ class StorageTargetSpec extends Specification {
       "port": 443,
       "httpPath": "http/path",
       "password": "Supersecret1",
+      "oauth": {
+        "clientId": "client-id",
+        "clientSecret": "client-secret"
+      },
       "userAgent": "snowplow-rdbloader-oss",
       "eventsOptimizePeriod": "2 days",
       "loadAuthMethod": {
@@ -177,7 +181,8 @@ class StorageTargetSpec extends Specification {
         schema               = "snowplow",
         port                 = 443,
         httpPath             = "http/path",
-        password             = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        password             = Some(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
+        oauth                = Some(StorageTarget.Databricks.OAuth("client-id", "client-secret")),
         sshTunnel            = None,
         userAgent            = "snowplow-rdbloader-oss",
         loadAuthMethod       = StorageTarget.LoadAuthMethod.NoCreds,
