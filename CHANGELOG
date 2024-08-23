@@ -1,3 +1,9 @@
+Version 6.1.0 (2024-08-23)
+--------------------------
+Stop publishing fat jars to GH
+Upgrade dependencies to fix some vulnerabilites
+Add OAuth support in Databricks Loader
+
 Version 6.0.2 (2024-07-10)
 --------------------------
 Improve RDB Loader behavior for table without comment
