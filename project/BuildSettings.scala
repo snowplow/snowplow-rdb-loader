@@ -58,33 +58,6 @@ object BuildSettings {
   // sbt-assembly settings
   lazy val jarName = assembly / assemblyJarName := name.value + "-" + version.value + ".jar"
 
-  lazy val assemblySettings = Seq(
-    jarName,
-    assembly / assemblyMergeStrategy := {
-      case x if x.endsWith("module-info.class")                   => MergeStrategy.discard
-      case PathList("org", "apache", "commons", "logging", _ @_*) => MergeStrategy.first
-      case PathList("META-INF", "MANIFEST.MF")                    => MergeStrategy.discard
-      case PathList("META-INF", "io.netty.versions.properties")   => MergeStrategy.discard
-      case PathList("META-INF", "native-image", _ @_*)            => MergeStrategy.discard
-      // case PathList("META-INF", _ @ _*) => MergeStrategy.discard    // Replaced with above for Stream Shredder
-      case PathList("reference.conf", _ @_*)                                 => MergeStrategy.concat
-      case PathList("codegen-resources", _ @_*)                              => MergeStrategy.first // Part of AWS SDK v2
-      case "mime.types"                                                      => MergeStrategy.first // Part of AWS SDK v2
-      case "AUTHORS"                                                         => MergeStrategy.discard
-      case PathList("org", "slf4j", "impl", _)                               => MergeStrategy.first
-      case PathList("buildinfo", _)                                          => MergeStrategy.first
-      case x if x.contains("javax")                                          => MergeStrategy.first
-      case PathList("scala", "annotation", "nowarn.class" | "nowarn$.class") => MergeStrategy.first // http4s, 2.13 shim
-      case x if x.endsWith("public-suffix-list.txt")                         => MergeStrategy.first
-      case PathList("org", "apache", "log4j", _ @_*)                         => MergeStrategy.first
-      case PathList("SNOWPLOW-LICENSE.md")                                   => MergeStrategy.first
-      case x =>
-        val oldStrategy = (assembly / assemblyMergeStrategy).value
-        oldStrategy(x)
-
-    }
-  ) ++ (if (sys.env.get("SKIP_TEST").contains("true")) Seq(assembly / test := {}) else Seq())
-
   lazy val formattingSettings = Seq(
     scalafmtConfig := file(".scalafmt.conf"),
     scalafmtOnCompile := false
@@ -216,10 +189,10 @@ object BuildSettings {
         "iglu:com.snowplowanalytics.snowplow/web_page/jsonschema/1-0-0",
         "iglu:org.w3/PerformanceTiming/jsonschema/1-0-0"
       )
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
   lazy val loaderBuildSettings =
-    buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
   lazy val redshiftBuildSettings =
     Seq(
@@ -227,7 +200,7 @@ object BuildSettings {
       Docker / packageName := "rdb-loader-redshift",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.redshift._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
   lazy val snowflakeBuildSettings =
     Seq(
@@ -235,7 +208,7 @@ object BuildSettings {
       Docker / packageName := "rdb-loader-snowflake",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
   lazy val databricksBuildSettings =
     Seq(
@@ -250,7 +223,7 @@ object BuildSettings {
       ),
       // envVars works only when fork is enabled
       Test / fork := true
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ assemblySettings ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
   lazy val transformerBatchBuildSettings =
     Seq(
@@ -276,7 +249,7 @@ object BuildSettings {
       Docker / packageName := "transformer-kinesis",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kinesis.generated",
       buildInfoKeys := List(name, version, description)
-    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+    ) ++ buildSettings ++ dynVerSettings ++ addExampleConfToTestCp
 
   lazy val transformerPubsubBuildSettings =
     Seq(
@@ -284,7 +257,7 @@ object BuildSettings {
       Docker / packageName := "transformer-pubsub",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.pubsub.generated",
       buildInfoKeys := List(name, version, description)
-    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+    ) ++ buildSettings ++ dynVerSettings ++ addExampleConfToTestCp
 
   lazy val transformerKafkaBuildSettings =
     Seq(
@@ -292,6 +265,6 @@ object BuildSettings {
       Docker / packageName := "transformer-kafka",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.stream.kafka.generated",
       buildInfoKeys := List(name, version, description)
-    ) ++ buildSettings ++ assemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+    ) ++ buildSettings ++ dynVerSettings ++ addExampleConfToTestCp
 
 }
