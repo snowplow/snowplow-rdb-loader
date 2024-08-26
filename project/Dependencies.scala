@@ -27,13 +27,13 @@ object Dependencies {
     val manifest      = "0.3.0"
     val fs2           = "3.3.0"
     val fs2Aws        = "4.1.0"
-    val fs2Blobstore  = "0.9.7"
+    val fs2Blobstore  = "0.9.14"
     val fs2Cron       = "0.7.2"
     val fs2PubSub     = "0.21.0"
     val fs2Kafka      = "3.0.0"
     val secretManager = "2.7.0"
     val gcpStorage    = "2.16.0"
-    val azureIdentity = "1.9.0"
+    val azureIdentity = "1.13.2"
     val azureKeyVault = "4.6.2"
     val doobie        = "1.0.0-RC2"
     val monocle       = "2.0.3"
@@ -46,11 +46,11 @@ object Dependencies {
     val spark           = "3.3.1"
     val eventsManifest  = "0.4.0"
     val schemaDdl       = "0.22.1"
-    val jacksonModule   = "2.14.2" // Override incompatible version in spark runtime
-    val jacksonDatabind = "2.14.2"
+    val jacksonModule   = "2.17.2" // Override incompatible version in spark runtime
+    val jacksonDatabind = "2.17.2"
     val jacksonMapper   = "1.9.14-atlassian-6" // Fix CVE
     val parquet4s       = "2.10.0"
-    val hadoopClient    = "3.3.4"
+    val hadoopClient    = "3.4.0"
     val hadoopGcpClient = "hadoop3-2.2.5"
     val parquetHadoop   = "1.12.3"
     val jsonSmart       = "2.4.9" // Fix CVE
@@ -68,15 +68,16 @@ object Dependencies {
     val aws           = "1.12.677"
     val aws2          = "2.23.17"
     val pubsub        = "1.125.13"
-    val jSch          = "0.2.1"
+    val jSch          = "0.2.15"
     val sentry        = "1.7.30"
     val protobuf      = "3.21.7" // Fix CVE
     val kinesisClient = "2.4.3"
-    val nettyCodec    = "4.1.86.Final" // Fix CVE
+    val nettyCodec    = "4.1.112.Final" // Fix CVE
     val jettison      = "1.5.4" // Fix CVE
     val reactorNetty  = "1.0.39" // Fix CVE
-    val jettyHttp     = "9.4.53.v20231009" // Fix CVE
-    val zookeeper     = "3.7.2" // Fix CVE
+    val jettyHttp     = "9.4.51.v20230217" // Fix CVE
+    val zookeeper     = "3.9.2" // Fix CVE
+    val dnsjava       = "3.6.1" // Fix CVE
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -207,6 +208,7 @@ object Dependencies {
   val protobuf    = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
   val nettyCodec  = "io.netty"               % "netty-codec"         % V.nettyCodec
   val zookeeper   = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
+  val dnsjava     = "dnsjava"                % "dnsjava"             % V.dnsjava
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -253,7 +255,8 @@ object Dependencies {
     hadoopCommon,
     hadoopAzure,
     reactorNetty,
-    jettyHttp
+    jettyHttp,
+    dnsjava
   )
 
   val commonDependencies = Seq(
