@@ -11,12 +11,12 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.{Monad, Order}
-import cats.data.EitherT
+import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
-import cats.syntax.all._
+import io.circe.Json
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.client.{ClientError, Resolver}
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
+import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits.toSchema
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
@@ -40,32 +40,25 @@ object SchemaProvider {
       schema <- EitherT.fromOption[F](Schema.parse(json), parseSchemaBadRow(schemaKey))
     } yield schema
 
+  def parseSchemaJsons[F[_]](jsons: NonEmptyList[SelfDescribingSchema[Json]]): Either[LoaderIgluError, NonEmptyList[SchemaWithKey]] =
+    jsons.traverse { json =>
+      Schema
+        .parse(json.schema)
+        .toRight(parseSchemaBadRow(json.self.schemaKey))
+        .map(schema => SchemaWithKey(json.self.schemaKey, schema))
+    }
+
   def fetchSchemasWithSameModel[F[_]: Clock: Monad: RegistryLookup](
     resolver: Resolver[F],
     schemaKey: SchemaKey
   ): EitherT[F, LoaderIgluError, List[SchemaWithKey]] =
-    EitherT(resolver.listSchemasLike(schemaKey))
-      .leftMap(resolverFetchBadRow(schemaKey.vendor, schemaKey.name, schemaKey.format, schemaKey.version.model))
-      .map(_.schemas)
-      .flatMap(schemaKeys =>
-        schemaKeys
-          .traverse(schemaKey =>
-            getSchema(resolver, schemaKey)
-              .map(schema => SchemaWithKey(schemaKey, schema))
-          )
-      )
+    for {
+      jsons <- EitherT(resolver.lookupSchemasUntil(schemaKey))
+                 .leftMap(e => resolverBadRow(e.schemaKey)(e.error))
+      schemas <- EitherT.fromEither[F](parseSchemaJsons(jsons))
+    } yield schemas.toList
 
-  private def resolverFetchBadRow(
-    vendor: String,
-    name: String,
-    format: String,
-    model: Int
-  )(
-    e: ClientError.ResolutionError
-  ): LoaderIgluError =
-    LoaderIgluError.SchemaListNotFound(SchemaCriterion(vendor = vendor, name = name, format = format, model = model), e)
-
-  private def resolverBadRow(schemaKey: SchemaKey)(e: ClientError.ResolutionError): LoaderIgluError =
+  def resolverBadRow(schemaKey: SchemaKey)(e: ClientError.ResolutionError): LoaderIgluError =
     LoaderIgluError.IgluError(schemaKey, e)
 
   private def parseSchemaBadRow(schemaKey: SchemaKey): LoaderIgluError =

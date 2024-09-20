@@ -15,20 +15,19 @@ import cats.implicits._
 import cats.data.{EitherT, NonEmptyList}
 import cats.effect.Clock
 import com.snowplowanalytics.iglu.client.Resolver
+import com.snowplowanalytics.iglu.client.resolver.SchemaContentList
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
-import com.snowplowanalytics.iglu.client.resolver.Resolver.{ResolverResult, SchemaListKey}
-import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaList, SchemaMap, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverResult
+import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, FailureDetails, Processor}
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
-import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError.SchemaListNotFound
 import com.snowplowanalytics.snowplow.rdbloader.common.Common.AtomicSchema
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider
-import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider.SchemaWithKey
 
 /** Represents transformed data in blob storage */
 
@@ -151,25 +150,13 @@ object Transformed {
 
   def getShredModel[F[_]: Monad: Clock: RegistryLookup](
     schemaKey: SchemaKey,
-    schemaKeys: List[SchemaKey],
-    resolver: Resolver[F]
+    schemaContentList: SchemaContentList
   ): EitherT[F, LoaderIgluError, ShredModel] =
-    schemaKeys
-      .traverse { sk =>
-        SchemaProvider
-          .getSchema(resolver, sk)
-          .map(schema => SchemaWithKey(sk, schema))
-      }
-      .flatMap { schemaWithKeyList =>
-        EitherT
-          .fromOption[F][FailureDetails.LoaderIgluError, NonEmptyList[SchemaWithKey]](
-            NonEmptyList.fromList(schemaWithKeyList),
-            FailureDetails.LoaderIgluError.InvalidSchema(schemaKey, s"Empty resolver response for $schemaKey")
-          )
-          .map { nel =>
-            val schemas = nel.map(swk => SelfDescribingSchema[Schema](SchemaMap(swk.schemaKey), swk.schema))
-            foldMapRedshiftSchemas(schemas)(schemaKey)
-          }
+    EitherT
+      .fromEither[F](SchemaProvider.parseSchemaJsons(schemaContentList))
+      .map { nel =>
+        val schemas = nel.map(swk => SelfDescribingSchema[Schema](SchemaMap(swk.schemaKey), swk.schema))
+        foldMapRedshiftSchemas(schemas)(schemaKey)
       }
 
   /**
@@ -179,32 +166,27 @@ object Transformed {
     schemaKey: SchemaKey,
     shredModelCache: ShredModelCache[F],
     resolver: => Resolver[F]
-  ): EitherT[F, LoaderIgluError, ShredModel] = {
-    val criterion = SchemaCriterion(schemaKey.vendor, schemaKey.name, schemaKey.format, Some(schemaKey.version.model), None, None)
-
-    EitherT(resolver.listSchemasResult(schemaKey.vendor, schemaKey.name, schemaKey.version.model, Some(schemaKey)))
-      .leftMap(error => SchemaListNotFound(criterion, error))
+  ): EitherT[F, LoaderIgluError, ShredModel] =
+    EitherT(resolver.lookupSchemasUntilResult(schemaKey))
+      .leftMap(e => SchemaProvider.resolverBadRow(e.schemaKey)(e.error))
       .flatMap {
-        case cached: ResolverResult.Cached[SchemaListKey, SchemaList] =>
-          lookupInCache(schemaKey, resolver, shredModelCache, cached)
-        case ResolverResult.NotCached(schemaList) =>
-          val schemaKeys = schemaList.schemas
-          getShredModel(schemaKey, schemaKeys, resolver)
+        case cached: ResolverResult.Cached[SchemaKey, SchemaContentList] =>
+          lookupInCache(schemaKey, shredModelCache, cached)
+        case ResolverResult.NotCached(schemaContentList) =>
+          getShredModel(schemaKey, schemaContentList)
       }
-  }
 
   def lookupInCache[F[_]: Monad: Clock: RegistryLookup](
     schemaKey: SchemaKey,
-    resolver: Resolver[F],
     shredModelCache: ShredModelCache[F],
-    cached: ResolverResult.Cached[SchemaListKey, SchemaList]
+    cached: ResolverResult.Cached[SchemaKey, SchemaContentList]
   ) = {
     val key = (schemaKey, cached.timestamp)
     EitherT.liftF(shredModelCache.get(key)).flatMap {
       case Some(model) =>
         EitherT.pure[F, FailureDetails.LoaderIgluError](model)
       case None =>
-        getShredModel(schemaKey, cached.value.schemas, resolver)
+        getShredModel[F](schemaKey, cached.value)
           .semiflatTap(props => shredModelCache.put(key, props))
     }
   }
