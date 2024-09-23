@@ -178,6 +178,7 @@ object BuildSettings {
         "iglu:com.segment/screen/jsonschema/1-0-0",
         "iglu:com.snowplowanalytics.snowplow/atomic/jsonschema/1-0-0",
         "iglu:com.snowplowanalytics.snowplow/change_form/jsonschema/1-0-0",
+        "iglu:com.snowplowanalytics.snowplow/client_session/jsonschema/1-0-0",
         "iglu:com.snowplowanalytics.snowplow/client_session/jsonschema/1-0-1",
         "iglu:com.snowplowanalytics.snowplow/consent_document/jsonschema/1-0-0",
         "iglu:com.snowplowanalytics.snowplow/consent_withdrawn/jsonschema/1-0-0",

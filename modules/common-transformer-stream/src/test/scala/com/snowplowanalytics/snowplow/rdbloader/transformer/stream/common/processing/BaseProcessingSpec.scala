@@ -13,6 +13,9 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.proce
 import cats.effect.{IO, Resource}
 import cats.effect.kernel.Ref
 
+import io.circe.optics.JsonPath._
+import io.circe.parser.{parse => parseCirce}
+
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.FileUtils
@@ -58,11 +61,13 @@ trait BaseProcessingSpec extends Specification {
       }
       .reduce(_ and _)
 
-  protected def readMessageFromResource(resource: String, outputRootDirectory: Path) =
+  protected def readMessageFromResource(resource: String, completionMessageVars: BaseProcessingSpec.CompletionMessageVars) =
     readLinesFromResource(resource)
       .map(_.mkString)
       .map(
-        _.replace("output_path_placeholder", outputRootDirectory.toNioPath.toUri.toString.replaceAll("/+$", ""))
+        _.replace("output_path_placeholder", completionMessageVars.base.toNioPath.toUri.toString)
+          .replace("job_started_placeholder", completionMessageVars.jobStarted)
+          .replace("job_completed_placeholder", completionMessageVars.jobCompleted)
           .replace("version_placeholder", BuildInfo.version)
           .replace(" ", "")
       )
@@ -86,6 +91,15 @@ trait BaseProcessingSpec extends Specification {
       new String(encoder.encode(config.app.replace("file:/", "s3:/").getBytes))
     )
   }
+
+  def extractCompletionMessageVars(processingOutput: BaseProcessingSpec.ProcessingOutput): BaseProcessingSpec.CompletionMessageVars = {
+    val message      = processingOutput.completionMessages.head
+    val json         = parseCirce(message).toOption.get
+    val base         = root.data.base.string.getOption(json).get.stripPrefix("file://")
+    val jobStarted   = root.data.timestamps.jobStarted.string.getOption(json).get
+    val jobCompleted = root.data.timestamps.jobCompleted.string.getOption(json).get
+    BaseProcessingSpec.CompletionMessageVars(Path(base), jobStarted, jobCompleted)
+  }
 }
 
 object BaseProcessingSpec {
@@ -96,5 +110,13 @@ object BaseProcessingSpec {
     badrowsFromQueue: Vector[String],
     checkpointed: Int
   )
+  final case class CompletionMessageVars(
+    base: Path,
+    jobStarted: String,
+    jobCompleted: String
+  ) {
+    def goodPath: Path = Path(s"$base/output=good")
+    def badPath: Path  = Path(s"$base/output=bad")
+  }
 
 }

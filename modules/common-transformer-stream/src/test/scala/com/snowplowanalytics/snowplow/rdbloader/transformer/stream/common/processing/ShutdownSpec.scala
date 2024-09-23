@@ -37,9 +37,10 @@ class ShutdownSpec extends BaseProcessingSpec {
 
           for {
             output <- runWithShutdown(inputStream, config)
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/8/output/completion.json", outputDirectory)
+            compVars = extractCompletionMessageVars(output)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/8/output/completion.json", compVars)
           } yield {
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
 
             output.checkpointed must beEqualTo(1)
           }

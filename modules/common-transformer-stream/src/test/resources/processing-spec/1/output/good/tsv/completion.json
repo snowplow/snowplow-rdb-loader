@@ -1,7 +1,7 @@
 {
   "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
   "data": {
-    "base": "output_path_placeholder/run=1970-01-01-10-30-00/",
+    "base": "output_path_placeholder",
     "typesInfo": {
       "transformation": "SHREDDED",
       "types": [
@@ -113,8 +113,8 @@
       ]
     },
     "timestamps": {
-      "jobStarted": "1970-01-01T10:30:00Z",
-      "jobCompleted": "1970-01-01T10:30:00Z",
+      "jobStarted": "job_started_placeholder",
+      "jobCompleted": "job_completed_placeholder",
       "min": "2021-10-13T20:21:47.595072674Z",
       "max": "2021-10-15T00:51:57.521746512Z"
     },

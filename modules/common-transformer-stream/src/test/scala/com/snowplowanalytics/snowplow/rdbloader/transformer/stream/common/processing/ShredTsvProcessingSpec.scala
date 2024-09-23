@@ -10,9 +10,8 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.ShredTsvProcessingSpec.{appConfig, igluConfig}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.ShredTsvProcessingSpec._
 
 import cats.effect.unsafe.implicits.global
 import fs2.io.file.Path
@@ -31,43 +30,32 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             actualAtomicRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
-                )
+                compVars.goodPath / "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
               )
             actualOptimizelyRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.optimizely/name=state/format=tsv/model=1/revision=0/addition=0"
-                )
+                compVars.goodPath / "vendor=com.optimizely/name=state/format=tsv/model=1/revision=0/addition=0"
               )
             actualConsentRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1/revision=0/addition=0"
-                )
+                compVars.goodPath / "vendor=com.snowplowanalytics.snowplow/name=consent_document/format=tsv/model=1/revision=0/addition=0"
               )
             actualBadRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/revision=0/addition=0"
-                )
+                compVars.badPath / "vendor=com.snowplowanalytics.snowplow.badrows/name=loader_parsing_error/format=json/model=2/revision=0/addition=0"
               )
 
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/tsv/completion.json", outputDirectory)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/tsv/completion.json", compVars)
             expectedAtomicRows <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-atomic")
             expectedOptimizelyRows <- readLinesFromResource("/processing-spec/1/output/good/tsv/com.optimizely-state")
             expectedConsentRows <-
               readLinesFromResource("/processing-spec/1/output/good/tsv/com.snowplowanalytics.snowplow-consent_document")
             expectedBadRows <- readLinesFromResource("/processing-spec/1/output/bad")
           } yield {
-            removeAppId(output.completionMessages.toList) must beEqualTo(Vector(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(Vector(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
             assertStringRows(removeAppId(actualAtomicRows), expectedAtomicRows)
@@ -91,28 +79,23 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             actualAtomicRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good/vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
-                )
+                compVars.goodPath / "vendor=com.snowplowanalytics.snowplow/name=atomic/format=tsv/model=1/revision=0/addition=0"
               )
             actualBadRows <-
               readStringRowsFrom(
-                Path(
-                  outputDirectory.toString +
-                    s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad/vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/revision=0/addition=0"
-                )
+                compVars.badPath / "vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/revision=0/addition=0"
               )
 
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", outputDirectory)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", compVars)
             expectedBadRows <- readLinesFromResource("/processing-spec/3/output/bad")
           } yield {
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
             actualAtomicRows.size must beEqualTo(1)
-            assertStringRows(removeAppId(actualBadRows), expectedBadRows)
+            assertStringRows(removeLastAttempt(removeAppId(actualBadRows)), expectedBadRows)
           }
         }
         .unsafeRunSync()
@@ -156,4 +139,7 @@ object ShredTsvProcessingSpec {
        |    "repositories": []
        |  }
        |}""".stripMargin
+
+  def removeLastAttempt(badRows: List[String]): List[String] =
+    badRows.map(_.replaceAll(""""lastAttempt":".{20}"""", """"lastAttempt":"""""))
 }

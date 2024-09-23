@@ -11,7 +11,6 @@
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
 import cats.effect.unsafe.implicits.global
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.QueueBadSinkSpec._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import fs2.io.file.Path
@@ -39,12 +38,12 @@ class QueueBadSinkSpec extends BaseProcessingSpec {
           inputEventsPath = "/processing-spec/1/input/events"
         )
 
-        val config       = TransformerConfig(configFromPath(outputDirectory), igluConfig)
-        val badDirectory = outputDirectory.resolve(s"run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+        val config = TransformerConfig(configFromPath(outputDirectory), igluConfig)
 
         for {
           output <- process(inputStream, config)
-          badDirectoryExists <- pathExists(badDirectory)
+          compVars = extractCompletionMessageVars(output)
+          badDirectoryExists <- pathExists(compVars.badPath)
           expectedBadRows <- readLinesFromResource("/processing-spec/1/output/bad")
         } yield {
           val actualBadRows = output.badrowsFromQueue.toList
@@ -98,7 +97,8 @@ object QueueBadSinkSpec {
        |  "schema": "iglu:com.snowplowanalytics.iglu/resolver-config/jsonschema/1-0-0",
        |  "data": {
        |    "cacheSize": 500,
-       |    "repositories": []
+       |    "repositories": [
+       |    ]
        |  }
        |}""".stripMargin
 }

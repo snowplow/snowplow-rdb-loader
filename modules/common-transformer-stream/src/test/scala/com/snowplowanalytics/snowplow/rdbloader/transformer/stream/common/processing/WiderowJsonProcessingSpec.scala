@@ -10,7 +10,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing
 
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.AppId
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowJsonProcessingSpec.{appConfig, igluConfig}
 
@@ -28,20 +27,19 @@ class WiderowJsonProcessingSpec extends BaseProcessingSpec {
             inputEventsPath = "/processing-spec/1/input/events"
           )
 
-          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath  = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
           for {
             output <- process(inputStream, config)
-            actualGoodRows <- readStringRowsFrom(goodPath)
-            actualBadRows <- readStringRowsFrom(badPath)
+            compVars = extractCompletionMessageVars(output)
+            actualGoodRows <- readStringRowsFrom(compVars.goodPath)
+            actualBadRows <- readStringRowsFrom(compVars.badPath)
 
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", outputDirectory)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/1/output/good/widerow/completion.json", compVars)
             expectedGoodRows <- readLinesFromResource("/processing-spec/1/output/good/widerow/events")
             expectedBadRows <- readLinesFromResource("/processing-spec/1/output/bad")
           } yield {
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
             assertStringRows(actualGoodRows, expectedGoodRows)
             assertStringRows(actualBadRows, expectedBadRows)
