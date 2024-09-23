@@ -335,16 +335,6 @@ object ShredJobSpec {
          |"cacheSize": 500,
          |"repositories": [
          |{
-         |"name": "Local Iglu Server",
-         |"priority": 0,
-         |"vendorPrefixes": [ "com.snowplowanalytics" ],
-         |"connection": {
-         |"http": {
-         |"uri": "http://localhost:8080/api"
-         |}
-         |}
-         |},
-         |{
          |"name": "Iglu Central",
          |"priority": 0,
          |"vendorPrefixes": [ "com.snowplowanalytics" ],

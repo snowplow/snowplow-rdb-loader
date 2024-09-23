@@ -14,7 +14,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
-import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.{AppId, ParquetUtils}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils.{readParquetColumns, readParquetRowsAsJsonFrom}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowParquetProcessingSpec.{appConfig, igluConfig}
@@ -42,28 +42,26 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
             inputEventsPath =
               "/processing-spec/4/input/events" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
-
-          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
-          val badPath  = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=bad")
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             expectedParquetColumns <- readParquetColumnsFromResource(
                                         "/processing-spec/4/output/good/parquet/schema"
                                       ) // the same schema as in resource file used in WideRowParquetSpec for batch transformer
-            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
-            actualParquetColumns = readParquetColumns(goodPath)
-            actualBadRows <- readStringRowsFrom(badPath)
+            actualParquetRows <- readParquetRowsAsJsonFrom(compVars.goodPath, expectedParquetColumns)
+            actualParquetColumns = readParquetColumns(compVars.goodPath)
+            actualBadRows <- readStringRowsFrom(compVars.badPath)
 
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/4/output/good/parquet/completion.json", outputDirectory)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/4/output/good/parquet/completion.json", compVars)
             expectedBadRows <- readLinesFromResource("/processing-spec/4/output/badrows")
             expectedParquetRows <- readGoodParquetEventsFromResource("/processing-spec/4/input/events", columnToAdjust = None)
           } yield {
 
             actualParquetRows.size must beEqualTo(46)
             actualBadRows.size must beEqualTo(4)
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
             assertParquetRows(actualParquetRows, expectedParquetRows)
@@ -82,15 +80,15 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/5/input/input-events-custom-contexts" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             expectedParquetColumns <- readParquetColumnsFromResource("/processing-spec/5/output/good/parquet/schema")
-            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
-            actualParquetColumns = readParquetColumns(goodPath)
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/5/output/good/parquet/completion.json", outputDirectory)
+            actualParquetRows <- readParquetRowsAsJsonFrom(compVars.goodPath, expectedParquetColumns)
+            actualParquetColumns = readParquetColumns(compVars.goodPath)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/5/output/good/parquet/completion.json", compVars)
             expectedParquetRows <- readGoodParquetEventsFromResource(
                                      "/processing-spec/5/input/input-events-custom-contexts",
                                      columnToAdjust = Some("contexts_com_snowplowanalytics_snowplow_parquet_test_a_1")
@@ -98,7 +96,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           } yield {
 
             actualParquetRows.size must beEqualTo(100)
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
             assertParquetRows(actualParquetRows, expectedParquetRows)
@@ -115,15 +113,15 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/6/input/input-events-custom-unstruct" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             expectedParquetColumns <- readParquetColumnsFromResource("/processing-spec/6/output/good/parquet/schema")
-            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
-            actualParquetColumns = readParquetColumns(goodPath)
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/6/output/good/parquet/completion.json", outputDirectory)
+            actualParquetRows <- readParquetRowsAsJsonFrom(compVars.goodPath, expectedParquetColumns)
+            actualParquetColumns = readParquetColumns(compVars.goodPath)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/6/output/good/parquet/completion.json", compVars)
             expectedParquetRows <-
               readGoodParquetEventsFromResource(
                 "/processing-spec/6/input/input-events-custom-unstruct",
@@ -132,7 +130,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           } yield {
 
             actualParquetRows.size must beEqualTo(100)
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
             assertParquetRows(actualParquetRows, expectedParquetRows)
@@ -149,21 +147,21 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
               "/processing-spec/7/input/events" // the same events as in resource file used in WideRowParquetSpec for batch transformer
           )
 
-          val config   = TransformerConfig(appConfig(outputDirectory), igluConfig)
-          val goodPath = Path(outputDirectory.toString + s"/run=1970-01-01-10-30-00-${AppId.appId}/output=good")
+          val config = TransformerConfig(appConfig(outputDirectory), igluConfig)
 
           for {
             output <- process(inputStream, config)
+            compVars = extractCompletionMessageVars(output)
             expectedParquetColumns <- readParquetColumnsFromResource(
                                         "/processing-spec/7/output/good/parquet/schema"
                                       ) // the same schema as in resource file used in WideRowParquetSpec for batch transformer
-            actualParquetRows <- readParquetRowsAsJsonFrom(goodPath, expectedParquetColumns)
-            actualParquetColumns = readParquetColumns(goodPath)
-            expectedCompletionMessage <- readMessageFromResource("/processing-spec/7/output/good/parquet/completion.json", outputDirectory)
+            actualParquetRows <- readParquetRowsAsJsonFrom(compVars.goodPath, expectedParquetColumns)
+            actualParquetColumns = readParquetColumns(compVars.goodPath)
+            expectedCompletionMessage <- readMessageFromResource("/processing-spec/7/output/good/parquet/completion.json", compVars)
           } yield {
 
             actualParquetRows.size must beEqualTo(3)
-            removeAppId(output.completionMessages.toList) must beEqualTo(List(expectedCompletionMessage))
+            output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
             forall(
