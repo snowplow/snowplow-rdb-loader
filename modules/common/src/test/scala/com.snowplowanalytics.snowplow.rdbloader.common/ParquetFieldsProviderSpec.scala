@@ -11,6 +11,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import cats.Id
+import cats.data.NonEmptyVector
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
@@ -31,6 +32,35 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
   private val resolver = embeddedIgluClient.resolver
 
   "Parquet non-atomic fields provider" should {
+    "prefix field with underscore if it starts with a number" >> {
+      "for contexts" in {
+        val ctx = WideRow.Type(
+          SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "digit_schema", format = "jsonschema", SchemaVer.Full(1, 0, 0)),
+          Context
+        )
+        val result = NonAtomicFieldsProvider.build(resolver, List(ctx)).value.right.get
+
+        result.value.size mustEqual 1
+        result.value.head.field mustEqual nullableArrayWithRequiredElement(
+          name        = "contexts_com_snowplowanalytics_snowplow_digit_schema_1",
+          elementType = DdlTypes.digitSchema100
+        )
+      }
+      "for unstruct" in {
+        val ctx = WideRow.Type(
+          SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "digit_schema", format = "jsonschema", SchemaVer.Full(1, 0, 0)),
+          SelfDescribingEvent
+        )
+        val result = NonAtomicFieldsProvider.build(resolver, List(ctx)).value.right.get
+
+        result.value.size mustEqual 1
+        result.value.head.field mustEqual Field(
+          name        = "unstruct_event_com_snowplowanalytics_snowplow_digit_schema_1",
+          fieldType   = DdlTypes.digitSchema100,
+          nullability = Nullable
+        )
+      }
+    }
     "produce only one field from latest type when versions are compatible" >> {
       "for contexts" in {
 
@@ -218,17 +248,23 @@ object ParquetFieldsProviderSpec {
 
   object DdlTypes {
 
+    val digitSchema100 = Type.Struct(
+      fields = NonEmptyVector.of(
+        Field("_1field", Type.String, Required).copy(accessors = Set("1field"))
+      )
+    )
+
     val schema100 = Type.Struct(
-      fields = List(
+      fields = NonEmptyVector.of(
         Field(
           "a_field",
           Type.Struct(
-            List(
+            NonEmptyVector.of(
               Field("b_field", Type.String, Nullable),
               Field(
                 "c_field",
                 Type.Struct(
-                  List(
+                  NonEmptyVector.one(
                     Field("d_field", Type.String, Nullable)
                   )
                 ),
@@ -247,7 +283,7 @@ object ParquetFieldsProviderSpec {
           "i_field",
           Type.Array(
             Type.Struct(
-              List(
+              NonEmptyVector.of(
                 Field("c_field", Type.Long, Nullable),
                 Field("d_field", Type.String, Nullable)
               )
@@ -259,16 +295,16 @@ object ParquetFieldsProviderSpec {
       )
     )
     val schema101 = Type.Struct(
-      fields = List(
+      fields = NonEmptyVector.of(
         Field(
           "a_field",
           Type.Struct(
-            List(
+            NonEmptyVector.of(
               Field("b_field", Type.String, Nullable),
               Field(
                 "c_field",
                 Type.Struct(
-                  List(
+                  NonEmptyVector.of(
                     Field("d_field", Type.String, Nullable),
                     Field("e_field", Type.String, Nullable)
                   )
@@ -289,7 +325,7 @@ object ParquetFieldsProviderSpec {
           "i_field",
           Type.Array(
             Type.Struct(
-              List(
+              NonEmptyVector.of(
                 Field("c_field", Type.Long, Nullable),
                 Field("d_field", Type.String, Nullable)
               )
@@ -301,16 +337,16 @@ object ParquetFieldsProviderSpec {
       )
     )
     val schema110 = Type.Struct(
-      fields = List(
+      fields = NonEmptyVector.of(
         Field(
           "a_field",
           Type.Struct(
-            List(
+            NonEmptyVector.of(
               Field("b_field", Type.String, Nullable),
               Field(
                 "c_field",
                 Type.Struct(
-                  List(
+                  NonEmptyVector.of(
                     Field("d_field", Type.String, Nullable),
                     Field("e_field", Type.String, Nullable)
                   )
@@ -333,7 +369,7 @@ object ParquetFieldsProviderSpec {
           "i_field",
           Type.Array(
             Type.Struct(
-              List(
+              NonEmptyVector.of(
                 Field("c_field", Type.Long, Nullable),
                 Field("d_field", Type.String, Nullable)
               )
@@ -346,22 +382,22 @@ object ParquetFieldsProviderSpec {
     )
 
     val schema200 = Type.Struct(
-      fields = List(
+      fields = NonEmptyVector.of(
         Field("a_field", Type.String, Required),
         Field("e_field", Type.String, Required),
         Field("f_field", Type.Long, Required)
       )
     )
 
-    val brokenSchema100 = Type.Struct(fields = List(Field("b_field", Type.Long, Nullable)))
-    val brokenSchema101 = Type.Struct(fields = List(Field("b_field", Type.String, Nullable)))
+    val brokenSchema100 = Type.Struct(fields = NonEmptyVector.of(Field("b_field", Type.Long, Nullable)))
+    val brokenSchema101 = Type.Struct(fields = NonEmptyVector.of(Field("b_field", Type.String, Nullable)))
     val brokenSchema110 = Type.Struct(fields =
-      List(
+      NonEmptyVector.of(
         Field("a_field", Type.Long, Nullable),
         Field("b_field", Type.Long, Nullable)
       )
     )
-    val brokenSchema111 = Type.Struct(fields = List(Field("a_field", Type.String, Nullable)))
+    val brokenSchema111 = Type.Struct(fields = NonEmptyVector.of(Field("a_field", Type.String, Nullable)))
 
     val context100 = getBrokenType(SchemaVer.Full(1, 0, 0), Context)
     val context101 = getBrokenType(SchemaVer.Full(1, 0, 1), Context) // breaking

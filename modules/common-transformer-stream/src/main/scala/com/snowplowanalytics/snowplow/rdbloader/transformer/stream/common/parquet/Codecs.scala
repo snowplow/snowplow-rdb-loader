@@ -50,7 +50,7 @@ private[parquet] object Codecs {
       case FieldValue.DateValue(value) =>
         as[Date](value)
       case FieldValue.ArrayValue(values) =>
-        as[List[FieldValue]](values)
+        as[Vector[FieldValue]](values)
       case FieldValue.StructValue(values) =>
         values
           .foldLeft[RowParquetRecord](RowParquetRecord()) { case (acc, NamedValue(name, value)) =>
