@@ -79,9 +79,11 @@ object NonAtomicFieldsProvider {
     val schemasSorted = schemas.sorted
 
     // Schemas need to be ordered by key to merge in correct order.
-    schemasSorted
+    schemasSorted.toList
       // `types` are all of the same family, so it does not matter which element is passed to fieldFromSchema
-      .map(schemaWithKey => TypedField(fieldFromSchema(types.head)(schemaWithKey.schema), types.head, Set(schemaWithKey.schemaKey)))
+      .flatMap { schemaWithKey =>
+        fieldFromSchema(types.head)(schemaWithKey.schema).map(TypedField(_, types.head, Set(schemaWithKey.schemaKey)))
+      }
       // Accumulating vector would contain base column as first element and broken migrations in others
       .foldLeft(Vector.empty[TypedField])((endFields, typedField) =>
         endFields.headOption match {
@@ -137,14 +139,14 @@ object NonAtomicFieldsProvider {
           )
       )
 
-  private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Field = {
+  private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Option[Field] = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)
 
-    Field.normalize(`type`.snowplowEntity match {
+    (`type`.snowplowEntity match {
       case LoaderMessage.SnowplowEntity.SelfDescribingEvent =>
         Field.build(fieldName, schema, enforceValuePresence = false)
       case LoaderMessage.SnowplowEntity.Context =>
         Field.buildRepeated(fieldName, schema, enforceItemPresence = true, Type.Nullability.Nullable)
-    })
+    }).map(Field.normalize)
   }
 }
