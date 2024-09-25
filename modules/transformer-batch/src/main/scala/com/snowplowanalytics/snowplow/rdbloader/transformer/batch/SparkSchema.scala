@@ -14,6 +14,8 @@ import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import org.apache.spark.sql.types._
 
+import scala.collection.JavaConverters._
+
 object SparkSchema {
 
   def build(allFields: AllFields): StructType =
@@ -37,7 +39,7 @@ object SparkSchema {
     case Type.Decimal(precision, scale)     => DecimalType(Type.DecimalPrecision.toInt(precision), scale)
     case Type.Date                          => DateType
     case Type.Timestamp                     => TimestampType
-    case Type.Struct(fields)                => StructType(fields.map(asSparkField))
+    case Type.Struct(fields)                => StructType(fields.map(asSparkField).toVector.asJava)
     case Type.Array(element, elNullability) => ArrayType(fieldType(element), elNullability.nullable)
     case Type.Json                          => StringType // Spark does not support the `Json` parquet logical type.
   }

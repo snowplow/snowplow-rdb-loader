@@ -70,6 +70,6 @@ private[parquet] object ParquetSchema {
       val listElement = asParquetType(element).withRequired(elementNullability.required)
       SchemaDef.list(listElement)
     case Type.Struct(subFields) =>
-      SchemaDef.group(subFields.map(asParquetField): _*)
+      SchemaDef.group(subFields.map(asParquetField).toVector: _*)
   }
 }

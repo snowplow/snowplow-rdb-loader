@@ -39,13 +39,13 @@ object Dependencies {
     val monocle       = "2.0.3"
     val catsRetry     = "3.1.0"
     val log4cats      = "2.5.0"
-    val http4s        = "0.23.17"
-    val http4sBlaze   = "0.23.14" // this dep fell out of sync with http4s-core versioning - 0.23.14 is the last 0.X release.
+    val http4s        = "0.23.18"
+    val http4sBlaze   = "0.23.16" // this dep fell out of sync with http4s-core versioning - 0.23.16 is the last 0.X release.
     val scalaTracker  = "2.0.0"
 
     val spark           = "3.3.1"
     val eventsManifest  = "0.4.0"
-    val schemaDdl       = "0.22.1"
+    val schemaDdl       = "0.25.0"
     val jacksonModule   = "2.17.2" // Override incompatible version in spark runtime
     val jacksonDatabind = "2.17.2"
     val jacksonMapper   = "1.9.14-atlassian-6" // Fix CVE
