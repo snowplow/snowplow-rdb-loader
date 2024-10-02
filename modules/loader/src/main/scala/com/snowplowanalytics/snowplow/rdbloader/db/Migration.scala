@@ -164,8 +164,11 @@ object Migration {
     target: Target[I],
     disableRecovery: List[SchemaCriterion]
   ): F[Migration[C]] = {
+    val nonAtomicTypes            = discovery.shreddedTypes.filterNot(_.isAtomic)
+    val maxSchemaKeysPerTableName = DataDiscovery.getMaxSchemaKeyPerTableName(nonAtomicTypes).values.toList
+    val filteredTypes             = nonAtomicTypes.filter(s => maxSchemaKeysPerTableName.contains(s.info.getSchemaKey))
     val descriptions: LoaderAction[F, List[Description]] =
-      discovery.shreddedTypes.filterNot(_.isAtomic).traverse {
+      filteredTypes.traverse {
         case s: ShreddedType.Tabular =>
           if (!disableRecovery.contains(s.info.toCriterion))
             EitherT.rightT[F, LoaderError](Description.Table(discovery.shredModels(s.info.getSchemaKey).mergeRedshiftSchemasResult))
