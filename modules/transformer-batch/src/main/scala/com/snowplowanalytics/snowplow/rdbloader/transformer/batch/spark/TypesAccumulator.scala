@@ -19,7 +19,6 @@ import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{SnowplowEntity, TypesInfo}
-import TypesAccumulator._
 
 /**
  * Accumulator to collect inventory of events in current batch in one place. Since types of shredded
@@ -27,41 +26,47 @@ import TypesAccumulator._
  * @tparam T
  *   Shredded.Type or WideRow.Type
  */
-class TypesAccumulator[T] extends AccumulatorV2[KeyAccum[T], KeyAccum[T]] {
+class TypesAccumulator[T] extends AccumulatorV2[Set[T], Set[T]] {
 
-  private val accum = mutable.Set.empty[T]
+  private var _accum: mutable.Set[T] = _
 
-  def merge(other: AccumulatorV2[KeyAccum[T], KeyAccum[T]]): Unit = other match {
-    case o: TypesAccumulator[T] => accum ++= o.accum
-    case _ => throw new UnsupportedOperationException(s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
+  private def getOrCreate: mutable.Set[T] = {
+    _accum = Option(_accum).getOrElse(mutable.Set.empty[T])
+    _accum
   }
 
-  def isZero: Boolean = accum.isEmpty
+  def merge(other: AccumulatorV2[Set[T], Set[T]]): Unit = other match {
+    case o: TypesAccumulator[T] =>
+      this.synchronized(getOrCreate ++= o.value)
+      ()
+    case _ =>
+      throw new UnsupportedOperationException(s"Cannot merge ${this.getClass.getName} with ${other.getClass.getName}")
+  }
 
-  def copy(): AccumulatorV2[KeyAccum[T], KeyAccum[T]] = {
+  def isZero: Boolean = this.synchronized(getOrCreate.isEmpty)
+
+  def copy(): AccumulatorV2[Set[T], Set[T]] = {
     val newAcc = new TypesAccumulator[T]
-    accum.synchronized {
-      newAcc.accum ++= accum
+    this.synchronized {
+      newAcc.getOrCreate ++= getOrCreate
     }
     newAcc
   }
 
-  def value = accum
+  def value: Set[T] = this.synchronized(getOrCreate.toSet)
 
-  def add(keys: KeyAccum[T]): Unit =
-    accum ++= keys
+  def add(keys: Set[T]): Unit =
+    this.synchronized {
+      getOrCreate ++= keys
+      ()
+    }
 
-  def add(keys: Set[T]): Unit = {
-    val mutableSet = mutable.Set(keys.toList: _*)
-    add(mutableSet)
+  def reset(): Unit = this.synchronized {
+    _accum = null
   }
-
-  def reset(): Unit =
-    accum.clear()
 }
 
 object TypesAccumulator {
-  type KeyAccum[T] = mutable.Set[T]
 
   /** Save set of shredded types into accumulator, for master to send to SQS */
   def recordType[T](accumulator: TypesAccumulator[T], convert: Data.ShreddedType => T)(inventory: Set[Data.ShreddedType]): Unit =
