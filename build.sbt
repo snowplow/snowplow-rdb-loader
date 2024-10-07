@@ -18,10 +18,11 @@
  * 3. For now, we ignore the reported binary incompatibilities because testing shows it is safe.
  */
 ThisBuild / libraryDependencySchemes ++= Seq(
-  "io.circe" %% "circe-core"    % "always",
-  "io.circe" %% "circe-generic" % "always",
-  "io.circe" %% "circe-parser"  % "always",
-  "io.circe" %% "circe-jawn"    % "always"
+  "io.circe"        %% "circe-core"    % "always",
+  "io.circe"        %% "circe-generic" % "always",
+  "io.circe"        %% "circe-parser"  % "always",
+  "io.circe"        %% "circe-jawn"    % "always",
+  "com.github.luben" % "zstd-jni"      % "semver-spec"
 )
 
 lazy val root = project

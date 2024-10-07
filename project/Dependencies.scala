@@ -52,7 +52,8 @@ object Dependencies {
     val parquet4s       = "2.10.0"
     val hadoopClient    = "3.4.0"
     val hadoopGcpClient = "hadoop3-2.2.5"
-    val parquetHadoop   = "1.12.3"
+    val parquetHadoop   = "1.14.3"
+    val avro            = "1.11.4" // Fix CVE
     val jsonSmart       = "2.4.9" // Fix CVE
     val nimbusJose      = "9.37.2" // Fix CVE
     val snappyJava      = "1.1.10.4" // Fix CVE
@@ -70,7 +71,7 @@ object Dependencies {
     val pubsub        = "1.125.13"
     val jSch          = "0.2.15"
     val sentry        = "1.7.30"
-    val protobuf      = "3.21.7" // Fix CVE
+    val protobuf      = "3.25.5" // Fix CVE
     val kinesisClient = "2.4.3"
     val nettyCodec    = "4.1.112.Final" // Fix CVE
     val jettison      = "1.5.4" // Fix CVE
@@ -162,6 +163,7 @@ object Dependencies {
   val hadoopAws = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
   val hadoopGcp   = "com.google.cloud.bigdataoss" % "gcs-connector"   % V.hadoopGcpClient % Runtime
+  val avro        = "org.apache.avro"             % "avro"            % V.avro
   val jsonSmart   = "net.minidev"                 % "json-smart"      % V.jsonSmart
   val nimbusJose  = "com.nimbusds"                % "nimbus-jose-jwt" % V.nimbusJose
   val snappyJava  = "org.xerial.snappy"           % "snappy-java"     % V.snappyJava
@@ -196,19 +198,20 @@ object Dependencies {
   val kinesis     = "com.amazonaws" % "aws-java-sdk-kinesis"    % V.aws
   val cloudwatch  = "com.amazonaws" % "aws-java-sdk-cloudwatch" % V.aws
 
-  val aws2s3      = "software.amazon.awssdk" % "s3"                  % V.aws2
-  val aws2cw      = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
-  val aws2dynamo  = "software.amazon.awssdk" % "dynamodb"            % V.aws2
-  val aws2sqs     = "software.amazon.awssdk" % "sqs"                 % V.aws2
-  val aws2sns     = "software.amazon.awssdk" % "sns"                 % V.aws2
-  val aws2kinesis = "software.amazon.awssdk" % "kinesis"             % V.aws2
-  val aws2regions = "software.amazon.awssdk" % "regions"             % V.aws2
-  val aws2sts     = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
-  val pubsub      = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
-  val protobuf    = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
-  val nettyCodec  = "io.netty"               % "netty-codec"         % V.nettyCodec
-  val zookeeper   = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
-  val dnsjava     = "dnsjava"                % "dnsjava"             % V.dnsjava
+  val aws2s3       = "software.amazon.awssdk" % "s3"                  % V.aws2
+  val aws2cw       = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
+  val aws2dynamo   = "software.amazon.awssdk" % "dynamodb"            % V.aws2
+  val aws2sqs      = "software.amazon.awssdk" % "sqs"                 % V.aws2
+  val aws2sns      = "software.amazon.awssdk" % "sns"                 % V.aws2
+  val aws2kinesis  = "software.amazon.awssdk" % "kinesis"             % V.aws2
+  val aws2regions  = "software.amazon.awssdk" % "regions"             % V.aws2
+  val aws2sts      = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
+  val pubsub       = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
+  val protobuf     = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
+  val protobufUtil = "com.google.protobuf"    % "protobuf-java-util"  % V.protobuf
+  val nettyCodec   = "io.netty"               % "netty-codec"         % V.nettyCodec
+  val zookeeper    = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
+  val dnsjava      = "dnsjava"                % "dnsjava"             % V.dnsjava
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -234,6 +237,7 @@ object Dependencies {
     fs2Kinesis,
     kinesisClient,
     protobuf,
+    protobufUtil,
     nettyCodec,
     sts,
     aws2sts
@@ -254,6 +258,7 @@ object Dependencies {
     fs2Kafka,
     hadoopCommon,
     hadoopAzure,
+    avro,
     reactorNetty,
     jettyHttp,
     dnsjava
@@ -340,6 +345,7 @@ object Dependencies {
     sparkCore,
     sparkSQL,
     protobuf,
+    protobufUtil,
     commonsText,
     ivy,
     jacksonModule,
@@ -353,14 +359,19 @@ object Dependencies {
 
   val commonStreamTransformerDependencies = Seq(
     igluClientHttp4s,
+    slf4jApi,
     slf4jSimple,
     protobuf,
+    protobufUtil,
     log4cats,
     catsEffectLaws,
     circeOptics,
     parquet4s,
     hadoop,
     parquetHadoop,
+    dnsjava,
+    avro,
+    commonsConfig2,
     jsonSmart,
     snappyJava,
     specs2,
@@ -392,6 +403,7 @@ object Dependencies {
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-yarn-client"),
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-mapreduce-client-jobclient"),
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-hdfs-client"),
-      ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7")
+      ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_7"),
+      ExclusionRule(organization = "org.apache.hadoop.thirdparty", name = "hadoop-shaded-protobuf_3_21")
     )
 }
