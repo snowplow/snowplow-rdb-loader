@@ -1,3 +1,12 @@
+Version 6.1.1 (2024-10-09)
+--------------------------
+Upgrade dependencies to fix some vulnerabilites (#1364)
+Fix NPEs in TypesAccumulator (#1363)
+Create migration for only max schema key of the same schema model (#1360)
+Transformer Stream: don't use hard-coded window timestamps in the tests (#1360)
+Use lookupSchemasUntil function instead of listSchemasLike function (#1360)
+Upgrade schema-ddl to 0.25.0 (#1362)
+
 Version 6.1.0 (2024-08-23)
 --------------------------
 Stop publishing fat jars to GH
