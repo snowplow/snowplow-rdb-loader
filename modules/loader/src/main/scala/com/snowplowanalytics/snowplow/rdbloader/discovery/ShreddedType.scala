@@ -64,7 +64,7 @@ object ShreddedType {
    */
   final case class Json(info: Info, jsonPaths: BlobStorage.Key) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=json/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}/"
 
     def show: String = s"${info.toCriterion.asString} ($jsonPaths)"
   }
@@ -78,7 +78,7 @@ object ShreddedType {
    */
   final case class Tabular(info: Info) extends ShreddedType {
     def getLoadPath: String =
-      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}"
+      s"${info.base}${Common.GoodPrefix}/vendor=${info.vendor}/name=${info.name}/format=tsv/model=${info.version.model}/revision=${info.version.revision}/addition=${info.version.addition}/"
 
     def show: String = s"${info.toCriterion.asString} TSV"
   }
