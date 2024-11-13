@@ -144,8 +144,8 @@ class RedshiftSpec extends Specification {
       result.toList must containTheSameElementsAs(
         List(
           "COPY events FROM s3://my-bucket/my-path/", // atomic
-          "COPY com_acme_event_2 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=2/revision=0/addition=0",
-          "COPY com_acme_event_3 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=3/revision=0/addition=0"
+          "COPY com_acme_event_2 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=2/revision=0/addition=0/",
+          "COPY com_acme_event_3 FROM s3://my-bucket/my-path/output=good/vendor=com.acme/name=event/format=tsv/model=3/revision=0/addition=0/"
         )
       )
     }
