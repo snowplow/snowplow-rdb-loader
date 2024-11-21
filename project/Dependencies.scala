@@ -64,7 +64,7 @@ object Dependencies {
 
     val slf4j         = "2.0.3"
     val redshiftJdbc  = "1.2.55.1083"
-    val snowflakeJdbc = "3.13.30"
+    val snowflakeJdbc = "3.20.0"
     val enumeratum    = "1.7.0"
     val aws           = "1.12.677"
     val aws2          = "2.23.17"
@@ -77,6 +77,7 @@ object Dependencies {
     val jettison      = "1.5.4" // Fix CVE
     val reactorNetty  = "1.0.39" // Fix CVE
     val jettyHttp     = "9.4.51.v20230217" // Fix CVE
+    val jettyServer   = "9.4.56.v20240826" // Fix CVE
     val zookeeper     = "3.9.2" // Fix CVE
     val dnsjava       = "3.6.1" // Fix CVE
 
@@ -187,6 +188,7 @@ object Dependencies {
   val jettison      = "org.codehaus.jettison"   % "jettison"                  % V.jettison
   val reactorNetty  = "io.projectreactor.netty" % "reactor-netty-http"        % V.reactorNetty
   val jettyHttp     = "org.eclipse.jetty"       % "jetty-http"                % V.jettyHttp
+  val jettyServer   = "org.eclipse.jetty"       % "jetty-server"              % V.jettyServer
 
   // Java (Shredder)
   val dynamodb    = "com.amazonaws" % "aws-java-sdk-dynamodb"   % V.aws
@@ -261,6 +263,7 @@ object Dependencies {
     avro,
     reactorNetty,
     jettyHttp,
+    jettyServer,
     dnsjava
   )
 
