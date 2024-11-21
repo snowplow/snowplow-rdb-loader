@@ -1,3 +1,9 @@
+Version 6.1.2 (2024-11-21)
+--------------------------
+Add slash at the end of the load path (#1366)
+Bump Iglu Scala Client to 4.0.1 (#1367)
+Upgrade dependencies to fix some vulnerabilities (#1367)
+
 Version 6.1.1 (2024-10-09)
 --------------------------
 Upgrade dependencies to fix some vulnerabilites (#1364)
