@@ -17,6 +17,7 @@ import cats.syntax.all._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{ArrayProperty, CommonProperties, ObjectProperty}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.mergeSchemas
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
@@ -125,6 +126,9 @@ object NonAtomicFieldsProvider {
           .fetchSchemasWithSameModel[F](resolver, typeSet.max.schemaKey)
           // Preserve the historic behaviour by dropping the schemas newer then max in this batch
           .map(listOfSchemas => listOfSchemas.filter(_.schemaKey <= typeSet.max.schemaKey))
+          .map(_.map { case SchemaWithKey(key, schema) =>
+            SchemaWithKey(key, setAdditionalPropertiesTrue(schema))
+          })
           .flatMap(schemaList =>
             EitherT
               .fromOption[F][LoaderIgluError, NonEmptyList[SchemaWithKey]](
@@ -138,6 +142,52 @@ object NonAtomicFieldsProvider {
               .map(extractEndSchemas(typeSet))
           )
       )
+
+  /**
+   * Restores legacy behaviour of schema-ddl for backwards compatibility
+   *
+   * This concerns schemas like: `{ "type": "object", "additionalProperties": false }`
+   *
+   *   - Older versions of schema-ddl converted this to a string (JSON) column.
+   *   - Newer versions of schema-ddl convert this to a `None`, i.e. do not create a column for this
+   *     schema.
+   *
+   * Here we convert the `additionalProperties` to `true` which tricks schema-ddl to return to the
+   * original behaviour.
+   */
+  private def setAdditionalPropertiesTrue(schema: Schema): Schema = {
+    val items = schema.items.map {
+      case ArrayProperty.Items.ListItems(li) =>
+        ArrayProperty.Items.ListItems(setAdditionalPropertiesTrue(li))
+      case ArrayProperty.Items.TupleItems(ti) =>
+        ArrayProperty.Items.TupleItems(ti.map(setAdditionalPropertiesTrue))
+    }
+    val additionalItems = schema.additionalItems.map {
+      case ArrayProperty.AdditionalItems.AdditionalItemsAllowed(ail) =>
+        ArrayProperty.AdditionalItems.AdditionalItemsAllowed(ail)
+      case ArrayProperty.AdditionalItems.AdditionalItemsSchema(ais) =>
+        ArrayProperty.AdditionalItems.AdditionalItemsSchema(setAdditionalPropertiesTrue(ais))
+    }
+    val properties = schema.properties
+      .map { properties =>
+        properties.value.map { case (k, v) =>
+          k -> setAdditionalPropertiesTrue(v)
+        }
+      }
+      .map(ObjectProperty.Properties(_))
+
+    val additionalProperties =
+      if (schema.additionalProperties.isDefined) Some(ObjectProperty.AdditionalProperties.AdditionalPropertiesAllowed(false)) else None
+
+    schema.copy(
+      items                = items,
+      properties           = properties,
+      additionalProperties = additionalProperties,
+      additionalItems      = additionalItems,
+      oneOf                = schema.oneOf.map(oneOf => CommonProperties.OneOf(oneOf.value.map(setAdditionalPropertiesTrue))),
+      anyOf                = schema.anyOf.map(anyOf => CommonProperties.AnyOf(anyOf.value.map(setAdditionalPropertiesTrue)))
+    )
+  }
 
   private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Option[Field] = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)
