@@ -20,7 +20,8 @@ jobs:
         with:
           java-version: 1.11
           name: build
-
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
       - name: Get current SBT version
         id: ver
         run: |
