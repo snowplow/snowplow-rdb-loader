@@ -18,6 +18,8 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
       - name: Check Scala formatting
         if: ${{ always() }}
         run: sbt scalafmtCheckAll scalafmtSbtCheck
@@ -53,6 +55,8 @@ jobs:
         uses: actions/setup-java@v1
         with:
           java-version: 11
+      - name: Install sbt
+        uses: sbt/setup-sbt@v1
       - name: Get the latest Databricks JDBC driver
         run: |
           curl https://databricks-bi-artifacts.s3.us-east-2.amazonaws.com/simbaspark-drivers/jdbc/2.6.40/DatabricksJDBC42-2.6.40.1070.zip --output DatabricksJDBC42.jar.zip
