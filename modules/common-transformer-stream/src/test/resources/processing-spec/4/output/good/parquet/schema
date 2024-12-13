@@ -242,12 +242,12 @@ message snowplow {
   optional group contexts_com_snowplowanalytics_snowplow_client_session_1 (LIST) {
     repeated group list {
       required group element {
-        optional binary first_event_id (UTF8);
         optional binary previous_session_id (UTF8);
         required binary session_id (UTF8);
         required int32 session_index;
         required binary storage_mechanism (UTF8);
         required binary user_id (UTF8);
+        optional binary first_event_id (UTF8);
       }
     }
   }
@@ -373,9 +373,9 @@ message snowplow {
         required binary element (UTF8);
       }
     }
-    optional binary element_content (UTF8);
     optional binary element_id (UTF8);
     optional binary element_target (UTF8);
     required binary target_url (UTF8);
+    optional binary element_content (UTF8);
   }
 }

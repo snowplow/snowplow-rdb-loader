@@ -316,7 +316,6 @@ object ParquetFieldsProviderSpec {
           Required
         ),
         Field("b_field", Type.Long, Required),
-        Field("c_field", Type.Boolean, Nullable),
         Field("d_field", Type.Double, Nullable),
         Field("e_field", Type.Json, Nullable),
         Field("g_field", Type.String, Nullable),
@@ -333,7 +332,8 @@ object ParquetFieldsProviderSpec {
             Required
           ),
           Nullable
-        )
+        ),
+        Field("c_field", Type.Boolean, Nullable)
       )
     )
     val schema110 = Type.Struct(
@@ -359,10 +359,8 @@ object ParquetFieldsProviderSpec {
           Required
         ),
         Field("b_field", Type.Long, Required),
-        Field("c_field", Type.Boolean, Nullable),
         Field("d_field", Type.Double, Nullable),
         Field("e_field", Type.Json, Nullable),
-        Field("f_field", Type.Json, Nullable),
         Field("g_field", Type.String, Nullable),
         Field("h_field", Type.Timestamp, Nullable),
         Field(
@@ -377,7 +375,9 @@ object ParquetFieldsProviderSpec {
             Required
           ),
           Nullable
-        )
+        ),
+        Field("c_field", Type.Boolean, Nullable),
+        Field("f_field", Type.Json, Nullable)
       )
     )
 
@@ -393,8 +393,8 @@ object ParquetFieldsProviderSpec {
     val brokenSchema101 = Type.Struct(fields = NonEmptyVector.of(Field("b_field", Type.String, Nullable)))
     val brokenSchema110 = Type.Struct(fields =
       NonEmptyVector.of(
-        Field("a_field", Type.Long, Nullable),
-        Field("b_field", Type.Long, Nullable)
+        Field("b_field", Type.Long, Nullable),
+        Field("a_field", Type.Long, Nullable)
       )
     )
     val brokenSchema111 = Type.Struct(fields = NonEmptyVector.of(Field("a_field", Type.String, Nullable)))

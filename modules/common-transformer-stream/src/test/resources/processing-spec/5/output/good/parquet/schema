@@ -242,12 +242,12 @@ message snowplow {
   optional group contexts_com_snowplowanalytics_snowplow_client_session_1 (LIST) {
     repeated group list {
       required group element {
-        optional binary first_event_id (STRING);
         optional binary previous_session_id (STRING);
         required binary session_id (STRING);
         required int32 session_index;
         required binary storage_mechanism (STRING);
         required binary user_id (STRING);
+        optional binary first_event_id (STRING);
       }
     }
   }
@@ -293,21 +293,21 @@ message snowplow {
           optional binary d_field (STRING);
         }
         required int64 b_field;
-        optional boolean c_field;
         optional double d_field;
         optional binary e_field (JSON);
-        optional binary f_field (JSON);
         optional binary g_field (STRING);
         optional int64 h_field (TIMESTAMP(MICROS,true));
         optional group i_field (LIST) {
           repeated group list {
             required group element {
-              optional binary b_field (STRING);
               optional int64 c_field;
               optional binary d_field (STRING);
+              optional binary b_field (STRING);
             }
           }
         }
+        optional boolean c_field;
+        optional binary f_field (JSON);
         optional group j_field {
           optional binary union (JSON);
         }
@@ -380,9 +380,9 @@ message snowplow {
         required binary element (STRING);
       }
     }
-    optional binary element_content (STRING);
     optional binary element_id (STRING);
     optional binary element_target (STRING);
     required binary target_url (STRING);
+    optional binary element_content (STRING);
   }
 }
