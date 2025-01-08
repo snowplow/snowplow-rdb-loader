@@ -80,6 +80,7 @@ object Dependencies {
     val jettyServer   = "9.4.56.v20240826" // Fix CVE
     val zookeeper     = "3.9.2" // Fix CVE
     val dnsjava       = "3.6.1" // Fix CVE
+    val kafkaClients  = "3.7.2" // Fix CVE
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -189,6 +190,7 @@ object Dependencies {
   val reactorNetty  = "io.projectreactor.netty" % "reactor-netty-http"        % V.reactorNetty
   val jettyHttp     = "org.eclipse.jetty"       % "jetty-http"                % V.jettyHttp
   val jettyServer   = "org.eclipse.jetty"       % "jetty-server"              % V.jettyServer
+  val kafkaClients  = "org.apache.kafka"        % "kafka-clients"             % V.kafkaClients
 
   // Java (Shredder)
   val dynamodb    = "com.amazonaws" % "aws-java-sdk-dynamodb"   % V.aws
@@ -258,6 +260,7 @@ object Dependencies {
     azureIdentity,
     azureKeyVault,
     fs2Kafka,
+    kafkaClients,
     hadoopCommon,
     hadoopAzure,
     avro,
