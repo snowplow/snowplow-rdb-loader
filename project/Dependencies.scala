@@ -94,7 +94,7 @@ object Dependencies {
 
   val resolutionRepos = Seq(
     // Redshift native driver
-    ("redshift" at "http://redshift-maven-repository.s3-website-us-east-1.amazonaws.com/release").withAllowInsecureProtocol(true),
+    "redshift" at "https://s3.amazonaws.com/redshift-maven-repository/release/",
     ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true),
     "Atlassian Maven repo" at "https://packages.atlassian.com/mvn/maven-3rdparty/"
   )
