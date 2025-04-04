@@ -163,8 +163,8 @@ object Load {
   val awsColumnResizeError: String =
     raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different;"""
 
-  val awsText255ResizeError: String =
-    raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+" with encode type "text255";"""
+  val awsEncodingError: String =
+    raw"""\[Amazon]\(500310\) Invalid operation: cannot alter column "\S+" of relation "\S+" with encode type "(\S+)";"""
 
   // It is important we return a _list_ of C[Unit] so that each migration step can be transacted indepdendently.
   // Otherwise, Hikari will not let us catch/handle/ignore the exceptions we encounter along the way.
@@ -191,8 +191,9 @@ object Load {
             // to zstd from text255. zstd encoding allows to change the column size. However, encoding of the existing
             // columns isn't change and their encoding is still text255. Therefore, it is possible to get exception
             // while trying to resize those columns. This case is added to catch those exceptions and ignore them.
-            case e if e.getMessage.matches(awsText255ResizeError) =>
-              Logging[C].warning(s"Resizing the column with text255 encoding is ignored: ${e.getMessage}")
+            // This case also ignores other encoding failures in addition to text255
+            case e if e.getMessage.matches(awsEncodingError) =>
+              Logging[C].warning(s"Resizing the column is ignored: ${e.getMessage}")
           }
           .onError { case _: Throwable => incrementAttempt }
     }
