@@ -24,6 +24,7 @@ import com.snowplowanalytics.iglu.schemaddl.redshift.{
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
+import java.time.Instant
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
@@ -32,8 +33,6 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.IgluError
-import com.snowplowanalytics.snowplow.rdbloader.state.State
-
 import scala.math.Ordered.orderingToOrdered
 
 /**
@@ -88,39 +87,37 @@ object DataDiscovery {
     mergeRedshiftSchemasResult: MergeRedshiftSchemasResult
   )
 
-  case class WithOrigin(discovery: DataDiscovery, origin: LoaderMessage.ShreddingComplete)
+  case class WithOrigin(
+    discovery: DataDiscovery,
+    origin: LoaderMessage.ShreddingComplete,
+    sentTimestamp: Option[Instant]
+  )
 
   /**
-   * App entrypoint, a generic discovery stream reading from message queue (like SQS) The plain text
-   * queue will be parsed into known message types (`LoaderMessage`) and handled appropriately -
-   * transformed either into action or into [[DataDiscovery]] In case of any error (parsing or
-   * transformation) the error will be raised Empty folder will be reported, but stream will keep
-   * running
-   *
-   * The stream is responsible for state changing as well
+   * App entrypoint: a stream of [[WithOrigin]] values read from the message queue. Each
+   * [[LoaderMessage]] is parsed and transformed into a [[DataDiscovery]]; parse errors are raised
+   * and empty folders are dropped. The [[WithOrigin]] carries the queue message's
+   * [[Queue.Consumer.Message.sentTimestamp]], making it available to callers for queue-lag tracking
+   * without coupling this module to any specific state implementation.
    *
    * @param config
    *   generic storage target configuration
    */
   def discover[F[_]: MonadThrow: BlobStorage: Iglu: Cache: Queue.Consumer: Logging: JsonPathDiscovery](
-    config: Config[_],
-    incrementMessages: F[State]
+    config: Config[_]
   ): DiscoveryStream[F] =
     Queue
       .Consumer[F]
       .read
+      .evalTap(msg => Logging[F].info("Received a new message") *> Logging[F].debug(msg.content))
       .evalMapFilter { message =>
-        val action = LoaderMessage.fromString(message.content) match {
+        val parsed = LoaderMessage.fromString(message.content) match {
           case Right(parsed: LoaderMessage.ShreddingComplete) =>
             handle[F](config.jsonpaths, parsed)
           case Left(error) =>
             logAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError)
         }
-
-        Logging[F].info("Received a new message") *>
-          Logging[F].debug(message.content) *>
-          incrementMessages.flatMap(state => Logging[F].info(state.show)) *>
-          action
+        parsed.map(_.map(_.copy(sentTimestamp = message.sentTimestamp)))
       }
 
   /**
@@ -143,7 +140,7 @@ object DataDiscovery {
         case Right(discovery) =>
           Logging[F]
             .info(s"New data discovery at ${discovery.show}")
-            .as(Some(WithOrigin(discovery, message)))
+            .as(Some(WithOrigin(discovery, message, None)))
         case Left(error) =>
           logAndRaise[F](error)
       }

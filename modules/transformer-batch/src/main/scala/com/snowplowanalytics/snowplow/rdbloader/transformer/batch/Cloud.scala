@@ -100,6 +100,17 @@ object Cloud {
     keyUnfold(None).map(dir => BlobStorage.Folder.coerce(s"s3://$bucket/$dir")).toList
   }
 
+  def folderHasContent(client: S3Client, folder: BlobStorage.Folder): Boolean = {
+    val (bucket, prefix) = BlobStorage.splitPath(folder)
+    val req = ListObjectsV2Request
+      .builder()
+      .bucket(bucket)
+      .prefix(prefix)
+      .maxKeys(2)
+      .build()
+    client.listObjectsV2(req).contents().asScala.exists(_.size() > 0)
+  }
+
   def keyExists(client: S3Client, key: BlobStorage.Key): Boolean = {
     val (bucket, s3Key) = BlobStorage.splitKey(key)
     try {

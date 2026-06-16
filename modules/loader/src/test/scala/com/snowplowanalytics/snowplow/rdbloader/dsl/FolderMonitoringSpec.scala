@@ -103,93 +103,109 @@ class FolderMonitoringSpec extends Specification {
   }
 
   "isRecent" should {
-    "return true if no duration is provided" in {
+    "return true if no bounds are provided" in {
       val input  = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result = FolderMonitoring.isRecent(None, None, Instant.now())(input)
+      val result = FolderMonitoring.isRecent(None, None)(input)
       result must beTrue
     }
 
     "return true if invalid key is provided" in {
-      val duration = FiniteDuration.apply(1, "day")
-      val input    = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
-      val result   = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+      val now    = Instant.now()
+      val since  = Some(now.minusMillis(1.day.toMillis))
+      val input  = BlobStorage.Folder.parse("s3://bucket/key/").getOrElse(throw new RuntimeException("Wrong key"))
+      val result = FolderMonitoring.isRecent(since, None)(input)
       result must beTrue
     }
     "for key with UUID" >> {
       "return false if key is old enough" in {
-        val duration = FiniteDuration.apply(1, "day")
+        val since = Some(Instant.now().minusMillis(1.day.toMillis))
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2020-09-01-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+        val result = FolderMonitoring.isRecent(since, None)(input)
         result must beFalse
       }
 
       "return true if key is fresh enough" in {
-        val duration = FiniteDuration.apply(1, "day")
-        val now      = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now   = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since = Some(now.minusMillis(1.day.toMillis))
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+        val result = FolderMonitoring.isRecent(since, None)(input)
         result must beTrue
       }
 
       "return false if key is fresh, but not old enough" in {
-        val sinceDuration = FiniteDuration.apply(1, "day")
-        val untilDuration = FiniteDuration.apply(19, "hours")
-        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now   = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since = Some(now.minusMillis(1.day.toMillis))
+        val until = Some(now.minusMillis(19.hours.toMillis))
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        val result = FolderMonitoring.isRecent(since, until)(input)
         result must beFalse
       }
 
       "return true if key is fresh and old enough" in {
-        val sinceDuration = FiniteDuration.apply(1, "day")
-        val untilDuration = FiniteDuration.apply(17, "hours")
-        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now   = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since = Some(now.minusMillis(1.day.toMillis))
+        val until = Some(now.minusMillis(17.hours.toMillis))
         val input = BlobStorage.Folder
           .parse("s3://bucket/run=2021-10-30-00-00-00-b4cac3e5-9948-40e3-bd68-38abcf01cdf9/")
           .getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        val result = FolderMonitoring.isRecent(since, until)(input)
         result must beTrue
       }
     }
 
     "for key without UUID" >> {
       "return false if key is old enough" in {
-        val duration = FiniteDuration.apply(1, "day")
-        val input    = BlobStorage.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result   = FolderMonitoring.isRecent(Some(duration), None, Instant.now())(input)
+        val since  = Some(Instant.now().minusMillis(1.day.toMillis))
+        val input  = BlobStorage.Folder.parse("s3://bucket/run=2020-09-01-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(since, None)(input)
         result must beFalse
       }
 
       "return true if key is fresh enough" in {
-        val duration = FiniteDuration.apply(1, "day")
-        val now      = Instant.parse("2021-10-30T18:35:24.00Z")
-        val input    = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result   = FolderMonitoring.isRecent(Some(duration), None, now)(input)
+        val now    = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since  = Some(now.minusMillis(1.day.toMillis))
+        val input  = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(since, None)(input)
         result must beTrue
       }
 
       "return false if key is fresh, but not old enough" in {
-        val sinceDuration = FiniteDuration.apply(1, "day")
-        val untilDuration = FiniteDuration.apply(19, "hours")
-        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now    = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since  = Some(now.minusMillis(1.day.toMillis))
+        val until  = Some(now.minusMillis(19.hours.toMillis))
         val input  = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        val result = FolderMonitoring.isRecent(since, until)(input)
         result must beFalse
       }
 
       "return true if key is fresh and old enough" in {
-        val sinceDuration = FiniteDuration.apply(1, "day")
-        val untilDuration = FiniteDuration.apply(17, "hours")
-        val now           = Instant.parse("2021-10-30T18:35:24.00Z")
+        val now    = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since  = Some(now.minusMillis(1.day.toMillis))
+        val until  = Some(now.minusMillis(17.hours.toMillis))
         val input  = BlobStorage.Folder.parse("s3://bucket/run=2021-10-30-00-00-00/").getOrElse(throw new RuntimeException("Wrong key"))
-        val result = FolderMonitoring.isRecent(Some(sinceDuration), Some(untilDuration), now)(input)
+        val result = FolderMonitoring.isRecent(since, until)(input)
         result must beTrue
+      }
+
+      // A folder 2.5h old would normally fall inside the monitoring window when configured until=2h
+      // (i.e. older than the 2h cutoff, so it would generate an alert). But when the loader is 2h
+      // behind its queue, effectiveUntil becomes 4h, and the folder at 2.5h old is correctly
+      // excluded — it is still within the loader's backlog and should not yet trigger an alert.
+      "return false for a folder within the loader-lag-adjusted until bound" in {
+        val now   = Instant.parse("2021-10-30T18:35:24.00Z")
+        val since = Some(now.minusMillis(1.day.toMillis))
+        val until = Some(now.minusMillis(4.hours.toMillis)) // configuredUntil(2h) + loaderLag(2h)
+        val input = BlobStorage.Folder
+          .parse("s3://bucket/run=2021-10-30-16-00-00/") // 2.5 hours ago
+          .getOrElse(throw new RuntimeException("Wrong key"))
+        val result = FolderMonitoring.isRecent(since, until)(input)
+        result must beFalse
       }
     }
   }

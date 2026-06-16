@@ -42,6 +42,11 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries.Failures
  *   amount of folders the loader managed to load
  * @param messages
  *   total amount of message received
+ * @param latestMessageSentAt
+ *   the time at which the most recently received queue message was originally written to the queue.
+ *   Used to estimate loader queue lag for dynamic folder monitoring (see
+ *   [[Control.loaderQueueLag]]). None until the first message is received, or when the queue
+ *   backend does not expose timestamps.
  */
 case class State(
   loading: Load.Status,
@@ -49,7 +54,8 @@ case class State(
   attempts: Int,
   failures: Failures,
   loaded: Int,
-  messages: Int
+  messages: Int,
+  latestMessageSentAt: Option[Instant]
 ) {
 
   /** Start loading a folder */
@@ -103,6 +109,6 @@ object State {
   /** Initiate state for a fresh app */
   def mk[F[_]: Concurrent: Clock]: F[SignallingRef[F, State]] =
     Clock[F].realTimeInstant.flatMap { now =>
-      SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, Map.empty, 0, 0))
+      SignallingRef.apply[F, State](State(Load.Status.Idle, now, 0, Map.empty, 0, 0, None))
     }
 }

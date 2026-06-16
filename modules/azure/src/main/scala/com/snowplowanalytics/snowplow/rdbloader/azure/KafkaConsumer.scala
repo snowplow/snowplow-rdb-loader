@@ -17,12 +17,14 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue.Consumer
 import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, KafkaConsumer => Fs2KafkaConsumer}
 
 import java.nio.charset.StandardCharsets
+import java.time.Instant
 
 object KafkaConsumer {
 
   final case class KafkaMessage[F[_]](record: CommittableConsumerRecord[F, String, Array[Byte]]) extends Queue.Consumer.Message[F] {
-    override def content: String = new String(record.record.value, StandardCharsets.UTF_8)
-    override def ack: F[Unit]    = record.offset.commit
+    override def content: String                = new String(record.record.value, StandardCharsets.UTF_8)
+    override def ack: F[Unit]                   = record.offset.commit
+    override def sentTimestamp: Option[Instant] = None
   }
 
   def consumer[F[_]: Async](

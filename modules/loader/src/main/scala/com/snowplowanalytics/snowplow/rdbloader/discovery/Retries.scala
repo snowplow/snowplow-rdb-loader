@@ -146,7 +146,7 @@ object Retries {
       case _ if DataDiscovery.isEmpty(message) =>
         Logging[F].warning(s"Empty folder ${message.base} re-discovered in failure manifest. It might signal about corrupted S3").as(none)
       case Right(discovery) =>
-        Monad[F].pure(Some(DataDiscovery.WithOrigin(discovery, message)))
+        Monad[F].pure(Some(DataDiscovery.WithOrigin(discovery, message, None)))
       case Left(error) =>
         Logging[F].warning(show"Failed to re-discover data after a failure. $error").as(none)
     }

@@ -48,9 +48,9 @@ object BuildSettings {
    */
   lazy val buildSettings = Seq(
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.12.14",
+    scalaVersion := "2.12.21",
     Compile / unmanagedResources += file("SNOWPLOW-LICENSE.md"),
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.0" cross CrossVersion.full),
+    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.4" cross CrossVersion.full),
     tpolecatExcludeOptions ++= Set(fatalWarnings),
     resolvers ++= Dependencies.resolutionRepos
   ) ++ formattingSettings
@@ -127,16 +127,20 @@ object BuildSettings {
   )
 
   lazy val oneJvmPerTestSetting =
-    Test / testGrouping := (Test / definedTests).value map { test =>
-      val forkOptions = ForkOptions()
-        .withJavaHome(javaHome.value)
-        .withOutputStrategy(outputStrategy.value)
-        .withBootJars(Vector.empty)
-        .withWorkingDirectory(Option(baseDirectory.value))
-        .withConnectInput(connectInput.value)
+    Test / testGrouping := {
+      val jvmOpts = (Test / javaOptions).value
+      (Test / definedTests).value map { test =>
+        val forkOptions = ForkOptions()
+          .withJavaHome(javaHome.value)
+          .withOutputStrategy(outputStrategy.value)
+          .withBootJars(Vector.empty)
+          .withWorkingDirectory(Option(baseDirectory.value))
+          .withConnectInput(connectInput.value)
+          .withRunJVMOptions(jvmOpts.toVector)
 
-      val runPolicy = Tests.SubProcess(forkOptions)
-      Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
+        val runPolicy = Tests.SubProcess(forkOptions)
+        Tests.Group(name = test.name, tests = Seq(test), runPolicy = runPolicy)
+      }
     }
 
   lazy val dynVerSettings = Seq(
@@ -211,6 +215,21 @@ object BuildSettings {
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
     ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
+  // The Databricks JDBC driver uses Apache Arrow internally, which requires access to
+  // java.nio internals that Java's module system (JPMS) restricts by default.
+  private val databricksJvmOptions = List("--add-opens=java.base/java.nio=ALL-UNNAMED")
+
+  private lazy val databricksDockerSettings = Seq(
+    Universal / javaOptions ++= databricksJvmOptions
+  )
+
+  private lazy val databricksDistrolessDockerSettings = Seq(
+    dockerEntrypoint := {
+      val orig = dockerEntrypoint.value
+      orig.head +: databricksJvmOptions ++: orig.tail
+    }
+  )
+
   lazy val databricksBuildSettings =
     Seq(
       name := "snowplow-databricks-loader",
@@ -224,7 +243,10 @@ object BuildSettings {
       ),
       // envVars works only when fork is enabled
       Test / fork := true
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
+    ) ++ databricksDockerSettings ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
+
+  lazy val databricksDistrolessBuildSettings =
+    databricksBuildSettings.diff(databricksDockerSettings) ++ databricksDistrolessDockerSettings
 
   lazy val transformerBatchBuildSettings =
     Seq(
@@ -232,6 +254,24 @@ object BuildSettings {
       description := "Spark job to transform Snowplow enriched events into DB/query-friendly format",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
       buildInfoKeys := List(name, version, description),
+      // Spark accesses JDK internals that Java 17 hides by default.
+      // EMR 7.x injects these flags automatically; we need to replicate them for local test JVMs.
+      Test / javaOptions ++= Seq(
+        "--add-opens=java.base/java.lang=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+        "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+        "--add-opens=java.base/java.io=ALL-UNNAMED",
+        "--add-opens=java.base/java.net=ALL-UNNAMED",
+        "--add-opens=java.base/java.nio=ALL-UNNAMED",
+        "--add-opens=java.base/java.util=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+        "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+        "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+        "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+        "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+        "--add-opens=java.security.jgss/sun.security.krb5=ALL-UNNAMED"
+      ),
       assembly / assemblyShadeRules := Seq(
         ShadeRule
           .rename(

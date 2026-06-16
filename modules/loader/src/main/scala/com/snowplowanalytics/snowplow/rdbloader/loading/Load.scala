@@ -10,7 +10,6 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import java.sql.SQLException
 import java.time.Instant
 import cats.{Monad, MonadThrow, Show}
 import cats.implicits._

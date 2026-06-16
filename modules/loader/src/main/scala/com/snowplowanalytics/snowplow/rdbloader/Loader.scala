@@ -82,6 +82,7 @@ object Loader {
       FolderMonitoring.run[F, C, I](
         config.monitoring.folders,
         control.isBusy,
+        control.loaderQueueLag,
         initQueryResult,
         target.prepareAlertTable
       )
@@ -167,7 +168,9 @@ object Loader {
     target: Target[I]
   ): Stream[F, Unit] = {
     val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery.discover[F](config, control.incrementMessages)
+      DataDiscovery
+        .discover[F](config)
+        .evalTap(w => control.incrementMessages(w.sentTimestamp).flatMap(state => Logging[F].info(state.show)))
     val retryDiscovery: DiscoveryStream[F] =
       Retries.run[F](config.jsonpaths, config.retryQueue, control.getFailures)
     val discovery = sqsDiscovery.merge(retryDiscovery)

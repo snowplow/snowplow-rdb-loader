@@ -344,17 +344,32 @@ class DiscoverySpec extends Specification {
         ).map(enrichedFolder.append)
       )
     }
+
+    "exclude empty enriched folders from unshredded list" in {
+      val (_, unshredded) = getState(
+        enrichedFolder,
+        shreddedFolder,
+        listDirs = {
+          case f if f == enrichedFolder => List("enriched1", "enriched2").map(f.append)
+          case _                        => Nil
+        },
+        folderHasContent = _.folderName != "enriched2"
+      )
+
+      unshredded must beEqualTo(List(enrichedFolder.append("enriched1")))
+    }
   }
 
   def getState(
     enrichedFolder: Folder,
     shreddedFolder: Folder,
     listDirs: Folder => List[Folder],
-    runInterval: RunInterval       = RunInterval(None, None, None),
-    ke: BlobStorage.Key => Boolean = keyExists,
-    now: Instant                   = Instant.now
+    runInterval: RunInterval            = RunInterval(None, None, None),
+    ke: BlobStorage.Key => Boolean      = keyExists,
+    now: Instant                        = Instant.now,
+    folderHasContent: Folder => Boolean = _ => true
   ): (List[Folder], List[Folder]) = {
-    val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, runInterval, now, listDirs, ke)
+    val (incomplete, unshredded) = Discovery.getState(enrichedFolder, shreddedFolder, runInterval, now, listDirs, ke, folderHasContent)
     (Await.result(incomplete, 2.seconds), unshredded)
   }
 

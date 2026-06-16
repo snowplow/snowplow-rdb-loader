@@ -10,6 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.common.cloud
 
+import java.time.Instant
 import scala.concurrent.duration._
 
 import cats.effect._
@@ -49,6 +50,14 @@ object Queue {
     trait Message[F[_]] {
       def content: String
       def ack: F[Unit]
+
+      /**
+       * The time at which this message was written to the queue by the producer.
+       *
+       * Returns [[None]] for queue backends that do not expose a publish timestamp (e.g. Kafka,
+       * Kinesis, Pub/Sub via the current library abstraction).
+       */
+      def sentTimestamp: Option[Instant]
     }
 
     case class MessageDeadlineExtension[F[_]](messageVisibility: FiniteDuration, extend: FiniteDuration => F[Unit])

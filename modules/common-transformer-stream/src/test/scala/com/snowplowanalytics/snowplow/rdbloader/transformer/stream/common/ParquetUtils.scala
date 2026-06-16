@@ -101,6 +101,17 @@ object ParquetUtils {
     value match {
       case primitiveValue: PrimitiveValue[_] =>
         convertPrimitive(columns, fullPath, primitiveValue)
+      case dv: DecimalValue =>
+        Json.fromBigDecimal(dv.toBigDecimal)
+      case dv: DateTimeValue =>
+        val unit = dv.format match {
+          case TimestampFormat.Int64Millis => ChronoUnit.MILLIS
+          case TimestampFormat.Int64Micros => ChronoUnit.MICROS
+          case TimestampFormat.Int64Nanos  => ChronoUnit.NANOS
+          case TimestampFormat.Int96       => throw new RuntimeException("INT96 timestamp format is not supported")
+        }
+        val timestamp = Instant.EPOCH.plus(dv.value, unit).truncatedTo(ChronoUnit.MILLIS)
+        Json.fromString(timestamp.toString)
       case record: RowParquetRecord =>
         convertParquetRecordToJson(record, fullPath, columns)
       case list: ListParquetRecord =>
@@ -135,8 +146,6 @@ object ParquetUtils {
         Json.fromDoubleOrNull(value.value)
       case value: BinaryValue =>
         convertBinary(expectedColumnType, value)
-      case value: DateTimeValue =>
-        convertLong(expectedColumnType, value.value)
     }
   }
 
@@ -169,7 +178,8 @@ object ParquetUtils {
          * 'com.github.mjakubowski84.parquet4s.ParquetReadSupport.DecimalConverter' when reading.
          * Incoming bytes represent decimal with scale 18.
          */
-        val scale18Decimal = BigDecimal(BigInt(value.value.getBytes), Decimals.Scale, new MathContext(Decimals.Precision))
+        val format         = DecimalFormat.Default
+        val scale18Decimal = BigDecimal(BigInt(value.value.getBytes), format.scale, new MathContext(format.precision))
 
         /** We need decimal with scale matching annotation, so rescale again */
         val desiredDecimal = scale18Decimal.setScale(annotation.getScale)

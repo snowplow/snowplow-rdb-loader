@@ -1,3 +1,9 @@
+Version 6.4.0 (2026-04-16)
+--------------------------
+Upgrade dependencies for 6.4.0 release (#23)
+Suppress false-positive folder monitoring alerts when loader is lagging (#22)
+Skip sealing when there are no good events (#21)
+
 Version 6.3.0 (2026-02-20)
 --------------------------
 Add IAM authentication support for Redshift JDBC connections (#14)

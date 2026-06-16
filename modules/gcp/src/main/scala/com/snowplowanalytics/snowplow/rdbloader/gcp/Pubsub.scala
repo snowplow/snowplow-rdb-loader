@@ -10,6 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.gcp
 
+import java.time.Instant
 import scala.concurrent.duration._
 
 import cats.implicits._
@@ -51,7 +52,9 @@ object Pubsub {
         message.asRight
     }
 
-  case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
+  case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F] {
+    val sentTimestamp: Option[Instant] = None
+  }
 
   def producer[F[_]: Async: Logger](
     projectId: String,

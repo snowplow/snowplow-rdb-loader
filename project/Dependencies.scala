@@ -15,20 +15,17 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline       = "2.4.1"
-    val igluClient    = "4.1.0"
-    val igluCore      = "1.1.1"
+    val igluClient    = "4.2.1"
     val badrows       = "2.3.0"
     val analyticsSdk  = "3.1.0"
-    val cron4sCirce   = "0.6.1"
+    val cron4sCirce   = "0.7.0"
     val circe         = "0.14.1"
     val circeConfig   = "0.10.0"
-    val cats          = "2.2.0"
     val catsEffect    = "3.3.14"
-    val manifest      = "0.3.0"
     val fs2           = "3.12.1"
     val fs2Aws        = "4.1.0"
     val fs2Blobstore  = "0.9.14"
-    val fs2Cron       = "0.7.2"
+    val fs2Cron       = "0.9.0"
     val fs2PubSub     = "0.21.0"
     val fs2Kafka      = "3.0.0"
     val secretManager = "2.7.0"
@@ -43,43 +40,29 @@ object Dependencies {
     val http4sBlaze   = "0.23.16" // this dep fell out of sync with http4s-core versioning - 0.23.16 is the last 0.X release.
     val scalaTracker  = "2.0.0"
 
-    val spark           = "3.3.1"
+    val spark           = "3.5.6"
     val eventsManifest  = "0.4.0"
     val schemaDdl       = "0.27.0"
-    val jacksonModule   = "2.18.3" // Override incompatible version in spark runtime
-    val jacksonDatabind = "2.18.3"
-    val jacksonMapper   = "1.9.14-atlassian-6" // Fix CVE
-    val parquet4s       = "2.10.0"
-    val hadoopClient    = "3.4.2"
+    val jacksonModule   = "2.21.2" // Override incompatible version in spark runtime
+    val parquet4s       = "2.22.0"
+    val hadoopClient    = "3.4.3"
     val hadoopGcpClient = "hadoop3-2.2.5"
-    val parquetHadoop   = "1.14.4"
-    val avro            = "1.11.4" // Fix CVE
-    val jsonSmart       = "2.5.2" // Fix CVE
-    val nimbusJose      = "9.37.4" // Fix CVE
-    val snappyJava      = "1.1.10.4" // Fix CVE
-    val commonsText     = "1.10.0" // Fix CVE
-    val commonsCompress = "1.26.0" // Fix CVE
-    val commonsConfig2  = "2.10.1" // Fix CVE
-    val ivy             = "2.5.1" // Fix CVE
+    val parquetHadoop   = "1.17.0"
 
     val slf4j         = "2.0.17"
     val redshiftJdbc  = "2.2.2"
-    val snowflakeJdbc = "3.28.0"
+    val snowflakeJdbc = "4.0.2"
     val enumeratum    = "1.7.0"
-    val aws2          = "2.38.4"
+    val aws2          = "2.42.33"
     val pubsub        = "1.148.0"
     val jSch          = "0.2.15"
     val sentry        = "1.7.30"
-    val protobuf      = "3.25.5" // Fix CVE
-    val kinesisClient = "2.4.3"
-    val nettyCodec    = "4.1.129.Final" // Fix CVE
-    val lz4Java       = "1.10.1" // Fix CVE
-    val jettison      = "1.5.4" // Fix CVE
-    val reactorNetty  = "1.0.39" // Fix CVE
-    val jettyHttp     = "9.4.51.v20230217" // Fix CVE
-    val jettyServer   = "9.4.56.v20240826" // Fix CVE
-    val zookeeper     = "3.9.4" // Fix CVE
-    val dnsjava       = "3.6.1" // Fix CVE
+    val kinesisClient = "2.7.2"
+    val refined =
+      "0.11.3" // Override - fs2-aws-kinesis:4.1.0 pulls in 0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
+    val nettyCodec    = "4.1.132.Final" // Fix CVE
+    val aircompressor = "2.0.3" // Fix CVE - parquet 1.17.0 ships 2.0.2
+    val zookeeper     = "3.9.5" // Fix CVE
     val kafkaClients  = "3.9.1" // Fix CVE
 
     // Scala (test only)
@@ -95,8 +78,7 @@ object Dependencies {
   val resolutionRepos = Seq(
     // Redshift native driver
     "redshift" at "https://s3.amazonaws.com/redshift-maven-repository/release/",
-    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true),
-    "Atlassian Maven repo" at "https://packages.atlassian.com/mvn/maven-3rdparty/"
+    ("Snowplow Analytics Maven repo" at "http://maven.snplow.com/releases/").withAllowInsecureProtocol(true)
   )
 
   // Scala (Common)
@@ -105,19 +87,15 @@ object Dependencies {
   val catsEffectKernel = "org.typelevel" %% "cats-effect-kernel" % V.catsEffect
 
   // Scala (Loader)
-  val decline           = "com.monovore"          %% "decline"                  % V.decline
-  val igluClient        = "com.snowplowanalytics" %% "iglu-scala-client"        % V.igluClient
-  val igluClientHttp4s  = "com.snowplowanalytics" %% "iglu-scala-client-http4s" % V.igluClient
-  val badrows           = "com.snowplowanalytics" %% "snowplow-badrows"         % V.badrows
-  val igluCoreCirce     = "com.snowplowanalytics" %% "iglu-core-circe"          % V.igluCore
-  val cats              = "org.typelevel"         %% "cats"                     % V.cats
-  val circeCore         = "io.circe"              %% "circe-core"               % V.circe
-  val circeConfig       = "io.circe"              %% "circe-config"             % V.circeConfig
-  val circeGeneric      = "io.circe"              %% "circe-generic"            % V.circe
-  val circeGenericExtra = "io.circe"              %% "circe-generic-extras"     % V.circe
-  val cron4sCirce = ("com.github.alonsodomin.cron4s" %% "cron4s-circe" % V.cron4sCirce)
-    .exclude("io.circe", "circe-core_2.12") // cron4s-circe lacks circe 0.13 support
-  val fs2 = "co.fs2" %% "fs2-core" % V.fs2
+  val decline           = "com.monovore"                  %% "decline"                  % V.decline
+  val igluClient        = "com.snowplowanalytics"         %% "iglu-scala-client"        % V.igluClient
+  val igluClientHttp4s  = "com.snowplowanalytics"         %% "iglu-scala-client-http4s" % V.igluClient
+  val badrows           = "com.snowplowanalytics"         %% "snowplow-badrows"         % V.badrows
+  val circeConfig       = "io.circe"                      %% "circe-config"             % V.circeConfig
+  val circeGeneric      = "io.circe"                      %% "circe-generic"            % V.circe
+  val circeGenericExtra = "io.circe"                      %% "circe-generic-extras"     % V.circe
+  val cron4sCirce       = "com.github.alonsodomin.cron4s" %% "cron4s-circe"             % V.cron4sCirce
+  val fs2               = "co.fs2"                        %% "fs2-core"                 % V.fs2
   val fs2Kafka = ("com.github.fd4s" %% "fs2-kafka" % V.fs2Kafka)
     .exclude("org.lz4", "lz4-java")
   val fs2Kinesis = ("io.laserdisc" %% "fs2-aws-kinesis" % V.fs2Aws)
@@ -146,52 +124,38 @@ object Dependencies {
   // Scala (Shredder)
   val eventsManifest = "com.snowplowanalytics" %% "snowplow-events-manifest" % V.eventsManifest
   val schemaDdl      = "com.snowplowanalytics" %% "schema-ddl"               % V.schemaDdl
-  val circeJawn      = "io.circe"              %% "circe-jawn"               % V.circe
-  val circeLiteral   = "io.circe"              %% "circe-literal"            % V.circe
-  val circeOptics    = "io.circe"              %% "circe-optics"             % V.circe % Test
-  val sparkCore      = "org.apache.spark"      %% "spark-core"               % V.spark % Provided
-  val sparkSQL       = "org.apache.spark"      %% "spark-sql"                % V.spark % Provided
-  val fs2Io          = "co.fs2"                %% "fs2-io"                   % V.fs2
 
-  val jacksonModule   = "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonModule
-  val jacksonDatabind = "com.fasterxml.jackson.core"       % "jackson-databind"        % V.jacksonDatabind
-  val jacksonCbor     = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
-  val jacksonMapper   = "org.codehaus.jackson"             % "jackson-mapper-asl"      % V.jacksonMapper
-  val parquet4s       = "com.github.mjakubowski84"        %% "parquet4s-fs2"           % V.parquet4s
+  val circeLiteral = "io.circe"         %% "circe-literal" % V.circe
+  val circeOptics  = "io.circe"         %% "circe-optics"  % V.circe % Test
+  val sparkCore    = "org.apache.spark" %% "spark-core"    % V.spark % Provided
+  val sparkSQL     = "org.apache.spark" %% "spark-sql"     % V.spark % Provided
+  val fs2Io        = "co.fs2"           %% "fs2-io"        % V.fs2
+
+  val jacksonModule = "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonModule
+  val jacksonCbor   = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
+  val parquet4s     = "com.github.mjakubowski84"        %% "parquet4s-fs2"           % V.parquet4s
   val hadoopCommon = ("org.apache.hadoop" % "hadoop-common" % V.hadoopClient)
     .exclude("com.jcraft", "jsch")
     .exclude("org.apache.zookeeper", "zookeeper")
+    .exclude("org.eclipse.jetty", "jetty-server") // only used by Hadoop daemon web UIs, not client-side code
   val hadoop        = "org.apache.hadoop"  % "hadoop-client"  % V.hadoopClient
   val parquetHadoop = "org.apache.parquet" % "parquet-hadoop" % V.parquetHadoop
   val hadoopAws = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
     .excludeAll(ExclusionRule(organization = "software.amazon.awssdk"))
-  val hadoopGcp   = "com.google.cloud.bigdataoss" % "gcs-connector"   % V.hadoopGcpClient % Runtime
-  val avro        = "org.apache.avro"             % "avro"            % V.avro
-  val jsonSmart   = "net.minidev"                 % "json-smart"      % V.jsonSmart
-  val nimbusJose  = "com.nimbusds"                % "nimbus-jose-jwt" % V.nimbusJose
-  val snappyJava  = "org.xerial.snappy"           % "snappy-java"     % V.snappyJava
-  val hadoopAzure = "org.apache.hadoop"           % "hadoop-azure"    % V.hadoopClient
+  val hadoopGcp   = "com.google.cloud.bigdataoss" % "gcs-connector" % V.hadoopGcpClient % Runtime
+  val hadoopAzure = "org.apache.hadoop"           % "hadoop-azure"  % V.hadoopClient
   val kinesisClient = ("software.amazon.kinesis" % "amazon-kinesis-client" % V.kinesisClient)
     .exclude("software.amazon.glue", "schema-registry-common")
     .exclude("software.amazon.glue", "schema-registry-serde")
-  val commonsText     = "org.apache.commons" % "commons-text"           % V.commonsText
-  val commonsCompress = "org.apache.commons" % "commons-compress"       % V.commonsCompress
-  val commonsConfig2  = "org.apache.commons" % "commons-configuration2" % V.commonsConfig2
-  val ivy             = "org.apache.ivy"     % "ivy"                    % V.ivy
-
   // Java (Loader)
-  val slf4jApi      = "org.slf4j"               % "slf4j-api"          % V.slf4j
-  val slf4jSimple   = "org.slf4j"               % "slf4j-simple"       % V.slf4j
-  val redshift      = "com.amazon.redshift"     % "redshift-jdbc42"    % V.redshiftJdbc
-  val jSch          = "com.github.mwiede"       % "jsch"               % V.jSch
-  val sentry        = "io.sentry"               % "sentry"             % V.sentry
-  val snowflakeJdbc = "net.snowflake"           % "snowflake-jdbc"     % V.snowflakeJdbc
-  val enumeratum    = "com.beachape"           %% "enumeratum"         % V.enumeratum
-  val jettison      = "org.codehaus.jettison"   % "jettison"           % V.jettison
-  val reactorNetty  = "io.projectreactor.netty" % "reactor-netty-http" % V.reactorNetty
-  val jettyHttp     = "org.eclipse.jetty"       % "jetty-http"         % V.jettyHttp
-  val jettyServer   = "org.eclipse.jetty"       % "jetty-server"       % V.jettyServer
+  val slf4jApi      = "org.slf4j"           % "slf4j-api"       % V.slf4j
+  val slf4jSimple   = "org.slf4j"           % "slf4j-simple"    % V.slf4j
+  val redshift      = "com.amazon.redshift" % "redshift-jdbc42" % V.redshiftJdbc
+  val jSch          = "com.github.mwiede"   % "jsch"            % V.jSch
+  val sentry        = "io.sentry"           % "sentry"          % V.sentry
+  val snowflakeJdbc = "net.snowflake"       % "snowflake-jdbc"  % V.snowflakeJdbc
+  val enumeratum    = "com.beachape"       %% "enumeratum"      % V.enumeratum
   val kafkaClients = ("org.apache.kafka" % "kafka-clients" % V.kafkaClients)
     .exclude("org.lz4", "lz4-java")
 
@@ -206,14 +170,12 @@ object Dependencies {
   val aws2ssm         = "software.amazon.awssdk" % "ssm"                 % V.aws2
   val aws2redshift    = "software.amazon.awssdk" % "redshift"            % V.aws2
   val pubsub          = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
-  val protobuf        = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
-  val protobufUtil    = "com.google.protobuf"    % "protobuf-java-util"  % V.protobuf
-  val nettyCodec      = "io.netty"               % "netty-codec"         % V.nettyCodec
+  val refined         = "eu.timepit"            %% "refined"             % V.refined
   val nettyCodecHttp  = "io.netty"               % "netty-codec-http"    % V.nettyCodec
   val nettyCodecHttp2 = "io.netty"               % "netty-codec-http2"   % V.nettyCodec
-  val lz4Java         = "at.yawk.lz4"            % "lz4-java"            % V.lz4Java
+  val nettyCodecSmtp  = "io.netty"               % "netty-codec-smtp"    % V.nettyCodec
+  val aircompressor   = "io.airlift"             % "aircompressor"       % V.aircompressor
   val zookeeper       = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
-  val dnsjava         = "dnsjava"                % "dnsjava"             % V.dnsjava
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -240,10 +202,8 @@ object Dependencies {
     fs2BlobstoreS3,
     fs2Kinesis,
     kinesisClient,
-    protobuf,
-    protobufUtil,
-    nettyCodec,
-    aws2sts
+    aws2sts,
+    refined // Fix scala-xml conflict - fs2-aws-kinesis:4.1.0 pulls in refined:0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
   )
 
   val gcpDependencies = Seq(
@@ -261,12 +221,7 @@ object Dependencies {
     fs2Kafka,
     kafkaClients,
     hadoopCommon,
-    hadoopAzure,
-    avro,
-    reactorNetty,
-    jettyHttp,
-    jettyServer,
-    dnsjava
+    hadoopAzure
   )
 
   val commonDependencies = Seq(
@@ -283,10 +238,6 @@ object Dependencies {
     schemaDdl,
     http4sCore,
     aws2regions,
-    jacksonDatabind,
-    jacksonMapper,
-    nimbusJose,
-    commonsCompress,
     specs2,
     monocle,
     monocleMacro,
@@ -318,15 +269,10 @@ object Dependencies {
     specs2,
     specs2ScalaCheck,
     scalaCheck,
-    jettison,
-    snappyJava,
-    lz4Java,
-    jsonSmart,
     fs2Io,
     catsEffectLaws,
     catsTesting,
-    catsEffectTestkit,
-    commonsConfig2
+    catsEffectTestkit
   )
 
   val redshiftDependencies = Seq(
@@ -350,12 +296,7 @@ object Dependencies {
     eventsManifest,
     sparkCore,
     sparkSQL,
-    protobuf,
-    protobufUtil,
-    commonsText,
-    ivy,
     jacksonModule,
-    jacksonDatabind,
     jacksonCbor,
     circeOptics,
     specs2,
@@ -367,23 +308,17 @@ object Dependencies {
     igluClientHttp4s,
     slf4jApi,
     slf4jSimple,
-    protobuf,
-    protobufUtil,
     log4cats,
     catsEffectLaws,
     circeOptics,
     parquet4s,
     hadoop,
     parquetHadoop,
-    dnsjava,
-    avro,
-    commonsConfig2,
-    jsonSmart,
-    snappyJava,
-    lz4Java,
     fs2Io,
     nettyCodecHttp,
     nettyCodecHttp2,
+    nettyCodecSmtp, // Fix CVE - escapes the nettyCodec pin
+    aircompressor, // Fix CVE - parquet 1.17.0 ships 2.0.2, fix requires 2.0.3
     specs2,
     specs2ScalaCheck,
     scalaCheck,
@@ -401,7 +336,6 @@ object Dependencies {
 
   val transformerKafkaDependencies = Seq(
     hadoopAzure,
-    jettison,
     eventGenerator
   )
 

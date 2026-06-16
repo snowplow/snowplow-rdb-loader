@@ -10,6 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.aws
 
+import java.time.Instant
 import java.util.{Date, UUID}
 import java.net.{InetAddress, URI}
 
@@ -44,8 +45,9 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 object Kinesis {
 
   case class Message[F[_]: Sync](record: CommittableRecord) extends Queue.Consumer.Message[F] {
-    override def content: String = getContent(record)
-    override def ack: F[Unit]    = record.checkpoint
+    override def content: String                = getContent(record)
+    override def ack: F[Unit]                   = record.checkpoint
+    override def sentTimestamp: Option[Instant] = None
   }
 
   def consumer[F[_]: Async: Applicative](

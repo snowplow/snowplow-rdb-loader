@@ -58,23 +58,21 @@ object FolderMonitoring {
   val FailBeforeAlarm = 3
 
   /**
-   * Check if S3 key name represents a date more recent than a `since`
+   * Check if a folder's timestamp falls within the monitoring window.
    *
    * @param since
-   *   optional duration representing, how fresh a folder needs to be in order to be taken into
-   *   account; If None - all folders are taken into account
-   * @param now
-   *   current timestamp
-   * @param key
+   *   optional lower bound: folders older than this are excluded; if None, no lower bound
+   * @param until
+   *   optional upper bound: folders newer than this are excluded; if None, no upper bound
+   * @param folder
    *   S3 key, representing a folder, must be in `run=2021-10-08-16-30-05` format (no trailing
    *   slash); keys of a wrong format won't be filtered out
    * @return
    *   false if folder is old enough, true otherwise
    */
   def isRecent(
-    since: Option[FiniteDuration],
-    until: Option[FiniteDuration],
-    now: Instant
+    since: Option[Instant],
+    until: Option[Instant]
   )(
     folder: BlobStorage.Folder
   ): Boolean = {
@@ -83,20 +81,8 @@ object FolderMonitoring {
 
     Either.catchOnly[DateTimeParseException](LogTimeFormatter.parse(dateOnly)) match {
       case Right(accessor) =>
-        (since, until) match {
-          case (Some(sinceDuration), Some(untilDuration)) =>
-            val oldest = now.minusMillis(sinceDuration.toMillis)
-            val newest = now.minusMillis(untilDuration.toMillis)
-            val time   = accessor.query(Instant.from)
-            time.isAfter(oldest) && time.isBefore(newest)
-          case (None, Some(untilDuration)) =>
-            val newest = now.minusMillis(untilDuration.toMillis)
-            accessor.query(Instant.from).isBefore(newest)
-          case (Some(sinceDuration), None) =>
-            val oldest = now.minusMillis(sinceDuration.toMillis)
-            accessor.query(Instant.from).isAfter(oldest)
-          case (None, None) => true
-        }
+        val time = accessor.query(Instant.from)
+        since.forall(time.isAfter(_)) && until.forall(time.isBefore(_))
       case Left(_) =>
         true
     }
@@ -106,7 +92,9 @@ object FolderMonitoring {
    * Sink all processed paths of folders in `input` (shredded archive) into `output` (temp staging)
    * Processed folders is everything in shredded archive
    * @param since
-   *   optional duration to ignore old folders
+   *   optional lower bound: folders older than this are excluded
+   * @param until
+   *   optional upper bound: folders newer than this are excluded
    * @param input
    *   shredded archive
    * @param output
@@ -115,27 +103,23 @@ object FolderMonitoring {
    *   whether the list was non-empty (true) or empty (false)
    */
   def sinkFolders[F[_]: Sync: Logging: BlobStorage](
-    since: Option[FiniteDuration],
-    until: Option[FiniteDuration],
+    since: Option[Instant],
+    until: Option[Instant],
     input: BlobStorage.Folder,
     output: BlobStorage.Folder
   ): F[Boolean] =
     Ref.of[F, Int](0).flatMap { ref =>
-      Stream
-        .eval(Clock[F].realTimeInstant)
-        .flatMap { now =>
-          BlobStorage[F]
-            .list(input, recursive = false)
-            .mapFilter(blob =>
-              if (blob.key.endsWith("/") && blob.key != input) BlobStorage.Folder.parse(blob.key).toOption else None
-            ) // listS3 returns the root dir as well
-            .filter(isRecent(since, until, now))
-            .evalTap(_ => ref.update(size => size + 1))
-            .intersperse("\n")
-            .through(utf8.encode[F])
-            .through(BlobStorage[F].put(output.withKey("keys"), true))
-            .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
-        }
+      BlobStorage[F]
+        .list(input, recursive = false)
+        .mapFilter(blob =>
+          if (blob.key.endsWith("/") && blob.key != input) BlobStorage.Folder.parse(blob.key).toOption else None
+        ) // listS3 returns the root dir as well
+        .filter(isRecent(since, until))
+        .evalTap(_ => ref.update(size => size + 1))
+        .intersperse("\n")
+        .through(utf8.encode[F])
+        .through(BlobStorage[F].put(output.withKey("keys"), true))
+        .onFinalize(ref.get.flatMap(size => Logging[F].info(s"Saved $size folders from $input in $output")))
         .compile
         .drain *> ref.get.map(size => size != 0)
     }
@@ -199,6 +183,32 @@ object FolderMonitoring {
   private def isProducedByBatchTransformer(folder: Folder): Boolean =
     folder.folderName.length == s"run=$TimePattern".length
 
+  /**
+   * Compute the effective 'until' bound for folder monitoring.
+   *
+   * The configured 'until' is a grace period: we do not alert on folders younger than 'until'
+   * because the loader may still be actively loading them. When the loader has a backlog (i.e. it
+   * is lagging behind the queue), recent folders may not yet have been reached at all, so we need
+   * to extend this grace period by the current lag.
+   *
+   * For example, with a configured 'until' of 2h and a loader lag of 3h, the effective 'until' is
+   * 5h: the loader needs up to 3h to reach a folder and up to a further 2h to finish loading it.
+   *
+   * @param configuredUntil
+   *   the static 'until' grace period from configuration
+   * @param loaderLag
+   *   how far behind the loader currently is in its queue (see [[Control.loaderQueueLag]])
+   */
+  private def effectiveUntil(
+    configuredUntil: Option[FiniteDuration],
+    loaderLag: Option[FiniteDuration]
+  ): Option[FiniteDuration] =
+    (configuredUntil, loaderLag) match {
+      case (Some(u), Some(l)) => Some(u + l)
+      case (None, Some(l))    => Some(l)
+      case (until, None)      => until
+    }
+
   /** Get stream of S3 folders emitted with configured interval */
   def getOutputKeys[F[_]: Temporal: Functor](folders: Config.Folders): Stream[F, BlobStorage.Folder] = {
     val getKey = Clock[F].realTimeInstant
@@ -219,16 +229,20 @@ object FolderMonitoring {
    * Alerting entrypoint. Parses all configuration necessary for monitoring of corrupted and
    * unloaded folders and launches a stream or periodic checks. If some configurations are not
    * provided - just prints a warning. Resulting stream has to be running in background.
+   *
+   * @param currentLag
+   *   see [[stream]]
    */
   def run[F[_]: Async: BlobStorage: Transaction[*[_], C]: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     foldersCheck: Option[Config.Folders],
     isBusy: Stream[F, Boolean],
+    currentLag: F[Option[FiniteDuration]],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
     foldersCheck match {
       case Some(folders) =>
-        stream[F, C, I](folders, isBusy, initQueryResult, prepareAlertTable)
+        stream[F, C, I](folders, isBusy, currentLag, initQueryResult, prepareAlertTable)
       case None =>
         Stream.eval[F, Unit](Logging[F].info("Configuration for monitoring.folders hasn't been provided - monitoring is disabled"))
     }
@@ -242,6 +256,11 @@ object FolderMonitoring {
    *   configuration for folders monitoring
    * @param isBusy
    *   discrete stream signalling when folders monitoring should not work
+   * @param currentLag
+   *   effect that returns the current loader queue lag: how long ago the most recently received
+   *   queue message was originally written to the queue. Used to dynamically extend the 'until'
+   *   tolerance so that batches still in the loader's backlog do not trigger false-positive alerts.
+   *   See [[effectiveUntil]] and [[Control.loaderQueueLag]].
    * @param initQueryResult
    *   results of the queries sent to warehouse when application is initialized
    * @param prepareAlertTable
@@ -250,6 +269,7 @@ object FolderMonitoring {
   def stream[F[_]: Transaction[*[_], C]: Async: BlobStorage: Logging: Monitoring: MonadThrow, C[_]: DAO: LoadAuthService: Monad, I](
     folders: Config.Folders,
     isBusy: Stream[F, Boolean],
+    currentLag: F[Option[FiniteDuration]],
     initQueryResult: I,
     prepareAlertTable: List[Statement]
   ): Stream[F, Unit] =
@@ -260,16 +280,24 @@ object FolderMonitoring {
           lock.tryAcquire.flatMap { acquired =>
             if (acquired) { // The lock shouldn't be necessary with fixedDelay, but adding just in case
               val sinkAndCheck =
-                Logging[F].info("Monitoring shredded folders") *>
-                  sinkFolders[F](folders.since, folders.until, folders.transformerOutput, outputFolder).ifM(
-                    for {
-                      alerts <- check[F, C, I](outputFolder, initQueryResult, prepareAlertTable)
-                      _ <- alerts.traverse_(Monitoring[F].alert(_))
-                      _ <- if (alerts.isEmpty) Async[F].unit
-                           else Monitoring[F].alert(Alert.UnloadedFoldersDetected)
-                    } yield (),
-                    Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
-                  ) *> failed.set(0)
+                (currentLag, Clock[F].realTimeInstant).flatMapN { (lag, now) =>
+                  val sinceInstant = folders.since.map(d => now.minusMillis(d.toMillis))
+                  val untilInstant = effectiveUntil(folders.until, lag).map(d => now.minusMillis(d.toMillis))
+                  Logging[F].info {
+                    val sinceStr = sinceInstant.fold("unbounded")(_.toString)
+                    val untilStr = untilInstant.fold("now")(_.toString)
+                    s"Monitoring shredded folders in window [$sinceStr, $untilStr]"
+                  } *>
+                    sinkFolders[F](sinceInstant, untilInstant, folders.transformerOutput, outputFolder).ifM(
+                      for {
+                        alerts <- check[F, C, I](outputFolder, initQueryResult, prepareAlertTable)
+                        _ <- alerts.traverse_(Monitoring[F].alert(_))
+                        _ <- if (alerts.isEmpty) Async[F].unit
+                             else Monitoring[F].alert(Alert.UnloadedFoldersDetected)
+                      } yield (),
+                      Logging[F].info(s"No folders were found in ${folders.transformerOutput}. Skipping manifest check")
+                    )
+                } *> failed.set(0)
 
               sinkAndCheck.handleErrorWith { error =>
                 failed.updateAndGet(_ + 1).flatMap { failedBefore =>

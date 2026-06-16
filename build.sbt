@@ -9,21 +9,11 @@
  * OF THE SOFTWARE, YOU AGREE TO THE TERMS OF SUCH LICENSE AGREEMENT.
  */
 
-/**
- * Inspired by the same issue in the Iglu Server, see commit
- * https://github.com/snowplow/iglu-server/pull/128/commits/d4a0940c12181dd40bc5cdc2249f2c84c5296353
- *
- * Currently we have some libs that depend on circe 0.14.x and some that depend on 0.13.x. These
- * reported binary incompatibilities can only be removed once we have bumped cats-effect to version
- * 3. For now, we ignore the reported binary incompatibilities because testing shows it is safe.
- */
-ThisBuild / libraryDependencySchemes ++= Seq(
-  "io.circe"        %% "circe-core"    % "always",
-  "io.circe"        %% "circe-generic" % "always",
-  "io.circe"        %% "circe-parser"  % "always",
-  "io.circe"        %% "circe-jawn"    % "always",
-  "com.github.luben" % "zstd-jni"      % "semver-spec"
-)
+ThisBuild / scalaVersion := "2.12.21"
+
+// zstd-jni uses a non-standard version format (e.g. 1.4.9-1 vs 1.5.2-1). semver-spec tells sbt
+// to treat the minor bump as backward-compatible rather than flagging a binary incompatibility.
+ThisBuild / libraryDependencySchemes += "com.github.luben" % "zstd-jni" % "semver-spec"
 
 lazy val root = project
   .in(file("."))
@@ -145,7 +135,7 @@ lazy val databricksLoader = project
 lazy val databricksLoaderDistroless = project
   .in(file("modules/distroless/databricks-loader"))
   .settings(sourceDirectory := (databricksLoader / sourceDirectory).value)
-  .settings(BuildSettings.databricksBuildSettings)
+  .settings(BuildSettings.databricksDistrolessBuildSettings)
   .settings(BuildSettings.additionalDockerSettings)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))

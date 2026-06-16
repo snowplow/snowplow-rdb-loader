@@ -12,24 +12,29 @@ package com.snowplowanalytics.snowplow.rdbloader.discovery
 
 import java.time.Instant
 import cats.data.NonEmptyList
+import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 import cats.syntax.either._
+import fs2.{Pipe, Stream}
+import io.circe.syntax._
 import com.snowplowanalytics.iglu.core.SchemaVer.Full
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.core.circe.implicits._
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.redshift._
-import com.snowplowanalytics.snowplow.rdbloader.LoaderError
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderError, SpecHelpers}
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat.{JSON, TSV}
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import org.specs2.mutable.Specification
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState.LogEntry
-import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureIglu, PureLogging, PureOps}
+import com.snowplowanalytics.snowplow.rdbloader.test.{Pure, PureAWS, PureCache, PureIglu, PureLogging, PureOps, SyncLogging}
 
 class DataDiscoverySpec extends Specification {
   "show" should {
@@ -274,6 +279,55 @@ class DataDiscoverySpec extends Specification {
           )
         )
       )
+    }
+  }
+
+  "discover" should {
+    "copy sentTimestamp from queue message to WithOrigin" in {
+      val sentAt = Instant.ofEpochMilli(1234567890000L)
+      val message = LoaderMessage.ShreddingComplete(
+        BlobStorage.Folder.coerce("s3://bucket/folder/"),
+        TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, List.empty),
+        LoaderMessage.Timestamps(Instant.EPOCH, Instant.EPOCH, Some(Instant.EPOCH), Some(Instant.EPOCH)),
+        Compression.Gzip,
+        LoaderMessage.Processor("test-shredder", Semver(1, 0, 0)),
+        None
+      )
+      val messageContent = message.selfDescribingData(false).asJson.noSpaces
+
+      implicit val logging: Logging[IO] =
+        SyncLogging.build[IO](IO.ref(List.empty[String]).unsafeRunSync())
+      implicit val cache: Cache[IO] =
+        Cache.cacheInterpreter[IO](IO.ref(Map.empty[String, Option[BlobStorage.Key]]).unsafeRunSync())
+      implicit val jsonPathDiscovery: JsonPathDiscovery[IO] = JsonPathDiscovery.noop[IO]
+      implicit val iglu: Iglu[IO] = new Iglu[IO] {
+        def getSchemasWithSameModel(schemaKey: SchemaKey)            = ???
+        def fieldNamesFromTypes(types: List[TypesInfo.WideRow.Type]) = ???
+      }
+      implicit val blobStorage: BlobStorage[IO] = new BlobStorage[IO] {
+        def list(bucket: BlobStorage.Folder, recursive: Boolean): Stream[IO, BlobStorage.BlobObject] = ???
+        def put(path: BlobStorage.Key, overwrite: Boolean): Pipe[IO, Byte, Unit]                     = ???
+        def get(path: BlobStorage.Key): IO[Either[Throwable, String]]                                = ???
+        def getBytes(path: BlobStorage.Key): Stream[IO, Byte]                                        = ???
+        def keyExists(key: BlobStorage.Key): IO[Boolean]                                             = ???
+      }
+      implicit val consumer: Queue.Consumer[IO] = new Queue.Consumer[IO] {
+        def read: Stream[IO, Queue.Consumer.Message[IO]] = Stream.emit(
+          new Queue.Consumer.Message[IO] {
+            val content       = messageContent
+            val ack           = IO.unit
+            val sentTimestamp = Some(sentAt)
+          }
+        )
+      }
+
+      val result = DataDiscovery
+        .discover[IO](SpecHelpers.validConfig.copy(jsonpaths = None))
+        .compile
+        .toList
+        .unsafeRunSync()
+
+      result.map(_.sentTimestamp) must beEqualTo(List(Some(sentAt)))
     }
   }
 }

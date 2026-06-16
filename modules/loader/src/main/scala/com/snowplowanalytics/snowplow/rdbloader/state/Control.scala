@@ -10,6 +10,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.state
 
+import java.time.Instant
+import scala.concurrent.duration.{FiniteDuration, MILLISECONDS}
+
 import cats.{Functor, Monad}
 import cats.implicits._
 
@@ -33,8 +36,40 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
  *   modify the state
  */
 case class Control[F[_]](private val state: State.Ref[F]) {
-  def incrementMessages: F[State] =
-    state.updateAndGet(state => state.copy(messages = state.messages + 1))
+
+  /**
+   * Record that a new queue message has been received, updating the total message count and
+   * tracking when the message was originally written to the queue.
+   *
+   * @param sentAt
+   *   the time the message was written to the queue by the producer, if available.
+   */
+  def incrementMessages(sentAt: Option[Instant]): F[State] =
+    state.updateAndGet(s =>
+      s.copy(
+        messages = s.messages + 1,
+        // Preserve the existing timestamp when sentAt is None, so backends that don't support
+        // publish timestamps don't silently clear the lag estimate we built up from earlier messages.
+        latestMessageSentAt = sentAt.orElse(s.latestMessageSentAt)
+      )
+    )
+
+  /**
+   * Returns how far behind the loader currently is in processing its queue: the elapsed time since
+   * the most recently received queue message was originally written to the queue.
+   *
+   * This is used by folder monitoring as a dynamic adjustment to its "until" tolerance (see
+   * [[FolderMonitoring.effectiveUntil]]): when the loader has a backlog, recent folders that
+   * haven't been reached yet should not trigger "unloaded folder" alerts.
+   *
+   * Returns [[None]] if no message has been received yet, or if the queue backend does not expose
+   * publish timestamps.
+   */
+  def loaderQueueLag(implicit F: Monad[F], C: Clock[F]): F[Option[FiniteDuration]] =
+    for {
+      now <- C.realTimeInstant
+      state <- get
+    } yield state.latestMessageSentAt.map(sentAt => FiniteDuration(now.toEpochMilli - sentAt.toEpochMilli, MILLISECONDS))
   def incrementLoaded: F[Unit] =
     state.update(state => state.copy(loaded = state.loaded + 1))
 

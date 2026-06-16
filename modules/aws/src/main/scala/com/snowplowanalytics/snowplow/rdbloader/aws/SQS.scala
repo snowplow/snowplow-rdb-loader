@@ -12,6 +12,7 @@ package com.snowplowanalytics.snowplow.rdbloader.aws
 
 import scala.concurrent.duration._
 import scala.collection.JavaConverters._
+import java.time.Instant
 
 import cats.effect._
 import cats.implicits._
@@ -28,7 +29,11 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SQS {
 
-  case class SQSMessage[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F]
+  case class SQSMessage[F[_]](
+    content: String,
+    ack: F[Unit],
+    sentTimestamp: Option[Instant]
+  ) extends Queue.Consumer.Message[F]
 
   def consumer[F[_]: Async: Logger](
     queueName: String,
@@ -41,7 +46,7 @@ object SQS {
       new Queue.Consumer[F] {
         override def read: Stream[F, Queue.Consumer.Message[F]] = {
           val stream = readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
-            .map { case (msg, ack, extend) => (SQSMessage(msg.body(), ack), extend) }
+            .map { case (msg, ack, extend, sentTimestamp) => (SQSMessage(msg.body(), ack, sentTimestamp), extend) }
           postProcess match {
             case None => stream.map(_._1)
             case Some(p) =>
@@ -75,7 +80,7 @@ object SQS {
     visibilityTimeout: Int,
     region: Region,
     stop: Stream[F, Boolean]
-  ): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit])] = {
+  ): Stream[F, (Message, F[Unit], FiniteDuration => F[Unit], Option[Instant])] = {
 
     def getRequest(queueUrl: String) =
       ReceiveMessageRequest
@@ -83,6 +88,7 @@ object SQS {
         .queueUrl(queueUrl)
         .waitTimeSeconds(1)
         .visibilityTimeout(visibilityTimeout)
+        .messageSystemAttributeNames(MessageSystemAttributeName.SENT_TIMESTAMP)
         .build()
 
     Stream.resource(mkClient(region).evalMap(getUrl[F](queueName))).flatMap { case (client, queueUrl) =>
@@ -99,7 +105,14 @@ object SQS {
 
               val extend = (timeout: FiniteDuration) =>
                 Sync[F].delay(client.changeMessageVisibility(buildExtend(queueUrl, message.receiptHandle(), timeout))).void
-              (message, delete, extend)
+
+              // SentTimestamp is always present when requested and formatted as epoch milliseconds by AWS,
+              // but we handle NumberFormatException defensively since we're consuming an external value
+              val sentTimestamp = Option(message.attributes().get(MessageSystemAttributeName.SENT_TIMESTAMP))
+                .flatMap(s => Either.catchOnly[NumberFormatException](s.toLong).toOption)
+                .map(Instant.ofEpochMilli(_))
+
+              (message, delete, extend, sentTimestamp)
             }
         }
     }

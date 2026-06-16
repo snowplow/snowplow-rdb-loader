@@ -48,7 +48,8 @@ object Discovery {
     runInterval: RunInterval,
     now: Instant,
     listDirs: Folder => List[Folder],
-    keyExists: BlobStorage.Key => Boolean
+    keyExists: BlobStorage.Key => Boolean,
+    folderHasContent: Folder => Boolean
   ): (Future[List[Folder]], List[Folder]) = {
     val since        = getConcrete(runInterval, now)
     val enrichedDirs = findIntervalFolders(listDirs(enrichedFolder), since, runInterval.until.map(_.value))
@@ -60,6 +61,7 @@ object Discovery {
     val unshredded = enrichedFolderNames
       .diff(shreddedFolderNames)
       .map(enrichedFolder.append)
+      .filter(folderHasContent)
 
     // Folders that exist both in enriched and shredded
     val intersecting = enrichedFolderNames.intersect(shreddedFolderNames).takeRight(FoldersToCheck)

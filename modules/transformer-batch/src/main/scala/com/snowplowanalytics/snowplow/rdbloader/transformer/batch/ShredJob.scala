@@ -273,7 +273,15 @@ object ShredJob {
     val shreddedFolder = Folder.coerce(config.output.path.toString)
 
     val (incomplete, unshredded) = Discovery
-      .getState(enrichedFolder, shreddedFolder, config.runInterval, Instant.now, Cloud.listDirs(s3Client, _), Cloud.keyExists(s3Client, _))
+      .getState(
+        enrichedFolder,
+        shreddedFolder,
+        config.runInterval,
+        Instant.now,
+        Cloud.listDirs(s3Client, _),
+        Cloud.keyExists(s3Client, _),
+        Cloud.folderHasContent(s3Client, _)
+      )
 
     val eventsManifest: Option[EventsManifestConfig] = duplicateStorageConfig.map { json =>
       val igluClient = Client[Id, Json](IgluSingleton.get(resolverConfig), CirceValidator)
