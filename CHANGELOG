@@ -1,3 +1,11 @@
+Version 6.4.1 (2026-05-13)
+--------------------------
+Bump dependencies for 6.4.1 release (#29)
+Snowflake JDBC logs adhere to application's log level (#28)
+Bump sbt-snowplow-release to 0.6.0 (#27)
+Fix Snowflake loader crash caused by Arrow RootAllocator failing to initialize on Java 21 (#26)
+Add Claude Code GitHub Action workflow (#25)
+
 Version 6.4.0 (2026-04-16)
 --------------------------
 Upgrade dependencies for 6.4.0 release (#23)

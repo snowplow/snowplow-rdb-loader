@@ -115,7 +115,7 @@ lazy val snowflakeLoader = project
 lazy val snowflakeLoaderDistroless = project
   .in(file("modules/distroless/snowflake-loader"))
   .settings(sourceDirectory := (snowflakeLoader / sourceDirectory).value)
-  .settings(BuildSettings.snowflakeBuildSettings)
+  .settings(BuildSettings.snowflakeDistrolessBuildSettings)
   .settings(BuildSettings.additionalDockerSettings)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))

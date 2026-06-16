@@ -207,26 +207,43 @@ object BuildSettings {
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
     ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
+  // Both the Snowflake (4.x+) and Databricks JDBC drivers use Apache Arrow internally,
+  // which requires access to java.nio internals that Java's module system (JPMS) restricts by default.
+  private val arrowJvmOptions = List("--add-opens=java.base/java.nio=ALL-UNNAMED")
+
+  // Routes Snowflake JDBC logging through SLF4J so it respects the application's log level.
+  private val snowflakeJvmOptions = arrowJvmOptions :+ "-Dnet.snowflake.jdbc.loggerImpl=net.snowflake.client.log.SLF4JLogger"
+
+  private lazy val snowflakeDockerSettings = Seq(
+    Universal / javaOptions ++= snowflakeJvmOptions
+  )
+
+  private lazy val snowflakeDistrolessDockerSettings = Seq(
+    dockerEntrypoint := {
+      val orig = dockerEntrypoint.value
+      orig.head +: snowflakeJvmOptions ++: orig.tail
+    }
+  )
+
   lazy val snowflakeBuildSettings =
     Seq(
       name := "snowplow-snowflake-loader",
       Docker / packageName := "rdb-loader-snowflake",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.snowflake._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.snowflake.Main")
-    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
+    ) ++ snowflakeDockerSettings ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
-  // The Databricks JDBC driver uses Apache Arrow internally, which requires access to
-  // java.nio internals that Java's module system (JPMS) restricts by default.
-  private val databricksJvmOptions = List("--add-opens=java.base/java.nio=ALL-UNNAMED")
+  lazy val snowflakeDistrolessBuildSettings =
+    snowflakeBuildSettings.diff(snowflakeDockerSettings) ++ snowflakeDistrolessDockerSettings
 
   private lazy val databricksDockerSettings = Seq(
-    Universal / javaOptions ++= databricksJvmOptions
+    Universal / javaOptions ++= arrowJvmOptions
   )
 
   private lazy val databricksDistrolessDockerSettings = Seq(
     dockerEntrypoint := {
       val orig = dockerEntrypoint.value
-      orig.head +: databricksJvmOptions ++: orig.tail
+      orig.head +: arrowJvmOptions ++: orig.tail
     }
   )
 
