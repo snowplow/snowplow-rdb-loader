@@ -15,7 +15,7 @@ import java.util.UUID
 
 import scala.util.control.NonFatal
 
-import com.amazonaws.services.dynamodbv2.model.ProvisionedThroughputExceededException
+import software.amazon.awssdk.services.dynamodb.model.ProvisionedThroughputExceededException
 
 import io.circe.literal._
 

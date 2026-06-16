@@ -13,8 +13,8 @@ package com.snowplowanalytics.snowplow.rdbloader.aws
 import cats.effect._
 import cats.implicits._
 
-import com.amazonaws.services.simplesystemsmanagement.{AWSSimpleSystemsManagement, AWSSimpleSystemsManagementClientBuilder}
-import com.amazonaws.services.simplesystemsmanagement.model.{AWSSimpleSystemsManagementException, GetParameterRequest}
+import software.amazon.awssdk.services.ssm.SsmClient
+import software.amazon.awssdk.services.ssm.model.{GetParameterRequest, SsmException}
 
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 
@@ -30,17 +30,17 @@ object EC2ParameterStore {
                        new SecretStore[F] {
                          override def getValue(key: String): F[String] =
                            Sync[F]
-                             .delay {
-                               val req: GetParameterRequest = new GetParameterRequest().withName(key).withWithDecryption(true)
-                               client.getParameter(req).getParameter.getValue
+                             .blocking {
+                               val req = GetParameterRequest.builder().name(key).withDecryption(true).build()
+                               client.getParameter(req).parameter().value()
                              }
-                             .recoverWith { case e: AWSSimpleSystemsManagementException =>
+                             .recoverWith { case e: SsmException =>
                                Sync[F].raiseError(new RuntimeException(s"Cannot get $key EC2 property: ${e.getMessage}"))
                              }
                        }
                      )
     } yield secretStore
 
-  private def getClient[F[_]: Sync]: Resource[F, AWSSimpleSystemsManagement] =
-    Resource.eval(Sync[F].delay(AWSSimpleSystemsManagementClientBuilder.defaultClient()))
+  private def getClient[F[_]: Sync]: Resource[F, SsmClient] =
+    Resource.make(Sync[F].delay(SsmClient.builder().build()))(client => Sync[F].delay(client.close()))
 }

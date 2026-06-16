@@ -46,13 +46,13 @@ object Dependencies {
     val spark           = "3.3.1"
     val eventsManifest  = "0.4.0"
     val schemaDdl       = "0.27.0"
-    val jacksonModule   = "2.17.2" // Override incompatible version in spark runtime
-    val jacksonDatabind = "2.17.2"
+    val jacksonModule   = "2.17.3" // Override incompatible version in spark runtime
+    val jacksonDatabind = "2.17.3"
     val jacksonMapper   = "1.9.14-atlassian-6" // Fix CVE
     val parquet4s       = "2.10.0"
-    val hadoopClient    = "3.4.0"
+    val hadoopClient    = "3.4.2"
     val hadoopGcpClient = "hadoop3-2.2.5"
-    val parquetHadoop   = "1.14.3"
+    val parquetHadoop   = "1.14.4"
     val avro            = "1.11.4" // Fix CVE
     val jsonSmart       = "2.4.9" // Fix CVE
     val nimbusJose      = "9.37.2" // Fix CVE
@@ -62,18 +62,17 @@ object Dependencies {
     val commonsConfig2  = "2.10.1" // Fix CVE
     val ivy             = "2.5.1" // Fix CVE
 
-    val slf4j         = "2.0.3"
+    val slf4j         = "2.0.17"
     val redshiftJdbc  = "1.2.55.1083"
     val snowflakeJdbc = "3.20.0"
     val enumeratum    = "1.7.0"
-    val aws           = "1.12.677"
-    val aws2          = "2.23.17"
+    val aws2          = "2.38.4"
     val pubsub        = "1.125.13"
     val jSch          = "0.2.15"
     val sentry        = "1.7.30"
     val protobuf      = "3.25.5" // Fix CVE
     val kinesisClient = "2.4.3"
-    val nettyCodec    = "4.1.112.Final" // Fix CVE
+    val nettyCodec    = "4.1.127.Final" // Fix CVE
     val jettison      = "1.5.4" // Fix CVE
     val reactorNetty  = "1.0.39" // Fix CVE
     val jettyHttp     = "9.4.51.v20230217" // Fix CVE
@@ -192,16 +191,6 @@ object Dependencies {
   val jettyServer   = "org.eclipse.jetty"       % "jetty-server"              % V.jettyServer
   val kafkaClients  = "org.apache.kafka"        % "kafka-clients"             % V.kafkaClients
 
-  // Java (Shredder)
-  val dynamodb    = "com.amazonaws" % "aws-java-sdk-dynamodb"   % V.aws
-  val sqs         = "com.amazonaws" % "aws-java-sdk-sqs"        % V.aws
-  val sns         = "com.amazonaws" % "aws-java-sdk-sns"        % V.aws
-  val redshiftSdk = "com.amazonaws" % "aws-java-sdk-redshift"   % V.aws
-  val ssm         = "com.amazonaws" % "aws-java-sdk-ssm"        % V.aws
-  val sts         = "com.amazonaws" % "aws-java-sdk-sts"        % V.aws % Runtime
-  val kinesis     = "com.amazonaws" % "aws-java-sdk-kinesis"    % V.aws
-  val cloudwatch  = "com.amazonaws" % "aws-java-sdk-cloudwatch" % V.aws
-
   val aws2s3       = "software.amazon.awssdk" % "s3"                  % V.aws2
   val aws2cw       = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
   val aws2dynamo   = "software.amazon.awssdk" % "dynamodb"            % V.aws2
@@ -210,6 +199,7 @@ object Dependencies {
   val aws2kinesis  = "software.amazon.awssdk" % "kinesis"             % V.aws2
   val aws2regions  = "software.amazon.awssdk" % "regions"             % V.aws2
   val aws2sts      = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
+  val aws2ssm      = "software.amazon.awssdk" % "ssm"                 % V.aws2
   val pubsub       = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
   val protobuf     = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
   val protobufUtil = "com.google.protobuf"    % "protobuf-java-util"  % V.protobuf
@@ -237,13 +227,13 @@ object Dependencies {
     aws2sqs,
     aws2sns,
     aws2kinesis,
+    aws2ssm,
     fs2BlobstoreS3,
     fs2Kinesis,
     kinesisClient,
     protobuf,
     protobufUtil,
     nettyCodec,
-    sts,
     aws2sts
   )
 
@@ -293,7 +283,6 @@ object Dependencies {
     monocleMacro,
     catsRetry,
     fs2,
-    ssm,
     log4cats,
     fs2BlobstoreCore,
     scalaTracker,
@@ -306,8 +295,6 @@ object Dependencies {
 
   val loaderDependencies = Seq(
     slf4jSimple,
-    ssm,
-    dynamodb,
     jSch,
     scalaTracker,
     scalaTrackerEmit,
@@ -331,8 +318,7 @@ object Dependencies {
   )
 
   val redshiftDependencies = Seq(
-    redshift,
-    redshiftSdk
+    redshift
   )
 
   val snowflakeDependencies = Seq(
@@ -341,11 +327,13 @@ object Dependencies {
   )
 
   val batchTransformerDependencies = Seq(
-    sqs,
-    sns,
-    kinesis,
-    dynamodb,
-    cloudwatch,
+    aws2s3,
+    aws2sqs,
+    aws2sns,
+    aws2kinesis,
+    aws2dynamo,
+    aws2cw,
+    aws2regions,
     slf4jSimple,
     eventsManifest,
     sparkCore,
@@ -388,7 +376,6 @@ object Dependencies {
   )
 
   val transformerKinesisDependencies = Seq(
-    dynamodb, // This dependency is required by hadoop-aws. It throws exception when it is not added.
     hadoopAws
   )
 

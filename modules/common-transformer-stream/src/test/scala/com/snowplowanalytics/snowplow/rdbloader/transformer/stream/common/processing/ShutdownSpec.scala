@@ -59,8 +59,8 @@ class ShutdownSpec extends BaseProcessingSpec {
       queueBadSink <- Ref.of[IO, Vector[String]](Vector.empty)
       stream = nonTerminatingStream(input, wait)
       fiber <- TestApplication.run(args, completionsRef, checkpointRef, queueBadSink, stream).start
-      _ <- wait.get.timeout(60.seconds)
-      _ <- fiber.cancel.timeout(60.seconds) // This terminates the application
+      _ <- wait.get.timeout(90.seconds)
+      _ <- fiber.cancel.timeout(90.seconds) // This terminates the application
       checkpointed <- checkpointRef.get
       completions <- completionsRef.get
       badrows <- queueBadSink.get

@@ -10,7 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis
 
-import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResult, PutRecordsResultEntry}
+import software.amazon.awssdk.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResponse, PutRecordsResultEntry}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult.ReceivedResponse.RecordWriteStatus
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.KinesisMock.KinesisResult.ReceivedResponse.RecordWriteStatus.{
@@ -19,25 +19,27 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.kinesis.Kinesi
 }
 
 import java.nio.charset.StandardCharsets.UTF_8
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.collection.mutable
 
 final class KinesisMock(responses: Iterator[KinesisResult]) {
   val storedData: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
-  def receive(request: PutRecordsRequest): PutRecordsResult = {
+  def receive(request: PutRecordsRequest): PutRecordsResponse = {
     val response = responses.next()
 
     response match {
       case KinesisResult.ReceivedResponse(output) =>
-        val requestData    = extractRequestContent(request.getRecords.asScala.toList)
+        val requestData    = extractRequestContent(request.records().asScala.toList)
         val responseStatus = extractResponseStatus(requestData, output)
 
         storeSuccessfulRecords(requestData, responseStatus)
 
-        new PutRecordsResult()
-          .withRecords(mapToKinesisRecords(responseStatus): _*)
-          .withFailedRecordCount(countFailedRecords(output))
+        PutRecordsResponse
+          .builder()
+          .records(mapToKinesisRecords(responseStatus).asJava)
+          .failedRecordCount(countFailedRecords(output))
+          .build()
 
       case KinesisResult.ExceptionThrown(ex) =>
         throw ex
@@ -61,15 +63,15 @@ final class KinesisMock(responses: Iterator[KinesisResult]) {
   private def extractRequestContent(requestEntries: List[PutRecordsRequestEntry]): List[String] =
     requestEntries
       .map { record =>
-        new String(record.getData.array(), UTF_8)
+        new String(record.data().asByteArray(), UTF_8)
       }
 
   private def mapToKinesisRecords(responses: List[RecordWriteStatus]): List[PutRecordsResultEntry] =
     responses.map {
       case Success =>
-        new PutRecordsResultEntry()
+        PutRecordsResultEntry.builder().build()
       case Failure(errorCode) =>
-        new PutRecordsResultEntry().withErrorCode(errorCode)
+        PutRecordsResultEntry.builder().errorCode(errorCode).build()
     }
 
   private def countFailedRecords(output: Map[String, RecordWriteStatus]): Int =

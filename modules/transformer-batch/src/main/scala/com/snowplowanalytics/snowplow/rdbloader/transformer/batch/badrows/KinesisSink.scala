@@ -12,7 +12,8 @@ package com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows
 
 import cats.Monoid
 import cats.implicits.{catsSyntaxEq, toFoldableOps}
-import com.amazonaws.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResult}
+import software.amazon.awssdk.services.kinesis.model.{PutRecordsRequest, PutRecordsRequestEntry, PutRecordsResponse}
+import software.amazon.awssdk.core.SdkBytes
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink.BackoffPolicy
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.KinesisSink.{
   Batch,
@@ -27,9 +28,8 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.{Cloud, Config
 import retry.syntax.all._
 import retry.{RetryPolicies, RetryPolicy, Sleep}
 
-import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets.UTF_8
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent.duration.FiniteDuration
 import scala.util.{Failure, Random, Success, Try}
 
@@ -140,10 +140,11 @@ final class KinesisSink(
       }
 
   private def executeKinesisRequest(requestEntries: List[PutRecordsRequestEntry]): Try[TryBatchResult] = {
-    val putRecordsRequest =
-      new PutRecordsRequest()
-        .withStreamName(config.streamName)
-        .withRecords(requestEntries.asJava)
+    val putRecordsRequest = PutRecordsRequest
+      .builder()
+      .streamName(config.streamName)
+      .records(requestEntries.asJava)
+      .build()
 
     Try(writeDataToKinesis(putRecordsRequest))
       .map(TryBatchResult.build(requestEntries, _))
@@ -151,9 +152,11 @@ final class KinesisSink(
 
   private def buildRecords(keyedData: List[KeyedData]): List[PutRecordsRequestEntry] =
     keyedData.map { data =>
-      new PutRecordsRequestEntry()
-        .withPartitionKey(data.key)
-        .withData(ByteBuffer.wrap(data.content))
+      PutRecordsRequestEntry
+        .builder()
+        .partitionKey(data.key)
+        .data(SdkBytes.fromByteArray(data.content))
+        .build()
     }
 
   private def failureMessageForInternalFailures(records: List[PutRecordsRequestEntry], result: TryBatchResult) = {
@@ -166,7 +169,7 @@ final class KinesisSink(
 }
 
 object KinesisSink {
-  type WriteDataToKinesis = PutRecordsRequest => PutRecordsResult
+  type WriteDataToKinesis = PutRecordsRequest => PutRecordsResponse
   type FailedWriteRecords = List[PutRecordsRequestEntry]
 
   def createFrom(config: Config.Output.BadSink.Kinesis): KinesisSink = {
@@ -212,18 +215,18 @@ object KinesisSink {
           )
       }
 
-    def build(records: List[PutRecordsRequestEntry], result: PutRecordsResult): TryBatchResult =
-      if (result.getFailedRecordCount.toInt =!= 0)
+    def build(records: List[PutRecordsRequestEntry], result: PutRecordsResponse): TryBatchResult =
+      if (result.failedRecordCount().toInt =!= 0)
         records
-          .zip(result.getRecords.asScala)
+          .zip(result.records().asScala)
           .foldMap { case (orig, recordResult) =>
-            Option(recordResult.getErrorCode) match {
+            Option(recordResult.errorCode()) match {
               case None =>
                 TryBatchResult(Vector.empty, hadSuccess = true, wasThrottled = false, None)
               case Some("ProvisionedThroughputExceededException") =>
                 TryBatchResult(Vector(orig), hadSuccess = false, wasThrottled = true, None)
               case Some(_) =>
-                TryBatchResult(Vector(orig), hadSuccess = false, wasThrottled = false, Option(recordResult.getErrorMessage))
+                TryBatchResult(Vector(orig), hadSuccess = false, wasThrottled = false, Option(recordResult.errorMessage()))
             }
           }
       else

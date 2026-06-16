@@ -10,152 +10,185 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 import cats.syntax.either._
 
-import com.amazonaws.{AmazonClientException, AmazonWebServiceRequest, ClientConfiguration}
-import com.amazonaws.retry.{PredefinedBackoffStrategies, RetryPolicy}
-import com.amazonaws.services.kinesis.{AmazonKinesis, AmazonKinesisClientBuilder}
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
-import com.amazonaws.services.s3.model.{ListObjectsV2Request, ListObjectsV2Result, S3ObjectSummary}
-import com.amazonaws.services.sqs.{AmazonSQS, AmazonSQSClientBuilder}
-import com.amazonaws.services.sqs.model.SendMessageRequest
-import com.amazonaws.services.sns.{AmazonSNS, AmazonSNSClientBuilder}
-import com.amazonaws.services.sns.model.PublishRequest
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
+import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
+import software.amazon.awssdk.retries.AdaptiveRetryStrategy
+import software.amazon.awssdk.services.kinesis.KinesisClient
+import software.amazon.awssdk.services.s3.S3Client
+import software.amazon.awssdk.services.s3.model.{HeadObjectRequest, ListObjectsV2Request, NoSuchKeyException, PutObjectRequest, S3Object}
+import software.amazon.awssdk.core.sync.RequestBody
+import software.amazon.awssdk.regions.{Region => AWSRegion}
+import software.amazon.awssdk.services.sqs.SqsClient
+import software.amazon.awssdk.services.sqs.model.SendMessageRequest
+import software.amazon.awssdk.services.sns.SnsClient
+import software.amazon.awssdk.services.sns.model.PublishRequest
 
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import BlobStorage.Folder
 
 object Cloud {
 
-  final val MaxRetries     = 10
-  final val RetryBaseDelay = 1000 // milliseconds
-  final val RetryMaxDelay  = 20 * 1000 // milliseconds
+  final val MaxRetries = 10
 
-  /** Common retry policy for S3 and SQS (jitter) */
-  final val RetryPolicy =
-    new RetryPolicy(
-      (_: AmazonWebServiceRequest, _: AmazonClientException, retriesAttempted: Int) => retriesAttempted < MaxRetries,
-      new PredefinedBackoffStrategies.FullJitterBackoffStrategy(RetryBaseDelay, RetryMaxDelay),
-      MaxRetries,
-      true
-    )
+  final val RetryStrategy: AdaptiveRetryStrategy =
+    AdaptiveRetryStrategy
+      .builder()
+      .maxAttempts(MaxRetries)
+      .build()
 
-  def list(client: AmazonS3, str: BlobStorage.Folder): List[S3ObjectSummary] = {
+  final val ClientConfig: ClientOverrideConfiguration =
+    ClientOverrideConfiguration
+      .builder()
+      .retryStrategy(RetryStrategy)
+      .build()
+
+  def list(client: S3Client, str: BlobStorage.Folder): List[S3Object] = {
     val (bucket, prefix) = BlobStorage.splitPath(str)
 
-    val req = new ListObjectsV2Request()
-      .withBucketName(bucket)
-      .withPrefix(prefix)
-      .withDelimiter("/")
+    def keyUnfold(continuationToken: Option[String]): Stream[S3Object] = {
+      val reqBuilder = ListObjectsV2Request
+        .builder()
+        .bucket(bucket)
+        .prefix(prefix)
+        .delimiter("/")
 
-    def keyUnfold(result: ListObjectsV2Result): Stream[S3ObjectSummary] =
-      if (result.isTruncated) {
-        val loaded = result.getObjectSummaries()
-        req.setContinuationToken(result.getNextContinuationToken)
-        loaded.asScala.toStream #::: keyUnfold(client.listObjectsV2(req))
-      } else {
-        result.getObjectSummaries().asScala.toStream
+      val req = continuationToken match {
+        case Some(token) => reqBuilder.continuationToken(token).build()
+        case None        => reqBuilder.build()
       }
 
-    keyUnfold(client.listObjectsV2(req)).filterNot(_.getSize == 0).toList
+      val result = client.listObjectsV2(req)
+
+      if (result.isTruncated) {
+        result.contents().asScala.toStream #::: keyUnfold(Some(result.nextContinuationToken()))
+      } else {
+        result.contents().asScala.toStream
+      }
+    }
+
+    keyUnfold(None).filterNot(_.size() == 0).toList
   }
 
-  def listDirs(client: AmazonS3, f: Folder): List[BlobStorage.Folder] = {
+  def listDirs(client: S3Client, f: Folder): List[BlobStorage.Folder] = {
     val (bucket, prefix) = BlobStorage.splitPath(f)
 
-    val req = new ListObjectsV2Request()
-      .withBucketName(bucket)
-      .withPrefix(prefix)
-      .withDelimiter("/")
+    def keyUnfold(continuationToken: Option[String]): Stream[String] = {
+      val reqBuilder = ListObjectsV2Request
+        .builder()
+        .bucket(bucket)
+        .prefix(prefix)
+        .delimiter("/")
 
-    def keyUnfold(result: ListObjectsV2Result): Stream[String] =
-      if (result.isTruncated) {
-        val loaded = result.getCommonPrefixes
-        req.setContinuationToken(result.getNextContinuationToken)
-        loaded.asScala.toStream #::: keyUnfold(client.listObjectsV2(req))
-      } else {
-        result.getCommonPrefixes.asScala.toStream
+      val req = continuationToken match {
+        case Some(token) => reqBuilder.continuationToken(token).build()
+        case None        => reqBuilder.build()
       }
 
-    keyUnfold(client.listObjectsV2(req)).map(dir => BlobStorage.Folder.coerce(s"s3://$bucket/$dir")).toList
+      val result = client.listObjectsV2(req)
+
+      if (result.isTruncated) {
+        result.commonPrefixes().asScala.map(_.prefix()).toStream #::: keyUnfold(Some(result.nextContinuationToken()))
+      } else {
+        result.commonPrefixes().asScala.map(_.prefix()).toStream
+      }
+    }
+
+    keyUnfold(None).map(dir => BlobStorage.Folder.coerce(s"s3://$bucket/$dir")).toList
   }
 
-  def keyExists(client: AmazonS3, key: BlobStorage.Key): Boolean = {
+  def keyExists(client: S3Client, key: BlobStorage.Key): Boolean = {
     val (bucket, s3Key) = BlobStorage.splitKey(key)
-    client.doesObjectExist(bucket, s3Key)
+    try {
+      val request = HeadObjectRequest.builder().bucket(bucket).key(s3Key).build()
+      client.headObject(request)
+      true
+    } catch {
+      case _: NoSuchKeyException => false
+    }
   }
 
   def sendToSns(
-    client: AmazonSNS,
+    client: SnsClient,
     topic: String,
     messageGroupId: String,
     message: String
   ): Either[Throwable, Unit] =
     Either.catchNonFatal {
-      val request = new PublishRequest()
-        .withTargetArn(topic)
-        .withMessage(message)
-        .withMessageGroupId(messageGroupId)
+      val request = PublishRequest
+        .builder()
+        .targetArn(topic)
+        .message(message)
+        .messageGroupId(messageGroupId)
+        .build()
       client.publish(request)
       ()
     }
 
   def sendToSqs(
-    client: AmazonSQS,
+    client: SqsClient,
     queue: String,
     messageGroupId: String,
     message: String
   ): Either[Throwable, Unit] =
     Either.catchNonFatal {
-      val request = new SendMessageRequest()
-        .withQueueUrl(queue)
-        .withMessageGroupId(messageGroupId)
-        .withMessageBody(message)
+      val request = SendMessageRequest
+        .builder()
+        .queueUrl(queue)
+        .messageGroupId(messageGroupId)
+        .messageBody(message)
+        .build()
       client.sendMessage(request)
       ()
     }
 
   def putToS3(
-    client: AmazonS3,
+    client: S3Client,
     bucket: String,
     key: String,
     content: String
   ): Either[Throwable, Unit] =
     Either.catchNonFatal {
-      client.putObject(bucket, key, content)
+      val request = PutObjectRequest
+        .builder()
+        .bucket(bucket)
+        .key(key)
+        .build()
+      client.putObject(request, RequestBody.fromString(content))
       ()
     }
 
   /** Create SQS client with built-in retry mechanism (jitter) */
-  def createSqsClient(region: Region): AmazonSQS =
-    AmazonSQSClientBuilder
-      .standard()
-      .withRegion(region.name)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
+  def createSqsClient(region: Region): SqsClient =
+    SqsClient
+      .builder()
+      .region(AWSRegion.of(region.name))
+      .overrideConfiguration(ClientConfig)
       .build()
 
   /** Create SNS client with built-in retry mechanism (jitter) */
-  def creteSnsClient(region: Region): AmazonSNS =
-    AmazonSNSClientBuilder
-      .standard()
-      .withRegion(region.name)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
+  def creteSnsClient(region: Region): SnsClient =
+    SnsClient
+      .builder()
+      .region(AWSRegion.of(region.name))
+      .overrideConfiguration(ClientConfig)
       .build()
 
   /** Create S3 client with built-in retry mechanism (jitter) */
-  def createS3Client(region: Region): AmazonS3 =
-    AmazonS3ClientBuilder
-      .standard()
-      .withRegion(region.name)
-      .withClientConfiguration(new ClientConfiguration().withRetryPolicy(RetryPolicy))
+  def createS3Client(region: Region): S3Client =
+    S3Client
+      .builder()
+      .region(AWSRegion.of(region.name))
+      .overrideConfiguration(ClientConfig)
       .build()
 
-  def createKinesisClient(region: Region): AmazonKinesis =
-    AmazonKinesisClientBuilder
-      .standard()
-      .withRegion(region.name)
+  def createKinesisClient(region: Region): KinesisClient =
+    KinesisClient
+      .builder()
+      .region(AWSRegion.of(region.name))
+      .overrideConfiguration(ClientConfig)
       .build()
 }

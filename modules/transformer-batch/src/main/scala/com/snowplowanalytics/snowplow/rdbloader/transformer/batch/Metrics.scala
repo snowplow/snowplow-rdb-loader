@@ -10,16 +10,16 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.transformer.batch
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.FiniteDuration
 
-import com.amazonaws.services.cloudwatch.AmazonCloudWatchClientBuilder
-import com.amazonaws.services.cloudwatch.model.{Dimension, MetricDatum, PutMetricDataRequest, StandardUnit}
+import software.amazon.awssdk.services.cloudwatch.CloudWatchClient
+import software.amazon.awssdk.services.cloudwatch.model.{Dimension, MetricDatum, PutMetricDataRequest, StandardUnit}
 
 object Metrics {
 
-  private lazy val cloudwatch = AmazonCloudWatchClientBuilder.defaultClient()
+  private lazy val cloudwatch = CloudWatchClient.builder().build()
 
   def sendDuration(
     namespace: String,
@@ -27,22 +27,26 @@ object Metrics {
     duration: FiniteDuration,
     dimensions: Map[String, String]
   ): Unit = {
-    val datum = new MetricDatum()
-      .withMetricName(metricName)
-      .withUnit(StandardUnit.Milliseconds)
-      .withValue(duration.toMillis)
-      .withDimensions(
-        dimensions
-          .map { case (k, v) =>
-            new Dimension().withName(k).withValue(v)
-          }
-          .toSeq
-          .asJava
-      )
+    val dimensionsList = dimensions
+      .map { case (k, v) =>
+        Dimension.builder().name(k).value(v).build()
+      }
+      .toSeq
+      .asJava
 
-    val putRequest = new PutMetricDataRequest()
-      .withNamespace(namespace)
-      .withMetricData(datum)
+    val datum = MetricDatum
+      .builder()
+      .metricName(metricName)
+      .unit(StandardUnit.MILLISECONDS)
+      .value(duration.toMillis.toDouble)
+      .dimensions(dimensionsList)
+      .build()
+
+    val putRequest = PutMetricDataRequest
+      .builder()
+      .namespace(namespace)
+      .metricData(datum)
+      .build()
 
     Try(cloudwatch.putMetricData(putRequest)) match {
       case Success(_) =>

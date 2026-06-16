@@ -1,3 +1,8 @@
+Version 6.1.6 (2025-11-14)
+--------------------------
+Upgrade AWS SDK from v1 to v2 (#6)
+Update GitHub workflows (#1)
+
 Version 6.1.5 (2025-04-04)
 --------------------------
 Update redshift maven repository url (#1377)
