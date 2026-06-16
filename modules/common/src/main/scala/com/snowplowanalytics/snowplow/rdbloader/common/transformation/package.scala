@@ -11,7 +11,7 @@
 package com.snowplowanalytics.snowplow.rdbloader.common
 
 import com.snowplowanalytics.iglu.client.resolver.StorageTime
-import com.snowplowanalytics.iglu.core.SchemaKey
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey}
 import com.snowplowanalytics.iglu.schemaddl.redshift.ShredModel
 
 import java.time.{Instant, ZoneOffset}
@@ -29,4 +29,7 @@ package object transformation {
     def formatted: String =
       time.atOffset(ZoneOffset.UTC).format(Formatter)
   }
+
+  def inSkipSchemas(skipSchemas: List[SchemaCriterion], schemaKey: SchemaKey): Boolean =
+    skipSchemas.exists(_.matches(schemaKey))
 }

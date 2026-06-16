@@ -18,7 +18,7 @@ import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.SchemaContentList
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverResult
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SelfDescribingSchema}
+import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaMap, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, FieldValue}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
@@ -121,12 +121,14 @@ object Transformed {
     igluResolver: Resolver[F],
     shredModelCache: ShredModelCache[F],
     isTabular: SchemaKey => Boolean,
-    processor: Processor
+    processor: Processor,
+    skipSchemas: List[SchemaCriterion] = Nil
   )(
     event: Event
   ): EitherT[F, BadRow, List[Transformed]] =
     Hierarchy
       .fromEvent(event)
+      .filter(h => !inSkipSchemas(skipSchemas, h.entity.schema))
       .traverse { hierarchy =>
         val tabular = isTabular(hierarchy.entity.schema)
         fromHierarchy(tabular, igluResolver, shredModelCache)(hierarchy)

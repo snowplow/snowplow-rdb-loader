@@ -86,7 +86,7 @@ class ShredTsvProcessingSpec extends BaseProcessingSpec {
               )
             actualBadRows <-
               readStringRowsFrom(
-                compVars.badPath / "vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/revision=0/addition=0"
+                compVars.badPath / "vendor=com.snowplowanalytics.snowplow.badrows/name=loader_iglu_error/format=json/model=2/revision=0/addition=1"
               )
 
             expectedCompletionMessage <- readMessageFromResource("/processing-spec/3/output/completion.json", compVars)

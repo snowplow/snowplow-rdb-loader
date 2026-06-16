@@ -445,6 +445,7 @@ object ShredJobSpec {
       Config.RunInterval(None, None, None),
       TransformerConfig.FeatureFlags(false, None, false, false),
       skipSchemas,
+      exitOnMissingIgluSchema = true,
       TransformerConfig.Validations(None),
       License(true)
     )
@@ -472,7 +473,8 @@ trait ShredJobSpec extends SparkSpec {
     wideRow: Option[WideRow]            = None,
     outputDirs: Option[OutputDirs]      = None,
     deduplication: Config.Deduplication = Config.Deduplication(Config.Deduplication.Synthetic.Broadcast(1), true),
-    skipSchemas: List[SchemaCriterion]  = Nil
+    skipSchemas: List[SchemaCriterion]  = Nil,
+    exitOnMissingIgluSchema: Boolean    = true
   ): LoaderMessage.ShreddingComplete = {
     val shredder = getShredder(events, outputDirs.getOrElse(dirs), deduplication, skipSchemas)
     val config = Array(
@@ -505,7 +507,8 @@ trait ShredJobSpec extends SparkSpec {
           None
         }
         val transformer = cli.config.formats match {
-          case f: TransformerConfig.Formats.Shred     => Transformer.ShredTransformer(resolverConfig, f, 0)
+          case f: TransformerConfig.Formats.Shred =>
+            Transformer.ShredTransformer(resolverConfig, f, 0, skipSchemas, exitOnMissingIgluSchema)
           case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
           case TransformerConfig.Formats.WideRow.PARQUET =>
             val resolver       = IgluSingleton.get(resolverConfig)

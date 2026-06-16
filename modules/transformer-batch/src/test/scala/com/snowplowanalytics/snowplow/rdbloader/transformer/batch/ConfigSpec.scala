@@ -39,6 +39,7 @@ class ConfigSpec extends Specification {
         exampleRunInterval,
         exampleDefaultFeatureFlags,
         exampleSkipSchemas,
+        exitOnMissingIgluSchema = true,
         exampleValidations,
         exampleLicense
       )
@@ -57,6 +58,7 @@ class ConfigSpec extends Specification {
         emptyRunInterval,
         exampleDefaultFeatureFlags,
         Nil,
+        exitOnMissingIgluSchema = true,
         emptyValidations,
         exampleLicense
       )

@@ -1,3 +1,11 @@
+Version 6.2.0 (2026-01-07)
+--------------------------
+Bump dependency versions
+Bump iglu-scala-client to 4.1.0 (#11)
+RDB transformer: add option to exit in case of missing Iglu schema (#9)
+Update sync workflow for snowplow-rdb-loader (#10)
+Add Snowman QA test integration (#8)
+
 Version 6.1.6 (2025-11-14)
 --------------------------
 Upgrade AWS SDK from v1 to v2 (#6)

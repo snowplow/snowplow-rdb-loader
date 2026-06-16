@@ -15,9 +15,9 @@ object Dependencies {
   object V {
     // Scala (Loader)
     val decline       = "2.4.1"
-    val igluClient    = "4.0.1"
+    val igluClient    = "4.1.0"
     val igluCore      = "1.1.1"
-    val badrows       = "2.2.0"
+    val badrows       = "2.3.0"
     val analyticsSdk  = "3.1.0"
     val cron4sCirce   = "0.6.1"
     val circe         = "0.14.1"
@@ -25,7 +25,7 @@ object Dependencies {
     val cats          = "2.2.0"
     val catsEffect    = "3.3.14"
     val manifest      = "0.3.0"
-    val fs2           = "3.3.0"
+    val fs2           = "3.12.1"
     val fs2Aws        = "4.1.0"
     val fs2Blobstore  = "0.9.14"
     val fs2Cron       = "0.7.2"
@@ -46,16 +46,16 @@ object Dependencies {
     val spark           = "3.3.1"
     val eventsManifest  = "0.4.0"
     val schemaDdl       = "0.27.0"
-    val jacksonModule   = "2.17.3" // Override incompatible version in spark runtime
-    val jacksonDatabind = "2.17.3"
+    val jacksonModule   = "2.18.3" // Override incompatible version in spark runtime
+    val jacksonDatabind = "2.18.3"
     val jacksonMapper   = "1.9.14-atlassian-6" // Fix CVE
     val parquet4s       = "2.10.0"
     val hadoopClient    = "3.4.2"
     val hadoopGcpClient = "hadoop3-2.2.5"
     val parquetHadoop   = "1.14.4"
     val avro            = "1.11.4" // Fix CVE
-    val jsonSmart       = "2.4.9" // Fix CVE
-    val nimbusJose      = "9.37.2" // Fix CVE
+    val jsonSmart       = "2.5.2" // Fix CVE
+    val nimbusJose      = "9.37.4" // Fix CVE
     val snappyJava      = "1.1.10.4" // Fix CVE
     val commonsText     = "1.10.0" // Fix CVE
     val commonsCompress = "1.26.0" // Fix CVE
@@ -64,7 +64,7 @@ object Dependencies {
 
     val slf4j         = "2.0.17"
     val redshiftJdbc  = "1.2.55.1083"
-    val snowflakeJdbc = "3.20.0"
+    val snowflakeJdbc = "3.23.1"
     val enumeratum    = "1.7.0"
     val aws2          = "2.38.4"
     val pubsub        = "1.125.13"
@@ -72,14 +72,14 @@ object Dependencies {
     val sentry        = "1.7.30"
     val protobuf      = "3.25.5" // Fix CVE
     val kinesisClient = "2.4.3"
-    val nettyCodec    = "4.1.127.Final" // Fix CVE
+    val nettyCodec    = "4.1.129.Final" // Fix CVE
     val jettison      = "1.5.4" // Fix CVE
     val reactorNetty  = "1.0.39" // Fix CVE
     val jettyHttp     = "9.4.51.v20230217" // Fix CVE
     val jettyServer   = "9.4.56.v20240826" // Fix CVE
-    val zookeeper     = "3.9.2" // Fix CVE
+    val zookeeper     = "3.9.4" // Fix CVE
     val dnsjava       = "3.6.1" // Fix CVE
-    val kafkaClients  = "3.7.2" // Fix CVE
+    val kafkaClients  = "3.9.1" // Fix CVE
 
     // Scala (test only)
     val specs2            = "4.17.0"

@@ -297,7 +297,8 @@ object ShredJob {
     unshredded.foreach { folder =>
       System.out.println(s"Batch Transformer: processing $folder")
       val transformer = config.formats match {
-        case f: TransformerConfig.Formats.Shred     => Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0)
+        case f: TransformerConfig.Formats.Shred =>
+          Transformer.ShredTransformer(resolverConfig, f, maxRecordsPerFile = 0, config.skipSchemas, config.exitOnMissingIgluSchema)
         case TransformerConfig.Formats.WideRow.JSON => Transformer.WideRowJsonTransformer()
         case TransformerConfig.Formats.WideRow.PARQUET =>
           val resolver       = IgluSingleton.get(resolverConfig)

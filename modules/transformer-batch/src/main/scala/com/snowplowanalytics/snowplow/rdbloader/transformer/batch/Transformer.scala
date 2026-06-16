@@ -29,8 +29,10 @@ import org.apache.spark.util.LongAccumulator
 
 // Snowplow
 import com.snowplowanalytics.iglu.core.{SchemaCriterion, SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.client.ClientError
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.BadRow
+import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage.Folder
 import com.snowplowanalytics.snowplow.rdbloader.common._
@@ -68,7 +70,9 @@ object Transformer {
   case class ShredTransformer(
     resolverConfig: ResolverConfig,
     formats: Formats.Shred,
-    maxRecordsPerFile: Long
+    maxRecordsPerFile: Long,
+    skipSchemas: List[SchemaCriterion],
+    exitOnMissingIgluSchema: Boolean
   ) extends Transformer[TypesInfo.Shredded.Type] {
     val typesAccumulator                             = new TypesAccumulator[TypesInfo.Shredded.Type]
     val timestampsAccumulator: TimestampsAccumulator = new TimestampsAccumulator
@@ -91,7 +95,8 @@ object Transformer {
           IgluSingleton.get(resolverConfig),
           ShredModelCacheSingleton.get(resolverConfig),
           isTabular,
-          ShredJob.BadRowsProcessor
+          ShredJob.BadRowsProcessor,
+          skipSchemas
         )(event)
         .value match {
         case Right(shredded) =>
@@ -100,6 +105,7 @@ object Transformer {
           goodEventsCounter.add(1L)
           shredded
         case Left(badRow) =>
+          maybeExitIfSchemaMissing(exitOnMissingIgluSchema, badRow)
           List(badTransform(badRow, badEventsCounter))
       }
 
@@ -258,4 +264,23 @@ object Transformer {
 
   def inSkipSchemas(skipSchemas: List[SchemaCriterion], schemaKey: SchemaKey): Boolean =
     skipSchemas.exists(_.matches(schemaKey))
+
+  private def maybeExitIfSchemaMissing(
+    exitOnMissingIgluSchema: Boolean,
+    badRow: BadRow
+  ): Unit =
+    if (exitOnMissingIgluSchema) {
+      badRow match {
+        case BadRow.LoaderIgluError(_, failure, _) =>
+          failure.errors.toList.foreach {
+            case LoaderIgluError.IgluError(schemaKey, ClientError.ResolutionError(_)) =>
+              val errorMsg = s"RDB Transformer failed because Iglu schema ${schemaKey.toSchemaUri} cannot be fetched. " +
+                s"This likely means that the the schema does not exist or that Iglu Server is not available. " +
+                s"If this schema should be skipped, add it to the skipSchemas configuration"
+              throw new RuntimeException(errorMsg)
+            case _ => ()
+          }
+        case _ => ()
+      }
+    }
 }

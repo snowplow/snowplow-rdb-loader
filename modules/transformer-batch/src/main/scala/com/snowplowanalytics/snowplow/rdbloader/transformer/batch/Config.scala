@@ -35,6 +35,7 @@ final case class Config(
   runInterval: Config.RunInterval,
   featureFlags: TransformerConfig.FeatureFlags,
   skipSchemas: List[SchemaCriterion],
+  exitOnMissingIgluSchema: Boolean,
   validations: TransformerConfig.Validations,
   license: License
 )
