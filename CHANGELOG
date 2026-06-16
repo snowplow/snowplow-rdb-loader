@@ -1,3 +1,7 @@
+Version 6.4.2 (2026-05-14)
+--------------------------
+Fix JVM options not reaching the JVM in non-distroless loader images (#30)
+
 Version 6.4.1 (2026-05-13)
 --------------------------
 Bump dependencies for 6.4.1 release (#29)

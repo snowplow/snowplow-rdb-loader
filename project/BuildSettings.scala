@@ -215,7 +215,7 @@ object BuildSettings {
   private val snowflakeJvmOptions = arrowJvmOptions :+ "-Dnet.snowflake.jdbc.loggerImpl=net.snowflake.client.log.SLF4JLogger"
 
   private lazy val snowflakeDockerSettings = Seq(
-    Universal / javaOptions ++= snowflakeJvmOptions
+    dockerEnvVars += ("JAVA_OPTS" -> snowflakeJvmOptions.mkString(" "))
   )
 
   private lazy val snowflakeDistrolessDockerSettings = Seq(
@@ -237,7 +237,7 @@ object BuildSettings {
     snowflakeBuildSettings.diff(snowflakeDockerSettings) ++ snowflakeDistrolessDockerSettings
 
   private lazy val databricksDockerSettings = Seq(
-    Universal / javaOptions ++= arrowJvmOptions
+    dockerEnvVars += ("JAVA_OPTS" -> arrowJvmOptions.mkString(" "))
   )
 
   private lazy val databricksDistrolessDockerSettings = Seq(
