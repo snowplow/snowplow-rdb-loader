@@ -1,3 +1,12 @@
+Version 6.3.0 (2026-02-20)
+--------------------------
+Add IAM authentication support for Redshift JDBC connections (#14)
+Fix column resize/encoding error regex patterns after Redshift JDBC driver update (#16)
+Fix AWS SDK version conflict in transformerKinesis (#14)
+Bump dependency versions (#15)
+Bump Databricks JDBC driver to 2.7.6 (#15)
+Bump google-cloud-pubsub to 1.148.0 (#17)
+
 Version 6.2.0 (2026-01-07)
 --------------------------
 Bump dependency versions

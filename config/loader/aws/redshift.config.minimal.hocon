@@ -10,6 +10,9 @@
     "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole"
     "schema": "atomic"
     "username": "admin"
-    "password": "Supersecret1"
+    "jdbcAuth": {
+      "type": "password",
+      "password": "Supersecret1"
+    }
   }
 }

@@ -174,7 +174,7 @@ object ConfigSpec {
     Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
     "atomic",
     "admin",
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+    StorageTarget.RedshiftAuth.Password(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
     10,
     None,
     StorageTarget.LoadAuthMethod.NoCreds

@@ -50,7 +50,7 @@ class StorageTargetSpec extends Specification {
         Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
         "atomic",
         "ADD HERE",
-        StorageTarget.PasswordConfig.PlainText("ADD HERE"),
+        StorageTarget.RedshiftAuth.Password(StorageTarget.PasswordConfig.PlainText("ADD HERE")),
         1,
         None,
         StorageTarget.LoadAuthMethod.NoCreds
@@ -222,6 +222,158 @@ class StorageTargetSpec extends Specification {
         )
 
       input.as[StorageTarget.RedshiftJdbc] must beRight(expected)
+    }
+  }
+
+  "RedshiftAuth" should {
+    "parse Password mode with plain text password" in {
+      val input = json"""{
+        "type": "password",
+        "password": "mypassword123"
+      }"""
+
+      val expected = StorageTarget.RedshiftAuth.Password(
+        StorageTarget.PasswordConfig.PlainText("mypassword123")
+      )
+
+      input.as[StorageTarget.RedshiftAuth] must beRight(expected)
+    }
+
+    "parse Password mode with encrypted password" in {
+      val input = json"""{
+        "type": "password",
+        "password": {
+          "ec2ParameterStore": {
+            "parameterName": "snowplow.rdbloader.redshift.password"
+          }
+        }
+      }"""
+
+      val expected = StorageTarget.RedshiftAuth.Password(
+        StorageTarget.PasswordConfig.EncryptedKey(
+          StorageTarget.EncryptedConfig("snowplow.rdbloader.redshift.password")
+        )
+      )
+
+      input.as[StorageTarget.RedshiftAuth] must beRight(expected)
+    }
+
+    "parse IAM mode with all required fields" in {
+      val input = json"""{
+        "type": "iam",
+        "roleArn": "arn:aws:iam::123456789876:role/RedshiftRole",
+        "roleSessionName": "rdb-loader-session",
+        "roleExternalId": "my-external-id",
+        "credentialsTtl": "1 hour",
+        "redshiftRegion": "us-east-1",
+        "clusterId": "my-redshift-cluster"
+      }"""
+
+      val expected = StorageTarget.RedshiftAuth.Iam(
+        roleArn         = "arn:aws:iam::123456789876:role/RedshiftRole",
+        roleSessionName = "rdb-loader-session",
+        roleExternalId  = "my-external-id",
+        credentialsTtl  = 1.hour,
+        redshiftRegion  = "us-east-1",
+        clusterId       = "my-redshift-cluster"
+      )
+
+      input.as[StorageTarget.RedshiftAuth] must beRight(expected)
+    }
+  }
+
+  "Redshift with IAM authentication" should {
+    "be parsed from valid JSON" in {
+      val config = json"""{
+        "type": "redshift",
+        "host": "example.host",
+        "database": "mydb",
+        "port": 5439,
+        "jdbc": { "ssl": true },
+        "sshTunnel": null,
+        "username": "iamuser",
+        "jdbcAuth": {
+          "type": "iam",
+          "roleArn": "arn:aws:iam::123456789876:role/RedshiftRole",
+          "roleSessionName": "rdb-loader",
+          "roleExternalId": "external-id-123",
+          "credentialsTtl": "1 hour",
+          "redshiftRegion": "us-west-2",
+          "clusterId": "my-cluster"
+        },
+        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+        "schema": "atomic",
+        "maxError": 10,
+        "compRows": 20000,
+        "purpose": "ENRICHED_EVENTS",
+        "loadAuthMethod": {
+          "type": "NoCreds",
+          "roleSessionName": "rdb_loader"
+        }
+      }"""
+
+      val expected = StorageTarget.Redshift(
+        host     = "example.host",
+        database = "mydb",
+        port     = 5439,
+        jdbc     = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true)),
+        roleArn  = Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
+        schema   = "atomic",
+        username = "iamuser",
+        jdbcAuth = StorageTarget.RedshiftAuth.Iam(
+          roleArn         = "arn:aws:iam::123456789876:role/RedshiftRole",
+          roleSessionName = "rdb-loader",
+          roleExternalId  = "external-id-123",
+          credentialsTtl  = 1.hour,
+          redshiftRegion  = "us-west-2",
+          clusterId       = "my-cluster"
+        ),
+        maxError       = 10,
+        sshTunnel      = None,
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
+      )
+
+      config.as[StorageTarget] must beRight(expected)
+    }
+
+    "be parsed with backward compatible password field" in {
+      val config = json"""{
+        "type": "redshift",
+        "host": "example.host",
+        "database": "mydb",
+        "port": 5439,
+        "jdbc": { "ssl": true },
+        "sshTunnel": null,
+        "username": "dbuser",
+        "password": "legacy-password",
+        "roleArn": "arn:aws:iam::123456789876:role/RedshiftLoadRole",
+        "schema": "atomic",
+        "maxError": 1,
+        "compRows": 20000,
+        "purpose": "ENRICHED_EVENTS",
+        "loadAuthMethod": {
+          "type": "NoCreds",
+          "roleSessionName": "rdb_loader"
+        }
+      }"""
+
+      val expected = StorageTarget.Redshift(
+        host     = "example.host",
+        database = "mydb",
+        port     = 5439,
+        jdbc     = StorageTarget.RedshiftJdbc.empty.copy(ssl = Some(true)),
+        roleArn  = Some("arn:aws:iam::123456789876:role/RedshiftLoadRole"),
+        schema   = "atomic",
+        username = "dbuser",
+        jdbcAuth = StorageTarget.RedshiftAuth.Password(
+          StorageTarget.PasswordConfig.PlainText("legacy-password")
+        ),
+        maxError       = 1,
+        sshTunnel      = None,
+        loadAuthMethod = StorageTarget.LoadAuthMethod.NoCreds
+      )
+
+      config.as[StorageTarget] must beRight(expected)
     }
   }
 }

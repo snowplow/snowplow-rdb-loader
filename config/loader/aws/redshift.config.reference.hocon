@@ -35,8 +35,30 @@
     "schema": "atomic",
     # DB user with permissions to load data
     "username": "admin",
-    # DB password
-    "password": "Supersecret1",
+    # JDBC authentication configuration
+    # Two authentication modes are supported: password-based and IAM-based
+    # Password authentication (use a plain text or encrypted password)
+    "jdbcAuth": {
+      "type": "password",
+      "password": "Supersecret1"
+    }
+    # Alternative: IAM authentication (uses temporary credentials from AWS)
+    #"jdbcAuth": {
+    #  "type": "iam",
+    #  # IAM role ARN that has permissions to call GetClusterCredentials
+    #  "roleArn": "arn:aws:iam::123456789876:role/RedshiftJdbcRole",
+    #  # Session name for the assumed role
+    #  "roleSessionName": "rdb-loader-session",
+    #  # External ID for assuming the role (for enhanced security)
+    #  "roleExternalId": "my-external-id",
+    #  # TTL for temporary database credentials
+    #  # Must be between 15 minutes and 1 hour
+    #  "credentialsTtl": "1 hour",
+    #  # AWS region where the Redshift cluster is located
+    #  "redshiftRegion": "us-east-1",
+    #  # Redshift cluster identifier
+    #  "clusterId": "my-redshift-cluster"
+    #}
     # Custom JDBC configuration. Optional, default value { "ssl": true }
     "jdbc": { "ssl": true },
     # MAXERROR, amount of acceptable loading errors. Optional, default value 10

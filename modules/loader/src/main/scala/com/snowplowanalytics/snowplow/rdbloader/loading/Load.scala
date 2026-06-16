@@ -161,10 +161,10 @@ object Load {
     } yield result
 
   val awsColumnResizeError: String =
-    raw"""\[Amazon\]\(500310\) Invalid operation: cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different;"""
+    raw""".*cannot alter column "[^\s]+" of relation "[^\s]+", target column size should be different.*"""
 
   val awsEncodingError: String =
-    raw"""\[Amazon]\(500310\) Invalid operation: cannot alter column "\S+" of relation "\S+" with encode type "(\S+)";"""
+    raw""".*cannot alter column "\S+" of relation "\S+" with encode type "(\S+)".*"""
 
   // It is important we return a _list_ of C[Unit] so that each migration step can be transacted indepdendently.
   // Otherwise, Hikari will not let us catch/handle/ignore the exceptions we encounter along the way.

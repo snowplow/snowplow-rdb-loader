@@ -16,6 +16,7 @@ import cats.data._
 import cats.implicits._
 
 import io.circe._
+import io.circe.syntax._
 import io.circe.Decoder._
 import io.circe.generic.semiauto._
 
@@ -74,13 +75,16 @@ object StorageTarget {
     roleArn: Option[String],
     schema: String,
     username: String,
-    password: PasswordConfig,
+    jdbcAuth: RedshiftAuth,
     maxError: Int,
     sshTunnel: Option[TunnelConfig],
     loadAuthMethod: LoadAuthMethod
   ) extends StorageTarget {
 
-    override def credentials: Option[Credentials] = Some(Credentials(username, password))
+    override def credentials: Option[Credentials] = jdbcAuth match {
+      case RedshiftAuth.Password(password) => Some(Credentials(username, password))
+      case _: RedshiftAuth.Iam             => None
+    }
 
     override def driver: String = "com.amazon.redshift.jdbc42.Driver"
 
@@ -362,6 +366,19 @@ object StorageTarget {
       )
   }
 
+  sealed trait RedshiftAuth extends Product with Serializable
+  object RedshiftAuth {
+    final case class Password(password: PasswordConfig) extends RedshiftAuth
+    final case class Iam(
+      roleArn: String,
+      roleSessionName: String,
+      roleExternalId: String,
+      credentialsTtl: FiniteDuration,
+      redshiftRegion: String,
+      clusterId: String
+    ) extends RedshiftAuth
+  }
+
   /** Reference to encrypted key (EC2 Parameter Store & GCP Secret Manager) */
   final case class EncryptedConfig(parameterName: String)
 
@@ -444,8 +461,55 @@ object StorageTarget {
     destination: DestinationConfig
   )
 
-  implicit def redshiftConfigDecoder: Decoder[Redshift] =
-    deriveDecoder[Redshift]
+  implicit def redshiftAuthPasswordDecoder: Decoder[RedshiftAuth.Password] =
+    deriveDecoder[RedshiftAuth.Password]
+
+  implicit def redshiftAuthIamDecoder: Decoder[RedshiftAuth.Iam] =
+    deriveDecoder[RedshiftAuth.Iam]
+
+  implicit def redshiftAuthDecoder: Decoder[RedshiftAuth] =
+    Decoder.instance { cur =>
+      val typeCur = cur.downField("type")
+      typeCur.as[String].map(_.toLowerCase) match {
+        case Right("password") =>
+          cur.as[RedshiftAuth.Password]
+        case Right("iam") =>
+          cur.as[RedshiftAuth.Iam]
+        case Right(other) =>
+          Left(
+            DecodingFailure(
+              s"Cluster auth of type $other is not supported yet. Supported types: 'password', 'iam'",
+              typeCur.history
+            )
+          )
+        case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+          Left(DecodingFailure("Cannot find 'type' string in cluster auth", typeCur.history))
+        case Left(other) =>
+          Left(other)
+      }
+    }
+
+  implicit def redshiftConfigDecoder: Decoder[Redshift] = {
+    val derived = deriveDecoder[Redshift]
+    Decoder.instance { cursor =>
+      cursor.downField("password").focus match {
+        // No 'password' field, use standard decoder
+        case None => derived(cursor)
+        // If 'password' field exists, try old format with password
+        case Some(passwordJson) =>
+          val json = cursor.value.mapObject(
+            _.add(
+              "jdbcAuth",
+              JsonObject(
+                "type" := "password".asJson,
+                "password" := passwordJson
+              ).toJson
+            )
+          )
+          derived(json.hcursor)
+      }
+    }
+  }
 
   implicit val durationDecoder: Decoder[FiniteDuration] =
     Decoder[String].emap { str =>

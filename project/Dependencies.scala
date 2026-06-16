@@ -63,16 +63,17 @@ object Dependencies {
     val ivy             = "2.5.1" // Fix CVE
 
     val slf4j         = "2.0.17"
-    val redshiftJdbc  = "1.2.55.1083"
-    val snowflakeJdbc = "3.23.1"
+    val redshiftJdbc  = "2.2.2"
+    val snowflakeJdbc = "3.28.0"
     val enumeratum    = "1.7.0"
     val aws2          = "2.38.4"
-    val pubsub        = "1.125.13"
+    val pubsub        = "1.148.0"
     val jSch          = "0.2.15"
     val sentry        = "1.7.30"
     val protobuf      = "3.25.5" // Fix CVE
     val kinesisClient = "2.4.3"
     val nettyCodec    = "4.1.129.Final" // Fix CVE
+    val lz4Java       = "1.10.1" // Fix CVE
     val jettison      = "1.5.4" // Fix CVE
     val reactorNetty  = "1.0.39" // Fix CVE
     val jettyHttp     = "9.4.51.v20230217" // Fix CVE
@@ -116,8 +117,9 @@ object Dependencies {
   val circeGenericExtra = "io.circe"              %% "circe-generic-extras"     % V.circe
   val cron4sCirce = ("com.github.alonsodomin.cron4s" %% "cron4s-circe" % V.cron4sCirce)
     .exclude("io.circe", "circe-core_2.12") // cron4s-circe lacks circe 0.13 support
-  val fs2      = "co.fs2"          %% "fs2-core"  % V.fs2
-  val fs2Kafka = "com.github.fd4s" %% "fs2-kafka" % V.fs2Kafka
+  val fs2 = "co.fs2" %% "fs2-core" % V.fs2
+  val fs2Kafka = ("com.github.fd4s" %% "fs2-kafka" % V.fs2Kafka)
+    .exclude("org.lz4", "lz4-java")
   val fs2Kinesis = ("io.laserdisc" %% "fs2-aws-kinesis" % V.fs2Aws)
     .exclude("com.amazonaws", "amazon-kinesis-producer")
     .exclude("software.amazon.kinesis", "amazon-kinesis-client")
@@ -163,6 +165,7 @@ object Dependencies {
   val parquetHadoop = "org.apache.parquet" % "parquet-hadoop" % V.parquetHadoop
   val hadoopAws = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClient % Runtime)
     .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
+    .excludeAll(ExclusionRule(organization = "software.amazon.awssdk"))
   val hadoopGcp   = "com.google.cloud.bigdataoss" % "gcs-connector"   % V.hadoopGcpClient % Runtime
   val avro        = "org.apache.avro"             % "avro"            % V.avro
   val jsonSmart   = "net.minidev"                 % "json-smart"      % V.jsonSmart
@@ -178,34 +181,39 @@ object Dependencies {
   val ivy             = "org.apache.ivy"     % "ivy"                    % V.ivy
 
   // Java (Loader)
-  val slf4jApi      = "org.slf4j"               % "slf4j-api"                 % V.slf4j
-  val slf4jSimple   = "org.slf4j"               % "slf4j-simple"              % V.slf4j
-  val redshift      = "com.amazon.redshift"     % "redshift-jdbc42-no-awssdk" % V.redshiftJdbc
-  val jSch          = "com.github.mwiede"       % "jsch"                      % V.jSch
-  val sentry        = "io.sentry"               % "sentry"                    % V.sentry
-  val snowflakeJdbc = "net.snowflake"           % "snowflake-jdbc"            % V.snowflakeJdbc
-  val enumeratum    = "com.beachape"           %% "enumeratum"                % V.enumeratum
-  val jettison      = "org.codehaus.jettison"   % "jettison"                  % V.jettison
-  val reactorNetty  = "io.projectreactor.netty" % "reactor-netty-http"        % V.reactorNetty
-  val jettyHttp     = "org.eclipse.jetty"       % "jetty-http"                % V.jettyHttp
-  val jettyServer   = "org.eclipse.jetty"       % "jetty-server"              % V.jettyServer
-  val kafkaClients  = "org.apache.kafka"        % "kafka-clients"             % V.kafkaClients
+  val slf4jApi      = "org.slf4j"               % "slf4j-api"          % V.slf4j
+  val slf4jSimple   = "org.slf4j"               % "slf4j-simple"       % V.slf4j
+  val redshift      = "com.amazon.redshift"     % "redshift-jdbc42"    % V.redshiftJdbc
+  val jSch          = "com.github.mwiede"       % "jsch"               % V.jSch
+  val sentry        = "io.sentry"               % "sentry"             % V.sentry
+  val snowflakeJdbc = "net.snowflake"           % "snowflake-jdbc"     % V.snowflakeJdbc
+  val enumeratum    = "com.beachape"           %% "enumeratum"         % V.enumeratum
+  val jettison      = "org.codehaus.jettison"   % "jettison"           % V.jettison
+  val reactorNetty  = "io.projectreactor.netty" % "reactor-netty-http" % V.reactorNetty
+  val jettyHttp     = "org.eclipse.jetty"       % "jetty-http"         % V.jettyHttp
+  val jettyServer   = "org.eclipse.jetty"       % "jetty-server"       % V.jettyServer
+  val kafkaClients = ("org.apache.kafka" % "kafka-clients" % V.kafkaClients)
+    .exclude("org.lz4", "lz4-java")
 
-  val aws2s3       = "software.amazon.awssdk" % "s3"                  % V.aws2
-  val aws2cw       = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
-  val aws2dynamo   = "software.amazon.awssdk" % "dynamodb"            % V.aws2
-  val aws2sqs      = "software.amazon.awssdk" % "sqs"                 % V.aws2
-  val aws2sns      = "software.amazon.awssdk" % "sns"                 % V.aws2
-  val aws2kinesis  = "software.amazon.awssdk" % "kinesis"             % V.aws2
-  val aws2regions  = "software.amazon.awssdk" % "regions"             % V.aws2
-  val aws2sts      = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
-  val aws2ssm      = "software.amazon.awssdk" % "ssm"                 % V.aws2
-  val pubsub       = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
-  val protobuf     = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
-  val protobufUtil = "com.google.protobuf"    % "protobuf-java-util"  % V.protobuf
-  val nettyCodec   = "io.netty"               % "netty-codec"         % V.nettyCodec
-  val zookeeper    = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
-  val dnsjava      = "dnsjava"                % "dnsjava"             % V.dnsjava
+  val aws2s3          = "software.amazon.awssdk" % "s3"                  % V.aws2
+  val aws2cw          = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
+  val aws2dynamo      = "software.amazon.awssdk" % "dynamodb"            % V.aws2
+  val aws2sqs         = "software.amazon.awssdk" % "sqs"                 % V.aws2
+  val aws2sns         = "software.amazon.awssdk" % "sns"                 % V.aws2
+  val aws2kinesis     = "software.amazon.awssdk" % "kinesis"             % V.aws2
+  val aws2regions     = "software.amazon.awssdk" % "regions"             % V.aws2
+  val aws2sts         = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
+  val aws2ssm         = "software.amazon.awssdk" % "ssm"                 % V.aws2
+  val aws2redshift    = "software.amazon.awssdk" % "redshift"            % V.aws2
+  val pubsub          = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
+  val protobuf        = "com.google.protobuf"    % "protobuf-java"       % V.protobuf
+  val protobufUtil    = "com.google.protobuf"    % "protobuf-java-util"  % V.protobuf
+  val nettyCodec      = "io.netty"               % "netty-codec"         % V.nettyCodec
+  val nettyCodecHttp  = "io.netty"               % "netty-codec-http"    % V.nettyCodec
+  val nettyCodecHttp2 = "io.netty"               % "netty-codec-http2"   % V.nettyCodec
+  val lz4Java         = "at.yawk.lz4"            % "lz4-java"            % V.lz4Java
+  val zookeeper       = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
+  val dnsjava         = "dnsjava"                % "dnsjava"             % V.dnsjava
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -228,6 +236,7 @@ object Dependencies {
     aws2sns,
     aws2kinesis,
     aws2ssm,
+    aws2redshift,
     fs2BlobstoreS3,
     fs2Kinesis,
     kinesisClient,
@@ -311,6 +320,9 @@ object Dependencies {
     scalaCheck,
     jettison,
     snappyJava,
+    lz4Java,
+    jsonSmart,
+    fs2Io,
     catsEffectLaws,
     catsTesting,
     catsEffectTestkit,
@@ -368,6 +380,10 @@ object Dependencies {
     commonsConfig2,
     jsonSmart,
     snappyJava,
+    lz4Java,
+    fs2Io,
+    nettyCodecHttp,
+    nettyCodecHttp2,
     specs2,
     specs2ScalaCheck,
     scalaCheck,

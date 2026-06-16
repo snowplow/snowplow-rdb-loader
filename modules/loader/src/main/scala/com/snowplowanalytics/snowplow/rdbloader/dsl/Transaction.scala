@@ -17,17 +17,22 @@ import cats.implicits._
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.kernel.Spawn
 import cats.effect.std.Dispatcher
+import cats.effect.implicits._
 import doobie._
 import doobie.free.connection.{isValid => cxnIsValid, setAutoCommit, unit => cxnUnit}
 import doobie.implicits._
 import doobie.util.transactor.Strategy
 import doobie.hikari._
 import com.zaxxer.hikari.HikariConfig
-import retry.Sleep
+import retry.syntax.all._
+import retry.{RetryPolicies, Sleep}
 
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
 import com.snowplowanalytics.snowplow.rdbloader.transactors.{RetryingTransactor, SSH}
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
+import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.RedshiftAuthService
+
+import scala.concurrent.duration._
 
 /**
  * An algebra responsible for executing effect `C` (typically coming from [[DAO]], which itself is a
@@ -78,7 +83,7 @@ object Transaction {
 
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
-  private def configureHikari[F[_]: Sync: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
+  private def configureHikari[F[_]: Async: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
     Sync[F].delay {
       ds.setJdbcUrl(target.connectionUrl)
       ds.setAutoCommit(target.withAutoCommit)
@@ -110,15 +115,82 @@ object Transaction {
       xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
     } yield xa
 
-  private def getTransactor[F[_]: Async: SecretStore](target: StorageTarget): Resource[F, HikariTransactor[F]] =
+  private def getTransactor[F[_]: Async: SecretStore: Logging](target: StorageTarget): Resource[F, HikariTransactor[F]] =
     for {
       ec <- ExecutionContexts.fixedThreadPool[F](2)
       _ <- Resource.eval(Async[F].delay(Class.forName(target.driver)))
       xa <- HikariTransactor.initial[F](ec)
       _ <- Resource.eval(xa.configure(configureHikari[F](target, _)))
+      _ <- redshiftIamAuth(target, xa)
     } yield xa
 
-  private def setJdbcCredentials[F[_]: Sync: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
+  private def redshiftIamAuth[F[_]: Async: Logging](
+    target: StorageTarget,
+    xa: HikariTransactor[F]
+  ): Resource[F, Unit] =
+    target match {
+      case StorageTarget.Redshift(_, database, _, _, _, _, username, iam: StorageTarget.RedshiftAuth.Iam, _, _, _) =>
+        for {
+          provider <- RedshiftAuthService.createIamProvider(username, database, iam)
+          _ <- Resource.eval(
+                 xa.configure { ds =>
+                   provider.get.map { creds =>
+                     ds.setUsername(creds.username)
+                     ds.setPassword(creds.password)
+                   }
+                 }
+               )
+          _ <- startCredentialRefresh(xa, provider, iam.credentialsTtl)
+        } yield ()
+      case _ => Resource.unit
+    }
+
+  /**
+   * Starts a background fiber that periodically refreshes credentials and evicts connections from
+   * the pool
+   */
+  private def startCredentialRefresh[F[_]: Async: Logging](
+    xa: HikariTransactor[F],
+    credentialsProvider: RedshiftAuthService.CredentialsProvider[F],
+    credentialsTtl: FiniteDuration
+  ): Resource[F, Unit] = {
+    // To make sure credentials are refreshed before timeout
+    val refreshInterval = credentialsTtl * 0.9
+    val refresh: F[Unit] = Async[F].sleep(refreshInterval) *> {
+      val f = for {
+        creds <- credentialsProvider.get
+        _ <- Logging[F].debug(s"Credentials refreshed, expiring at ${creds.expires}")
+        _ <- xa.configure { ds =>
+               Async[F].delay {
+                 ds.setUsername(creds.username)
+                 ds.setPassword(creds.password)
+                 // Force HikariCP to evict all idle connections
+                 // They will be recreated with new credentials on next use
+                 val hikariPool = ds.getHikariPoolMXBean
+                 if (hikariPool != null) {
+                   hikariPool.softEvictConnections()
+                   Logging[F].debug("Evicted idle connections from pool")
+                 }
+               }
+             }
+      } yield ()
+      f.retryingOnAllErrors(
+        policy = RetryPolicies.exponentialBackoff[F](10.seconds).join(RetryPolicies.limitRetries(5)),
+        onError = (error, retryDetails) =>
+          Logging[F].error(s"Credential refresh failed: ${error.getMessage} (${retryDetails.retriesSoFar} retries from cats-retry)")
+      )
+    }
+
+    refresh
+      .handleErrorWith { error =>
+        Logging[F].error(s"Credential refresh failed: ${error.getMessage} (will be retried in $refreshInterval)")
+      }
+      .foreverM[Unit]
+      .background
+      .void
+  }
+
+  private def setJdbcCredentials[F[_]: Async: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
     target.credentials match {
       case Some(configuredCredentials) =>
         getPassword[F](configuredCredentials).map { password =>
