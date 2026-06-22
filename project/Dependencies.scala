@@ -182,6 +182,7 @@ object Dependencies {
   val aircompressor     = "io.airlift"             % "aircompressor"       % V.aircompressor
   val zookeeper         = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
   val bcprovJdk18on     = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
+  val bcpkixJdk18on     = "org.bouncycastle"       % "bcpkix-jdk18on"      % V.bouncyCastle
   val jsonSmartDep      = "net.minidev"            % "json-smart"          % V.jsonSmart
 
   // Scala (test only)
@@ -285,6 +286,7 @@ object Dependencies {
     nettyHandlerProxy, // Fix CVE - azure-core-http-netty ships 4.1.110.Final
     nettyCodecDns, // Fix CVE - reactor-netty via azure-core-http-netty ships 4.1.109.Final
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
+    bcpkixJdk18on, // PEM parsing for Snowflake private key auth
     jsonSmartDep // Fix CVE - msal4j via azure-identity ships 2.5.0
   )
 
