@@ -235,6 +235,90 @@ class ConfigSpec extends Specification {
       result must beRight(expected)
     }
 
+    "be able to parse config with plain-text private key" in {
+      val result = getConfigFromResource("/loader/aws/snowflake.config.private-key.hocon", testParseConfig)
+      val expected = Config(
+        exampleSnowflake.copy(
+          password         = None,
+          privateKey       = Some(StorageTarget.PasswordConfig.PlainText("-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----")),
+          passphrase       = None,
+          transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
+        ),
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion))),
+        None,
+        defaultMonitoring,
+        None,
+        defaultSchedules,
+        exampleTimeouts,
+        exampleRetries.copy(cumulativeBound = Some(20.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
+        exampleFeatureFlags,
+        defaultTelemetry,
+        exampleLicense
+      )
+      result must beRight(expected)
+    }
+
+    "be able to parse config with secret-store private key and passphrase" in {
+      val result = getConfigFromResource("/loader/aws/snowflake.config.private-key-encrypted.hocon", testParseConfig)
+      val expected = Config(
+        exampleSnowflake.copy(
+          password         = None,
+          privateKey       = Some(StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.private-key"))),
+          passphrase       = Some(StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.passphrase"))),
+          transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None))
+        ),
+        Config.Cloud.AWS(RegionSpec.DefaultTestRegion, exampleMessageQueue.copy(region = Some(RegionSpec.DefaultTestRegion))),
+        None,
+        defaultMonitoring,
+        None,
+        defaultSchedules,
+        exampleTimeouts,
+        exampleRetries.copy(cumulativeBound = Some(20.minutes)),
+        exampleReadyCheck.copy(strategy     = Config.Strategy.Constant, backoff = 15.seconds),
+        exampleInitRetries.copy(attempts    = None, cumulativeBound             = Some(10.minutes)),
+        exampleFeatureFlags,
+        defaultTelemetry,
+        exampleLicense
+      )
+      result must beRight(expected)
+    }
+
+    "fail when both password and privateKey are specified" in {
+      val json = io.circe.parser.parse("""{
+        "username": "admin",
+        "password": "secret",
+        "privateKey": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----",
+        "account": "acme",
+        "warehouse": "wh",
+        "schema": "atomic",
+        "database": "snowplow",
+        "appName": "Snowplow_OSS",
+        "loadAuthMethod": { "type": "NoCreds" },
+        "readyCheck": "resumeWarehouse"
+      }""").getOrElse(io.circe.Json.Null)
+      val result = json.as[StorageTarget.Snowflake]
+      result must beLeft
+      result.left.map(_.message) must beLeft(contain("both"))
+    }
+
+    "fail when neither password nor privateKey is specified" in {
+      val json = io.circe.parser.parse("""{
+        "username": "admin",
+        "account": "acme",
+        "warehouse": "wh",
+        "schema": "atomic",
+        "database": "snowplow",
+        "appName": "Snowplow_OSS",
+        "loadAuthMethod": { "type": "NoCreds" },
+        "readyCheck": "resumeWarehouse"
+      }""").getOrElse(io.circe.Json.Null)
+      val result = json.as[StorageTarget.Snowflake]
+      result must beLeft
+      result.left.map(_.message) must beLeft(contain("must be specified"))
+    }
+
     "be able to infer host" in {
       val exampleSnowflake = StorageTarget.Snowflake(
         snowflakeRegion       = Some("us-west-2"),
