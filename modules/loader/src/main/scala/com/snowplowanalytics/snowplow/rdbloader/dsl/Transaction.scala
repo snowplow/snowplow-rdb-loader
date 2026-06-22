@@ -91,6 +91,15 @@ object Transaction {
   /** Should be enough for all monitoring and loading */
   private val PoolSize = 4
 
+  /** Initialize BouncyCastle provider once at class-load time to avoid thread-safety issues */
+  private lazy val _bouncyCastleProviderInit: Unit = {
+    Security.addProvider(new BouncyCastleProvider())
+    ()
+  }
+
+  // Ensure provider is initialized
+  _bouncyCastleProviderInit
+
   def apply[F[_], C[_]](implicit ev: Transaction[F, C]): Transaction[F, C] = ev
 
   private def configureHikari[F[_]: Async: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
@@ -231,7 +240,6 @@ object Transaction {
     passphrase: Option[String]
   ): F[java.security.PrivateKey] =
     Sync[F].delay {
-      Security.addProvider(new BouncyCastleProvider())
       val parser    = new PEMParser(new StringReader(pemString))
       val pemObject = parser.readObject()
       parser.close()
@@ -256,7 +264,7 @@ object Transaction {
     ds: HikariConfig
   ): F[Unit] =
     for {
-      pemString  <- resolvePasswordConfig[F](sf.privateKey.get)
+      pemString  <- sf.privateKey.fold(Sync[F].raiseError[String](new IllegalStateException("privateKey is None")))(resolvePasswordConfig[F])
       passphrase <- sf.passphrase.traverse(resolvePasswordConfig[F])
       privateKey <- parsePrivateKey[F](pemString, passphrase)
       _ <- Sync[F].delay {
