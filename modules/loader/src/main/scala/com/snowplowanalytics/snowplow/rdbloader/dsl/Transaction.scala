@@ -32,6 +32,16 @@ import com.snowplowanalytics.snowplow.rdbloader.transactors.{RetryingTransactor,
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.SecretStore
 import com.snowplowanalytics.snowplow.rdbloader.cloud.authservice.RedshiftAuthService
 
+import java.io.StringReader
+import java.security.Security
+
+import org.bouncycastle.asn1.pkcs.PrivateKeyInfo
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.openssl.PEMParser
+import org.bouncycastle.openssl.jcajce.JcaPEMKeyConverter
+import org.bouncycastle.pkcs.PKCS8EncryptedPrivateKeyInfo
+import org.bouncycastle.pkcs.jcajce.JcePKCSPBEInputDecryptorProviderBuilder
+
 import scala.concurrent.duration._
 
 /**
@@ -191,22 +201,70 @@ object Transaction {
   }
 
   private def setJdbcCredentials[F[_]: Async: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
-    target.credentials match {
-      case Some(configuredCredentials) =>
-        getPassword[F](configuredCredentials).map { password =>
-          ds.setUsername(configuredCredentials.username)
-          ds.setPassword(password)
+    target match {
+      case sf: StorageTarget.Snowflake if sf.privateKey.isDefined =>
+        setSnowflakeKeyPairCredentials[F](sf, ds)
+      case _ =>
+        target.credentials match {
+          case Some(configuredCredentials) =>
+            getPassword[F](configuredCredentials).map { password =>
+              ds.setUsername(configuredCredentials.username)
+              ds.setPassword(password)
+            }
+          case None => Sync[F].unit
         }
-      case None => Sync[F].unit
     }
 
   private def getPassword[F[_]: Sync: SecretStore](credentials: StorageTarget.Credentials): F[String] =
-    credentials.password match {
+    resolvePasswordConfig[F](credentials.password)
+
+  private def resolvePasswordConfig[F[_]: Sync: SecretStore](config: StorageTarget.PasswordConfig): F[String] =
+    config match {
       case StorageTarget.PasswordConfig.PlainText(text) =>
         Sync[F].pure(text)
       case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
         SecretStore[F].getValue(parameterName)
     }
+
+  private def parsePrivateKey[F[_]: Sync](
+    pemString: String,
+    passphrase: Option[String]
+  ): F[java.security.PrivateKey] =
+    Sync[F].delay {
+      Security.addProvider(new BouncyCastleProvider())
+      val parser    = new PEMParser(new StringReader(pemString))
+      val pemObject = parser.readObject()
+      parser.close()
+      val converter = new JcaPEMKeyConverter().setProvider("BC")
+      pemObject match {
+        case encrypted: PKCS8EncryptedPrivateKeyInfo =>
+          val chars = passphrase
+            .getOrElse(throw new IllegalArgumentException("Private key is encrypted but no passphrase was provided"))
+            .toCharArray
+          val decryptorProvider =
+            new JcePKCSPBEInputDecryptorProviderBuilder().setProvider("BC").build(chars)
+          converter.getPrivateKey(encrypted.decryptPrivateKeyInfo(decryptorProvider))
+        case keyInfo: PrivateKeyInfo =>
+          converter.getPrivateKey(keyInfo)
+        case other =>
+          throw new IllegalArgumentException(s"Unsupported PEM object: ${other.getClass.getSimpleName}")
+      }
+    }
+
+  private def setSnowflakeKeyPairCredentials[F[_]: Async: SecretStore](
+    sf: StorageTarget.Snowflake,
+    ds: HikariConfig
+  ): F[Unit] =
+    for {
+      pemString  <- resolvePasswordConfig[F](sf.privateKey.get)
+      passphrase <- sf.passphrase.traverse(resolvePasswordConfig[F])
+      privateKey <- parsePrivateKey[F](pemString, passphrase)
+      _ <- Sync[F].delay {
+             ds.setUsername(sf.username)
+             ds.addDataSourceProperty("authenticator", "snowflake_jwt")
+             ds.addDataSourceProperty("private_key", privateKey)
+           }
+    } yield ()
 
   /**
    * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`, which guarantees to
