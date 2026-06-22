@@ -25,13 +25,28 @@
     "snowflakeRegion": "us-west-2",
     # DB user with permissions to load data
     "username": "admin",
-    # DB password
+    # Authentication: specify exactly one of 'password' or 'privateKey'
+
+    # Option 1: password auth
     "password": {
       # A password can be placed in EC2 parameter store, GCP Secret Manager or be a plain text
       "secretStore": {
         "parameterName": "snowplow.snowflake.password"
       }
     },
+
+    # Option 2: key-pair (JWT) auth — recommended for service accounts
+    # "privateKey": {
+    #   "secretStore": {
+    #     "parameterName": "snowplow.snowflake.private-key"
+    #   }
+    # },
+    # Optional passphrase for encrypted private keys
+    # "passphrase": {
+    #   "secretStore": {
+    #     "parameterName": "snowplow.snowflake.passphrase"
+    #   }
+    # },
 
     # Snowflake account
     "account": "acme",
