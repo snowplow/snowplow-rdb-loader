@@ -173,7 +173,9 @@ object StorageTarget {
     snowflakeRegion: Option[String],
     username: String,
     role: Option[String],
-    password: PasswordConfig,
+    password: Option[PasswordConfig],
+    privateKey: Option[PasswordConfig],
+    passphrase: Option[PasswordConfig],
     account: Option[String],
     warehouse: String,
     database: String,
@@ -186,7 +188,7 @@ object StorageTarget {
     readyCheck: Snowflake.ReadyCheck
   ) extends StorageTarget {
 
-    override def credentials: Option[Credentials] = Some(Credentials(username, password))
+    override def credentials: Option[Credentials] = password.map(Credentials(username, _))
 
     override def connectionUrl: String =
       host match {
@@ -526,7 +528,14 @@ object StorageTarget {
     deriveDecoder[Databricks]
 
   implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
-    deriveDecoder[Snowflake]
+    deriveDecoder[Snowflake].emap { sf =>
+      (sf.password, sf.privateKey) match {
+        case (Some(_), None)    => Right(sf)
+        case (None, Some(_))    => Right(sf)
+        case (Some(_), Some(_)) => Left("Specify either 'password' or 'privateKey', not both")
+        case (None, None)       => Left("One of 'password' or 'privateKey' must be specified")
+      }
+    }
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     Decoder.instance[EncryptedConfig] { cur =>
