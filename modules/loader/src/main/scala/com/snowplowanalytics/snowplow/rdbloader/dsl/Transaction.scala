@@ -245,6 +245,8 @@ object Transaction {
       parser.close()
       val converter = new JcaPEMKeyConverter().setProvider("BC")
       pemObject match {
+        case null =>
+          throw new IllegalArgumentException("Input does not contain a valid PEM-encoded private key")
         case encrypted: PKCS8EncryptedPrivateKeyInfo =>
           val chars = passphrase
             .getOrElse(throw new IllegalArgumentException("Private key is encrypted but no passphrase was provided"))
