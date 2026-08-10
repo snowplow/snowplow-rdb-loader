@@ -43,7 +43,7 @@ object Dependencies {
     val spark              = "3.5.6"
     val sparkDocker        = "4.1.2" // Spark-on-Kubernetes Docker image — Scala 2.13 only
     val eventsManifest     = "0.5.0-M1"
-    val schemaDdl          = "0.27.1"
+    val schemaDdl          = "0.28.0"
     val jacksonModule      = "2.21.4" // Override incompatible version in spark runtime
     val parquet4s          = "2.22.0"
     val hadoopClient       = "3.5.0"
@@ -54,7 +54,7 @@ object Dependencies {
     val slf4j          = "2.0.17"
     val redshiftJdbc   = "2.2.2"
     val snowflakeJdbc  = "4.0.2"
-    val databricksJdbc = "3.4.1"
+    val databricksJdbc = "3.4.2"
     val enumeratum     = "1.7.0"
     val aws2           = "2.42.33"
     val pubsub         = "1.151.0"
@@ -63,13 +63,15 @@ object Dependencies {
     val kinesisClient  = "2.7.2"
     val refined =
       "0.11.3" // Override - fs2-aws-kinesis:4.1.0 pulls in 0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
-    val nettyCodec    = "4.1.135.Final" // Fix CVE
+    val nettyCodec    = "4.1.136.Final" // Fix CVE
     val aircompressor = "2.0.3" // Fix CVE - parquet 1.17.0 ships 2.0.2
     val zookeeper     = "3.9.5" // Fix CVE
     val kafkaClients  = "3.9.2" // Fix CVE
-    val bouncyCastle  = "1.84" // Fix CVE
+    val bouncyCastle  = "1.85" // Fix CVE
     val commonsConfig = "2.15.1" // Fix CVE
     val kerbyCore     = "2.1.2" // Fix CVE
+    val lz4Java       = "1.11.1" // Fix CVE - kafka-clients ships 1.10.1
+    val blazeHttp     = "0.23.18" // Fix CVE - http4s-blaze-client ships 0.23.16
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -155,6 +157,9 @@ object Dependencies {
   // The EMR assembly excludes this jar via assemblyExcludedJars; EMR provides its own hadoop-aws.
   val hadoopAwsForDocker = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClientDocker)
     .excludeAll(ExclusionRule(organization = "software.amazon.awssdk")) // individual SDK v2 modules already present in fat jar
+  // Spark<->S3A committer bindings for the magic committer; not shipped in SnowplowSparkPlugin's
+  // Spark distribution. intransitive() as the classes only need hadoop/parquet/spark already at runtime.
+  val sparkHadoopCloud = ("org.apache.spark" %% "spark-hadoop-cloud" % V.sparkDocker % Runtime).intransitive()
   val kinesisClient = ("software.amazon.kinesis" % "amazon-kinesis-client" % V.kinesisClient)
     .exclude("software.amazon.glue", "schema-registry-common")
     .exclude("software.amazon.glue", "schema-registry-serde")
@@ -186,7 +191,11 @@ object Dependencies {
   val nettyCodecHttp  = "io.netty"               % "netty-codec-http"    % V.nettyCodec
   val nettyCodecHttp2 = "io.netty"               % "netty-codec-http2"   % V.nettyCodec
   val nettyCodecSmtp  = "io.netty"               % "netty-codec-smtp"    % V.nettyCodec
+  val nettyCodec      = "io.netty"               % "netty-codec"         % V.nettyCodec
+  val nettyCodecDns   = "io.netty"               % "netty-codec-dns"     % V.nettyCodec
   val nettyAll        = "io.netty"               % "netty-all"           % V.nettyCodec
+  val lz4Java         = "at.yawk.lz4"            % "lz4-java"            % V.lz4Java
+  val blazeHttp       = "org.http4s"            %% "blaze-http"          % V.blazeHttp
   val aircompressor   = "io.airlift"             % "aircompressor"       % V.aircompressor
   val zookeeper       = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
   val bcprovJdk18on   = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
@@ -238,7 +247,8 @@ object Dependencies {
     fs2Kafka,
     kafkaClients,
     hadoopCommon,
-    hadoopAzure
+    hadoopAzure,
+    lz4Java // Fix CVE - kafka-clients ships the at.yawk.lz4 fork, which the org.lz4 exclusions do not cover
   )
 
   val commonDependencies = Seq(
@@ -269,7 +279,8 @@ object Dependencies {
     sentry,
     zookeeper,
     jacksonDatabind, // Fix CVE - multiple paths pull 2.21.2/2.21.3; force 2.21.4
-    kerbyAsn1 // Fix CVE - hadoop-common ships 2.0.3
+    kerbyAsn1, // Fix CVE - hadoop-common ships 2.0.3
+    blazeHttp // Fix CVE - blaze-http is released separately from http4s-blaze-client, which is now frozen
   )
 
   val loaderDependencies = Seq(
@@ -293,7 +304,13 @@ object Dependencies {
     catsTesting,
     catsEffectTestkit,
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
-    commonsConfiguration2 // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
+    commonsConfiguration2, // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
+    // Fix CVE - the loaders reach netty through azure-core-http-netty, which lags netty releases.
+    // The transformers pin the same artifacts via nettyAll instead.
+    nettyCodec,
+    nettyCodecHttp,
+    nettyCodecHttp2,
+    nettyCodecDns
   )
 
   val redshiftDependencies = Seq(
@@ -333,6 +350,7 @@ object Dependencies {
   // Not needed for EMR: the cluster provides its own hadoop-aws, and IRSA is a K8s concept.
   val dockerOnlyDependencies = Seq(
     hadoopAwsForDocker,
+    sparkHadoopCloud,
     aws2sts,
     awsS3Transfer
   )
@@ -399,6 +417,11 @@ object Dependencies {
   val commonExclusions =
     Seq(
       ExclusionRule(organization = "ch.qos.logback"),
+      // Hadoop's servlet stack, only used by its daemon web UIs and not by client-side code.
+      // Jetty 9.4 is EOL, so CVEs in these artifacts will never be fixed at the version Hadoop asks for.
+      ExclusionRule(organization = "org.eclipse.jetty", name            = "jetty-servlet"),
+      ExclusionRule(organization = "org.eclipse.jetty", name            = "jetty-webapp"),
+      ExclusionRule(organization = "org.eclipse.jetty", name            = "jetty-security"),
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-yarn-api"),
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-yarn-client"),
       ExclusionRule(organization = "org.apache.hadoop", name            = "hadoop-mapreduce-client-jobclient"),

@@ -27,20 +27,32 @@ class AlertSpec extends Specification {
       val e4 = new RetryingTransactor.UnskippableConnectionException(e3)
       val e5 = new TargetCheck.TargetCheckException(e4)
 
-      val folder = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val folder = BlobStorage.Folder.coerce("s3://bucket/shredded/run=2026-01-01-01-01-01/")
 
       val alertMessage = Alert.UnskippableLoadFailure(folder, e5)
 
       Alert.getMessage(
         alertMessage
-      ) must_== "Load failed and will be retried until fixed: Failed to establish a JDBC connection: Error setting up SSH tunnel: Problem with network"
+      ) must_== "Load failed and will be retried until fixed run=2026-01-01-01-01-01: Failed to establish a JDBC connection: Error setting up SSH tunnel: Problem with network"
+    }
+
+    "include the run name for a folder-specific alert with no cause" in {
+      val folder = BlobStorage.Folder.coerce("s3://bucket/shredded/run=2026-01-01-01-01-01/")
+
+      Alert.getMessage(Alert.FolderIsUnloaded(folder)) must_== "Unloaded batch run=2026-01-01-01-01-01"
+    }
+
+    "not include a run name for an alert which is not folder-specific" in {
+      val e = new java.net.SocketException("Problem with network")
+
+      Alert.getMessage(Alert.FailedHealthCheck(e)) must_== "DB failed health check: Problem with network"
     }
 
     "not exceed the maximum length for an alert message" in {
       val longMsg = "x" * 10000
 
       val e            = new RuntimeException(longMsg)
-      val folder       = BlobStorage.Folder.coerce("s3://bucket/1/")
+      val folder       = BlobStorage.Folder.coerce("s3://bucket/shredded/run=2026-01-01-01-01-01/")
       val alertMessage = Alert.UnskippableLoadFailure(folder, e)
 
       Alert.getMessage(alertMessage) must haveSize(4096)

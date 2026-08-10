@@ -133,6 +133,63 @@ class RetryingTransactionSpec extends Specification {
       result.getLog must beEqualTo(expected)
     }
 
+    "evict connections before retrying a failed transaction" in {
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
+
+      val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init.withExecuteUpdate(isFirstAttempt, raiseException))
+
+      val evictConnections: Pure[Unit] = Pure.modify(_.log(EvictMessage))
+
+      val transaction: Transaction[Pure, Pure] =
+        RetryingTransaction.wrap(testRetries, PureTransaction.interpreter, evictConnections)
+
+      val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
+
+      val expected = List(
+        LogEntry.Message("TICK REALTIME"),
+        PureTransaction.StartMessage,
+        PureTransaction.RollbackMessage,
+        LogEntry.Message("TICK REALTIME"),
+        LogEntry.Message(EvictMessage),
+        LogEntry.Message("SLEEP 30000000000 nanoseconds"),
+        PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.VacuumEvents),
+        PureTransaction.CommitMessage
+      )
+
+      val result = transaction.transact(program).runS
+
+      result.getLog must beEqualTo(expected)
+    }
+
+    "not evict connections when the transaction succeeds" in {
+      implicit val logging: Logging[Pure] = PureLogging.interpreter(noop = true)
+      implicit val sleep: Sleep[Pure]     = PureSleep.interpreter
+      implicit val clock: Clock[Pure]     = PureClock.interpreter
+
+      val dao: DAO[Pure] = PureDAO.interpreter(PureDAO.init)
+
+      val evictConnections: Pure[Unit] = Pure.modify(_.log(EvictMessage))
+
+      val transaction: Transaction[Pure, Pure] =
+        RetryingTransaction.wrap(testRetries, PureTransaction.interpreter, evictConnections)
+
+      val program = dao.executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading)
+
+      val expected = List(
+        LogEntry.Message("TICK REALTIME"),
+        PureTransaction.StartMessage,
+        LogEntry.Sql(Statement.VacuumEvents),
+        PureTransaction.CommitMessage
+      )
+
+      val result = transaction.transact(program).runS
+
+      result.getLog must beEqualTo(expected)
+    }
+
     "retry according to the target check retry config if we cannot get a connection" in {
       // Simulates the case when we are waiting for the Databricks cluster to start up.
 
@@ -202,6 +259,8 @@ class RetryingTransactionSpec extends Specification {
 object RetryingTransactorSpec {
 
   val testRetries: Config.Retries = Config.Retries(Config.Strategy.Exponential, Some(3), 30.seconds, Some(1.hour))
+
+  val EvictMessage = "EVICT CONNECTIONS"
 
   def isFirstAttempt(sql: Statement, ts: TestState) =
     sql match {

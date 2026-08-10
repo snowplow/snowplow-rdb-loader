@@ -13,7 +13,9 @@ package com.snowplowanalytics.snowplow.loader.redshift
 import cats.data.NonEmptyList
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaMap, SchemaVer, SelfDescribingSchema}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.properties.{CommonProperties, ObjectProperty}
 import com.snowplowanalytics.iglu.schemaddl.redshift._
+import doobie.Fragment
 import com.snowplowanalytics.snowplow.rdbloader.db.Statement
 import com.snowplowanalytics.snowplow.rdbloader.test.TestState
 import com.snowplowanalytics.snowplow.rdbloader.db.{Migration, Target}
@@ -35,7 +37,7 @@ import com.snowplowanalytics.snowplow.rdbloader.test.PureDAO
 import com.snowplowanalytics.snowplow.rdbloader.test.PureOps
 
 class RedshiftSpec extends Specification {
-  import RedshiftSpec._
+  import RedshiftSpec.{clashingModel, jdbcResults, redshift}
   "updateTable" should {
 
     "create a Block with in-transaction migration" in {
@@ -150,6 +152,44 @@ class RedshiftSpec extends Specification {
       )
     }
   }
+
+  "a schema with fields clashing with the common shredded columns" should {
+
+    "not repeat a column in the CREATE TABLE statement" in {
+      redshift.createTable(clashingModel).inTransaction must beLike {
+        case Migration.Item.CreateTable(fragment, _) :: Nil => noRepeatedCommonColumn(fragment)
+        case items                                          => ko(s"unexpected migration items: $items")
+      }
+    }
+
+    "not repeat a column in the COPY statement" in {
+      val statement = Statement.ShreddedCopy(
+        Tabular(
+          Info(
+            vendor  = "com.acme",
+            name    = "clashing",
+            version = SchemaVer.Full(1, 0, 0),
+            entity  = SelfDescribingEvent,
+            base    = Folder.coerce("s3://my-bucket/my-path")
+          )
+        ),
+        Compression.None,
+        LoadAuthService.LoadAuthMethod.NoCreds,
+        clashingModel,
+        clashingModel.tableName,
+        isRecovered = false
+      )
+
+      noRepeatedCommonColumn(redshift.toFragment(statement))
+    }
+  }
+
+  private def noRepeatedCommonColumn(fragment: Fragment) = {
+    val sql = fragment.toString
+    forall(ShredModelEntry.commonColumnNames) { columnName =>
+      s""""$columnName"""".r.findAllIn(sql).length must beEqualTo(1)
+    }
+  }
 }
 
 object RedshiftSpec {
@@ -167,4 +207,23 @@ object RedshiftSpec {
 
   val redshift: Target[Unit] =
     Redshift.build(validConfig).getOrElse(throw new RuntimeException("Invalid config"))
+
+  /**
+   * Customer fields that would otherwise collide with the columns common to every shredded table
+   */
+  val clashingModel: ShredModel = ShredModel.good(
+    SchemaKey("com.acme", "clashing", "jsonschema", SchemaVer.Full(1, 0, 0)),
+    Schema(
+      `type` = Some(CommonProperties.Type.Object),
+      properties = Some(
+        ObjectProperty.Properties(
+          Map(
+            "refParent" -> Schema(),
+            "root_tstamp" -> Schema(),
+            "myField" -> Schema()
+          )
+        )
+      )
+    )
+  )
 }

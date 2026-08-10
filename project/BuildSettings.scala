@@ -295,6 +295,20 @@ object BuildSettings {
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
     ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
 
+  // The S3A magic committer, which avoids the default committer's slow per-file S3 renames
+  // at job commit. The commit protocol / parquet committer classes come from spark-hadoop-cloud
+  // (bundled via Dependencies.dockerOnlyDependencies). The factory is bound by URI scheme: we
+  // write s3:// paths (fs.s3.impl is remapped to S3AFileSystem below), so scheme.s3 is the
+  // binding that matters — scheme.s3a is included for s3a://-configured output.
+  private val magicCommitterSparkConfig = Map(
+    "spark.hadoop.fs.s3a.committer.name" -> "magic",
+    "spark.hadoop.fs.s3a.committer.magic.enabled" -> "true",
+    "spark.sql.sources.commitProtocolClass" -> "org.apache.spark.internal.io.cloud.PathOutputCommitProtocol",
+    "spark.sql.parquet.output.committer.class" -> "org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter",
+    "spark.hadoop.mapreduce.outputcommitter.factory.scheme.s3" -> "org.apache.hadoop.fs.s3a.commit.S3ACommitterFactory",
+    "spark.hadoop.mapreduce.outputcommitter.factory.scheme.s3a" -> "org.apache.hadoop.fs.s3a.commit.S3ACommitterFactory"
+  )
+
   // Spark configuration baked into the image's spark-defaults.conf (Spark's
   // lowest-precedence source, so deploy-time --conf still overrides it). These
   // wire S3 access to the S3A filesystem and our own credentials provider.
@@ -303,7 +317,7 @@ object BuildSettings {
     "spark.hadoop.fs.AbstractFileSystem.s3.impl" -> "org.apache.hadoop.fs.s3a.S3A",
     "spark.hadoop.fs.s3a.aws.credentials.provider" -> "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.aws.S3ADefaultCredentialsProvider",
     "spark.hadoop.fs.s3.aws.credentials.provider" -> "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.aws.S3ADefaultCredentialsProvider"
-  )
+  ) ++ magicCommitterSparkConfig
 
   // The Spark-on-Kubernetes distribution of the batch transformer. The generic
   // Spark packaging — the self-deploying entrypoint, the vendored Spark launch

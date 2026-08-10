@@ -19,7 +19,7 @@ import software.amazon.awssdk.services.cloudwatch.model.{Dimension, MetricDatum,
 
 object Metrics {
 
-  private lazy val cloudwatch = CloudWatchClient.builder().build()
+  private lazy val cloudwatch = CloudWatchClient.builder().overrideConfiguration(Cloud.ClientConfig).build()
 
   def sendDuration(
     namespace: String,
@@ -48,7 +48,7 @@ object Metrics {
       .metricData(datum)
       .build()
 
-    Try(cloudwatch.putMetricData(putRequest)) match {
+    Try(SdkRetries.retrying(s"send $metricName to namespace $namespace")(cloudwatch.putMetricData(putRequest))) match {
       case Success(_) =>
         System.out.println(s"$metricName with value $duration successfully sent to namespace $namespace")
       case Failure(err) =>

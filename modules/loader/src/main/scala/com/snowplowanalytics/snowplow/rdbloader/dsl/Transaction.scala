@@ -111,12 +111,25 @@ object Transaction {
   private def buildPool[F[_]: Async: SecretStore: Logging: Sleep](
     target: StorageTarget,
     retries: Config.Retries
-  ): Resource[F, Transactor[F]] =
+  ): Resource[F, (Transactor[F], F[Unit])] =
     for {
-      xa <- getTransactor(target)
-      xa <- Resource.pure(RetryingTransactor.wrap(retries, xa))
-      xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](xa))(SSH.transactor(_, xa))
-    } yield xa
+      hikari <- getTransactor(target)
+      retrying = RetryingTransactor.wrap(retries, hikari)
+      xa <- target.sshTunnel.fold(Resource.pure[F, Transactor[F]](retrying))(SSH.transactor(_, retrying))
+    } yield (xa, softEvictConnections(hikari))
+
+  /**
+   * An effect that soft-evicts all connections from the pool. In-use connections are closed when
+   * they are returned; idle connections are closed immediately. With minimumIdle=0 the pool only
+   * re-opens a connection on the next demand. Errors are logged but not raised, so a hiccup
+   * evicting connections cannot itself derail the caller.
+   */
+  private def softEvictConnections[F[_]: Async: Logging](xa: HikariTransactor[F]): F[Unit] =
+    xa.configure { ds =>
+      Async[F].delay(Option(ds.getHikariPoolMXBean).foreach(_.softEvictConnections()))
+    }.handleErrorWith { t =>
+      Logging[F].warning(s"Could not evict connections from the pool: ${t.getMessage}")
+    }
 
   private def getTransactor[F[_]: Async: SecretStore: Logging](target: StorageTarget): Resource[F, HikariTransactor[F]] =
     for {
@@ -250,9 +263,9 @@ object Transaction {
     target: StorageTarget,
     timeouts: Config.Timeouts,
     connectionRetries: Config.Retries
-  ): Resource[F, Transaction[F, ConnectionIO]] =
-    buildPool[F](target, connectionRetries).map { xa =>
-      Transaction.jdbcRealInterpreter[F](target, timeouts, xa)
+  ): Resource[F, (Transaction[F, ConnectionIO], F[Unit])] =
+    buildPool[F](target, connectionRetries).map { case (xa, evictConnections) =>
+      (Transaction.jdbcRealInterpreter[F](target, timeouts, xa), evictConnections)
     }
 
   def defaultStrategy(timeouts: Config.Timeouts): Strategy = {

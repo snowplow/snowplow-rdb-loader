@@ -10,7 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import cats.{MonadThrow, ~>}
+import cats.{Monad, MonadThrow, ~>}
 import cats.implicits._
 import cats.effect.Clock
 import retry.{RetryDetails, Sleep}
@@ -27,23 +27,39 @@ object RetryingTransaction {
     retries: Config.Retries,
     inner: Transaction[F, C]
   ): Transaction[F, C] =
+    wrap(retries, inner, MonadThrow[F].unit)
+
+  /**
+   * A Transaction-handler that retries the io if there is an exception, evicting the pool's
+   * connections before each retry via `evictConnections`
+   */
+  def wrap[F[_]: MonadThrow: Logging: Clock: Sleep, C[_]](
+    retries: Config.Retries,
+    inner: Transaction[F, C],
+    evictConnections: F[Unit]
+  ): Transaction[F, C] =
     new Transaction[F, C] {
 
       def transact[A](io: C[A]): F[A] =
-        withErrorAdaption(retries) {
+        withErrorAdaption(retries, evictConnections) {
           inner.transact(io)
         }
 
       def run[A](io: C[A]): F[A] =
-        withErrorAdaption(retries) {
+        withErrorAdaption(retries, evictConnections) {
           inner.run(io)
         }
 
       def arrowBack: F ~> C = inner.arrowBack
     }
 
-  private def withErrorAdaption[F[_]: MonadThrow: Clock: Sleep: Logging, A](retries: Config.Retries)(io: F[A]): F[A] =
-    Retry.retryingOnSomeErrors(retries, isWorthRetry.andThen(_.pure[F]), onError[F](_, _), io)
+  private def withErrorAdaption[F[_]: MonadThrow: Clock: Sleep: Logging, A](
+    retries: Config.Retries,
+    evictConnections: F[Unit]
+  )(
+    io: F[A]
+  ): F[A] =
+    Retry.retryingOnSomeErrors(retries, isWorthRetry.andThen(_.pure[F]), onError[F](evictConnections)(_, _), io)
 
   private val isWorthRetry: Throwable => Boolean = {
     case RetryingTransactor.ExceededRetriesException() =>
@@ -53,7 +69,11 @@ object RetryingTransaction {
       Retry.isWorth(e)
   }
 
-  private def onError[F[_]: Logging](t: Throwable, d: RetryDetails): F[Unit] =
-    Logging[F].error(t)(show"Error executing transaction. $d")
+  // Before retrying a failed transaction we evict the pool's connections, so that the retry is
+  // forced to open a fresh one. A pooled connection can be left in an unusable state after an error
+  // - e.g. a Databricks session the warehouse has already torn down - and Hikari does not always
+  // detect this, so it would otherwise keep handing back the same broken connection.
+  private def onError[F[_]: Logging: Monad](evictConnections: F[Unit])(t: Throwable, d: RetryDetails): F[Unit] =
+    Logging[F].error(t)(show"Error executing transaction. $d") *> evictConnections
 
 }

@@ -56,6 +56,24 @@ object Alert {
     case FailedFolderMonitoring(_, _)    => None
   }
 
+  def getCause(alert: Alert): Option[Throwable] = alert match {
+    // messages carrying an underlying exception
+    case UnskippableLoadFailure(_, cause)    => Some(cause)
+    case RetryableLoadFailure(_, cause)      => Some(cause)
+    case TerminalLoadFailure(_, cause)       => Some(cause)
+    case FailedInitialConnection(cause)      => Some(cause)
+    case FailedToCreateEventsTable(cause)    => Some(cause)
+    case FailedToCreateManifestTable(cause)  => Some(cause)
+    case FailedToCreateDatabaseSchema(cause) => Some(cause)
+    case FailedHealthCheck(cause)            => Some(cause)
+    case FailedFolderMonitoring(cause, _)    => Some(cause)
+    // messages with no underlying exception
+    case FolderIsAlreadyLoaded(_) => None
+    case FolderIsUnloaded(_)      => None
+    case ShreddingIncomplete(_)   => None
+    case UnloadedFoldersDetected  => None
+  }
+
   def getSeverity(alert: Alert): Severity = alert match {
     // information: no action required to fix the problem
     case FolderIsAlreadyLoaded(_)   => Severity.Info
@@ -78,21 +96,23 @@ object Alert {
   }
 
   def getMessage(am: Alert): String = {
-    val full = am match {
+    val prefix = am match {
       case FolderIsAlreadyLoaded(_)               => "Folder is already loaded"
       case FolderIsUnloaded(_)                    => "Unloaded batch"
       case ShreddingIncomplete(_)                 => "Incomplete shredding"
       case UnloadedFoldersDetected                => "Folder monitoring detected unloaded folders"
-      case UnskippableLoadFailure(_, t)           => show"Load failed and will be retried until fixed: $t"
-      case RetryableLoadFailure(_, t)             => show"Load failed and went to the retry queue: $t"
-      case TerminalLoadFailure(_, t)              => show"Load failed and will not be retried: $t"
-      case FailedInitialConnection(t)             => show"Failed to get connection at startup: $t"
-      case FailedToCreateEventsTable(t)           => show"Failed to create events table: $t"
-      case FailedToCreateManifestTable(t)         => show"Failed to create manifest table: $t"
-      case FailedToCreateDatabaseSchema(t)        => show"Failed to create database schema: $t"
-      case FailedHealthCheck(t)                   => show"DB failed health check: $t"
-      case FailedFolderMonitoring(t, numFailures) => show"Folder monitoring failed $numFailures times in a row: $t"
+      case UnskippableLoadFailure(_, _)           => "Load failed and will be retried until fixed"
+      case RetryableLoadFailure(_, _)             => "Load failed and went to the retry queue"
+      case TerminalLoadFailure(_, _)              => "Load failed and will not be retried"
+      case FailedInitialConnection(_)             => "Failed to get connection at startup"
+      case FailedToCreateEventsTable(_)           => "Failed to create events table"
+      case FailedToCreateManifestTable(_)         => "Failed to create manifest table"
+      case FailedToCreateDatabaseSchema(_)        => "Failed to create database schema"
+      case FailedHealthCheck(_)                   => "DB failed health check"
+      case FailedFolderMonitoring(_, numFailures) => show"Folder monitoring failed $numFailures times in a row"
     }
+    val withRunName = getFolder(am).fold(prefix)(folder => show"$prefix ${folder.folderName}")
+    val full        = getCause(am).fold(withRunName)(cause => show"$withRunName: $cause")
     full.take(MaxAlertPayloadLength)
   }
 

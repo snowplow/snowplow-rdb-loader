@@ -69,7 +69,7 @@ object Cloud {
         case None        => reqBuilder.build()
       }
 
-      val result = client.listObjectsV2(req)
+      val result = SdkRetries.retrying(s"list objects under $str")(client.listObjectsV2(req))
 
       if (result.isTruncated) {
         result.contents().asScala.toStream #::: keyUnfold(Some(result.nextContinuationToken()))
@@ -96,7 +96,7 @@ object Cloud {
         case None        => reqBuilder.build()
       }
 
-      val result = client.listObjectsV2(req)
+      val result = SdkRetries.retrying(s"list directories under $f")(client.listObjectsV2(req))
 
       if (result.isTruncated) {
         result.commonPrefixes().asScala.map(_.prefix()).toStream #::: keyUnfold(Some(result.nextContinuationToken()))
@@ -116,17 +116,21 @@ object Cloud {
       .prefix(prefix)
       .maxKeys(2)
       .build()
-    client.listObjectsV2(req).contents().asScala.exists(_.size() > 0)
+    SdkRetries.retrying(s"check whether $folder has content")(client.listObjectsV2(req)).contents().asScala.exists(_.size() > 0)
   }
 
   def keyExists(client: S3Client, key: BlobStorage.Key): Boolean = {
     val (bucket, s3Key) = BlobStorage.splitKey(key)
-    try {
-      val request = HeadObjectRequest.builder().bucket(bucket).key(s3Key).build()
-      client.headObject(request)
-      true
-    } catch {
-      case _: NoSuchKeyException => false
+    val request         = HeadObjectRequest.builder().bucket(bucket).key(s3Key).build()
+    // NoSuchKeyException is handled inside the retried block, so a missing key is an answer rather
+    // than a failure to retry
+    SdkRetries.retrying(s"check existence of $key") {
+      try {
+        client.headObject(request)
+        true
+      } catch {
+        case _: NoSuchKeyException => false
+      }
     }
   }
 
@@ -143,7 +147,7 @@ object Cloud {
         .message(message)
         .messageGroupId(messageGroupId)
         .build()
-      client.publish(request)
+      val _ = SdkRetries.retrying(s"publish message to SNS topic $topic")(client.publish(request))
       ()
     }
 
@@ -160,7 +164,7 @@ object Cloud {
         .messageGroupId(messageGroupId)
         .messageBody(message)
         .build()
-      client.sendMessage(request)
+      val _ = SdkRetries.retrying(s"send message to SQS queue $queue")(client.sendMessage(request))
       ()
     }
 
@@ -176,7 +180,7 @@ object Cloud {
         .bucket(bucket)
         .key(key)
         .build()
-      client.putObject(request, RequestBody.fromString(content))
+      val _ = SdkRetries.retrying(s"write s3://$bucket/$key")(client.putObject(request, RequestBody.fromString(content)))
       ()
     }
 
@@ -193,6 +197,8 @@ object Cloud {
       case _: NoSuchKeyException => false
     }
 
+  // The archival functions below run on executors, where a failed task is retried by Spark, so they
+  // are deliberately not wrapped in SdkRetries
   def copyObject(
     client: S3Client,
     sourceBucket: String,

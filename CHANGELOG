@@ -1,3 +1,12 @@
+Version 6.7.0 (2026-08-05)
+--------------------------
+Bump dependencies for 6.7.0 release (#52)
+Include the run name in folder-specific alert messages (#49)
+Skip shredded fields that clash with our special columns (#51)
+Retry driver-side AWS SDK calls to survive IMDS blips (#48)
+Evict pooled connections before retrying a failed transaction (#47)
+Use the S3A magic committer for the batch transformer Docker image (#46)
+
 Version 6.6.0 (2026-07-08)
 --------------------------
 Only push latest Docker tags for non-pre-release tags (#44)
