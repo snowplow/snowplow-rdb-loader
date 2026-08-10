@@ -137,7 +137,8 @@ object StorageTarget {
       val props: Properties = new Properties()
       props.put("httpPath", httpPath)
       props.put("ssl", 1)
-      props.put("LogLevel", logLevel)
+      props.put("LogLevel", logLevel.toString)
+      props.put("LogPath", "STDOUT")
       props.put("transportMode", "http")
       props.put("UserAgentEntry", userAgent)
       // `supportmanyParameters` is an undocumented driver property.
