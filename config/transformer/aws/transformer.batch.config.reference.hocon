@@ -197,4 +197,11 @@
       }
     }
   }
+
+  # Required. source within this block is optional — omit or set to null to skip the archival step.
+  # When source is set, the transformer copies all files from that S3 path into a new run= folder
+  # under the transformer's input path before processing begins, then deletes each source file.
+  "archival": {
+    "source": "s3://archival-bucket/archival-path/"
+  }
 }

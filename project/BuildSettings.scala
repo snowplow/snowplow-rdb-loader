@@ -18,6 +18,8 @@ import sbtbuildinfo.BuildInfoPlugin.autoImport._
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
 
+import scala.sys.process._
+
 // sbt-native-packager
 import com.typesafe.sbt.SbtNativePackager.autoImport._
 import com.typesafe.sbt.packager.archetypes.jar.LauncherJarPlugin.autoImport.packageJavaLauncherJar
@@ -43,6 +45,8 @@ import org.typelevel.scalacoptions.ScalacOptions._
  */
 object BuildSettings {
 
+  val dockerBuild = taskKey[Unit]("Build the batch transformer Docker image for Spark on Kubernetes")
+
   /**
    * Common set of useful and restrictive compiler flags
    */
@@ -63,26 +67,30 @@ object BuildSettings {
     scalafmtOnCompile := false
   )
 
+  // Jars excluded from all transformer assemblies (EMR and Docker alike).
+  // hadoop-aws is intentionally absent here — it is excluded from the EMR assembly only,
+  // via an override in transformerBatchBuildSettings below.
+  private val baseAssemblyExcludes: Set[String] = Set(
+    "jsp-api-2.1-6.1.14.jar",
+    "jsp-2.1-6.1.14.jar",
+    "jasper-compiler-5.5.12.jar",
+    "minlog-1.2.jar", // Otherwise causes conflicts with Kyro (which bundles it)
+    "janino-2.5.16.jar", // Janino includes a broken signature, and is not needed anyway
+    "commons-beanutils-core-1.8.0.jar", // Clash with each other and with commons-collections
+    "commons-beanutils-1.7.0.jar", // "
+    "hadoop-core-1.1.2.jar", // Provided by Amazon EMR. Delete this line if you're not on EMR
+    "hadoop-tools-1.1.2.jar" // "
+  )
+
   lazy val transformerAssemblySettings = Seq(
     jarName,
-    // Drop these jars
     assembly / assemblyExcludedJars := {
       val cp = (assembly / fullClasspath).value
-      val excludes = Set(
-        "jsp-api-2.1-6.1.14.jar",
-        "jsp-2.1-6.1.14.jar",
-        "jasper-compiler-5.5.12.jar",
-        "minlog-1.2.jar", // Otherwise causes conflicts with Kyro (which bundles it)
-        "janino-2.5.16.jar", // Janino includes a broken signature, and is not needed anyway
-        "commons-beanutils-core-1.8.0.jar", // Clash with each other and with commons-collections
-        "commons-beanutils-1.7.0.jar", // "
-        "hadoop-core-1.1.2.jar", // Provided by Amazon EMR. Delete this line if you're not on EMR
-        "hadoop-tools-1.1.2.jar" // "
-      )
-      cp.filter(jar => excludes(jar.data.getName))
+      cp.filter(jar => baseAssemblyExcludes(jar.data.getName))
     },
     assembly / assemblyMergeStrategy := {
       case "project.clj"                                                     => MergeStrategy.discard // Leiningen build files
+      case PathList("META-INF", "services", _*)                              => MergeStrategy.concat // preserve ServiceLoader registrations
       case x if x.startsWith("META-INF")                                     => MergeStrategy.discard
       case x if x.endsWith(".html")                                          => MergeStrategy.discard
       case x if x.endsWith("package-info.class")                             => MergeStrategy.first
@@ -207,8 +215,9 @@ object BuildSettings {
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.redshift.Main")
     ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
-  // Both the Snowflake (4.x+) and Databricks JDBC drivers use Apache Arrow internally,
-  // which requires access to java.nio internals that Java's module system (JPMS) restricts by default.
+  // The Snowflake JDBC driver (4.x+) uses Apache Arrow internally, which requires access to
+  // java.nio internals that Java's module system (JPMS) restricts by default.
+  // (The Databricks OSS JDBC driver 3.3.1+ has its own on-heap Arrow path and doesn't need this.)
   private val arrowJvmOptions = List("--add-opens=java.base/java.nio=ALL-UNNAMED")
 
   // Routes Snowflake JDBC logging through SLF4J so it respects the application's log level.
@@ -236,34 +245,21 @@ object BuildSettings {
   lazy val snowflakeDistrolessBuildSettings =
     snowflakeBuildSettings.diff(snowflakeDockerSettings) ++ snowflakeDistrolessDockerSettings
 
-  private lazy val databricksDockerSettings = Seq(
-    dockerEnvVars += ("JAVA_OPTS" -> arrowJvmOptions.mkString(" "))
-  )
-
-  private lazy val databricksDistrolessDockerSettings = Seq(
-    dockerEntrypoint := {
-      val orig = dockerEntrypoint.value
-      orig.head +: arrowJvmOptions ++: orig.tail
-    }
-  )
-
   lazy val databricksBuildSettings =
     Seq(
       name := "snowplow-databricks-loader",
       Docker / packageName := "rdb-loader-databricks",
       initialCommands := "import com.snowplowanalytics.snowplow.loader.databricks._",
       Compile / mainClass := Some("com.snowplowanalytics.snowplow.loader.databricks.Main"),
-      Compile / unmanagedJars += file("DatabricksJDBC42.jar"),
       // used in extended configuration parsing unit tests
       Test / envVars := Map(
         "OAUTH_CLIENT_SECRET" -> "client-secret"
       ),
       // envVars works only when fork is enabled
       Test / fork := true
-    ) ++ databricksDockerSettings ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
+    ) ++ buildSettings ++ addExampleConfToTestCp ++ dynVerSettings
 
-  lazy val databricksDistrolessBuildSettings =
-    databricksBuildSettings.diff(databricksDockerSettings) ++ databricksDistrolessDockerSettings
+  lazy val databricksDistrolessBuildSettings = databricksBuildSettings
 
   lazy val transformerBatchBuildSettings =
     Seq(
@@ -300,6 +296,46 @@ object BuildSettings {
       assembly / target := file("modules/transformer-batch/target/scala-2.12/assembled-jar"),
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
     ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
+
+  lazy val transformerBatchDockerBuildSettings =
+    Seq(
+      name := "snowplow-transformer-batch-docker",
+      description := "Spark job to transform Snowplow enriched events into DB/query-friendly format (Spark-on-Kubernetes distribution)",
+      buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
+      buildInfoKeys := List(name, version, description),
+      dockerBuild := {
+        val jar      = assembly.value
+        val ver      = version.value
+        val stageDir = target.value / "docker-stage"
+        val log      = streams.value.log
+        IO.createDirectory(stageDir)
+        IO.copyFile(jar, stageDir / jar.getName)
+        IO.copyFile(file("SNOWPLOW-LICENSE.md"), stageDir / "SNOWPLOW-LICENSE.md")
+        IO.copyFile(baseDirectory.value / "Dockerfile", stageDir / "Dockerfile")
+        IO.copyFile(baseDirectory.value / "docker-entrypoint.sh", stageDir / "docker-entrypoint.sh")
+        val exitCode =
+          Process(
+            Seq(
+              "docker",
+              "build",
+              "--build-arg",
+              s"VERSION=$ver",
+              "--build-arg",
+              s"SPARK_IMAGE_TAG=${Dependencies.V.sparkDocker}-scala2.13-java17-ubuntu",
+              "-t",
+              s"snowplow/rdb-transformer-batch:$ver",
+              "."
+            ),
+            stageDir
+          ).!
+        if (exitCode != 0) sys.error(s"docker build failed with exit code $exitCode")
+        log.success(s"Built Docker image: snowplow/rdb-transformer-batch:$ver")
+      }
+    ) ++ buildSettings ++ Seq(
+      // buildSettings sets scalaVersion := "2.12.21"; override here because Spark 4.x
+      // only publishes Scala 2.13 artifacts.
+      scalaVersion := "2.13.18"
+    ) ++ transformerAssemblySettings ++ dynVerSettings
 
   lazy val transformerKinesisBuildSettings =
     Seq(

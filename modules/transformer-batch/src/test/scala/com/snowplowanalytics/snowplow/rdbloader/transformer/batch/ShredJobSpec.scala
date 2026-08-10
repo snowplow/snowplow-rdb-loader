@@ -321,6 +321,9 @@ object ShredJobSpec {
     |}
     |"skipSchemas": [$skipSchemas]
     |"monitoring": {"snowplow": null, "sentry": null}
+    |"archival": {
+    |  "source": null
+    |}
     |}""".stripMargin
     new String(encoder.encode(configPlain.getBytes()))
   }
@@ -447,7 +450,8 @@ object ShredJobSpec {
       skipSchemas,
       exitOnMissingIgluSchema = true,
       TransformerConfig.Validations(None),
-      License(true)
+      License(true),
+      Config.Archival(None)
     )
   }
 }

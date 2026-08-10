@@ -30,7 +30,7 @@ object Dependencies {
     val fs2Kafka      = "3.0.0"
     val secretManager = "2.7.0"
     val gcpStorage    = "2.16.0"
-    val azureIdentity = "1.13.2"
+    val azureIdentity = "1.18.3"
     val azureKeyVault = "4.6.2"
     val doobie        = "1.0.0-RC2"
     val monocle       = "2.0.3"
@@ -40,32 +40,35 @@ object Dependencies {
     val http4sBlaze   = "0.23.16" // this dep fell out of sync with http4s-core versioning - 0.23.16 is the last 0.X release.
     val scalaTracker  = "2.0.0"
 
-    val spark           = "3.5.6"
-    val eventsManifest  = "0.4.0"
-    val schemaDdl       = "0.27.0"
-    val jacksonModule   = "2.21.2" // Override incompatible version in spark runtime
-    val parquet4s       = "2.22.0"
-    val hadoopClient    = "3.4.3"
-    val hadoopGcpClient = "hadoop3-2.2.5"
-    val parquetHadoop   = "1.17.0"
+    val spark              = "3.5.6"
+    val sparkDocker        = "4.1.2" // Spark-on-Kubernetes Docker image — Scala 2.13 only
+    val eventsManifest     = "0.5.0-M1"
+    val schemaDdl          = "0.27.0"
+    val jacksonModule      = "2.21.2" // Override incompatible version in spark runtime
+    val parquet4s          = "2.22.0"
+    val hadoopClient       = "3.5.0"
+    val hadoopClientDocker = "3.4.2" // Matches Hadoop bundled with Spark 4.1.2
+    val hadoopGcpClient    = "hadoop3-2.2.5"
+    val parquetHadoop      = "1.17.1"
 
-    val slf4j         = "2.0.17"
-    val redshiftJdbc  = "2.2.2"
-    val snowflakeJdbc = "4.0.2"
-    val enumeratum    = "1.7.0"
-    val aws2          = "2.42.33"
-    val pubsub        = "1.148.0"
-    val jSch          = "0.2.15"
-    val sentry        = "1.7.30"
-    val kinesisClient = "2.7.2"
+    val slf4j          = "2.0.17"
+    val redshiftJdbc   = "2.2.2"
+    val snowflakeJdbc  = "4.0.2"
+    val databricksJdbc = "3.4.1"
+    val enumeratum     = "1.7.0"
+    val aws2           = "2.42.33"
+    val pubsub         = "1.148.0"
+    val jSch           = "0.2.15"
+    val sentry         = "1.7.30"
+    val kinesisClient  = "2.7.2"
     val refined =
       "0.11.3" // Override - fs2-aws-kinesis:4.1.0 pulls in 0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
-    val nettyCodec    = "4.1.133.Final" // Fix CVE
+    val nettyCodec    = "4.1.135.Final" // Fix CVE
     val aircompressor = "2.0.3" // Fix CVE - parquet 1.17.0 ships 2.0.2
     val zookeeper     = "3.9.5" // Fix CVE
     val kafkaClients  = "3.9.2" // Fix CVE
     val bouncyCastle  = "1.84" // Fix CVE
-    val jsonSmart     = "2.5.2" // Fix CVE
+    val commonsConfig = "2.15.1" // Fix CVE
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -131,7 +134,10 @@ object Dependencies {
   val circeOptics  = "io.circe"         %% "circe-optics"  % V.circe % Test
   val sparkCore    = "org.apache.spark" %% "spark-core"    % V.spark % Provided
   val sparkSQL     = "org.apache.spark" %% "spark-sql"     % V.spark % Provided
-  val fs2Io        = "co.fs2"           %% "fs2-io"        % V.fs2
+  // Spark 4.x deps for the Spark-on-Kubernetes Docker build (Scala 2.13 only):
+  val sparkCoreDocker = "org.apache.spark" %% "spark-core" % V.sparkDocker % Provided
+  val sparkSQLDocker  = "org.apache.spark" %% "spark-sql"  % V.sparkDocker % Provided
+  val fs2Io           = "co.fs2"           %% "fs2-io"     % V.fs2
 
   val jacksonModule = "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonModule
   val jacksonCbor   = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
@@ -143,21 +149,25 @@ object Dependencies {
   val hadoop        = "org.apache.hadoop"  % "hadoop-client"  % V.hadoopClient
   val parquetHadoop = "org.apache.parquet" % "parquet-hadoop" % V.parquetHadoop
   val hadoopAws = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClient % Runtime)
-    .exclude("com.amazonaws", "aws-java-sdk-bundle") // aws-java-sdk-core is already present in assembled jar
-    .excludeAll(ExclusionRule(organization = "software.amazon.awssdk"))
+    .excludeAll(ExclusionRule(organization = "software.amazon.awssdk")) // SDK v2 modules are already present in assembled jar
   val hadoopGcp   = "com.google.cloud.bigdataoss" % "gcs-connector" % V.hadoopGcpClient % Runtime
   val hadoopAzure = "org.apache.hadoop"           % "hadoop-azure"  % V.hadoopClient
+  // hadoop-aws for the batch transformer Docker (Spark-on-Kubernetes) fat jar.
+  // The EMR assembly excludes this jar via assemblyExcludedJars; EMR provides its own hadoop-aws.
+  val hadoopAwsForDocker = ("org.apache.hadoop" % "hadoop-aws" % V.hadoopClientDocker)
+    .excludeAll(ExclusionRule(organization = "software.amazon.awssdk")) // individual SDK v2 modules already present in fat jar
   val kinesisClient = ("software.amazon.kinesis" % "amazon-kinesis-client" % V.kinesisClient)
     .exclude("software.amazon.glue", "schema-registry-common")
     .exclude("software.amazon.glue", "schema-registry-serde")
   // Java (Loader)
-  val slf4jApi      = "org.slf4j"           % "slf4j-api"       % V.slf4j
-  val slf4jSimple   = "org.slf4j"           % "slf4j-simple"    % V.slf4j
-  val redshift      = "com.amazon.redshift" % "redshift-jdbc42" % V.redshiftJdbc
-  val jSch          = "com.github.mwiede"   % "jsch"            % V.jSch
-  val sentry        = "io.sentry"           % "sentry"          % V.sentry
-  val snowflakeJdbc = "net.snowflake"       % "snowflake-jdbc"  % V.snowflakeJdbc
-  val enumeratum    = "com.beachape"       %% "enumeratum"      % V.enumeratum
+  val slf4jApi       = "org.slf4j"           % "slf4j-api"       % V.slf4j
+  val slf4jSimple    = "org.slf4j"           % "slf4j-simple"    % V.slf4j
+  val redshift       = "com.amazon.redshift" % "redshift-jdbc42" % V.redshiftJdbc
+  val jSch           = "com.github.mwiede"   % "jsch"            % V.jSch
+  val sentry         = "io.sentry"           % "sentry"          % V.sentry
+  val snowflakeJdbc  = "net.snowflake"       % "snowflake-jdbc"  % V.snowflakeJdbc
+  val databricksJdbc = "com.databricks"      % "databricks-jdbc" % V.databricksJdbc
+  val enumeratum     = "com.beachape"       %% "enumeratum"      % V.enumeratum
   val kafkaClients = ("org.apache.kafka" % "kafka-clients" % V.kafkaClients)
     .exclude("org.lz4", "lz4-java")
 
@@ -171,6 +181,7 @@ object Dependencies {
   val aws2sts           = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
   val aws2ssm           = "software.amazon.awssdk" % "ssm"                 % V.aws2
   val aws2redshift      = "software.amazon.awssdk" % "redshift"            % V.aws2
+  val awsS3Transfer     = "software.amazon.awssdk" % "s3-transfer-manager" % V.aws2 % Runtime
   val pubsub            = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
   val refined           = "eu.timepit"            %% "refined"             % V.refined
   val nettyCodecHttp    = "io.netty"               % "netty-codec-http"    % V.nettyCodec
@@ -182,7 +193,8 @@ object Dependencies {
   val aircompressor     = "io.airlift"             % "aircompressor"       % V.aircompressor
   val zookeeper         = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
   val bcprovJdk18on     = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
-  val jsonSmartDep      = "net.minidev"            % "json-smart"          % V.jsonSmart
+
+  val commonsConfiguration2 = "org.apache.commons" % "commons-configuration2" % V.commonsConfig
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -282,10 +294,10 @@ object Dependencies {
     catsEffectTestkit,
     nettyCodecHttp, // Fix CVE - azure-core-http-netty ships 4.1.132.Final
     nettyCodecHttp2, // Fix CVE - azure-core-http-netty ships 4.1.132.Final
-    nettyHandlerProxy, // Fix CVE - azure-core-http-netty ships 4.1.110.Final
-    nettyCodecDns, // Fix CVE - reactor-netty via azure-core-http-netty ships 4.1.109.Final
+    nettyHandlerProxy, // Fix CVE - azure-core-http-netty 1.16.4 ships 4.1.132.Final
+    nettyCodecDns, // Fix CVE - reactor-netty ships 4.1.131.Final
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
-    jsonSmartDep // Fix CVE - msal4j via azure-identity ships 2.5.0
+    commonsConfiguration2 // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
   )
 
   val redshiftDependencies = Seq(
@@ -295,6 +307,10 @@ object Dependencies {
   val snowflakeDependencies = Seq(
     enumeratum,
     snowflakeJdbc
+  )
+
+  val databricksDependencies = Seq(
+    databricksJdbc
   )
 
   val batchTransformerDependencies = Seq(
@@ -317,6 +333,35 @@ object Dependencies {
     scalaCheck
   )
 
+  // Extra dependencies for the batch transformer Docker (Spark-on-Kubernetes) distribution only.
+  // Not needed for EMR: the cluster provides its own hadoop-aws, and IRSA is a K8s concept.
+  val dockerOnlyDependencies = Seq(
+    hadoopAwsForDocker,
+    aws2sts,
+    awsS3Transfer
+  )
+
+  // Like batchTransformerDependencies but compiled against Spark 4.x / Scala 2.13.
+  val batchTransformerDockerDependencies = Seq(
+    aws2s3,
+    aws2sqs,
+    aws2sns,
+    aws2kinesis,
+    aws2dynamo,
+    aws2cw,
+    aws2regions,
+    slf4jSimple,
+    eventsManifest,
+    sparkCoreDocker,
+    sparkSQLDocker,
+    jacksonModule,
+    jacksonCbor,
+    circeOptics,
+    specs2,
+    specs2ScalaCheck,
+    scalaCheck
+  )
+
   val commonStreamTransformerDependencies = Seq(
     igluClientHttp4s,
     slf4jApi,
@@ -330,8 +375,9 @@ object Dependencies {
     fs2Io,
     nettyCodecHttp,
     nettyCodecHttp2,
-    nettyAll, // Fix CVE - hadoop ships netty-all:4.1.127.Final; also pins codec-smtp, handler-proxy, codec-dns, codec-redis, codec-mqtt
+    nettyAll, // Fix CVE - hadoop ships netty-all:4.1.130.Final; also pins codec-smtp, handler-proxy, codec-dns, codec-redis, codec-mqtt
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
+    commonsConfiguration2, // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
     aircompressor, // Fix CVE - parquet 1.17.0 ships 2.0.2, fix requires 2.0.3
     specs2,
     specs2ScalaCheck,

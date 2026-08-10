@@ -41,7 +41,8 @@ class ConfigSpec extends Specification {
         exampleSkipSchemas,
         exitOnMissingIgluSchema = true,
         exampleValidations,
-        exampleLicense
+        exampleLicense,
+        exampleArchival
       )
       result must beRight(expected)
     }
@@ -60,7 +61,8 @@ class ConfigSpec extends Specification {
         Nil,
         exitOnMissingIgluSchema = true,
         emptyValidations,
-        exampleLicense
+        exampleLicense,
+        emptyArchival
       )
       result must beRight(expected)
     }
@@ -91,7 +93,8 @@ class ConfigSpec extends Specification {
             "json": [ "iglu:com.acme/overlap/jsonschema/1-0-0" ],
             "tsv": [ ],
             "skip": [ "iglu:com.acme/overlap/jsonschema/1-*-*" ]
-          }
+          },
+          "archival": {}
         }"""
 
       val expected = "Following schema criterions overlap in different groups (TSV, JSON, skip): " +
@@ -107,6 +110,8 @@ class ConfigSpec extends Specification {
 object TransformerConfigSpec {
   val exampleBatchInput   = URI.create("s3://bucket/input/")
   val exampleWindowPeriod = 10.minutes
+  val exampleArchival     = Config.Archival(Some(URI.create("s3://archival-bucket/archival-path/")))
+  val emptyArchival       = Config.Archival(None)
   val exampleOutput = Config.Output(
     URI.create("s3://bucket/transformed/"),
     TransformerConfig.Compression.Gzip,

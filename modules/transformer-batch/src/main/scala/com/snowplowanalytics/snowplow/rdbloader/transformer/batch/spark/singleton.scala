@@ -22,13 +22,16 @@ import com.snowplowanalytics.lrumap.CreateLruMap
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.eventsmanifest.{EventsManifest, EventsManifestConfig}
 import com.snowplowanalytics.snowplow.rdbloader.common._
+import com.snowplowanalytics.snowplow.rdbloader.common.config.Region
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{EventUtils, ShredModelCache, ShredModelCacheKey}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Cloud
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Config.Output.BadSink
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.badrows.{BadrowSink, KinesisSink, WiderowFileSink}
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.util.SerializableConfiguration
+import software.amazon.awssdk.services.s3.S3Client
 
 /** Singletons needed for unserializable or stateful classes. */
 object singleton {
@@ -150,6 +153,22 @@ object singleton {
                 WiderowFileSink.create(folderName, hadoopConfigBroadcasted.value.value, config.output.path, config.output.compression)
             }
             instance = sink
+          }
+        }
+      }
+      instance
+    }
+  }
+
+  object ArchivalS3Singleton {
+
+    @volatile private var instance: S3Client = _
+
+    def get(region: Region): S3Client = {
+      if (instance == null) {
+        synchronized {
+          if (instance == null) {
+            instance = Cloud.createS3Client(region)
           }
         }
       }

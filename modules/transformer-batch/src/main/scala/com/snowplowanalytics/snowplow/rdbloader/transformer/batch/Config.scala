@@ -37,7 +37,8 @@ final case class Config(
   skipSchemas: List[SchemaCriterion],
   exitOnMissingIgluSchema: Boolean,
   validations: TransformerConfig.Validations,
-  license: License
+  license: License,
+  archival: Config.Archival
 )
 
 object Config {
@@ -160,6 +161,13 @@ object Config {
       deriveDecoder[Deduplication]
     implicit val ioCirceDeduplicationEncoder: Encoder[Deduplication] =
       deriveEncoder[Deduplication]
+  }
+
+  final case class Archival(source: Option[URI])
+
+  object Archival {
+    implicit val archivalDecoder: Decoder[Archival] = deriveDecoder[Archival]
+    implicit val archivalEncoder: Encoder[Archival] = deriveEncoder[Archival]
   }
 
   trait Decoders extends TransformerConfig.Decoders {

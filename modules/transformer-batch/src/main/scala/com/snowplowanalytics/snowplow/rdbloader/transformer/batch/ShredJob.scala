@@ -269,6 +269,10 @@ object ShredJob {
       .valueOr(error => throw new IllegalArgumentException(s"Could not parse iglu resolver config: ${error.getMessage()}"))
     val s3Client = Cloud.createS3Client(config.output.region)
 
+    config.archival.source.foreach { source =>
+      Archival.run(source, config.input, config.output.region, spark)
+    }
+
     val enrichedFolder = Folder.coerce(config.input.toString)
     val shreddedFolder = Folder.coerce(config.output.path.toString)
 

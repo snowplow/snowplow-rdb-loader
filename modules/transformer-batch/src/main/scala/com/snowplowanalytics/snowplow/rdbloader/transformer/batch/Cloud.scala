@@ -18,7 +18,15 @@ import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration
 import software.amazon.awssdk.retries.AdaptiveRetryStrategy
 import software.amazon.awssdk.services.kinesis.KinesisClient
 import software.amazon.awssdk.services.s3.S3Client
-import software.amazon.awssdk.services.s3.model.{HeadObjectRequest, ListObjectsV2Request, NoSuchKeyException, PutObjectRequest, S3Object}
+import software.amazon.awssdk.services.s3.model.{
+  CopyObjectRequest,
+  DeleteObjectRequest,
+  HeadObjectRequest,
+  ListObjectsV2Request,
+  NoSuchKeyException,
+  PutObjectRequest,
+  S3Object
+}
 import software.amazon.awssdk.core.sync.RequestBody
 import software.amazon.awssdk.regions.{Region => AWSRegion}
 import software.amazon.awssdk.services.sqs.SqsClient
@@ -171,6 +179,73 @@ object Cloud {
       client.putObject(request, RequestBody.fromString(content))
       ()
     }
+
+  private def objectExists(
+    client: S3Client,
+    bucket: String,
+    key: String
+  ): Boolean =
+    try {
+      val request = HeadObjectRequest.builder().bucket(bucket).key(key).build()
+      client.headObject(request)
+      true
+    } catch {
+      case _: NoSuchKeyException => false
+    }
+
+  def copyObject(
+    client: S3Client,
+    sourceBucket: String,
+    sourceKey: String,
+    destBucket: String,
+    destKey: String
+  ): Unit = {
+    val request = CopyObjectRequest
+      .builder()
+      .sourceBucket(sourceBucket)
+      .sourceKey(sourceKey)
+      .destinationBucket(destBucket)
+      .destinationKey(destKey)
+      .build()
+    val _ = client.copyObject(request)
+  }
+
+  def deleteObject(
+    client: S3Client,
+    bucket: String,
+    key: String
+  ): Unit = {
+    val request = DeleteObjectRequest
+      .builder()
+      .bucket(bucket)
+      .key(key)
+      .build()
+    val _ = client.deleteObject(request)
+  }
+
+  private[batch] def copyAndDelete(
+    client: S3Client,
+    sourceBucket: String,
+    sourceKey: String,
+    destBucket: String,
+    destKey: String
+  ): Unit = {
+    try
+      copyObject(client, sourceBucket, sourceKey, destBucket, destKey)
+    catch {
+      case _: NoSuchKeyException =>
+        if (!objectExists(client, destBucket, destKey)) {
+          // CopyObject's NoSuchKeyException means the source is gone. The destination was also
+          // never written, so the file has been lost rather than moved by an earlier task attempt.
+          throw new RuntimeException(
+            s"source s3://$sourceBucket/$sourceKey not found and " +
+              s"destination s3://$destBucket/$destKey not found — possible data loss"
+          )
+        }
+        return // source was already copied-and-deleted by a prior duplicate Spark task attempt
+    }
+    deleteObject(client, sourceBucket, sourceKey)
+  }
 
   /** Create SQS client with built-in retry mechanism (jitter) */
   def createSqsClient(region: Region): SqsClient =

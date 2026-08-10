@@ -39,6 +39,22 @@ lazy val common: Project = project
   .settings(libraryDependencies ++= Dependencies.commonDependencies)
   .enablePlugins(BuildInfoPlugin)
 
+// Shadow of `common` compiled at Scala 2.13 for the Spark-on-Kubernetes Docker build.
+// Sources are shared with `common`; this project is intentionally absent from the root
+// aggregate so that `sbt test` / `sbt compile` at the root are unaffected.
+lazy val common213: Project = project
+  .in(file("modules/common213"))
+  .settings(BuildSettings.commonBuildSettings)
+  .settings(
+    // Override buildSettings' scalaVersion := "2.12.21"
+    scalaVersion := "2.13.18",
+    // Tests are already covered by the `common` project; skip here to avoid redundant runs.
+    Test / test := {}
+  )
+  .settings(Compile / sourceDirectory := (common / Compile / sourceDirectory).value)
+  .settings(libraryDependencies ++= Dependencies.commonDependencies)
+  .enablePlugins(BuildInfoPlugin)
+
 lazy val aws: Project = project
   .in(file("modules/aws"))
   .settings(BuildSettings.awsBuildSettings)
@@ -127,6 +143,7 @@ lazy val databricksLoader = project
   .in(file("modules/databricks-loader"))
   .settings(BuildSettings.databricksBuildSettings)
   .settings(BuildSettings.additionalDockerSettings)
+  .settings(libraryDependencies ++= Dependencies.databricksDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
@@ -137,6 +154,7 @@ lazy val databricksLoaderDistroless = project
   .settings(sourceDirectory := (databricksLoader / sourceDirectory).value)
   .settings(BuildSettings.databricksDistrolessBuildSettings)
   .settings(BuildSettings.additionalDockerSettings)
+  .settings(libraryDependencies ++= Dependencies.databricksDependencies)
   .settings(excludeDependencies ++= Dependencies.commonExclusions)
   .settings(addCompilerPlugin(Dependencies.betterMonadicFor))
   .dependsOn(loader % "compile->compile;test->test;runtime->runtime")
@@ -147,6 +165,25 @@ lazy val transformerBatch = project
   .settings(BuildSettings.transformerBatchBuildSettings)
   .settings(libraryDependencies ++= Dependencies.batchTransformerDependencies)
   .dependsOn(common % "compile->compile;test->test;runtime->runtime")
+  .enablePlugins(BuildInfoPlugin)
+
+// Separate sbt project for the Spark-on-Kubernetes (Docker) distribution of the batch transformer.
+// Shares sources with transformerBatch but has its own libraryDependencies (Spark 4.x / Scala 2.13),
+// so sbt owns the classpath for each distribution cleanly — no jar-name filtering or custom Ivy
+// configurations. Depends on common213 (same sources as common, compiled at Scala 2.13) rather than
+// common (Scala 2.12), since Spark 4.x has no Scala 2.12 artifacts.
+// Not in the root aggregate; invoke explicitly: sbt transformerBatchDocker/dockerBuild
+lazy val transformerBatchDocker = project
+  .in(file("modules/transformer-batch-docker"))
+  .settings(BuildSettings.transformerBatchDockerBuildSettings)
+  .settings(Compile / sourceDirectory := (transformerBatch / Compile / sourceDirectory).value)
+  .settings(libraryDependencies ++= Dependencies.batchTransformerDockerDependencies)
+  .settings(libraryDependencies ++= Dependencies.dockerOnlyDependencies)
+  .settings(
+    // Tests are run by the transformerBatch project; no need to repeat them here.
+    Test / test := {}
+  )
+  .dependsOn(common213 % "compile->compile;runtime->runtime")
   .enablePlugins(BuildInfoPlugin)
 
 lazy val transformerKinesis = project
