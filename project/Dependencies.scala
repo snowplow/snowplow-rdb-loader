@@ -30,7 +30,7 @@ object Dependencies {
     val fs2Kafka      = "3.0.0"
     val secretManager = "2.7.0"
     val gcpStorage    = "2.16.0"
-    val azureIdentity = "1.18.3"
+    val azureIdentity = "1.18.4"
     val azureKeyVault = "4.6.2"
     val doobie        = "1.0.0-RC2"
     val monocle       = "2.0.3"
@@ -57,7 +57,7 @@ object Dependencies {
     val databricksJdbc = "3.4.1"
     val enumeratum     = "1.7.0"
     val aws2           = "2.42.33"
-    val pubsub         = "1.148.0"
+    val pubsub         = "1.151.0"
     val jSch           = "0.2.15"
     val sentry         = "1.7.30"
     val kinesisClient  = "2.7.2"
@@ -171,28 +171,26 @@ object Dependencies {
   val kafkaClients = ("org.apache.kafka" % "kafka-clients" % V.kafkaClients)
     .exclude("org.lz4", "lz4-java")
 
-  val aws2s3            = "software.amazon.awssdk" % "s3"                  % V.aws2
-  val aws2cw            = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
-  val aws2dynamo        = "software.amazon.awssdk" % "dynamodb"            % V.aws2
-  val aws2sqs           = "software.amazon.awssdk" % "sqs"                 % V.aws2
-  val aws2sns           = "software.amazon.awssdk" % "sns"                 % V.aws2
-  val aws2kinesis       = "software.amazon.awssdk" % "kinesis"             % V.aws2
-  val aws2regions       = "software.amazon.awssdk" % "regions"             % V.aws2
-  val aws2sts           = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
-  val aws2ssm           = "software.amazon.awssdk" % "ssm"                 % V.aws2
-  val aws2redshift      = "software.amazon.awssdk" % "redshift"            % V.aws2
-  val awsS3Transfer     = "software.amazon.awssdk" % "s3-transfer-manager" % V.aws2 % Runtime
-  val pubsub            = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
-  val refined           = "eu.timepit"            %% "refined"             % V.refined
-  val nettyCodecHttp    = "io.netty"               % "netty-codec-http"    % V.nettyCodec
-  val nettyCodecHttp2   = "io.netty"               % "netty-codec-http2"   % V.nettyCodec
-  val nettyCodecSmtp    = "io.netty"               % "netty-codec-smtp"    % V.nettyCodec
-  val nettyAll          = "io.netty"               % "netty-all"           % V.nettyCodec
-  val nettyHandlerProxy = "io.netty"               % "netty-handler-proxy" % V.nettyCodec
-  val nettyCodecDns     = "io.netty"               % "netty-codec-dns"     % V.nettyCodec
-  val aircompressor     = "io.airlift"             % "aircompressor"       % V.aircompressor
-  val zookeeper         = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
-  val bcprovJdk18on     = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
+  val aws2s3          = "software.amazon.awssdk" % "s3"                  % V.aws2
+  val aws2cw          = "software.amazon.awssdk" % "cloudwatch"          % V.aws2
+  val aws2dynamo      = "software.amazon.awssdk" % "dynamodb"            % V.aws2
+  val aws2sqs         = "software.amazon.awssdk" % "sqs"                 % V.aws2
+  val aws2sns         = "software.amazon.awssdk" % "sns"                 % V.aws2
+  val aws2kinesis     = "software.amazon.awssdk" % "kinesis"             % V.aws2
+  val aws2regions     = "software.amazon.awssdk" % "regions"             % V.aws2
+  val aws2sts         = "software.amazon.awssdk" % "sts"                 % V.aws2 % Runtime
+  val aws2ssm         = "software.amazon.awssdk" % "ssm"                 % V.aws2
+  val aws2redshift    = "software.amazon.awssdk" % "redshift"            % V.aws2
+  val awsS3Transfer   = "software.amazon.awssdk" % "s3-transfer-manager" % V.aws2 % Runtime
+  val pubsub          = "com.google.cloud"       % "google-cloud-pubsub" % V.pubsub
+  val refined         = "eu.timepit"            %% "refined"             % V.refined
+  val nettyCodecHttp  = "io.netty"               % "netty-codec-http"    % V.nettyCodec
+  val nettyCodecHttp2 = "io.netty"               % "netty-codec-http2"   % V.nettyCodec
+  val nettyCodecSmtp  = "io.netty"               % "netty-codec-smtp"    % V.nettyCodec
+  val nettyAll        = "io.netty"               % "netty-all"           % V.nettyCodec
+  val aircompressor   = "io.airlift"             % "aircompressor"       % V.aircompressor
+  val zookeeper       = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
+  val bcprovJdk18on   = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
 
   val commonsConfiguration2 = "org.apache.commons" % "commons-configuration2" % V.commonsConfig
 
@@ -292,10 +290,6 @@ object Dependencies {
     catsEffectLaws,
     catsTesting,
     catsEffectTestkit,
-    nettyCodecHttp, // Fix CVE - azure-core-http-netty ships 4.1.132.Final
-    nettyCodecHttp2, // Fix CVE - azure-core-http-netty ships 4.1.132.Final
-    nettyHandlerProxy, // Fix CVE - azure-core-http-netty 1.16.4 ships 4.1.132.Final
-    nettyCodecDns, // Fix CVE - reactor-netty ships 4.1.131.Final
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
     commonsConfiguration2 // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
   )

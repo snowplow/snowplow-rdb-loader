@@ -140,6 +140,10 @@ object StorageTarget {
       props.put("LogLevel", logLevel)
       props.put("transportMode", "http")
       props.put("UserAgentEntry", userAgent)
+      // `supportmanyParameters` is an undocumented driver property.
+      // Interpolate query parameters client-side rather than sending them as server-side
+      // parameter markers, which older Databricks runtimes cannot parse.
+      props.put("supportManyParameters", "1")
       setAuthProperties(props)
       props
     }

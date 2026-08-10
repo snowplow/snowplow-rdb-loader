@@ -1,3 +1,8 @@
+Version 6.5.1 (2026-06-24)
+--------------------------
+Bump dependencies for 6.5.1 release (#40)
+Make Databricks loader interpolate query parameters client-side (#39)
+
 Version 6.5.0 (2026-06-10)
 --------------------------
 add .publishignore (#38)
