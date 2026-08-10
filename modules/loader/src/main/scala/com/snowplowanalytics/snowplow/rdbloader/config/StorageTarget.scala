@@ -177,7 +177,7 @@ object StorageTarget {
     snowflakeRegion: Option[String],
     username: String,
     role: Option[String],
-    password: PasswordConfig,
+    jdbcAuth: SnowflakeAuth,
     account: Option[String],
     warehouse: String,
     database: String,
@@ -190,7 +190,10 @@ object StorageTarget {
     readyCheck: Snowflake.ReadyCheck
   ) extends StorageTarget {
 
-    override def credentials: Option[Credentials] = Some(Credentials(username, password))
+    override def credentials: Option[Credentials] = jdbcAuth match {
+      case SnowflakeAuth.Password(password) => Some(Credentials(username, password))
+      case _: SnowflakeAuth.PrivateKey      => None
+    }
 
     override def connectionUrl: String =
       host match {
@@ -423,6 +426,13 @@ object StorageTarget {
     }
   }
 
+  sealed trait SnowflakeAuth extends Product with Serializable
+
+  object SnowflakeAuth {
+    final case class Password(password: PasswordConfig) extends SnowflakeAuth
+    final case class PrivateKey(privateKey: PasswordConfig) extends SnowflakeAuth
+  }
+
   sealed trait LoadAuthMethod extends Product with Serializable
 
   object LoadAuthMethod {
@@ -493,6 +503,34 @@ object StorageTarget {
       }
     }
 
+  implicit def snowflakeAuthPasswordDecoder: Decoder[SnowflakeAuth.Password] =
+    deriveDecoder[SnowflakeAuth.Password]
+
+  implicit def snowflakeAuthPrivateKeyDecoder: Decoder[SnowflakeAuth.PrivateKey] =
+    deriveDecoder[SnowflakeAuth.PrivateKey]
+
+  implicit def snowflakeAuthDecoder: Decoder[SnowflakeAuth] =
+    Decoder.instance { cur =>
+      val typeCur = cur.downField("type")
+      typeCur.as[String].map(_.toLowerCase) match {
+        case Right("password") =>
+          cur.as[SnowflakeAuth.Password]
+        case Right("privatekey") =>
+          cur.as[SnowflakeAuth.PrivateKey]
+        case Right(other) =>
+          Left(
+            DecodingFailure(
+              s"Snowflake auth of type $other is not supported. Supported types: 'password', 'privateKey'",
+              typeCur.history
+            )
+          )
+        case Left(DecodingFailure(_, List(CursorOp.DownField("type")))) =>
+          Left(DecodingFailure("Cannot find 'type' string in Snowflake auth", typeCur.history))
+        case Left(other) =>
+          Left(other)
+      }
+    }
+
   implicit def redshiftConfigDecoder: Decoder[Redshift] = {
     val derived = deriveDecoder[Redshift]
     Decoder.instance { cursor =>
@@ -529,8 +567,27 @@ object StorageTarget {
   implicit def databricksConfigDecoder: Decoder[Databricks] =
     deriveDecoder[Databricks]
 
-  implicit def snowflakeConfigDecoder: Decoder[Snowflake] =
-    deriveDecoder[Snowflake]
+  implicit def snowflakeConfigDecoder: Decoder[Snowflake] = {
+    val derived = deriveDecoder[Snowflake]
+    Decoder.instance { cursor =>
+      cursor.downField("password").focus match {
+        // No 'password' field, use standard decoder
+        case None => derived(cursor)
+        // If 'password' field exists, try old format with password
+        case Some(passwordJson) =>
+          val json = cursor.value.mapObject(
+            _.add(
+              "jdbcAuth",
+              JsonObject(
+                "type" := "password".asJson,
+                "password" := passwordJson
+              ).toJson
+            )
+          )
+          derived(json.hcursor)
+      }
+    }
+  }
 
   implicit def encryptedConfigDecoder: Decoder[EncryptedConfig] =
     Decoder.instance[EncryptedConfig] { cur =>

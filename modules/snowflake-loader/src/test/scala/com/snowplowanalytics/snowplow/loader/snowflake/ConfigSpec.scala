@@ -19,6 +19,7 @@ import cats.syntax.all._
 import com.snowplowanalytics.snowplow.rdbloader.common.RegionSpec
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.config.{Config, StorageTarget}
+import io.circe.parser.decode
 
 import org.specs2.mutable.Specification
 
@@ -29,7 +30,11 @@ class ConfigSpec extends Specification {
   "fromString" should {
     "be able to parse extended AWS Snowflake Loader config" in {
       val storage = exampleSnowflake
-        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
+        .copy(jdbcAuth =
+          StorageTarget.SnowflakeAuth.Password(
+            StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password"))
+          )
+        )
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
@@ -54,7 +59,11 @@ class ConfigSpec extends Specification {
 
     "be able to parse extended GCP Snowflake Loader config" in {
       val storage = exampleSnowflake
-        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
+        .copy(jdbcAuth =
+          StorageTarget.SnowflakeAuth.Password(
+            StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password"))
+          )
+        )
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
@@ -97,7 +106,11 @@ class ConfigSpec extends Specification {
 
     "be able to parse extended Azure Snowflake Loader config" in {
       val storage = exampleSnowflake
-        .copy(password = StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password")))
+        .copy(jdbcAuth =
+          StorageTarget.SnowflakeAuth.Password(
+            StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig("snowplow.snowflake.password"))
+          )
+        )
         .copy(jdbcHost = Some("acme.eu-central-1.snowflake.com"))
         .copy(folderMonitoringStage = Some(StorageTarget.Snowflake.Stage("snowplow_folders_stage", None)))
         .copy(transformedStage = Some(StorageTarget.Snowflake.Stage("snowplow_stage", None)))
@@ -235,12 +248,77 @@ class ConfigSpec extends Specification {
       result must beRight(expected)
     }
 
+    "be able to parse Snowflake config with private key auth" in {
+      val json =
+        """|{
+           |  "type": "snowflake",
+           |  "snowflakeRegion": "us-west-2",
+           |  "username": "admin",
+           |  "jdbcAuth": {"type": "privateKey", "privateKey": "BASE64PRIVATEKEY=="},
+           |  "account": "acme",
+           |  "warehouse": "wh",
+           |  "schema": "atomic",
+           |  "database": "snowplow",
+           |  "appName": "Snowplow_OSS",
+           |  "loadAuthMethod": {"type": "NoCreds"},
+           |  "readyCheck": "ResumeWarehouse"
+           |}""".stripMargin
+      val result = decode[StorageTarget.Snowflake](json)
+      result.map(_.jdbcAuth) must beRight(
+        StorageTarget.SnowflakeAuth.PrivateKey(StorageTarget.PasswordConfig.PlainText("BASE64PRIVATEKEY=="))
+      )
+    }
+
+    "be able to parse minimal AWS Snowflake config with new auth object format for password" in {
+      val json =
+        """|{
+           |  "type": "snowflake",
+           |  "snowflakeRegion": "us-west-2",
+           |  "username": "admin",
+           |  "jdbcAuth": {"type": "password", "password": "newformat"},
+           |  "account": "acme",
+           |  "warehouse": "wh",
+           |  "schema": "atomic",
+           |  "database": "snowplow",
+           |  "appName": "Snowplow_OSS",
+           |  "loadAuthMethod": {"type": "NoCreds"},
+           |  "readyCheck": "ResumeWarehouse"
+           |}""".stripMargin
+      val result = decode[StorageTarget.Snowflake](json)
+      result.map(_.jdbcAuth) must beRight(
+        StorageTarget.SnowflakeAuth.Password(StorageTarget.PasswordConfig.PlainText("newformat"))
+      )
+    }
+
+    "be able to parse Snowflake config with old root-level password field (backward compat)" in {
+      val json =
+        """|{
+           |  "type": "snowflake",
+           |  "snowflakeRegion": "us-west-2",
+           |  "username": "admin",
+           |  "password": "oldformat",
+           |  "account": "acme",
+           |  "warehouse": "wh",
+           |  "schema": "atomic",
+           |  "database": "snowplow",
+           |  "appName": "Snowplow_OSS",
+           |  "loadAuthMethod": {"type": "NoCreds"},
+           |  "readyCheck": "ResumeWarehouse"
+           |}""".stripMargin
+      val result = decode[StorageTarget.Snowflake](json)
+      result.map(_.jdbcAuth) must beRight(
+        StorageTarget.SnowflakeAuth.Password(StorageTarget.PasswordConfig.PlainText("oldformat"))
+      )
+    }
+
     "be able to infer host" in {
       val exampleSnowflake = StorageTarget.Snowflake(
-        snowflakeRegion       = Some("us-west-2"),
-        username              = "admin",
-        role                  = None,
-        password              = StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+        snowflakeRegion = Some("us-west-2"),
+        username        = "admin",
+        role            = None,
+        jdbcAuth = StorageTarget.SnowflakeAuth.Password(
+          StorageTarget.PasswordConfig.PlainText("Supersecret1")
+        ),
         account               = Some("acme"),
         warehouse             = "wh",
         database              = "snowplow",

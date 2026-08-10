@@ -25,13 +25,32 @@
     "snowflakeRegion": "us-west-2",
     # DB user with permissions to load data
     "username": "admin",
-    # DB password
-    "password": {
-      # A password can be placed in EC2 parameter store, GCP Secret Manager or be a plain text
-      "secretStore": {
-        "parameterName": "snowplow.snowflake.password"
+
+    # Authentication: use the 'jdbcAuth' field with either a 'password' or 'privateKey' key.
+    # The legacy root-level 'password' field is also accepted for backward compatibility.
+
+    # Option 1 — Password auth:
+    "jdbcAuth": {
+      "type": "password",
+      "password": {
+        # A password can be placed in EC2 parameter store, GCP Secret Manager or be a plain text
+        "secretStore": {
+          "parameterName": "snowplow.snowflake.password"
+        }
       }
     },
+    # Option 2 — Private key auth (replace the 'jdbcAuth' block above with this):
+    #"jdbcAuth": {
+    #  "type": "privateKey",
+    #  # PEM-formatted unencrypted PKCS8 private key (output of `openssl pkcs8 -topk8 -nocrypt`).
+    #  # Include the full PEM string with BEGIN/END headers.
+    #  # Can be a plain string or fetched from a secrets store.
+    #  "privateKey": {
+    #    "secretStore": {
+    #      "parameterName": "snowplow.snowflake.privateKey"
+    #    }
+    #  }
+    #},
 
     # Snowflake account
     "account": "acme",

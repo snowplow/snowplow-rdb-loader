@@ -17,8 +17,7 @@ import sbtbuildinfo.BuildInfoPlugin.autoImport._
 // sbt-assembly
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
-
-import scala.sys.process._
+import sbtassembly.AssemblyPlugin.autoImport.ShadeRule
 
 // sbt-native-packager
 import com.typesafe.sbt.SbtNativePackager.autoImport._
@@ -29,6 +28,7 @@ import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
 import com.typesafe.sbt.packager.universal.UniversalPlugin.autoImport._
 
 import com.snowplowanalytics.snowplow.sbt.IgluSchemaPlugin.autoImport._
+import com.snowplowanalytics.snowplow.sbt.SnowplowSparkPlugin.autoImport._
 
 import scoverage.ScoverageKeys._
 
@@ -44,8 +44,6 @@ import org.typelevel.scalacoptions.ScalacOptions._
  * explicitly add Settings value to build.sbt
  */
 object BuildSettings {
-
-  val dockerBuild = taskKey[Unit]("Build the batch transformer Docker image for Spark on Kubernetes")
 
   /**
    * Common set of useful and restrictive compiler flags
@@ -297,45 +295,42 @@ object BuildSettings {
       BuildSettings.oneJvmPerTestSetting // ensures that only CrossBatchDeduplicationSpec has a DuplicateStorage
     ) ++ buildSettings ++ transformerAssemblySettings ++ dynVerSettings ++ addExampleConfToTestCp
 
+  // Spark configuration baked into the image's spark-defaults.conf (Spark's
+  // lowest-precedence source, so deploy-time --conf still overrides it). These
+  // wire S3 access to the S3A filesystem and our own credentials provider.
+  private val batchTransformerSparkConfig = Map(
+    "spark.hadoop.fs.s3.impl" -> "org.apache.hadoop.fs.s3a.S3AFileSystem",
+    "spark.hadoop.fs.AbstractFileSystem.s3.impl" -> "org.apache.hadoop.fs.s3a.S3A",
+    "spark.hadoop.fs.s3a.aws.credentials.provider" -> "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.aws.S3ADefaultCredentialsProvider",
+    "spark.hadoop.fs.s3.aws.credentials.provider" -> "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.aws.S3ADefaultCredentialsProvider"
+  )
+
+  // The Spark-on-Kubernetes distribution of the batch transformer. The generic
+  // Spark packaging — the self-deploying entrypoint, the vendored Spark launch
+  // scripts, the /opt/spark/jars distribution closure and its CVE pins, the
+  // eclipse-temurin base image and the driver/executor dispatch — all lives in
+  // SnowplowSparkPlugin. Everything below is the application-specific half: e.g.
+  // the Spark version we ship and compile against, and the intrinsic Spark conf.
   lazy val transformerBatchDockerBuildSettings =
     Seq(
       name := "snowplow-transformer-batch-docker",
       description := "Spark job to transform Snowplow enriched events into DB/query-friendly format (Spark-on-Kubernetes distribution)",
       buildInfoPackage := "com.snowplowanalytics.snowplow.rdbloader.transformer.batch.generated",
       buildInfoKeys := List(name, version, description),
-      dockerBuild := {
-        val jar      = assembly.value
-        val ver      = version.value
-        val stageDir = target.value / "docker-stage"
-        val log      = streams.value.log
-        IO.createDirectory(stageDir)
-        IO.copyFile(jar, stageDir / jar.getName)
-        IO.copyFile(file("SNOWPLOW-LICENSE.md"), stageDir / "SNOWPLOW-LICENSE.md")
-        IO.copyFile(baseDirectory.value / "Dockerfile", stageDir / "Dockerfile")
-        IO.copyFile(baseDirectory.value / "docker-entrypoint.sh", stageDir / "docker-entrypoint.sh")
-        val exitCode =
-          Process(
-            Seq(
-              "docker",
-              "build",
-              "--build-arg",
-              s"VERSION=$ver",
-              "--build-arg",
-              s"SPARK_IMAGE_TAG=${Dependencies.V.sparkDocker}-scala2.13-java17-ubuntu",
-              "-t",
-              s"snowplow/rdb-transformer-batch:$ver",
-              "."
-            ),
-            stageDir
-          ).!
-        if (exitCode != 0) sys.error(s"docker build failed with exit code $exitCode")
-        log.success(s"Built Docker image: snowplow/rdb-transformer-batch:$ver")
-      }
+      Docker / packageName := "rdb-transformer-batch",
+      // Pin the shipped Spark version (and, via sparkVersion.value below, the
+      // version we compile against) rather than inheriting the plugin's default.
+      sparkVersion := Dependencies.V.sparkDocker,
+      sparkConfig := batchTransformerSparkConfig,
+      // The app compiles against Spark but does not bundle it: the distribution
+      // supplies Spark at runtime from /opt/spark/jars. spark-sql pulls spark-core
+      // transitively, which is all the app's sources need to compile.
+      libraryDependencies += "org.apache.spark" %% "spark-sql" % sparkVersion.value % Provided
     ) ++ buildSettings ++ Seq(
       // buildSettings sets scalaVersion := "2.12.21"; override here because Spark 4.x
       // only publishes Scala 2.13 artifacts.
       scalaVersion := "2.13.18"
-    ) ++ transformerAssemblySettings ++ dynVerSettings
+    ) ++ transformerAssemblySettings ++ dynVerSettings ++ additionalDockerSettings
 
   lazy val transformerKinesisBuildSettings =
     Seq(

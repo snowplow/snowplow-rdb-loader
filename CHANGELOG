@@ -1,3 +1,11 @@
+Version 6.6.0 (2026-07-08)
+--------------------------
+Only push latest Docker tags for non-pre-release tags (#44)
+Build batch transformer image via SnowplowSparkPlugin (#44)
+Bump jackson-databind to 2.21.4 and kerby-asn1 to 2.1.2 for CVE fixes (#43)
+Bump schema-ddl to 0.27.1 (#43)
+Add Snowflake private key authentication support (#42)
+
 Version 6.5.1 (2026-06-24)
 --------------------------
 Bump dependencies for 6.5.1 release (#40)

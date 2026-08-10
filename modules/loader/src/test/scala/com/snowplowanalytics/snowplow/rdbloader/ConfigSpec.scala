@@ -183,7 +183,7 @@ object ConfigSpec {
     Some("us-west-2"),
     "admin",
     None,
-    StorageTarget.PasswordConfig.PlainText("Supersecret1"),
+    StorageTarget.SnowflakeAuth.Password(StorageTarget.PasswordConfig.PlainText("Supersecret1")),
     Some("acme"),
     "wh",
     "snowplow",

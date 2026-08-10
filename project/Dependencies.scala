@@ -43,11 +43,11 @@ object Dependencies {
     val spark              = "3.5.6"
     val sparkDocker        = "4.1.2" // Spark-on-Kubernetes Docker image — Scala 2.13 only
     val eventsManifest     = "0.5.0-M1"
-    val schemaDdl          = "0.27.0"
-    val jacksonModule      = "2.21.2" // Override incompatible version in spark runtime
+    val schemaDdl          = "0.27.1"
+    val jacksonModule      = "2.21.4" // Override incompatible version in spark runtime
     val parquet4s          = "2.22.0"
     val hadoopClient       = "3.5.0"
-    val hadoopClientDocker = "3.4.2" // Matches Hadoop bundled with Spark 4.1.2
+    val hadoopClientDocker = "3.4.3" // Matches the hadoop-client SnowplowSparkPlugin ships in the Spark 4.1.2 distribution
     val hadoopGcpClient    = "hadoop3-2.2.5"
     val parquetHadoop      = "1.17.1"
 
@@ -69,6 +69,7 @@ object Dependencies {
     val kafkaClients  = "3.9.2" // Fix CVE
     val bouncyCastle  = "1.84" // Fix CVE
     val commonsConfig = "2.15.1" // Fix CVE
+    val kerbyCore     = "2.1.2" // Fix CVE
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -134,14 +135,12 @@ object Dependencies {
   val circeOptics  = "io.circe"         %% "circe-optics"  % V.circe % Test
   val sparkCore    = "org.apache.spark" %% "spark-core"    % V.spark % Provided
   val sparkSQL     = "org.apache.spark" %% "spark-sql"     % V.spark % Provided
-  // Spark 4.x deps for the Spark-on-Kubernetes Docker build (Scala 2.13 only):
-  val sparkCoreDocker = "org.apache.spark" %% "spark-core" % V.sparkDocker % Provided
-  val sparkSQLDocker  = "org.apache.spark" %% "spark-sql"  % V.sparkDocker % Provided
-  val fs2Io           = "co.fs2"           %% "fs2-io"     % V.fs2
+  val fs2Io        = "co.fs2"           %% "fs2-io"        % V.fs2
 
-  val jacksonModule = "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonModule
-  val jacksonCbor   = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
-  val parquet4s     = "com.github.mjakubowski84"        %% "parquet4s-fs2"           % V.parquet4s
+  val jacksonModule   = "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonModule
+  val jacksonCbor     = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor" % V.jacksonModule
+  val jacksonDatabind = "com.fasterxml.jackson.core"       % "jackson-databind"        % V.jacksonModule
+  val parquet4s       = "com.github.mjakubowski84"        %% "parquet4s-fs2"           % V.parquet4s
   val hadoopCommon = ("org.apache.hadoop" % "hadoop-common" % V.hadoopClient)
     .exclude("com.jcraft", "jsch")
     .exclude("org.apache.zookeeper", "zookeeper")
@@ -193,6 +192,7 @@ object Dependencies {
   val bcprovJdk18on   = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
 
   val commonsConfiguration2 = "org.apache.commons" % "commons-configuration2" % V.commonsConfig
+  val kerbyAsn1             = "org.apache.kerby"   % "kerby-asn1"             % V.kerbyCore
 
   // Scala (test only)
   val specs2            = "org.specs2"               %% "specs2-core"                   % V.specs2            % Test
@@ -267,7 +267,9 @@ object Dependencies {
     http4sClient,
     slf4jApi,
     sentry,
-    zookeeper
+    zookeeper,
+    jacksonDatabind, // Fix CVE - multiple paths pull 2.21.2/2.21.3; force 2.21.4
+    kerbyAsn1 // Fix CVE - hadoop-common ships 2.0.3
   )
 
   val loaderDependencies = Seq(
@@ -336,6 +338,9 @@ object Dependencies {
   )
 
   // Like batchTransformerDependencies but compiled against Spark 4.x / Scala 2.13.
+  // Spark itself is declared Provided in BuildSettings (see sparkVersion), not here,
+  // so it is not bundled into the app fat jar — SnowplowSparkPlugin's distribution
+  // supplies it at runtime.
   val batchTransformerDockerDependencies = Seq(
     aws2s3,
     aws2sqs,
@@ -346,8 +351,6 @@ object Dependencies {
     aws2regions,
     slf4jSimple,
     eventsManifest,
-    sparkCoreDocker,
-    sparkSQLDocker,
     jacksonModule,
     jacksonCbor,
     circeOptics,

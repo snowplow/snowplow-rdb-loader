@@ -172,7 +172,7 @@ lazy val transformerBatch = project
 // so sbt owns the classpath for each distribution cleanly — no jar-name filtering or custom Ivy
 // configurations. Depends on common213 (same sources as common, compiled at Scala 2.13) rather than
 // common (Scala 2.12), since Spark 4.x has no Scala 2.12 artifacts.
-// Not in the root aggregate; invoke explicitly: sbt transformerBatchDocker/dockerBuild
+// Not in the root aggregate; invoke explicitly: sbt transformerBatchDocker/Docker/publishLocal
 lazy val transformerBatchDocker = project
   .in(file("modules/transformer-batch-docker"))
   .settings(BuildSettings.transformerBatchDockerBuildSettings)
@@ -184,7 +184,7 @@ lazy val transformerBatchDocker = project
     Test / test := {}
   )
   .dependsOn(common213 % "compile->compile;runtime->runtime")
-  .enablePlugins(BuildInfoPlugin)
+  .enablePlugins(SnowplowSparkPlugin, BuildInfoPlugin)
 
 lazy val transformerKinesis = project
   .in(file("modules/transformer-kinesis"))

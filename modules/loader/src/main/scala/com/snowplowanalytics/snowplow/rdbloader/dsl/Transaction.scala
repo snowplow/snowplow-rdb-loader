@@ -10,6 +10,9 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
+import java.nio.charset.StandardCharsets
+import java.util.Base64
+
 import cats.~>
 import cats.arrow.FunctionK
 import cats.implicits._
@@ -191,22 +194,52 @@ object Transaction {
   }
 
   private def setJdbcCredentials[F[_]: Async: SecretStore](target: StorageTarget, ds: HikariConfig): F[Unit] =
-    target.credentials match {
+    target match {
+      case sf: StorageTarget.Snowflake =>
+        sf.jdbcAuth match {
+          case pk: StorageTarget.SnowflakeAuth.PrivateKey =>
+            setSnowflakePrivateKeyAuth[F](sf.username, pk.privateKey, ds)
+          case _: StorageTarget.SnowflakeAuth.Password =>
+            setPasswordCredentials[F](target.credentials, ds)
+        }
+      case _ =>
+        setPasswordCredentials[F](target.credentials, ds)
+    }
+
+  private def setPasswordCredentials[F[_]: Async: SecretStore](
+    credentials: Option[StorageTarget.Credentials],
+    ds: HikariConfig
+  ): F[Unit] =
+    credentials match {
       case Some(configuredCredentials) =>
-        getPassword[F](configuredCredentials).map { password =>
+        resolvePasswordConfig[F](configuredCredentials.password).map { password =>
           ds.setUsername(configuredCredentials.username)
           ds.setPassword(password)
         }
       case None => Sync[F].unit
     }
 
-  private def getPassword[F[_]: Sync: SecretStore](credentials: StorageTarget.Credentials): F[String] =
-    credentials.password match {
+  private def resolvePasswordConfig[F[_]: Sync: SecretStore](config: StorageTarget.PasswordConfig): F[String] =
+    config match {
       case StorageTarget.PasswordConfig.PlainText(text) =>
         Sync[F].pure(text)
       case StorageTarget.PasswordConfig.EncryptedKey(StorageTarget.EncryptedConfig(parameterName)) =>
         SecretStore[F].getValue(parameterName)
     }
+
+  private def setSnowflakePrivateKeyAuth[F[_]: Async: SecretStore](
+    username: String,
+    privateKeyConfig: StorageTarget.PasswordConfig,
+    ds: HikariConfig
+  ): F[Unit] =
+    for {
+      pemString <- resolvePasswordConfig[F](privateKeyConfig)
+      _ <- Async[F].delay {
+             val base64Key = Base64.getEncoder.encodeToString(pemString.getBytes(StandardCharsets.UTF_8))
+             ds.setUsername(username)
+             ds.addDataSourceProperty("private_key_base64", base64Key)
+           }
+    } yield ()
 
   /**
    * Build a necessary (dry-run or real-world) DB interpreter as a `Resource`, which guarantees to
