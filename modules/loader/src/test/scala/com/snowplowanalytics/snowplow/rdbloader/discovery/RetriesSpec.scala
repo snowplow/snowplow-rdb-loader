@@ -109,7 +109,8 @@ class RetriesSpec extends Specification {
         _ <- state.update(s => s.copy(attempts = Attempts))
         _ <- Retries.addFailure[IO](config, state)(folder, new RuntimeException("boom one"))
         result <- Retries.addFailure[IO](config, state)(folder, error)
-        totalAttempts <- Control(state).getAndResetAttempts
+        control <- Control[IO](state)
+        totalAttempts <- control.getAndResetAttempts
         (failures, attempts) <- state.get.map(s => (s.failures, s.attempts))
       } yield (result, failures, attempts, totalAttempts)
 

@@ -23,13 +23,11 @@ import com.snowplowanalytics.iglu.schemaddl.redshift.{
 }
 import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
-import com.snowplowanalytics.snowplow.rdbloader.{DiscoveryStream, LoaderAction, LoaderError}
-import java.time.Instant
+import com.snowplowanalytics.snowplow.rdbloader.{LoaderAction, LoaderError}
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
-import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
-import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
+import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DataDiscovery.DiscoveredShredModels
 import com.snowplowanalytics.snowplow.rdbloader.discovery.DiscoveryFailure.IgluError
@@ -89,61 +87,62 @@ object DataDiscovery {
 
   case class WithOrigin(
     discovery: DataDiscovery,
-    origin: LoaderMessage.ShreddingComplete,
-    sentTimestamp: Option[Instant]
+    origin: LoaderMessage.ShreddingComplete
   )
 
-  /**
-   * App entrypoint: a stream of [[WithOrigin]] values read from the message queue. Each
-   * [[LoaderMessage]] is parsed and transformed into a [[DataDiscovery]]; parse errors are raised
-   * and empty folders are dropped. The [[WithOrigin]] carries the queue message's
-   * [[Queue.Consumer.Message.sentTimestamp]], making it available to callers for queue-lag tracking
-   * without coupling this module to any specific state implementation.
-   *
-   * @param config
-   *   generic storage target configuration
-   */
-  def discover[F[_]: MonadThrow: BlobStorage: Iglu: Cache: Queue.Consumer: Logging: JsonPathDiscovery](
-    config: Config[_]
-  ): DiscoveryStream[F] =
-    Queue
-      .Consumer[F]
-      .read
-      .evalTap(msg => Logging[F].info("Received a new message") *> Logging[F].debug(msg.content))
-      .evalMapFilter { message =>
-        val parsed = LoaderMessage.fromString(message.content) match {
-          case Right(parsed: LoaderMessage.ShreddingComplete) =>
-            handle[F](config.jsonpaths, parsed)
-          case Left(error) =>
-            logAndRaise[F](DiscoveryFailure.IgluError(error).toLoaderError)
-        }
-        parsed.map(_.map(_.copy(sentTimestamp = message.sentTimestamp)))
-      }
+  /** The result of classifying one raw queue message, before anything has been acked or loaded. */
+  sealed trait ClassifiedMessage
+  object ClassifiedMessage {
+
+    /**
+     * There is nothing loadable here: either the folder is empty, or the envelope couldn't be
+     * parsed and never will be. Both are final -- ack it, it will never need retrying.
+     */
+    case object NothingToLoad extends ClassifiedMessage
+
+    /**
+     * A post-parse discovery failure (e.g. an Iglu registry blip, a missing JSONPath). Unlike an
+     * unparseable envelope this can be transient, so the caller retries before giving up.
+     */
+    case class Failed(base: BlobStorage.Folder, error: LoaderError) extends ClassifiedMessage
+    case class Discovered(withOrigin: WithOrigin) extends ClassifiedMessage
+  }
 
   /**
-   * Get `DataDiscovery` or log an error and drop the message actionable `DataDiscovery`
+   * Parse a raw queue message and classify it. Pure classification: it neither acks nor extends the
+   * message, so it carries no opinion on when either should happen -- that's `Loader.loadStream`'s
+   * call.
+   *
    * @param assets
    *   optional bucket with custom JSONPaths
-   * @param message
-   *   payload coming from transformer
-   * @tparam F
-   *   effect type to perform AWS interactions
+   * @param content
+   *   the raw queue message body
    */
-  def handle[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery: Iglu](
+  def classify[F[_]: MonadThrow: BlobStorage: Cache: Logging: JsonPathDiscovery: Iglu](
     assets: Option[BlobStorage.Folder],
-    message: LoaderMessage.ShreddingComplete
-  ): F[Option[WithOrigin]] =
-    fromLoaderMessage[F](assets, message).value
-      .flatMap[Option[WithOrigin]] {
-        case Right(_) if isEmpty(message) =>
-          Logging[F].info(s"Empty discovery at ${message.base}. Acknowledging the message without loading attempt").as(none)
-        case Right(discovery) =>
-          Logging[F]
-            .info(s"New data discovery at ${discovery.show}")
-            .as(Some(WithOrigin(discovery, message, None)))
-        case Left(error) =>
-          logAndRaise[F](error)
-      }
+    content: String
+  ): F[ClassifiedMessage] =
+    LoaderMessage.fromString(content) match {
+      case Left(error) =>
+        val loaderError = DiscoveryFailure.IgluError(error).toLoaderError
+        Logging[F]
+          .error(loaderError)("A problem occurred in the loading of the queue message. Acknowledging and skipping it.")
+          .as(ClassifiedMessage.NothingToLoad)
+      // Checked ahead of discovery, which an empty folder has nothing to look up for anyway
+      case Right(parsed: LoaderMessage.ShreddingComplete) if isEmpty(parsed) =>
+        Logging[F]
+          .info(s"Empty discovery at ${parsed.base}. Acknowledging the message without loading attempt")
+          .as(ClassifiedMessage.NothingToLoad)
+      case Right(parsed: LoaderMessage.ShreddingComplete) =>
+        fromLoaderMessage[F](assets, parsed).value.flatMap {
+          case Right(discovery) =>
+            Logging[F].info(s"New data discovery at ${discovery.show}").as(ClassifiedMessage.Discovered(WithOrigin(discovery, parsed)))
+          case Left(error) =>
+            Logging[F]
+              .error(error)("A problem occurred in the loading of the queue message")
+              .as(ClassifiedMessage.Failed(parsed.base, error))
+        }
+    }
 
   /**
    * Convert `ShreddingComplete` message coming from shredder into actionable `DataDiscovery`
@@ -208,9 +207,6 @@ object DataDiscovery {
   /** Find the maximum SchemaKey for all table names in a given set of shredded types */
   def getMaxSchemaKeyPerTableName(shreddedTypes: List[ShreddedType]): Map[String, SchemaKey] =
     shreddedTypes.groupBy(_.info.getNameFull).mapValues(_.maxBy(_.info.version).info.getSchemaKey)
-
-  def logAndRaise[F[_]: MonadThrow: Logging](error: LoaderError): F[Option[WithOrigin]] =
-    Logging[F].error(error)("A problem occurred in the loading of SQS message") *> MonadThrow[F].raiseError(error)
 
   /** Check if discovery contains no data */
   def isEmpty(message: LoaderMessage.ShreddingComplete): Boolean =

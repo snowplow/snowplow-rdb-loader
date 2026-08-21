@@ -92,6 +92,11 @@ object Transaction {
       ds.setAutoCommit(target.withAutoCommit)
       ds.setMaximumPoolSize(PoolSize)
 
+      // Set explicitly because it anchors the Databricks driver's internal retry timeouts (see the
+      // coupling at the top of the StorageTarget object): the driver's retries must expire before
+      // this timeout, or Hikari's record of the current failure goes stale.
+      ds.setConnectionTimeout(StorageTarget.ConnectionTimeout.toMillis)
+
       // This disables the pool's fast failure feature. We don't need fast failure because the
       // loader already handles failures to get warehouse connections.
       //

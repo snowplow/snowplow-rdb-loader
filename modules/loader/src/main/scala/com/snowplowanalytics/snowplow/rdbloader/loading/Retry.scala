@@ -10,7 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.loading
 
-import cats.{Applicative, MonadThrow, Show}
+import cats.{Applicative, Monad, MonadThrow, Show}
 import cats.effect.Clock
 import cats.implicits._
 import com.snowplowanalytics.snowplow.rdbloader.config.Config.{Retries, Strategy}
@@ -69,6 +69,18 @@ object Retry {
     for {
       policy <- getRetryPolicy[F](retries)
       result <- retry.retryingOnAllErrors(policy, onError)(f)
+    } yield result
+
+  /** Retry on an unwanted result rather than a raised error, so the last one is still returned */
+  def retryingOnFailures[F[_]: Monad: Clock: Sleep, A](
+    retries: Retries,
+    isSuccess: A => F[Boolean],
+    onFailure: (A, RetryDetails) => F[Unit],
+    f: F[A]
+  ): F[A] =
+    for {
+      policy <- getRetryPolicy[F](retries)
+      result <- retry.retryingOnFailures(policy, isSuccess, onFailure)(f)
     } yield result
 
   /** Build a cats-retry-specific retry policy from Loader's config */

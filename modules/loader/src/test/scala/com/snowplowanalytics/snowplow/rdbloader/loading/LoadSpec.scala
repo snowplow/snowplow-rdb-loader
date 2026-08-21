@@ -377,8 +377,7 @@ object LoadSpec {
       dataDiscovery.compression,
       Processor("snowplow-rdb-shredder", Semver(0, 18, 0, None)),
       None
-    ),
-    None
+    )
   )
 
   def isBeforeFirstCommit(sql: Statement, ts: TestState) =

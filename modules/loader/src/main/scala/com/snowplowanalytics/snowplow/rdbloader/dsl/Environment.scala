@@ -104,7 +104,7 @@ object Environment {
       cacheMap <- Resource.eval(Ref.of[F, Map[String, Option[BlobStorage.Key]]](Map.empty))
       implicit0(cache: Cache[F]) = Cache.cacheInterpreter[F](cacheMap)
       state <- Resource.eval(State.mk[F])
-      control = Control[F](state)
+      control <- Resource.eval(Control[F](state))
       cloudServices <- createCloudServices[F](cli.config, control)
       reporters = List(statsdReporter, stdoutReporter)
       periodicMetrics <- Resource.eval(Metrics.PeriodicMetrics.init[F](reporters, cli.config.monitoring.metrics.period))
@@ -164,14 +164,12 @@ object Environment {
       case c: Cloud.AWS =>
         for {
           implicit0(blobStorage: BlobStorage[F]) <- S3.blobStorage[F](c.region.name)
-          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <-
             SQS.consumer[F](
               c.messageQueue.queueName,
               config.timeouts.sqsVisibility,
               c.messageQueue.region.getOrElse(c.region).name,
-              control.isBusy,
-              Some(postProcess)
+              control.isBusy
             )
           loadAuthService <-
             AWSAuthService
@@ -184,7 +182,6 @@ object Environment {
           loadAuthService <- LoadAuthService.noop[F]
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
           implicit0(blobStorage: BlobStorage[F]) <- GCS.blobStorage
-          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- Pubsub.consumer[F](
                              projectId             = c.messageQueue.projectId,
                              subscription          = c.messageQueue.subscriptionId,
@@ -192,8 +189,7 @@ object Environment {
                              bufferSize            = c.messageQueue.bufferSize,
                              maxAckExtensionPeriod = config.timeouts.loading,
                              awaitTerminatePeriod  = c.messageQueue.awaitTerminatePeriod,
-                             customPubsubEndpoint  = c.messageQueue.customPubsubEndpoint,
-                             postProcess           = Some(postProcess)
+                             customPubsubEndpoint  = c.messageQueue.customPubsubEndpoint
                            )
           secretStore <- SecretManager.secretManager[F]
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)
@@ -202,12 +198,10 @@ object Environment {
           loadAuthService <- createAzureAuthService(c, config)
           jsonPathDiscovery = JsonPathDiscovery.noop[F]
           implicit0(blobStorage: BlobStorage[F]) <- AzureBlobStorage.createDefault[F](c.blobStorageEndpoint)
-          postProcess = Queue.Consumer.postProcess[F]
           queueConsumer <- KafkaConsumer.consumer[F](
                              bootstrapServers = c.messageQueue.bootstrapServers,
                              topicName        = c.messageQueue.topicName,
-                             consumerConf     = c.messageQueue.consumerConf,
-                             postProcess      = Some(postProcess)
+                             consumerConf     = c.messageQueue.consumerConf
                            )
           secretStore <- AzureKeyVault.create(c.azureVaultName)
         } yield CloudServices(blobStorage, queueConsumer, loadAuthService, jsonPathDiscovery, secretStore)

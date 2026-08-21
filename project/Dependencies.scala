@@ -9,6 +9,7 @@
  * OF THE SOFTWARE, YOU AGREE TO THE TERMS OF SUCH LICENSE AGREEMENT.
  */
 import sbt._
+import com.snowplowanalytics.snowplow.sbt.SnowplowSparkPlugin.autoImport.SparkDistribution
 
 object Dependencies {
 
@@ -44,12 +45,12 @@ object Dependencies {
     val sparkDocker        = "4.1.2" // Spark-on-Kubernetes Docker image — Scala 2.13 only
     val eventsManifest     = "0.5.0-M1"
     val schemaDdl          = "0.28.0"
-    val jacksonModule      = "2.21.4" // Override incompatible version in spark runtime
+    val jacksonModule      = "2.21.5" // Fix CVE - override incompatible version in spark runtime
     val parquet4s          = "2.22.0"
     val hadoopClient       = "3.5.0"
     val hadoopClientDocker = "3.4.3" // Matches the hadoop-client SnowplowSparkPlugin ships in the Spark 4.1.2 distribution
     val hadoopGcpClient    = "hadoop3-2.2.5"
-    val parquetHadoop      = "1.17.1"
+    val parquetHadoop      = "1.18.0"
 
     val slf4j          = "2.0.17"
     val redshiftJdbc   = "2.2.2"
@@ -63,8 +64,7 @@ object Dependencies {
     val kinesisClient  = "2.7.2"
     val refined =
       "0.11.3" // Override - fs2-aws-kinesis:4.1.0 pulls in 0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
-    val nettyCodec    = "4.1.136.Final" // Fix CVE
-    val aircompressor = "2.0.3" // Fix CVE - parquet 1.17.0 ships 2.0.2
+    val nettyCodec    = "4.1.137.Final" // Fix CVE
     val zookeeper     = "3.9.5" // Fix CVE
     val kafkaClients  = "3.9.2" // Fix CVE
     val bouncyCastle  = "1.85" // Fix CVE
@@ -72,6 +72,11 @@ object Dependencies {
     val kerbyCore     = "2.1.2" // Fix CVE
     val lz4Java       = "1.11.1" // Fix CVE - kafka-clients ships 1.10.1
     val blazeHttp     = "0.23.18" // Fix CVE - http4s-blaze-client ships 0.23.16
+    val nettySparkDistribution =
+      "4.2.17.Final" // Fix CVE - SnowplowSparkPlugin pins 4.2.15.Final; Spark 4.1.2's Netty is on the 4.2.x line, distinct from our own nettyCodec (4.1.x)
+    val jacksonSparkDistribution = "2.21.5" // Fix CVE - SnowplowSparkPlugin pins 2.21.4, still vulnerable
+    val parquetJacksonSparkDistribution =
+      "1.18.0" // Fix CVE - plugin pins 1.17.1, which shades jackson 2.21.3; deliberately ahead of the distribution's parquet 1.16.0
 
     // Scala (test only)
     val specs2            = "4.17.0"
@@ -196,7 +201,6 @@ object Dependencies {
   val nettyAll        = "io.netty"               % "netty-all"           % V.nettyCodec
   val lz4Java         = "at.yawk.lz4"            % "lz4-java"            % V.lz4Java
   val blazeHttp       = "org.http4s"            %% "blaze-http"          % V.blazeHttp
-  val aircompressor   = "io.airlift"             % "aircompressor"       % V.aircompressor
   val zookeeper       = "org.apache.zookeeper"   % "zookeeper"           % V.zookeeper
   val bcprovJdk18on   = "org.bouncycastle"       % "bcprov-jdk18on"      % V.bouncyCastle
 
@@ -229,7 +233,8 @@ object Dependencies {
     fs2Kinesis,
     kinesisClient,
     aws2sts,
-    refined // Fix scala-xml conflict - fs2-aws-kinesis:4.1.0 pulls in refined:0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
+    refined, // Fix scala-xml conflict - fs2-aws-kinesis:4.1.0 pulls in refined:0.9.28 which depends on scala-xml:1.3.0, incompatible with Scala 2.12.21
+    catsEffectTestkit
   )
 
   val gcpDependencies = Seq(
@@ -278,7 +283,7 @@ object Dependencies {
     slf4jApi,
     sentry,
     zookeeper,
-    jacksonDatabind, // Fix CVE - multiple paths pull 2.21.2/2.21.3; force 2.21.4
+    jacksonDatabind, // Fix CVE - multiple paths pull 2.21.2/2.21.3; force 2.21.5
     kerbyAsn1, // Fix CVE - hadoop-common ships 2.0.3
     blazeHttp // Fix CVE - blaze-http is released separately from http4s-blaze-client, which is now frozen
   )
@@ -355,6 +360,47 @@ object Dependencies {
     awsS3Transfer
   )
 
+  // Fix CVE - overrides for SnowplowSparkPlugin's own CVE pins on the Spark distribution
+  // it bundles into /opt/spark/jars/ (the SparkDistribution config; see the plugin's
+  // private `V` object). Coursier's highest-wins pulls these up over the plugin's
+  // defaults without touching this app's own Compile classpath.
+  val sparkDistributionOverrides = Seq(
+    "io.netty" % "netty-buffer"                       % V.nettySparkDistribution,
+    "io.netty" % "netty-codec"                        % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-base"                   % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-classes-quic"           % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-compression"            % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-dns"                    % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-http"                   % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-http2"                  % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-http3"                  % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-marshalling"            % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-protobuf"               % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-socks"                  % V.nettySparkDistribution,
+    "io.netty" % "netty-common"                       % V.nettySparkDistribution,
+    "io.netty" % "netty-handler"                      % V.nettySparkDistribution,
+    "io.netty" % "netty-handler-proxy"                % V.nettySparkDistribution,
+    "io.netty" % "netty-resolver"                     % V.nettySparkDistribution,
+    "io.netty" % "netty-resolver-dns"                 % V.nettySparkDistribution,
+    "io.netty" % "netty-transport"                    % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-classes-epoll"      % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-classes-io_uring"   % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-classes-kqueue"     % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-native-unix-common" % V.nettySparkDistribution,
+    "io.netty" % "netty-codec-native-quic"            % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-native-epoll"       % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-native-io_uring"    % V.nettySparkDistribution,
+    "io.netty" % "netty-transport-native-kqueue"      % V.nettySparkDistribution,
+    "at.yawk.lz4" % "lz4-java" % V.lz4Java, // Fix CVE - the plugin only overrides org.lz4:lz4-java, not this fork (kafka-clients ships the at.yawk.lz4 fork, same as our own lz4Java override elsewhere)
+    "org.apache.parquet"         % "parquet-jackson"  % V.parquetJacksonSparkDistribution, // Fix CVE - shades jackson-databind/jackson-core
+    "com.fasterxml.jackson.core" % "jackson-databind" % V.jacksonSparkDistribution,
+    "com.fasterxml.jackson.core" % "jackson-core"     % V.jacksonSparkDistribution,
+    "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310" % V.jacksonSparkDistribution,
+    "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % V.jacksonSparkDistribution,
+    "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonSparkDistribution,
+    "org.bouncycastle"                 % "bcprov-jdk18on"          % V.bouncyCastle // Fix CVE - zookeeper/hadoop pull 1.80
+  ).map(_ % SparkDistribution)
+
   // Like batchTransformerDependencies but compiled against Spark 4.x / Scala 2.13.
   // Spark itself is declared Provided in BuildSettings (see sparkVersion), not here,
   // so it is not bundled into the app fat jar — SnowplowSparkPlugin's distribution
@@ -393,7 +439,6 @@ object Dependencies {
     nettyAll, // Fix CVE - hadoop ships netty-all:4.1.130.Final; also pins codec-smtp, handler-proxy, codec-dns, codec-redis, codec-mqtt
     bcprovJdk18on, // Fix CVE - hadoop-common ships 1.82
     commonsConfiguration2, // Fix CVE - hadoop-common ships 2.10.1 (CVE-2026-45205)
-    aircompressor, // Fix CVE - parquet 1.17.0 ships 2.0.2, fix requires 2.0.3
     specs2,
     specs2ScalaCheck,
     scalaCheck,

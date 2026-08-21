@@ -22,16 +22,16 @@ import java.time.Instant
 object KafkaConsumer {
 
   final case class KafkaMessage[F[_]](record: CommittableConsumerRecord[F, String, Array[Byte]]) extends Queue.Consumer.Message[F] {
-    override def content: String                = new String(record.record.value, StandardCharsets.UTF_8)
-    override def ack: F[Unit]                   = record.offset.commit
-    override def sentTimestamp: Option[Instant] = None
+    override def content: String                     = new String(record.record.value, StandardCharsets.UTF_8)
+    override def ack: F[Unit]                        = record.offset.commit
+    override def sentTimestamp: Option[Instant]      = None
+    override def extendVisibility: Resource[F, Unit] = Resource.unit[F]
   }
 
   def consumer[F[_]: Async](
     bootstrapServers: String,
     topicName: String,
-    consumerConf: Map[String, String],
-    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
+    consumerConf: Map[String, String]
   ): Resource[F, Queue.Consumer[F]] = {
     val consumerSettings =
       ConsumerSettings[F, String, Array[Byte]]
@@ -48,13 +48,8 @@ object KafkaConsumer {
       .evalMap { consumer =>
         consumer.subscribeTo(topicName) *> Async[F].pure {
           new Queue.Consumer[F] {
-            override def read: fs2.Stream[F, Consumer.Message[F]] = {
-              val stream = consumer.records.map(KafkaMessage(_))
-              postProcess match {
-                case None    => stream
-                case Some(p) => stream.flatMap(p.process(_))
-              }
-            }
+            override def read: fs2.Stream[F, Consumer.Message[F]] =
+              consumer.records.map(KafkaMessage(_))
           }
         }
       }

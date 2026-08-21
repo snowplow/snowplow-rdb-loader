@@ -1,3 +1,9 @@
+Version 6.7.2 (2026-08-20)
+--------------------------
+Bump dependencies ready for 6.7.2 release (#58)
+Ack queue messages only after their load has settled (#57)
+Databricks loader: restore graceful handling of a starting-up cluster (#56)
+
 Version 6.7.1 (2026-08-07)
 --------------------------
 Databricks loader: route JDBC driver log output to stdout (#54)

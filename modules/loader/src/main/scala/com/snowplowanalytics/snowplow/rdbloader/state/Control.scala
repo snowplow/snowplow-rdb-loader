@@ -17,10 +17,11 @@ import cats.{Functor, Monad}
 import cats.implicits._
 
 import cats.effect.{Clock, Resource}
+import cats.effect.kernel.Concurrent
+import cats.effect.std.Semaphore
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 
 import fs2.Stream
-import fs2.concurrent.Signal
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Logging
@@ -34,8 +35,15 @@ import com.snowplowanalytics.snowplow.rdbloader.discovery.Retries
  *   Loader's global mutable state, consisting of what the Loader is doing currently and how much it
  *   progressed. makeBusy and isBusy are derived from this object Nothing outside of Control should
  *   modify the state
+ * @param loadSlot
+ *   a mutex making maintenance pauses and load attempts mutually exclusive, owned here so that a
+ *   "paused" or "loading" resource can only ever be obtained while holding it. Only one holder at a
+ *   time also keeps `state.loading` honest: it names a single owner.
  */
-case class Control[F[_]](private val state: State.Ref[F]) {
+final class Control[F[_]] private (
+  private val state: State.Ref[F],
+  private val loadSlot: Semaphore[F]
+) {
 
   /**
    * Record that a new queue message has been received, updating the total message count and
@@ -91,8 +99,6 @@ case class Control[F[_]](private val state: State.Ref[F]) {
 
   def get: F[State] =
     state.get
-  def signal: Signal[F, State] =
-    state
   def getFailures(implicit F: Functor[F]): F[Retries.Failures] =
     get.map(_.getFailures)
 
@@ -136,6 +142,11 @@ case class Control[F[_]](private val state: State.Ref[F]) {
   def removeFailure(base: BlobStorage.Folder): F[Unit] =
     state.update(original => original.copy(failures = original.failures - base))
 
+  /**
+   * A maintenance pause. Blocks until whoever holds the load slot releases it, and blocks a load
+   * from starting until this releases. Overlapping schedules queue behind each other, which still
+   * covers the union of their windows because each spends only what is left of its own.
+   */
   def makePaused(
     implicit F: Monad[F],
     C: Clock[F],
@@ -146,9 +157,13 @@ case class Control[F[_]](private val state: State.Ref[F]) {
         C.realTimeInstant.flatMap(now => state.update(_.paused(who).setUpdated(now)))
       val deallocate: F[Unit] = Logging[F].debug(s"Unpausing from $who") *>
         C.realTimeInstant.flatMap(now => state.update(_.idle.setUpdated(now)))
-      Resource.make(allocate)(_ => deallocate)
+      loadSlot.permit *> Resource.make(allocate)(_ => deallocate)
     }
 
+  /**
+   * Records which folder is currently loading. This is only a status flag -- it acquires nothing.
+   * Callers must hold `makeLoadSlot` around it for the exclusion to mean anything.
+   */
   def makeBusy(
     implicit F: Monad[F],
     C: Clock[F],
@@ -162,6 +177,18 @@ case class Control[F[_]](private val state: State.Ref[F]) {
       Resource.make(allocate)(_ => deallocate)
     }
 
+  /**
+   * The same mutex `makePaused` takes. Held for one load attempt, it guarantees no maintenance
+   * pause can start, and no other folder's load can proceed, until that attempt settles.
+   */
+  def makeLoadSlot: Resource[F, Unit] =
+    loadSlot.permit
+
   def isBusy(implicit F: Functor[F]): Stream[F, Boolean] =
     state.map(_.isBusy).discrete
+}
+
+object Control {
+  def apply[F[_]: Concurrent](state: State.Ref[F]): F[Control[F]] =
+    Semaphore[F](1).map(new Control(state, _))
 }

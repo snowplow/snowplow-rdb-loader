@@ -72,25 +72,39 @@ class NoOperationSpec extends Specification {
       }
     }
 
-    "execute two overlapping schedules" in {
+    // A non-blocking `makePaused` fake, so this covers NoOperation.run's own scheduling only. Under
+    // the real one these two would serialise on the load slot -- see ControlSpec.
+    "execute two overlapping schedules independently of each other" in {
       val everySecond = Cron.unsafeParse("* * * ? * *")
       val input = List(
-        Schedule("first", everySecond, 400.millis), // responsible for job1, job3
-        Schedule("second", everySecond, 1100.millis) // responsible for job2, job4
+        Schedule("first", everySecond, 400.millis), // responsible for job1, job3, job4
+        Schedule("second", everySecond, 1100.millis) // responsible for job2
       )
       val test = NoOperationSpec.run(4)(input)
 
       test must haveJobs { case List(job1, job2, job3, job4) =>
-        job3.start - job1.start must beEqualTo(1000L)
-        job4.stop - job2.start must beEqualTo(3100L)
-        job4.start - job2.start must beEqualTo(2000L)
+        List(job1.owner, job2.owner, job3.owner, job4.owner) must beEqualTo(List("first", "second", "first", "first"))
+
+        job1.start - job2.start must beEqualTo(0L) // start on the same tick
+        job3.start - job1.start must beEqualTo(1000L) // "first" runs again while "second" is paused
+        job4.start - job3.start must beEqualTo(1000L)
 
         // Doesn't prove anything - just make sure jobs are as expected
         job1.duration must beEqualTo(400L)
         job2.duration must beEqualTo(1100L)
         job3.duration must beEqualTo(400L)
-        job4.duration must beEqualTo(1100L)
+        job4.duration must beEqualTo(400L)
       }
+    }
+
+    // `makePaused` blocks until a load in flight releases the load slot, so these two pin down what
+    // that wait costs: it comes out of the window, and only loses the window if it outlasts it.
+    "spend the remainder of the window paused when acquiring the pause is delayed" in {
+      NoOperationSpec.runWithSlowPause(acquireDelay = 300.millis, duration = 500.millis) must beEqualTo(List(200.millis))
+    }
+
+    "give up on the window when the pause cannot be acquired within it" in {
+      NoOperationSpec.runWithSlowPause(acquireDelay = 800.millis, duration = 500.millis) must beEmpty
     }
   }
 
@@ -184,9 +198,9 @@ object NoOperationSpec {
     InstantFormat.format(Instant.ofEpochMilli(timestamp))
 
   def run(n: Long)(input: List[Schedule]): Option[Outcome[Id, Throwable, List[Job]]] = {
-    val jobs = create.use { case (makePaused, state, idleStatus) =>
+    val jobs = create.use { case (makePaused, state) =>
       NoOperation
-        .run[IO](input, makePaused, idleStatus)
+        .run[IO](input, makePaused)
         .flatMap { _ =>
           // n does not always represent amount of resulting jobs, but instead just ()'s, which can be timeout
           // thus we're making sure there n jobs completed
@@ -207,6 +221,28 @@ object NoOperationSpec {
           testControl.results
       }
       .unsafeRunSync()
+  }
+
+  /**
+   * Run a single schedule against a `makePaused` that takes `acquireDelay` to allocate, as it does
+   * when a load is holding the load slot. Returns how long the pause was actually held for, or
+   * nothing at all if the schedule gave up on the window.
+   */
+  def runWithSlowPause(acquireDelay: FiniteDuration, duration: FiniteDuration): List[FiniteDuration] = {
+    val schedule = Schedule("first", Cron.unsafeParse("* * * ? * *"), duration)
+
+    val test = for {
+      held <- Ref.of[IO, List[FiniteDuration]](Nil)
+      makePaused = (_: String) =>
+                     Resource.eval(IO.sleep(acquireDelay)) *>
+                       Resource
+                         .make(IO.monotonic)(start => IO.monotonic.flatMap(stop => held.update(_ :+ (stop - start))))
+                         .void
+      _ <- NoOperation.run[IO](List(schedule), makePaused).take(1).compile.drain
+      result <- held.get
+    } yield result
+
+    TestControl.executeEmbed(test).unsafeRunSync()
   }
 
   type RunResult = Option[Outcome[Id, Throwable, List[Job]]]
@@ -272,9 +308,8 @@ object NoOperationSpec {
   def create = {
     val action = for {
       initState <- SignallingRef[IO, State](State(0, List.empty[Job], Status.Idle))
-      signal     = initState.map(_.status)
       makePaused = createMakePaused(initState)
-    } yield (makePaused, initState.get, signal)
+    } yield (makePaused, initState.get)
     Resource.eval(action)
   }
 

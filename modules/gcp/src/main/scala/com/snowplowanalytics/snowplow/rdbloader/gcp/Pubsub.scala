@@ -53,7 +53,8 @@ object Pubsub {
     }
 
   case class Message[F[_]](content: String, ack: F[Unit]) extends Queue.Consumer.Message[F] {
-    val sentTimestamp: Option[Instant] = None
+    val sentTimestamp: Option[Instant]      = None
+    val extendVisibility: Resource[F, Unit] = Resource.unit[F]
   }
 
   def producer[F[_]: Async: Logger](
@@ -103,8 +104,7 @@ object Pubsub {
     maxAckExtensionPeriod: FiniteDuration,
     awaitTerminatePeriod: FiniteDuration,
     customPubsubEndpoint: Option[String]                          = None,
-    customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity,
-    postProcess: Option[Queue.Consumer.PostProcess[F]]            = None
+    customizeSubscriber: Subscriber.Builder => Subscriber.Builder = identity
   ): Resource[F, Queue.Consumer[F]] =
     for {
       channelProvider <- customPubsubEndpoint.map(createPubsubChannelProvider[F]).sequence
@@ -134,7 +134,7 @@ object Pubsub {
                          Logger[F].error(s"Cannot decode message ${message.getMessageId} into array of bytes. ${error.getMessage}")
 
                      // Ack deadline extension isn't needed in here because it is handled by the pubsub library
-                     val stream = PubsubGoogleConsumer
+                     PubsubGoogleConsumer
                        .subscribe[F, Array[Byte]](
                          ConsumerProjectId(projectId),
                          Subscription(subscription),
@@ -142,11 +142,6 @@ object Pubsub {
                          pubSubConfig
                        )
                        .map(r => Message(new String(r.value, "UTF-8"), r.ack))
-
-                     postProcess match {
-                       case None    => stream
-                       case Some(p) => stream.flatMap(p.process(_))
-                     }
                    }
                  }
     } yield consumer

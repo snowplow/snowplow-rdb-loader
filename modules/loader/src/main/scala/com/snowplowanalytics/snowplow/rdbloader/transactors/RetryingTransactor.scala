@@ -17,7 +17,7 @@ import doobie.Transactor
 import retry._
 
 import java.sql.Connection
-import java.sql.{SQLException, SQLTransientConnectionException}
+import java.sql.SQLTransientConnectionException
 
 import com.snowplowanalytics.snowplow.rdbloader.UnskippableException
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -90,31 +90,38 @@ object RetryingTransactor {
    * cluster is still starting up.
    */
   private val isTransientError: Throwable => Boolean = {
+    case t if isTemporarilyUnavailable(t) =>
+      // The Databricks server returns HTTP 503 "TEMPORARILY_UNAVAILABLE" while an all-purpose cluster
+      // is starting up (or otherwise cannot yet serve the request). The driver surfaces it - promptly,
+      // because we bound its internal retry below Hikari's connection timeout (see StorageTarget and
+      // Transaction.configureHikari) - buried in the exception chain, with a varying top-level type,
+      // so we scan the whole chain by message rather than by type or SQLState.
+      true
     case e: SQLTransientConnectionException =>
-      Option(e.getCause) match {
-        case None =>
-          // Expected when:
-          // - The HikariPool has only just started up, and has not yet made any connection
-          // - ...and the JDBC server (e.g. Databricks cluster) times out on a connection
-          true
-        case Some(cause: SQLException) =>
-          Option(cause.getSQLState) match {
-            case Some("HYT01") =>
-              // Expected when:
-              // - The HikariPool has already received 1+ connection timeouts from the JDBC server
-              // - ...and the JDBC server (e.g. Databricks cluster) times out on follow-up attempts to get a connection
-              true
-            case _ =>
-              // Expected when the JDBC driver cannot connect to the server for any other reason,
-              // e.g. authorization failure.
-              // We don't want to retry these exceptions, so return false
-              false
-          }
-        case _ =>
-          false
-      }
+      // A causeless Hikari timeout means the pool gave up before the driver recorded any specific
+      // failure - expected while a Databricks cluster/warehouse is still starting up. If Hikari DID
+      // record a cause, it is a real connection problem (e.g. an authorization failure) that we do
+      // not want to retry.
+      Option(e.getCause).isEmpty
     case _: Throwable =>
       false
+  }
+
+  /**
+   * Scans the exception's cause chain for Databricks' "temporarily unavailable" marker. The server
+   * returns this (HTTP 503) while an all-purpose cluster is starting up, or otherwise cannot
+   * currently serve the request. The marker is nested several levels down and the top-level
+   * exception type varies, so we match by message rather than by type or SQLState. (The `seen` set
+   * guards against a self-referential cause chain.)
+   */
+  private def isTemporarilyUnavailable(t: Throwable): Boolean = {
+    @annotation.tailrec
+    def loop(e: Throwable, seen: Set[Throwable]): Boolean =
+      if (e == null || seen.contains(e)) false
+      else if (Option(e.getMessage).exists(_.contains("TEMPORARILY_UNAVAILABLE"))) true
+      else loop(e.getCause, seen + e)
+
+    loop(t, Set.empty)
   }
 
   private def onError[F[_]: Logging](t: Throwable, d: RetryDetails): Resource[F, Unit] =

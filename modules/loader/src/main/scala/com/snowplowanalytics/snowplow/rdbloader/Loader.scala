@@ -14,7 +14,8 @@ import java.sql.SQLException
 import scala.concurrent.duration._
 import cats.{Apply, Monad, MonadThrow}
 import cats.implicits._
-import cats.effect.{Async, Clock}
+import cats.effect.{Async, Clock, Outcome}
+import cats.effect.implicits._
 import retry.RetryDetails
 import fs2.Stream
 import com.snowplowanalytics.snowplow.rdbloader.common.telemetry.Telemetry
@@ -49,6 +50,17 @@ object Loader {
 
   /** How often Loader should print its internal state */
   private val StateLoggingFrequency: FiniteDuration = 5.minutes
+
+  /** What one load attempt settled on */
+  private sealed trait AttemptResult
+  private object AttemptResult {
+
+    /** Loaded, added to the retry queue, or given up on -- nothing more to do with it now */
+    case object Settled extends AttemptResult
+
+    /** Failed in a way that means no other folder would load either, so try this one again */
+    case object Unskippable extends AttemptResult
+  }
 
   /**
    * Primary application's entry-point, responsible for launching all processes (such as discovery,
@@ -88,7 +100,7 @@ object Loader {
       )
 
     val noOpScheduling: Stream[F, Unit] =
-      NoOperation.run(config.schedules.noOperation, control.makePaused, control.signal.map(_.loading))
+      NoOperation.run(config.schedules.noOperation, control.makePaused)
 
     val vacuumScheduling: Stream[F, Unit] =
       VacuumScheduling.run[F, C](config.storage, config.schedules)
@@ -151,8 +163,19 @@ object Loader {
   }
 
   /**
-   * A primary loading processing, pulling information from discovery streams (SQS and retry queue)
-   * and performing the load operation itself
+   * A primary loading process, pulling information from discovery streams (the message queue and
+   * the internal retry queue) and performing the load operation itself.
+   *
+   * Each queue message is handled as one self-contained action, `message.extendVisibility.use`
+   * spanning its entire lifetime: classify it, then either settle immediately (ack an
+   * empty/unparseable message, or one we cannot discover) or wait for `control.makeLoadSlot` (so
+   * only one folder loads at a time, across both the message queue and the retry queue), load it,
+   * and ack.
+   *
+   * The ack means "we are done deciding what to do with this folder", not "it loaded": a folder
+   * queued for retry or given up on is acked too, and the alert is what carries that news. What the
+   * ack does guarantee is that we never drop a message whose load is still in flight, because an
+   * error or a cancellation leaves it on the queue to be redelivered.
    */
   private def loadStream[
     F[_]: Transaction[
@@ -167,88 +190,146 @@ object Loader {
     initQueryResult: I,
     target: Target[I]
   ): Stream[F, Unit] = {
-    val sqsDiscovery: DiscoveryStream[F] =
-      DataDiscovery
-        .discover[F](config)
-        .evalTap(w => control.incrementMessages(w.sentTimestamp).flatMap(state => Logging[F].info(state.show)))
-    val retryDiscovery: DiscoveryStream[F] =
-      Retries.run[F](config.jsonpaths, config.retryQueue, control.getFailures)
-    val discovery = sqsDiscovery.merge(retryDiscovery)
+    // Reuses the knob that already governs how long we wait on an unhealthy warehouse elsewhere.
+    val unskippableRetryDelay: FiniteDuration = config.retries.backoff
 
-    discovery
-      .pauseWhen[F](control.isBusy)
-      .evalMap(processDiscovery[F, C, I](config, control, initQueryResult, target))
+    def attemptLoad(discovery: DataDiscovery.WithOrigin): F[AttemptResult] = {
+      val folder = discovery.origin.base
+      val busy   = (control.makeBusy: MakeBusy[F]).apply(folder)
+      val backgroundCheck: F[Unit] => F[Unit] =
+        StateMonitoring.inBackground[F](config.timeouts, control.get, busy)
+
+      val setStageC: Stage => C[Unit] =
+        stage => Transaction[F, C].arrowBack(control.setStage(stage))
+      val incrementAttemptsC: C[Unit] =
+        Transaction[F, C].arrowBack(control.incrementAttempts)
+      val addFailure: Throwable => F[Boolean] =
+        control.addFailure(config.retryQueue)(folder)(_)
+
+      val loading: F[Unit] = backgroundCheck {
+        for {
+          start <- Clock[F].realTimeInstant
+          _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
+          result <-
+            Load.load[F, C, I](setStageC, incrementAttemptsC, discovery, initQueryResult, target, config.featureFlags.disableRecovery)
+          attempts <- control.getAndResetAttempts
+          _ <- result match {
+                 case loadSuccess: Load.LoadSuccess =>
+                   Load.congratulate[F](attempts, start, loadSuccess, discovery.origin) *> control.incrementLoaded
+                 case fal: Load.FolderAlreadyLoaded =>
+                   Monitoring[F].alert(fal.toAlert)
+               }
+          _ <- control.removeFailure(folder)
+        } yield ()
+      }
+
+      // Handle all three possible failure scenarios:
+      // 1. The kind of error for which it is not worth proceeding to the next batch from the queue,
+      //   because the next batch is unlikely to succeed. e.g. a connection error. The caller waits
+      //   and tries this same batch again.
+      // 2. A failure which is worth retrying later, and we have space available in the internal
+      //   retry queue
+      // 3. A failure which is not worth retrying, or we don't have space to add to the retry queue
+      loading.as(AttemptResult.Settled: AttemptResult).handleErrorWith {
+        case UnskippableException(t) =>
+          Logging[F].error(t)(
+            s"Loading of $folder has failed. This exception type cannot be skipped so it will be retried after $unskippableRetryDelay."
+          ) *>
+            Monitoring[F].alert(Alert.UnskippableLoadFailure(folder, t)).as(AttemptResult.Unskippable: AttemptResult)
+        case t: Throwable =>
+          addFailure(t)
+            .flatMap {
+              case true =>
+                Logging[F].error(t)(s"Loading of $folder has failed. Adding into retry queue.") *>
+                  Monitoring[F].alert(Alert.RetryableLoadFailure(folder, t))
+              case false =>
+                Logging[F].error(t)(s"Loading of $folder has failed. Not adding into retry queue.") *>
+                  Monitoring[F].alert(Alert.TerminalLoadFailure(folder, t))
+            }
+            .as(AttemptResult.Settled: AttemptResult)
+      }
+    }
+
+    /**
+     * Keep attempting this folder until it succeeds or the loader gives up on it for now. The load
+     * slot is held for one attempt at a time and released while we wait between attempts, so a
+     * NoOperation window can open even when we are stuck on an unskippable error -- which is
+     * exactly when the warehouse is most likely to be the thing that's unavailable.
+     */
+    def loadFolder(discovery: DataDiscovery.WithOrigin): F[Unit] =
+      control.makeLoadSlot.use(_ => attemptLoad(discovery)).flatMap {
+        case AttemptResult.Settled     => Async[F].unit
+        case AttemptResult.Unskippable => Async[F].sleep(unskippableRetryDelay) *> loadFolder(discovery)
+      }
+
+    // Discovery can fail transiently -- an Iglu registry blip, say -- so reuse the load retry policy
+    // before concluding it is the message at fault. That budget is minutes, so a failure needing
+    // human intervention (an absent JSONPath file) still ends up acked and alerted, not retried.
+    def classify(content: String): F[DataDiscovery.ClassifiedMessage] =
+      Retry.retryingOnFailures[F, DataDiscovery.ClassifiedMessage](
+        config.retries,
+        {
+          case _: DataDiscovery.ClassifiedMessage.Failed => false.pure[F]
+          case _                                         => true.pure[F]
+        },
+        {
+          case (DataDiscovery.ClassifiedMessage.Failed(base, _), details) =>
+            Logging[F].warning(show"Could not discover data at $base. $details")
+          case _ => Async[F].unit
+        },
+        DataDiscovery.classify[F](config.jsonpaths, content)
+      )
+
+    // One message at a time: the next message isn't received until handleMessage's whole
+    // bracket -- extend, classify, wait for the load slot, load, ack -- has completed for this one.
+    val queueMessages: Stream[F, Unit] =
+      Queue
+        .Consumer[F]
+        .read
+        .evalTap(msg => Logging[F].info("Received a new message") *> Logging[F].debug(msg.content))
+        .evalMap(handleMessage[F](control, classify, loadFolder))
+
+    val retryMessages: Stream[F, Unit] =
+      Retries
+        .run[F](config.jsonpaths, config.retryQueue, control.getFailures)
+        .evalMap(loadFolder)
+
+    queueMessages.merge(retryMessages)
   }
 
   /**
-   * Block the discovery stream until the message is processed and pass the control over to `Load`.
-   * A primary function handling the global state - everything downstream has access only to `F`
-   * actions, instead of whole `Control` object
+   * Decide the fate of one queue message: hold its visibility open for as long as we have it,
+   * classify it, and ack it once we have settled on what to do with the folder. Classification and
+   * loading are parameters rather than being inlined, so these ack decisions can be tested on their
+   * own -- getting them wrong is what loses data.
    */
-  private def processDiscovery[
-    F[_]: Transaction[*[_], C]: Async: Iglu: Logging: Monitoring,
-    C[_]: DAO: MonadThrow: Logging: LoadAuthService,
-    I
-  ](
-    config: Config[StorageTarget],
+  private[rdbloader] def handleMessage[F[_]: Async: Logging: Monitoring](
     control: Control[F],
-    initQueryResult: I,
-    target: Target[I]
+    classify: String => F[DataDiscovery.ClassifiedMessage],
+    loadFolder: DataDiscovery.WithOrigin => F[Unit]
   )(
-    discovery: DataDiscovery.WithOrigin
-  ): F[Unit] = {
-    val folder = discovery.origin.base
-    val busy   = (control.makeBusy: MakeBusy[F]).apply(folder)
-    val backgroundCheck: F[Unit] => F[Unit] =
-      StateMonitoring.inBackground[F](config.timeouts, control.get, busy)
-
-    val setStageC: Stage => C[Unit] =
-      stage => Transaction[F, C].arrowBack(control.setStage(stage))
-    val incrementAttemptsC: C[Unit] =
-      Transaction[F, C].arrowBack(control.incrementAttempts)
-    val addFailure: Throwable => F[Boolean] =
-      control.addFailure(config.retryQueue)(folder)(_)
-
-    val loading: F[Unit] = backgroundCheck {
-      for {
-        start <- Clock[F].realTimeInstant
-        _ <- discovery.origin.timestamps.min.map(t => Monitoring[F].periodicMetrics.setEarliestKnownUnloadedData(t)).sequence.void
-        result <-
-          Load.load[F, C, I](setStageC, incrementAttemptsC, discovery, initQueryResult, target, config.featureFlags.disableRecovery)
-        attempts <- control.getAndResetAttempts
-        _ <- result match {
-               case loadSuccess: Load.LoadSuccess =>
-                 Load.congratulate[F](attempts, start, loadSuccess, discovery.origin) *> control.incrementLoaded
-               case fal: Load.FolderAlreadyLoaded =>
-                 Monitoring[F].alert(fal.toAlert)
-             }
-        _ <- control.removeFailure(folder)
-      } yield ()
+    message: Queue.Consumer.Message[F]
+  ): F[Unit] =
+    message.extendVisibility.use { _ =>
+      classify(message.content).flatMap {
+        case DataDiscovery.ClassifiedMessage.NothingToLoad =>
+          message.ack
+        case DataDiscovery.ClassifiedMessage.Failed(base, error) =>
+          // Give up rather than crash: one undiscoverable folder must not stop every other one from
+          // loading, and crashing would only redeliver it and crash again.
+          Logging[F].error(error)(show"Giving up on discovering $base. Acknowledging the message without loading it.") *>
+            Monitoring[F].alert(Alert.TerminalLoadFailure(base, error)) *>
+            message.ack
+        case DataDiscovery.ClassifiedMessage.Discovered(discovery) =>
+          control.incrementMessages(message.sentTimestamp).flatMap(state => Logging[F].info(state.show)) *>
+            loadFolder(discovery).guaranteeCase {
+              // loadFolder succeeds once the folder has settled, which includes being queued for
+              // retry or given up on. Only an error or cancellation leaves the message unacked.
+              case Outcome.Succeeded(_)                    => message.ack
+              case Outcome.Errored(_) | Outcome.Canceled() => Async[F].unit
+            }
+      }
     }
-
-    // Handle all three possible failure scenarios:
-    // 1. The kind of error for which it is not worth proceeding to the next batch from the queue,
-    //   because the next batch is unlikely to succeed. e.g. a connection error.  We keep on
-    //   retrying the same batch, because we don't want to ack the message from the queue.
-    // 2. A failure which is worth retrying later, and we have space available in the internal
-    //   retry queue
-    // 3. A failure which is not worth retrying, or we don't have space to add to the retry queue
-    loading.handleErrorWith {
-      case UnskippableException(t) =>
-        Logging[F].error(t)(s"Loading of $folder has failed. This exception type cannot be skipped so it will be retried immediately.") *>
-          Monitoring[F].alert(Alert.UnskippableLoadFailure(folder, t)) *>
-          processDiscovery(config, control, initQueryResult, target)(discovery)
-      case t: Throwable =>
-        addFailure(t).flatMap {
-          case true =>
-            Logging[F].error(t)(s"Loading of $folder has failed. Adding into retry queue.") *>
-              Monitoring[F].alert(Alert.RetryableLoadFailure(folder, t))
-          case false =>
-            Logging[F].error(t)(s"Loading of $folder has failed. Not adding into retry queue.") *>
-              Monitoring[F].alert(Alert.TerminalLoadFailure(folder, t))
-        }
-    }
-  }
 
   private def addLoadTstampColumn[F[_]: Transaction[*[_], C]: Monitoring: Logging: MonadThrow, C[_]: DAO: Monad: Logging](
     shouldAdd: Boolean,

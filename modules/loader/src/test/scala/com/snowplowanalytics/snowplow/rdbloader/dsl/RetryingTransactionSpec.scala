@@ -20,7 +20,7 @@ import doobie.{ConnectionIO, Transactor}
 import doobie.util.transactor.Strategy
 import doobie.free.connection.ConnectionOp
 import doobie.implicits._
-import java.sql.{Connection, SQLTransientConnectionException, SQLTransientException}
+import java.sql.{Connection, SQLException, SQLTransientConnectionException, SQLTransientException}
 import retry.Sleep
 import com.snowplowanalytics.snowplow.rdbloader.SpecHelpers
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
@@ -252,6 +252,87 @@ class RetryingTransactionSpec extends Specification {
 
       either must beLeft(haveClass[RetryingTransactor.UnskippableConnectionException])
       timeTaken must_== 20.seconds // expected time taken when using the main (not target check) retries config
+    }
+
+    "retry according to the target check config when the cluster is temporarily unavailable" in {
+      // Mirrors the exception the OSS Databricks driver raises (via Hikari) while an all-purpose
+      // cluster is starting up: a 503 whose "TEMPORARILY_UNAVAILABLE" marker sits several levels
+      // deep in the cause chain, under a top-level SQLTransientConnectionException.
+      val temporarilyUnavailableException =
+        new SQLTransientConnectionException(
+          "Connection is not available, request timed out after 30000ms.",
+          new SQLException(
+            "Connection failure while using the OSS Databricks JDBC driver. Failed to connect to server",
+            "CONNECTION_ERROR",
+            new SQLException(
+              "Error while receiving response from Thrift server. HTTP request failed by code: 503. " +
+                "TEMPORARILY_UNAVAILABLE: Cluster 0520 is temporarily unavailable. The current cluster state is Pending. " +
+                "Please retry your request after 30 seconds.",
+              "08000"
+            )
+          )
+        )
+
+      val targetCheckRetries = Config.Retries(Config.Strategy.Constant, Some(10), 30.seconds, Some(1.hour))
+      val executionRetries   = Config.Retries(Config.Strategy.Constant, Some(2), 10.seconds, Some(1.hour))
+
+      val resources = for {
+        implicit0(dispatcher: Dispatcher[IO]) <- Dispatcher.parallel[IO]
+        implicit0(logging: Logging[IO]) = Logging.noOp[IO]
+        transactor                      = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(temporarilyUnavailableException))
+        realTransaction = Transaction.jdbcRealInterpreter(SpecHelpers.validConfig.storage, SpecHelpers.validConfig.timeouts, transactor)
+      } yield RetryingTransaction.wrap(executionRetries, realTransaction)
+
+      val io = resources.use { retryingTransaction =>
+        for {
+          either <- retryingTransaction.transact(simpleConnectionIO).attempt
+          now <- IO.monotonic
+        } yield (either, now)
+      }
+
+      val (either, timeTaken) = TestControl.executeEmbed(io).unsafeRunSync()
+
+      either must beLeft(haveClass[RetryingTransactor.ExceededRetriesException])
+      timeTaken must_== 300.seconds // treated as transient, so it uses the target check retries config
+    }
+
+    "not treat an authentication failure as a transient target-check error" in {
+      // A 403 invalid-token buried in the chain must NOT be mistaken for "cluster starting up" - it
+      // is a genuine setup error, so it should take the main (non-target-check) path and surface.
+      val authFailureException =
+        new SQLTransientConnectionException(
+          "Connection is not available, request timed out after 30000ms.",
+          new SQLException(
+            "Connection failure while using the OSS Databricks JDBC driver. Failed to connect to server",
+            "CONNECTION_ERROR",
+            new SQLException(
+              "Error while receiving response from Thrift server. HTTP request failed by code: 403. Invalid access token.",
+              "08000"
+            )
+          )
+        )
+
+      val targetCheckRetries = Config.Retries(Config.Strategy.Constant, Some(10), 30.seconds, Some(1.hour))
+      val executionRetries   = Config.Retries(Config.Strategy.Constant, Some(2), 10.seconds, Some(1.hour))
+
+      val resources = for {
+        implicit0(dispatcher: Dispatcher[IO]) <- Dispatcher.parallel[IO]
+        implicit0(logging: Logging[IO]) = Logging.noOp[IO]
+        transactor                      = RetryingTransactor.wrap(targetCheckRetries, failingTransactor(authFailureException))
+        realTransaction = Transaction.jdbcRealInterpreter(SpecHelpers.validConfig.storage, SpecHelpers.validConfig.timeouts, transactor)
+      } yield RetryingTransaction.wrap(executionRetries, realTransaction)
+
+      val io = resources.use { retryingTransaction =>
+        for {
+          either <- retryingTransaction.transact(simpleConnectionIO).attempt
+          now <- IO.monotonic
+        } yield (either, now)
+      }
+
+      val (either, timeTaken) = TestControl.executeEmbed(io).unsafeRunSync()
+
+      either must beLeft(haveClass[RetryingTransactor.UnskippableConnectionException])
+      timeTaken must_== 20.seconds // not transient, so it uses the main retries config
     }
   }
 }

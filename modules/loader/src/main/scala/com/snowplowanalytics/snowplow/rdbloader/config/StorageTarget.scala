@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.StringEnum
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.Transaction
 
-import scala.concurrent.duration.{Duration, FiniteDuration}
+import scala.concurrent.duration._
 
 /**
  * Common configuration for JDBC target, such as Redshift Any of those can be safely coerced
@@ -49,6 +49,19 @@ sealed trait StorageTarget extends Product with Serializable {
 }
 
 object StorageTarget {
+
+  // Hikari's connection timeout and the Databricks driver's internal HTTP retry timeouts are coupled:
+  // the driver's retries must expire *before* Hikari's connection timeout. Otherwise the driver keeps
+  // retrying internally (up to its 900s default) while Hikari's record of the current failure goes
+  // stale, and the loader re-surfaces an outdated error instead of the current one (see
+  // RetryingTransactor.isTransientError). They are kept together here so the relationship stays
+  // visible and hard to break.
+  val ConnectionTimeout: FiniteDuration                    = 30.seconds
+  private val DatabricksDriverRetryTimeout: FiniteDuration = 20.seconds // must stay below ConnectionTimeout
+  require(
+    DatabricksDriverRetryTimeout < ConnectionTimeout,
+    s"Databricks driver retry timeout ($DatabricksDriverRetryTimeout) must be below the Hikari connection timeout ($ConnectionTimeout)"
+  )
 
   final case class ParseError(message: String) extends AnyVal
 
@@ -145,6 +158,14 @@ object StorageTarget {
       // Interpolate query parameters client-side rather than sending them as server-side
       // parameter markers, which older Databricks runtimes cannot parse.
       props.put("supportManyParameters", "1")
+      // Bound the driver's internal retry for the 503 "temporarily unavailable" it returns while a
+      // cluster is starting up, below Hikari's connection timeout - see the
+      // ConnectionTimeout/DatabricksDriverRetryTimeout coupling at the top of this object - so the
+      // condition surfaces to our own retry logic promptly rather than the driver blocking for its
+      // 900s default. The driver's other retries (rate-limit, general API) are left at their defaults:
+      // they aren't part of cluster startup, and bounding them would only curtail the driver's
+      // transient-error handling for in-flight load statements. `socketTimeout` is likewise left long.
+      props.put("TemporarilyUnavailableRetryTimeout", DatabricksDriverRetryTimeout.toSeconds.toString)
       setAuthProperties(props)
       props
     }

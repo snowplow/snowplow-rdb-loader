@@ -107,9 +107,10 @@ object Load {
     } yield result
 
   /**
-   * Run a transaction with all load statements and with in-transaction migrations if necessary and
-   * acknowledge the discovery message after transaction is successful. If the main transaction
-   * fails it will be retried several times by a caller
+   * Run a transaction with all load statements and with in-transaction migrations if necessary. If
+   * the main transaction fails it will be retried several times by a caller. This does not
+   * acknowledge the discovery message itself -- that happens in `Loader.loadStream`, once the
+   * caller has decided the load attempt (this one, or its retries) has settled.
    *
    * @param setStage
    *   function to report current loading status to global state

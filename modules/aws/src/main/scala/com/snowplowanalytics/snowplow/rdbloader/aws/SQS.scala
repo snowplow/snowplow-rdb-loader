@@ -29,32 +29,51 @@ import com.snowplowanalytics.snowplow.rdbloader.common.cloud.Queue
 
 object SQS {
 
+  // If we extend for exact VisibilityTimeout it could be too late and service returns an error
+  private[aws] val ExtendAllowance: FiniteDuration = 30.seconds
+
+  private[aws] def extendVisibilityResource[F[_]: Async: Logger](
+    sqsVisibility: FiniteDuration,
+    extend: FiniteDuration => F[Unit]
+  ): Resource[F, Unit] = {
+    // Extend a little before the visibility expires. When the visibility is shorter than the
+    // allowance, fall back to halving it rather than to a fixed floor, so a small misconfigured
+    // visibility doesn't become one ChangeMessageVisibility call per second for a whole load.
+    val awakePeriod = (sqsVisibility - ExtendAllowance).max(sqsVisibility / 2L).max(1.second)
+    val singleExtend =
+      Logger[F].info(s"Approaching end of message visibility. Extending visibility by $sqsVisibility.") *>
+        extend(sqsVisibility)
+    val loop = Stream
+      .awakeEvery[F](awakePeriod)
+      // Recover a single failed extend attempt (rather than the whole stream) so one throttled or
+      // blipped call doesn't silently disable visibility extension for the rest of a long-running
+      // load -- the next tick still fires.
+      .evalMap(_ => singleExtend.handleErrorWith(t => Logger[F].error(t)("Error extending message visibility")))
+      .compile
+      .drain
+    Async[F].background(loop).void
+  }
+
   case class SQSMessage[F[_]](
     content: String,
     ack: F[Unit],
-    sentTimestamp: Option[Instant]
+    sentTimestamp: Option[Instant],
+    extendVisibility: Resource[F, Unit]
   ) extends Queue.Consumer.Message[F]
 
   def consumer[F[_]: Async: Logger](
     queueName: String,
     sqsVisibility: FiniteDuration,
     region: String,
-    stop: Stream[F, Boolean],
-    postProcess: Option[Queue.Consumer.PostProcess[F]] = None
+    stop: Stream[F, Boolean]
   ): Resource[F, Queue.Consumer[F]] =
     Resource.pure[F, Queue.Consumer[F]](
       new Queue.Consumer[F] {
-        override def read: Stream[F, Queue.Consumer.Message[F]] = {
-          val stream = readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
-            .map { case (msg, ack, extend, sentTimestamp) => (SQSMessage(msg.body(), ack, sentTimestamp), extend) }
-          postProcess match {
-            case None => stream.map(_._1)
-            case Some(p) =>
-              stream.flatMap { case (msg, extend) =>
-                p.process(msg, Some(Queue.Consumer.MessageDeadlineExtension(sqsVisibility, extend)))
-              }
-          }
-        }
+        override def read: Stream[F, Queue.Consumer.Message[F]] =
+          readQueue(queueName, sqsVisibility.toSeconds.toInt, Region.of(region), stop)
+            .map { case (msg, ack, extend, sentTimestamp) =>
+              SQSMessage(msg.body(), ack, sentTimestamp, extendVisibilityResource(sqsVisibility, extend))
+            }
       }
     )
 
