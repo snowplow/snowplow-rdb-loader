@@ -140,9 +140,10 @@ object Retries {
   def fromLoaderMessage[F[_]: Monad: BlobStorage: Cache: Logging: Iglu: JsonPathDiscovery](
     assets: Option[BlobStorage.Folder]
   )(
-    message: LoaderMessage.ShreddingComplete
-  ): F[Option[DataDiscovery.WithOrigin]] =
-    DataDiscovery.fromLoaderMessage[F](assets, message).value.flatMap {
+    parsed: LoaderMessage.Parsed
+  ): F[Option[DataDiscovery.WithOrigin]] = {
+    val message = parsed.message
+    DataDiscovery.fromLoaderMessage[F](assets, parsed).value.flatMap {
       case _ if DataDiscovery.isEmpty(message) =>
         Logging[F].warning(s"Empty folder ${message.base} re-discovered in failure manifest. It might signal about corrupted S3").as(none)
       case Right(discovery) =>
@@ -150,6 +151,7 @@ object Retries {
       case Left(error) =>
         Logging[F].warning(show"Failed to re-discover data after a failure. $error").as(none)
     }
+  }
 
   /**
    * Pull failures from a global manifest of failures and enqueues them into local queue It never
@@ -218,17 +220,17 @@ object Retries {
       }
     }
 
-  def readShreddingComplete[F[_]: BlobStorage: MonadThrow](folder: BlobStorage.Folder): F[LoaderMessage.ShreddingComplete] = {
+  def readShreddingComplete[F[_]: BlobStorage: MonadThrow](folder: BlobStorage.Folder): F[LoaderMessage.Parsed] = {
     val fullPath = folder.withKey(FolderMonitoring.ShreddingComplete)
     BlobStorage[F]
       .get(fullPath)
       .flatMap {
         case Right(content) =>
           LoaderMessage.fromString(content) match {
-            case Right(message: LoaderMessage.ShreddingComplete) =>
-              MonadThrow[F].pure(message)
+            case Right(parsed) =>
+              MonadThrow[F].pure(parsed)
             case Left(error) =>
-              MonadThrow[F].raiseError[LoaderMessage.ShreddingComplete](new RuntimeException(error))
+              MonadThrow[F].raiseError[LoaderMessage.Parsed](new RuntimeException(error))
           }
         case Left(error) =>
           MonadThrow[F].raiseError(error)

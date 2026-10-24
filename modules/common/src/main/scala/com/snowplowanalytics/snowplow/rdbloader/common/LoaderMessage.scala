@@ -45,7 +45,7 @@ object LoaderMessage {
       "com.snowplowanalytics.snowplow.storage.rdbloader",
       "shredding_complete",
       "jsonschema",
-      SchemaVer.Full(2, 0, 1)
+      SchemaVer.Full(2, 0, 2)
     )
 
   /**
@@ -82,6 +82,13 @@ object LoaderMessage {
         snowplowEntity: SnowplowEntity
       )
 
+      object Type {
+        implicit val shreddedTypeOrdering: math.Ordering[Shredded.Type] = {
+          implicit val schemaKeyOrdering = SchemaKey.ordering
+          math.Ordering.by(t => (t.snowplowEntity, t.schemaKey, t.format.path))
+        }
+      }
+
       sealed trait ShreddedFormat {
         def path: String = this.toString.toLowerCase
       }
@@ -103,12 +110,21 @@ object LoaderMessage {
       def isEmpty: Boolean = types.isEmpty
     }
     object WideRow {
-      case class Type(schemaKey: SchemaKey, snowplowEntity: SnowplowEntity)
+      case class Type(
+        schemaKey: SchemaKey,
+        snowplowEntity: SnowplowEntity,
+        columnName: Option[String] = None
+      )
 
       object Type {
         def from(shreddedType: Data.ShreddedType): Type = {
           val entity = SnowplowEntity.from(shreddedType.shredProperty)
           TypesInfo.WideRow.Type(shreddedType.schemaKey, entity)
+        }
+
+        implicit val wideRowTypeOrdering: math.Ordering[WideRow.Type] = {
+          implicit val schemaKeyOrdering = SchemaKey.ordering
+          math.Ordering.by(t => (t.snowplowEntity, t.schemaKey, t.columnName))
         }
       }
 
@@ -123,29 +139,6 @@ object LoaderMessage {
         case object JSON extends WideRowFormat
         case object PARQUET extends WideRowFormat
       }
-
-      def latestByBreakingChangesAndModel(types: List[WideRow.Type]): List[WideRow.Type] =
-        types
-          .groupBy { case WideRow.Type(SchemaKey(vendor, name, _, SchemaVer.Full(model, _, _)), snowplowEntity) =>
-            (vendor, name, model, snowplowEntity)
-          }
-          .toList
-          .flatMap { case (_, grouped) =>
-            grouped.sorted.lastOption
-          }
-
-      implicit val wideRowTypeOrdering: math.Ordering[WideRow.Type] = {
-        implicit val schemaKeyOrdering = SchemaKey.ordering
-        implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] =
-          math.Ordering.by {
-            case SnowplowEntity.Context             => 0
-            case SnowplowEntity.SelfDescribingEvent => 1
-          }
-
-        math.Ordering.by { case WideRow.Type(schemaKey, snowplowEntity) =>
-          (snowplowEntity, schemaKey)
-        }
-      }
     }
   }
 
@@ -159,6 +152,12 @@ object LoaderMessage {
       shredProperty match {
         case _: Data.Contexts   => LoaderMessage.SnowplowEntity.Context
         case Data.UnstructEvent => LoaderMessage.SnowplowEntity.SelfDescribingEvent
+      }
+
+    implicit val snowplowEntityOrdering: math.Ordering[SnowplowEntity] =
+      math.Ordering.by {
+        case SnowplowEntity.Context             => 0
+        case SnowplowEntity.SelfDescribingEvent => 1
       }
   }
 
@@ -189,8 +188,22 @@ object LoaderMessage {
       LoaderMessage.createManifestItem(this)
   }
 
+  /**
+   * A parsed message, and whether its version promises that the parquet column names it carries are
+   * the complete set of columns holding data.
+   *
+   * From `2-0-2` onwards the transformer names every parquet column it wrote data into, so a type
+   * with no name means that type contributed nothing and its column can be skipped. Before `2-0-2`
+   * no names are carried at all and the loader derives them instead.
+   *
+   * This is a contract on the transformer, not merely a version number. A transformer that emits
+   * `2-0-2` while leaving a column that holds data unnamed would have that column silently dropped
+   * from the load, with no error.
+   */
+  final case class Parsed(message: ShreddingComplete, columnNamesAreComplete: Boolean)
+
   /** Parse raw string into self-describing JSON with [[LoaderMessage]] */
-  def fromString(s: String): Either[String, LoaderMessage] =
+  def fromString(s: String): Either[String, Parsed] =
     parse(s)
       .leftMap(_.show)
       .flatMap(json =>
@@ -211,19 +224,20 @@ object LoaderMessage {
           data
             .as[LegacyLoaderMessage.ShreddingComplete]
             .leftMap(e => s"Cannot decode valid ShreddingComplete legacy payload version 1 from [${data.noSpaces}], ${e.show}")
-            .map(LegacyLoaderMessage.unlegacify)
+            .map(legacy => Parsed(LegacyLoaderMessage.unlegacify(legacy), columnNamesAreComplete = false))
         case SelfDescribingData(
               SchemaKey(
                 "com.snowplowanalytics.snowplow.storage.rdbloader",
                 "shredding_complete",
                 _,
-                SchemaVer.Full(2, _, _)
+                ver @ SchemaVer.Full(2, _, _)
               ),
               data
             ) =>
           data
             .as[ShreddingComplete]
             .leftMap(e => s"Cannot decode valid ShreddingComplete payload from [${data.noSpaces}], ${e.show}")
+            .map(Parsed(_, columnNamesAreComplete = ver.revision > 0 || ver.addition >= 2))
         case SelfDescribingData(key, data) =>
           s"Cannot extract a LoaderMessage from ${data.noSpaces} with ${key.toSchemaUri}".asLeft
       }
@@ -282,7 +296,7 @@ object LoaderMessage {
   implicit val typesInfoWideRowDecoder: Decoder[TypesInfo.WideRow] =
     deriveDecoder[TypesInfo.WideRow]
   implicit val typesInfoWideRowTypeEncoder: Encoder[TypesInfo.WideRow.Type] =
-    deriveEncoder[TypesInfo.WideRow.Type]
+    deriveEncoder[TypesInfo.WideRow.Type].mapJson(_.dropNullValues)
   implicit val typesInfoWideRowTypeDecoder: Decoder[TypesInfo.WideRow.Type] =
     deriveDecoder[TypesInfo.WideRow.Type]
   implicit val typesInfoWideRowFormatEncoder: Encoder[TypesInfo.WideRow.WideRowFormat] =

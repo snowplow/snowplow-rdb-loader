@@ -41,6 +41,7 @@ sealed trait Transformer[F[_]] extends Product with Serializable {
 }
 
 object Transformer {
+
   case class ShredTransformer[F[_]: Monad: RegistryLookup: Clock](
     igluResolver: Resolver[F],
     shredModelCache: ShredModelCache[F],
@@ -69,7 +70,7 @@ object Transformer {
       val wrapped = types.map { case Data.ShreddedType(shredProperty, schemaKey) =>
         TypesInfo.Shredded.Type(schemaKey, findFormat(schemaKey), SnowplowEntity.from(shredProperty))
       }
-      TypesInfo.Shredded(wrapped.toList)
+      TypesInfo.Shredded(wrapped.toList.sorted)
     }
   }
 
@@ -93,15 +94,24 @@ object Transformer {
       Transformed.WideRow(false, data)
     }
 
+    /**
+     * Column names are not filled in here -- `ParquetSink` records the columns it actually wrote
+     * and `Completion` attaches them, so the message describes the files rather than a second,
+     * possibly newer, view of Iglu.
+     */
     def typesInfo(types: Set[Data.ShreddedType]): TypesInfo = {
-      val wrapped = types.map { case Data.ShreddedType(shredProperty, schemaKey) =>
-        TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
-      }
+      val wrapped = types
+        .map { case Data.ShreddedType(shredProperty, schemaKey) =>
+          TypesInfo.WideRow.Type(schemaKey, SnowplowEntity.from(shredProperty))
+        }
+        .toList
+        .sorted
+
       val fileFormat = format match {
         case Formats.WideRow.JSON    => TypesInfo.WideRow.WideRowFormat.JSON
         case Formats.WideRow.PARQUET => TypesInfo.WideRow.WideRowFormat.PARQUET
       }
-      TypesInfo.WideRow(fileFormat, wrapped.toList)
+      TypesInfo.WideRow(fileFormat, wrapped)
     }
 
     private def transformToParquet(event: Event): EitherT[F, BadRow, Transformed.Parquet] = {

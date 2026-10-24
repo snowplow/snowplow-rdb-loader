@@ -17,7 +17,7 @@ import cats.data.EitherT
 import cats.implicits._
 import cats.effect.implicits._
 
-import cats.effect.{Async, Concurrent, Sync}
+import cats.effect.{Async, Concurrent, Ref, Sync}
 
 import fs2.{Pipe, Stream}
 import fs2.text.utf8
@@ -36,6 +36,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.
 import com.snowplowanalytics.snowplow.rdbloader.common.config.Semver
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils.EventParser
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{ShredderValidations, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.NonAtomicFieldsProvider
 
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.metrics.Metrics
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.ParquetSink
@@ -85,48 +86,62 @@ object Processing {
     def windowing[A]: Pipe[F, (List[A], State[C]), Windowed[List[A], State[C]]] =
       Record.windowed(Window.fromNow[F](config.windowing.toMinutes.toInt))
 
-    val onComplete: ((Window, State[C])) => F[Unit] = { case (window, state) =>
-      Completion.seal[F, C](
-        resources.blobStorage,
-        config.output.compression,
-        transformer.typesInfo,
-        config.output.path,
-        resources.producer,
-        config.featureFlags.legacyMessageFormat,
-        messageProcessor,
-        window,
-        state
-      )
+    // The parquet sink records the columns it wrote here, and `onComplete` takes them back out
+    // when it seals the window, so the completion message names what is in the files.
+    Stream.eval(Ref.of[F, Map[Window, NonAtomicFieldsProvider.ColumnNamesByType]](Map.empty)).flatMap { writtenColumns =>
+      val onComplete: ((Window, State[C])) => F[Unit] = { case (window, state) =>
+        // The window's entry in `writtenColumns` is removed only after the seal succeeds. A seal
+        // that failed and was retried would otherwise find nothing recorded, and send a message
+        // naming no columns at all.
+        writtenColumns.get
+          .map(_.getOrElse(window, Map.empty))
+          .flatMap { columns =>
+            Completion.seal[F, C](
+              resources.blobStorage,
+              config.output.compression,
+              transformer.typesInfo,
+              config.output.path,
+              resources.producer,
+              config.featureFlags.legacyMessageFormat,
+              messageProcessor,
+              window,
+              state,
+              columns
+            )
+          } *> writtenColumns.update(_ - window)
+      }
+
+      val transformedSource: Stream[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]]] =
+        source
+          .through(transform(transformer, config.validations, processor))
+          .through(incrementMetrics(resources.metrics))
+          .through(handleTransformResult(transformer))
+          .through(windowing)
+
+      val sink: Pipe[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]], Unit] =
+        _.through(getSink(resources, config.output, config.formats, writtenColumns))
+          .evalMap(onComplete)
+
+      Shutdown
+        .run(transformedSource, sink)
+        .concurrently(resources.metrics.report)
+        .concurrently(resources.telemetry.report)
     }
-
-    val transformedSource: Stream[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]]] =
-      source
-        .through(transform(transformer, config.validations, processor))
-        .through(incrementMetrics(resources.metrics))
-        .through(handleTransformResult(transformer))
-        .through(windowing)
-
-    val sink: Pipe[F, Record[Window, List[(SinkPath, Transformed.Data)], State[C]], Unit] =
-      _.through(getSink(resources, config.output, config.formats))
-        .evalMap(onComplete)
-
-    Shutdown
-      .run(transformedSource, sink)
-      .concurrently(resources.metrics.report)
-      .concurrently(resources.telemetry.report)
   }
 
   /** Build a sink according to settings and pass it through `generic.Partitioned` */
   def getSink[F[_]: Async: RegistryLookup, C: Monoid](
     resources: Resources[F, C],
     config: Config.Output,
-    formats: Formats
+    formats: Formats,
+    writtenColumns: Ref[F, Map[Window, NonAtomicFieldsProvider.ColumnNamesByType]]
   ): Grouping[F, C] = {
 
     val parquetSink = (w: Window) =>
       (s: State[C]) =>
         (k: SinkPath) =>
-          ParquetSink.parquetSink[F, C](resources, config.compression, config.maxRecordsPerFile, config.path, w, s.types.toList, k)
+          ParquetSink
+            .parquetSink[F, C](resources, config.compression, config.maxRecordsPerFile, config.path, w, s.types.toList, k, writtenColumns)
     val nonParquetSink = (w: Window) =>
       (_: State[C]) =>
         (k: SinkPath) => {

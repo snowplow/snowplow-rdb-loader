@@ -47,11 +47,10 @@ lazy val common213: Project = project
   .settings(BuildSettings.commonBuildSettings)
   .settings(
     // Override buildSettings' scalaVersion := "2.12.21"
-    scalaVersion := "2.13.18",
-    // Tests are already covered by the `common` project; skip here to avoid redundant runs.
-    Test / test := {}
+    scalaVersion := "2.13.18"
   )
   .settings(Compile / sourceDirectory := (common / Compile / sourceDirectory).value)
+  .settings(Test / sourceDirectory := (common / Test / sourceDirectory).value)
   .settings(libraryDependencies ++= Dependencies.commonDependencies)
   .enablePlugins(BuildInfoPlugin)
 

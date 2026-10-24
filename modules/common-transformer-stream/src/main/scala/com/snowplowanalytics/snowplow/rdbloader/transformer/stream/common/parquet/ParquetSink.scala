@@ -29,6 +29,7 @@ import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{A
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.parquet.Codecs._
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.{SinkPath, TransformedDataOps, Window}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Resources
+import cats.effect.Ref
 import fs2.{Pipe, Stream}
 import org.apache.hadoop.conf.Configuration
 import org.apache.parquet.hadoop.metadata.CompressionCodecName
@@ -37,6 +38,20 @@ import java.net.URI
 
 object ParquetSink {
 
+  /**
+   * A window can be flushed several times, each with a wider set of types, so the completion
+   * message is built from the union of what each flush wrote rather than from a fresh Iglu lookup
+   * at window close -- which could see a different schema list and name a column nothing holds.
+   *
+   * The message carries one column per type, so this relies on a type mapping to the same column in
+   * every flush. `ParquetFieldsProviderSpec`'s "column names are monotonic in the type set" pins
+   * that against a growing type set. It cannot pin it against Iglu itself changing: a schema
+   * patched in place mid-window makes the later flush win and orphans the earlier flush's column.
+   * The window is the unit of consistency.
+   *
+   * @param writtenColumns
+   *   records, per window, which parquet column each schema key's data was written to.
+   */
   def parquetSink[F[_]: Async: RegistryLookup, C](
     resources: Resources[F, C],
     compression: Compression,
@@ -44,7 +59,8 @@ object ParquetSink {
     uri: URI,
     window: Window,
     types: List[Data.ShreddedType],
-    path: SinkPath
+    path: SinkPath,
+    writtenColumns: Ref[F, Map[Window, NonAtomicFieldsProvider.ColumnNamesByType]]
   ): Pipe[F, Transformed.Data, Unit] = { transformedData =>
     // As uri can use 's3a' schema, using methods from 'java.nio.file.Path' would require additional dependency responsible for adding appropriate 'java.nio.file.spi.FileSystemProvider', see e.g. https://github.com/carlspring/s3fs-nio/
     // Simple strings concat works for both cases: uri configured with and without trailing '/', bypassing usage of 'java.nio.file.Path'
@@ -54,10 +70,15 @@ object ParquetSink {
     Stream.eval(schemaCreation).flatMap {
       case Left(error) =>
         Stream.raiseError[F](new RuntimeException(s"Error while building parquet schema. ${error.show}"))
-      case Right(schema) =>
+      case Right(allFields) =>
+        val schema      = ParquetSchema.build(allFields)
         val parquetPipe = writeAsParquet(compression, targetPath, maxRecordsPerFile, schema, resources.parquetOps.hadoopConf)
+        val record = writtenColumns.update { byWindow =>
+          val names = NonAtomicFieldsProvider.columnNamesByType(allFields.nonAtomicFields.value)
+          byWindow.updated(window, byWindow.getOrElse(window, Map.empty) ++ names)
+        }
 
-        transformedData
+        Stream.eval(record) >> transformedData
           .mapFilter(_.fieldValues)
           .through(parquetPipe)
           .map(_ => ())
@@ -67,11 +88,10 @@ object ParquetSink {
   private def createSchemaFromTypes[F[_]: Monad: Clock: RegistryLookup, C](
     resources: Resources[F, C],
     types: List[Data.ShreddedType]
-  ): EitherT[F, FailureDetails.LoaderIgluError, MessageType] =
-    for {
-      nonAtomic <- NonAtomicFieldsProvider.build[F](resources.igluResolver, types.map(WideRow.Type.from))
-      allFields = AllFields(AtomicFieldsProvider.static, nonAtomic)
-    } yield ParquetSchema.build(allFields)
+  ): EitherT[F, FailureDetails.LoaderIgluError, AllFields] =
+    NonAtomicFieldsProvider
+      .build[F](resources.igluResolver, types.map(WideRow.Type.from))
+      .map(AllFields(AtomicFieldsProvider.static, _))
 
   private def writeAsParquet[F[_]: Async](
     compression: Compression,

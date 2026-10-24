@@ -17,17 +17,21 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.{Hierarchy, Transformed}
+import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.Deduplication
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage._
 
 import org.apache.spark.sql.types._
 
 object Serialization {
   val classesToRegister: Array[Class[_]] = Array(
+    classOf[Array[Array[Long]]],
     classOf[Array[String]],
-    classOf[Array[UUID]],
     classOf[SchemaKey],
     classOf[SelfDescribingData[_]],
     classOf[Event],
+    classOf[Deduplication.NaturalKey.Fingerprint],
+    classOf[Deduplication.NaturalKey.Position],
+    classOf[Deduplication.SyntheticDupeIds],
     classOf[Hierarchy],
     classOf[Instant],
     classOf[Transformed],

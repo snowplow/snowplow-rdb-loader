@@ -29,7 +29,6 @@ import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.SerializableConfiguration
 
-import java.util.UUID
 import java.time.Instant
 import scala.concurrent.{Await, TimeoutException}
 import scala.concurrent.duration._
@@ -119,13 +118,16 @@ class ShredJob[T](
       // Perform in-batch and cross-batch natural deduplications and writes found types to accumulator
       // only one event from an event id and event fingerprint combination is kept
       if (config.deduplication.natural) {
+        // A group is reduced to a single event as it is built, so an event id shared by an
+        // unusually large number of events cannot exhaust an executor
         val dedupWithoutCache = parsedGood
-          .groupBy(s => (s.event_id, s.event_fingerprint.getOrElse(UUID.randomUUID().toString)))
-          .flatMap { case (_, s) =>
-            val first = s.minBy(_.etl_tstamp)
-            Deduplication.crossBatch(first, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
+          // naturalKeys requires the file scan's order; nothing may shuffle or sort above this
+          .mapPartitionsWithIndex((partition, events) => Deduplication.naturalKeys(partition, events))
+          .reduceByKey(Deduplication.earliestByEtlTstamp)
+          .flatMap { case (_, event) =>
+            Deduplication.crossBatch(event, batchTimestamp, DuplicateStorageSingleton.get(eventsManifest)) match {
               case Right(unique) if unique =>
-                Some(Right(first))
+                Some(Right(event))
               case Right(_)     => None
               case Left(badRow) => Some(Left(badRow))
             }

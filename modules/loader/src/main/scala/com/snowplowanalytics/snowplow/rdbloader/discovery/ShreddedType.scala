@@ -142,8 +142,9 @@ object ShreddedType {
             Monad[F].map(JsonPathDiscovery[F].discoverJsonPath(jsonpathAssets, info))(_.map(Json(info, _)))
         }
       case t: TypesInfo.WideRow =>
-        t.types.traverse[F, DiscoveryStep[ShreddedType]] { case TypesInfo.WideRow.Type(schemaKey, shredProperty) =>
-          val info = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version, shredProperty)
+        t.types.traverse[F, DiscoveryStep[ShreddedType]] { wideRowType =>
+          val schemaKey = wideRowType.schemaKey
+          val info      = Info(base, schemaKey.vendor, schemaKey.name, schemaKey.version, wideRowType.snowplowEntity)
           (Widerow(info): ShreddedType).asRight[DiscoveryFailure].pure[F]
         }
     }

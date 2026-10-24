@@ -15,7 +15,7 @@ import cats.implicits._
 import com.snowplowanalytics.iglu.client.resolver.Resolver.ResolverConfig
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.schemaddl.parquet.FieldValue
-import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.ParquetTransformer
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.{NonAtomicFieldsProvider, ParquetTransformer}
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.AllFields
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.spark.singleton.{IgluSingleton, ShredModelCacheSingleton}
 import org.apache.spark.sql.Row
@@ -118,7 +118,7 @@ object Transformer {
 
     def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
       val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
-      TypesInfo.Shredded(types)
+      TypesInfo.Shredded(types.sorted)
     }
 
     def sink(
@@ -158,7 +158,9 @@ object Transformer {
     }
 
     def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
-      val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+      val types = typesAccumulator.value.toList
+        .filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+        .sorted
       TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.JSON, types)
     }
 
@@ -203,7 +205,12 @@ object Transformer {
     }
 
     def typesInfo(skipSchemas: List[SchemaCriterion]): TypesInfo = {
-      val types = typesAccumulator.value.toList.filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+      val columnNames = NonAtomicFieldsProvider.columnNamesByType(allFields.nonAtomicFields.value)
+      val types = typesAccumulator.value.toList
+        .filterNot(t => inSkipSchemas(skipSchemas, t.schemaKey))
+        .map(t => t.copy(columnName = columnNames.get((t.schemaKey, t.snowplowEntity))))
+        .sorted
+
       TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, types)
     }
 

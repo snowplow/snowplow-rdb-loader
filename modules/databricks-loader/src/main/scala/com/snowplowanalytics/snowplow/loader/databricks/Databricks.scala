@@ -120,6 +120,9 @@ object Databricks {
                 sql"""COPY INTO $frTableName
                       FROM (SELECT _C0::VARCHAR(512) RUN_ID FROM '$frPath' $frAuth)
                       FILEFORMAT = CSV"""
+              // COPY INTO matches the SELECT's columns by name, not position, so the order of
+              // `toCopy` and `toSkip` does not matter. A column named here but absent from the
+              // parquet file fails the whole statement at analysis time; it never loads partially.
               case Statement.EventsCopy(path, _, toCopy, toSkip, _, loadAuthMethod, _) =>
                 val updatedPath      = replaceScheme(path)
                 val frTableName      = Fragment.const(qualify(EventsTable.MainName))

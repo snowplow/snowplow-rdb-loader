@@ -24,6 +24,7 @@ import com.snowplowanalytics.snowplow.rdbloader.cloud.JsonPathDiscovery
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.Shredded.ShreddedFormat.{JSON, TSV}
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow.WideRowFormat
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.BlobStorage
 import com.snowplowanalytics.snowplow.rdbloader.dsl.{Cache, Iglu, Logging}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
@@ -80,6 +81,7 @@ class DataDiscoverySpec extends Specification {
       implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
 
       val s1 = ShreddedType.Tabular(
         ShreddedType.Info(
@@ -138,7 +140,10 @@ class DataDiscoverySpec extends Specification {
         shredModels
       ).asRight
 
-      val result = DataDiscovery.fromLoaderMessage[Pure](None, DataDiscoverySpec.shreddingCompleteWithSameModel).value.runA
+      val result = DataDiscovery
+        .fromLoaderMessage[Pure](None, LoaderMessage.Parsed(DataDiscoverySpec.shreddingCompleteWithSameModel, false))
+        .value
+        .runA
 
       result must beRight(expected)
     }
@@ -148,6 +153,7 @@ class DataDiscoverySpec extends Specification {
       implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
       implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
       implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
 
       val expected = LoaderError
         .DiscoveryError(
@@ -158,9 +164,134 @@ class DataDiscoverySpec extends Specification {
         )
         .asLeft
 
-      val result = DataDiscovery.fromLoaderMessage[Pure](None, DataDiscoverySpec.shreddingComplete).value.runA
+      val result = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(DataDiscoverySpec.shreddingComplete, false)).value.runA
 
       result must beRight(expected)
+    }
+
+    "use the column names carried in the message when present" >> {
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
+
+      val types = List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some("contexts_com_acme_event_a_1")
+        ),
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 1)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some("contexts_com_acme_event_a_1_recovered_1_0_1_9999999")
+        )
+      )
+      val message = DataDiscoverySpec.messageWith(TypesInfo.WideRow(WideRowFormat.PARQUET, types))
+
+      val (_, result) = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(message, true)).value.run
+
+      result.map(_.map(_.wideColumns)) must beRight(
+        List("contexts_com_acme_event_a_1", "contexts_com_acme_event_a_1_recovered_1_0_1_9999999").asRight[LoaderError]
+      )
+    }
+
+    "deduplicate repeated column names from the message" >> {
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
+
+      val base = "contexts_com_acme_event_a_1"
+      val types = List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some(base)
+        ),
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 1)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some(base)
+        )
+      )
+      val message = DataDiscoverySpec.messageWith(TypesInfo.WideRow(WideRowFormat.PARQUET, types))
+
+      val (_, result) = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(message, true)).value.run
+
+      result.map(_.map(_.wideColumns)) must beRight(List(base).asRight[LoaderError])
+    }
+
+    "skip a type the message did not name, because its column holds no data" >> {
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
+
+      val types = List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some("contexts_com_acme_event_a_1")
+        ),
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          None
+        )
+      )
+      val message = DataDiscoverySpec.messageWith(TypesInfo.WideRow(WideRowFormat.PARQUET, types))
+
+      val (state, result) = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(message, true)).value.run
+
+      result.map(_.map(_.wideColumns)) must beRight(List("contexts_com_acme_event_a_1").asRight[LoaderError])
+      // Nothing was derived, so Iglu was never consulted for the unnamed type.
+      state.getLog.collect { case LogEntry.Message(m) => m } must not(contain(beMatching(""".*event-b.*""")))
+    }
+
+    "reject a column name that is not a plain SQL identifier" >> {
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
+
+      val types = List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some("contexts_com_acme_event_a_1, (SELECT 1) AS injected")
+        )
+      )
+      val message = DataDiscoverySpec.messageWith(TypesInfo.WideRow(WideRowFormat.PARQUET, types))
+
+      val (_, result) = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(message, true)).value.run
+
+      result.map(_.leftMap(_.getMessage)) must beRight(beLeft[String](contain("invalid parquet column")))
+    }
+
+    "fall back to computing names when the message carries none" >> {
+      implicit val cache: Cache[Pure]                         = PureCache.interpreter
+      implicit val iglu: Iglu[Pure]                           = PureIglu.interpreter
+      implicit val aws: BlobStorage[Pure]                     = PureAWS.blobStorage(PureAWS.init)
+      implicit val jsonPathDiscovery: JsonPathDiscovery[Pure] = JsonPathDiscovery.aws[Pure]("eu-central-1")
+      implicit val logging: Logging[Pure]                     = PureLogging.interpreter()
+
+      val types = List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          None
+        )
+      )
+      val message = DataDiscoverySpec.messageWith(TypesInfo.WideRow(WideRowFormat.PARQUET, types))
+
+      val (_, result) = DataDiscovery.fromLoaderMessage[Pure](None, LoaderMessage.Parsed(message, false)).value.run
+
+      result.map(_.map(_.wideColumns)) must beRight(List("context_com.acme_event-a_1").asRight[LoaderError])
     }
   }
 
@@ -377,4 +508,14 @@ object DataDiscoverySpec {
     LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
     None
   )
+
+  def messageWith(typesInfo: TypesInfo): LoaderMessage.ShreddingComplete =
+    LoaderMessage.ShreddingComplete(
+      BlobStorage.Folder.coerce("s3://bucket/folder/"),
+      typesInfo,
+      LoaderMessage.Timestamps(Instant.ofEpochMilli(1600342341145L), Instant.ofEpochMilli(1600342341145L), None, None),
+      Compression.Gzip,
+      LoaderMessage.Processor("test-shredder", Semver(1, 1, 2)),
+      None
+    )
 }

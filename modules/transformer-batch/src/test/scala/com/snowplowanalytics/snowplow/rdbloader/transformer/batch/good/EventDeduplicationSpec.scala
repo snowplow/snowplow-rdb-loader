@@ -38,6 +38,34 @@ object EventDeduplicationSpec {
     s"""blog	web	2016-11-27 08:46:40.000	2016-11-27 07:16:08.000	2016-11-27 07:16:07.333	page_view	$originalUuid		blogTracker	js-2.7.0-rc2	clj-1.1.0-tom-0.2.0	hadoop-1.8.0-common-0.24.0		185.124.153.x	531497290	1f9b3980-6619-4d75-a6c9-8253c76c3bfb	18	5beb1f92-d4fb-4020-905c-f659929c8ab5												http://chuwy.me/scala-blocks.html	Scala Code Blocks	http://chuwy.me/	http	chuwy.me	80	/scala-blocks.html			http	chuwy.me	80	/			internal																																	Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.98 Safari/537.36	Chrome	Chrome	54.0.2840.98	Browser	WEBKIT		1	1	0	0	0	0	0	0	0	1	24	1280	726	Mac OS X	Mac OS X	Apple Inc.	Asia/Omsk	Computer	0	1280	800	UTF-8	1280	4315												2016-11-27 07:16:07.340			{"schema":"iglu:com.snowplowanalytics.snowplow/contexts/jsonschema/1-0-1","data":[{"schema":"iglu:com.snowplowanalytics.snowplow/ua_parser_context/jsonschema/1-0-0","data":{"useragentFamily":"Chrome","useragentMajor":"54","useragentMinor":"0","useragentPatch":"2840","useragentVersion":"Chrome 54.0.2840","osFamily":"MacOS X","osMajor":"10","osMinor":"11","osPatch":"6","osPatchMinor":null,"osVersion":"Mac OS X 10.11.6","deviceFamily":"Other"}}]}	395e4506-37a3-4074-8de2-d8c75fb17d4a	2016-11-27 07:16:07.993	com.snowplowanalytics.snowplow	page_view	jsonschema	1-0-0	bed9a39a0917874d2ff072033a6413d9	"""
   )
 
+  private val BaseEtlTstamp   = "2016-11-27 08:46:40.000"
+  private val BaseIpAddress   = "185.124.153.x"
+  private val BaseFingerprint = "bed9a39a0917874d2ff072033a6413d9"
+
+  /** Index of event_fingerprint in the atomic output, which drops the three JSON columns */
+  private val OutputFingerprintField = 126
+
+  /**
+   * Two natural duplicates: same event_id and same event_fingerprint, so only one survives. They
+   * differ in etl_tstamp, which decides which one, and in user_ipaddress, so a test can tell them
+   * apart. The later event comes first in the file, so keeping whichever event arrived first would
+   * fail the assertion.
+   */
+  val naturalDuplicatesWithDifferentEtlTstamps = Lines(
+    lines(0).replace(BaseEtlTstamp, "2016-11-27 08:46:41.000").replace(BaseIpAddress, "185.124.155.x"),
+    lines(0).replace(BaseEtlTstamp, "2016-11-27 08:46:39.000")
+  )
+
+  /**
+   * Two events with the same event_id and no event_fingerprint at all. Nothing says they are the
+   * same event, so both survive natural deduplication. They differ in user_ipaddress so a test can
+   * tell them apart.
+   */
+  val naturalDuplicatesWithoutFingerprints = Lines(
+    lines(0).replace(BaseFingerprint, ""),
+    lines(0).replace(BaseFingerprint, "").replace(BaseIpAddress, "185.124.156.x")
+  )
+
   /** Replace event_id UUID in EnrichedEvent TSV line with dummy */
   private def eraseEventId(enrichedEvent: String): String = {
     val event = enrichedEvent.split("\t", -1)
@@ -50,6 +78,13 @@ object EventDeduplicationSpec {
     val actualJson     = parse(actual)
     val modifiedActual = actualJson.merge("hierarchy" -> ("rootId" -> dummyUuid): JObject)
     compact(modifiedActual)
+  }
+
+  /** Extract originalEventId from a shredded duplicate context */
+  private def getOriginalEventId(duplicateContext: String): String = {
+    implicit val formats = org.json4s.DefaultFormats
+    val json             = parse(duplicateContext)
+    (json \ "data" \ "originalEventId").extract[String]
   }
 
   /** Extract event_id from shredded context */
@@ -264,6 +299,95 @@ class EventDeduplicationSpec extends Specification with ShredJobSpec {
       ).sorted
 
       distinctIds.and(existenceOfOriginalId).and(conformDummyContent)
+    }
+
+    "not write any bad row JSONs" in {
+      testOutputDirs.badRows must beEmptyDir
+    }
+  }
+
+  "A job which is provided with natural duplicates carrying different etl_tstamps" should {
+
+    val testOutputDirs = OutputDirs(randomFile("output"))
+    runShredJob(
+      EventDeduplicationSpec.naturalDuplicatesWithDifferentEtlTstamps,
+      outputDirs    = Some(testOutputDirs),
+      deduplication = Config.Deduplication(synthetic = Config.Deduplication.Synthetic.None, natural = true)
+    )
+
+    "keep only the event with the earliest etl_tstamp" in {
+      val Some((lines, _)) = readPartFile(testOutputDirs.goodRows, AtomicFolder)
+      val fields           = lines.map(_.split("\t", -1))
+
+      val exactlyOneEvent     = fields.size mustEqual 1
+      val earliestEtlTstamp   = fields.head.apply(2) mustEqual "2016-11-27 08:46:39.000"
+      val fromTheEarlierEvent = fields.head.apply(13) mustEqual "185.124.153.x"
+      val fingerprintColumn   = fields.head.apply(OutputFingerprintField) mustEqual BaseFingerprint
+
+      exactlyOneEvent.and(earliestEtlTstamp).and(fromTheEarlierEvent).and(fingerprintColumn)
+    }
+
+    "not write any bad row JSONs" in {
+      testOutputDirs.badRows must beEmptyDir
+    }
+  }
+
+  "A job which is provided with two events sharing an event_id but carrying no event_fingerprint" should {
+
+    val testOutputDirs = OutputDirs(randomFile("output"))
+    runShredJob(
+      EventDeduplicationSpec.naturalDuplicatesWithoutFingerprints,
+      outputDirs    = Some(testOutputDirs),
+      deduplication = Config.Deduplication(synthetic = Config.Deduplication.Synthetic.None, natural = true)
+    )
+
+    "keep both events" in {
+      val Some((lines, _)) = readPartFile(testOutputDirs.goodRows, AtomicFolder)
+      val fields           = lines.map(_.split("\t", -1))
+
+      val bothEvents       = fields.size mustEqual 2
+      val theSameEventId   = fields.map(_.apply(6)).distinct mustEqual List(originalUuid)
+      val noFingerprint    = fields.map(_.apply(OutputFingerprintField)).distinct mustEqual List("")
+      val bothOriginalRows = fields.map(_.apply(13)).sorted mustEqual List("185.124.153.x", "185.124.156.x")
+
+      bothEvents.and(theSameEventId).and(noFingerprint).and(bothOriginalRows)
+    }
+
+    "not write any bad row JSONs" in {
+      testOutputDirs.badRows must beEmptyDir
+    }
+  }
+
+  "A job with synthetic deduplication enabled, provided with two events sharing an event_id and no event_fingerprint" should {
+
+    val duplicateContextPath = "vendor=com.snowplowanalytics.snowplow/name=duplicate/format=json/model=1/revision=0/addition=0"
+
+    val testOutputDirs = OutputDirs(randomFile("output"))
+    runShredJob(EventDeduplicationSpec.naturalDuplicatesWithoutFingerprints, outputDirs = Some(testOutputDirs))
+
+    "give both events a fresh event_id" in {
+      val Some((lines, _)) = readPartFile(testOutputDirs.goodRows, AtomicFolder)
+      val fields           = lines.map(_.split("\t", -1))
+      val eventIds         = fields.map(_.apply(6))
+
+      val bothEvents       = fields.size mustEqual 2
+      val rewritten        = eventIds must not(contain(originalUuid))
+      val distinctIds      = eventIds.distinct must haveSize(2)
+      val bothOriginalRows = fields.map(_.apply(13)).sorted mustEqual List("185.124.153.x", "185.124.156.x")
+
+      bothEvents.and(rewritten).and(distinctIds).and(bothOriginalRows)
+    }
+
+    "shred a duplicate context for each of them, naming the original event_id" in {
+      val Some((contexts, _)) = readPartFile(testOutputDirs.goodRows, duplicateContextPath)
+      val rootIds             = contexts.map(EventDeduplicationSpec.getRootId)
+
+      val bothContexts     = contexts must haveSize(2)
+      val theOriginalId    = contexts.map(EventDeduplicationSpec.getOriginalEventId) mustEqual List(originalUuid, originalUuid)
+      val underTheFreshIds = rootIds.distinct must haveSize(2)
+      val notTheOriginalId = rootIds must not(contain(originalUuid))
+
+      bothContexts.and(theOriginalId).and(underTheFreshIds).and(notTheOriginalId)
     }
 
     "not write any bad row JSONs" in {

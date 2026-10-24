@@ -19,6 +19,7 @@ import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.Parque
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.WiderowParquetProcessingSpec.{appConfig, igluConfig}
 import fs2.io.file.Path
+import io.circe.parser.parse
 import io.circe.syntax.EncoderOps
 import io.circe.{Json, JsonObject}
 import org.apache.parquet.column.ColumnDescriptor
@@ -61,6 +62,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
 
             actualParquetRows.size must beEqualTo(46)
             actualBadRows.size must beEqualTo(4)
+            // Before the golden comparison, so it can fail on its own rather than being shadowed by it.
+            assertColumnsAndMessageAgree(actualParquetRows, actualParquetColumns, output.completionMessages.toList.head)
             output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
@@ -96,6 +99,9 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           } yield {
 
             actualParquetRows.size must beEqualTo(100)
+            output.completionMessages.toList must haveSize(1)
+            // Before the golden comparison, so it can fail on its own rather than being shadowed by it.
+            assertColumnsAndMessageAgree(actualParquetRows, actualParquetColumns, output.completionMessages.toList.head)
             output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
@@ -130,6 +136,9 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           } yield {
 
             actualParquetRows.size must beEqualTo(100)
+            output.completionMessages.toList must haveSize(1)
+            // Before the golden comparison, so it can fail on its own rather than being shadowed by it.
+            assertColumnsAndMessageAgree(actualParquetRows, actualParquetColumns, output.completionMessages.toList.head)
             output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
@@ -161,6 +170,16 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           } yield {
 
             actualParquetRows.size must beEqualTo(3)
+            output.completionMessages.toList must haveSize(1)
+
+            // The trailing digits are a Scala 2.12 `Field.hashCode`; 2.13 produces a different value.
+            output.completionMessages.toList.head must contain(
+              """"columnName":"contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102""""
+            )
+
+            output.completionMessages.toList must haveSize(1)
+            // Before the golden comparison, so it can fail on its own rather than being shadowed by it.
+            assertColumnsAndMessageAgree(actualParquetRows, actualParquetColumns, output.completionMessages.toList.head)
             output.completionMessages.toList must beEqualTo(List(expectedCompletionMessage))
             output.checkpointed must beEqualTo(1)
 
@@ -193,6 +212,40 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
           .sortBy(_.event_id.toString)
           .map(transformEventForParquetTest(columnToAdjust.getOrElse("none")))
       }
+
+  /**
+   * The contract the loader depends on, checked both ways against the files that were actually
+   * written. Every column holding data must be named, or the loader drops it silently. And every
+   * name must exist in the file, or the COPY INTO fails at analysis time and loads nothing -- which
+   * is the failure this whole change exists to prevent.
+   */
+  private def assertColumnsAndMessageAgree(
+    rows: List[Json],
+    fileColumns: Map[File, List[ColumnDescriptor]],
+    completionMessage: String
+  ) = {
+    val columnsWithData = rows
+      .flatMap(_.asObject.toList.flatMap(_.keys))
+      .filter(name => name.startsWith("contexts_") || name.startsWith("unstruct_event_"))
+      .distinct
+
+    val namedInMessage = parse(completionMessage)
+      .getOrElse(Json.Null)
+      .hcursor
+      .downField("data")
+      .downField("typesInfo")
+      .downField("types")
+      .values
+      .toList
+      .flatten
+      .flatMap(_.hcursor.get[String]("columnName").toOption)
+
+    val columnsInFile = fileColumns.values.flatten.map(_.getPath.head).toList.distinct
+
+    (columnsWithData must not(beEmpty)) and
+      forall(columnsWithData)(name => namedInMessage must contain(name)) and
+      forall(namedInMessage)(name => columnsInFile must contain(name))
+  }
 
   private def readParquetColumnsFromResource(path: String): IO[List[ColumnDescriptor]] =
     readLinesFromResource(path)

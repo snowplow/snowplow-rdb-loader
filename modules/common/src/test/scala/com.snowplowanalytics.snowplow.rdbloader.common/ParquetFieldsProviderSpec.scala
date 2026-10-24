@@ -156,9 +156,12 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 3
+        val recoveredNames = result.value.map(_.field.name).filter(_.contains("_recovered_"))
+        recoveredNames must haveSize(2)
+        recoveredNames must contain(beMatching(""".*_recovered_\d+_\d+_\d+_\d+""")).forall
         forall(
           result.value
-            .map(s => (s.field, s.matchingKeys))
+            .map(s => (withoutHashSuffix(s.field), s.matchingKeys))
             .zip(List(expectedContext100_110, expectedContext101, expectedContext111))
         ) { case (actual, expected) => actual mustEqual expected }
       }
@@ -188,6 +191,32 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
     }
   }
 
+  "column names are monotonic in the type set" >> {
+    val allTypes = List(
+      SchemaVer.Full(1, 0, 0),
+      SchemaVer.Full(1, 0, 1),
+      SchemaVer.Full(1, 1, 0),
+      SchemaVer.Full(1, 1, 1)
+    ).map(v => getBrokenType(v, SnowplowEntity.Context))
+
+    def namesFor(types: List[WideRow.Type]): Map[(SchemaKey, SnowplowEntity), String] =
+      NonAtomicFieldsProvider.columnNamesByType(NonAtomicFieldsProvider.fieldsFromTypes(resolver, types).value.right.get)
+
+    val finalNames = namesFor(allTypes)
+
+    // A single event carries an arbitrary subset of the batch's types, so every subset -- not just
+    // every prefix -- must map each type to the same column the whole batch maps it to. Set
+    // containment alone would allow a type's name to change to some other name already in the set.
+    allTypes.toSet
+      .subsets()
+      .filter(_.nonEmpty)
+      .toList
+      .map { subset =>
+        (namesFor(subset.toList).toSet -- finalNames.toSet) must beEmpty
+      }
+      .reduce(_ and _)
+  }
+
   private def assertOneField(
     inputTypesVersions: List[(Int, Int, Int)],
     entity: SnowplowEntity,
@@ -207,6 +236,11 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 object ParquetFieldsProviderSpec {
   private def getType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema", format = "jsonschema", version), entity)
+
+  // A recovered column's name ends in a JVM case-class hashCode, which differs between Scala 2.12
+  // and 2.13. Everything else about the column is stable, so compare without those digits.
+  private def withoutHashSuffix(field: Field): Field =
+    field.copy(name = field.name.replaceAll("""(_recovered_\d+_\d+_\d+)_\d+$""", "$1"))
 
   private def getBrokenType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema_broken", format = "jsonschema", version), entity)
@@ -420,7 +454,7 @@ object ParquetFieldsProviderSpec {
     )
     val expectedContext111 = (
       nullableArrayWithRequiredElement(
-        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_737559706",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1",
         elementType = DdlTypes.brokenSchema111,
         accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
@@ -428,7 +462,7 @@ object ParquetFieldsProviderSpec {
     )
     val expectedContext101 = (
       nullableArrayWithRequiredElement(
-        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1",
         elementType = DdlTypes.brokenSchema101,
         accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),

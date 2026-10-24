@@ -18,6 +18,7 @@ import io.circe.{Json, JsonObject}
 import io.circe.syntax._
 
 import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Formats.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.generated.BuildInfo
 import com.snowplowanalytics.snowplow.rdbloader.transformer.batch.ShredJobSpec
@@ -150,30 +151,59 @@ class WideRowParquetSpec extends Specification with ShredJobSpec {
     }
   }
 
-  "Recover from the broken schema migrations" in {
+  "Recover from the broken schema migrations" should {
     val testOutputDirs = OutputDirs(randomFile("output"))
-    runShredJob(
+    // `runShredJob` deletes its input resource, so the job is run once and its result shared.
+    val shreddingComplete = runShredJob(
       events     = ResourceFile("/widerow/parquet/events_with_corrupted_migrations"),
       wideRow    = Some(WideRow.PARQUET),
       outputDirs = Some(testOutputDirs)
     )
 
-    val lines = readParquetFile(spark, testOutputDirs.goodRows)
-      .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
+    "recover the broken column in the parquet output" in {
+      val lines = readParquetFile(spark, testOutputDirs.goodRows)
+        .sortBy(_.asObject.flatMap(_("event_id")).flatMap(_.asString))
 
-    lines.size must beEqualTo(3)
-    forall(
-      lines
-        .map(_.toString())
-        .zip(
-          List(
-            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
-            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
-            """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+      lines.size must beEqualTo(3)
+      forall(
+        lines
+          .map(_.toString())
+          .zip(
+            List(
+              """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
+              """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
+              """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+            )
           )
-        )
-    ) { case (actual, expected) =>
-      actual must beMatching(expected)
+      ) { case (actual, expected) =>
+        actual must beMatching(expected)
+      }
+    }
+
+    "name every parquet column that was written in the shredding_complete message" in {
+      val columnNames = shreddingComplete.typesInfo match {
+        case TypesInfo.WideRow(_, types) => types.flatMap(_.columnName).distinct
+        case other                       => throw new IllegalStateException(s"expected WideRow types, got $other")
+      }
+
+      // The contract, checked both ways against the file that was written. Every column holding
+      // data must be named, or the loader drops it silently; and every name must exist in the file,
+      // or the COPY INTO fails at analysis time and loads nothing.
+      val writtenColumns = readParquetFile(spark, testOutputDirs.goodRows)
+        .flatMap(_.asObject.toList.flatMap(_.keys))
+        .filter(name => name.startsWith("contexts_") || name.startsWith("unstruct_event_"))
+        .distinct
+      val columnsInFile = readParquetFields(spark, testOutputDirs.goodRows).map(_.name)
+
+      writtenColumns must not(beEmpty)
+      forall(writtenColumns)(name => columnNames must contain(name))
+      forall(columnNames)(name => columnsInFile must contain(name))
+
+      // The trailing digits are a Scala 2.12 `Field.hashCode`; 2.13 produces a different value.
+      columnNames must contain("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
+      columnNames must contain(
+        "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102"
+      )
     }
   }
 

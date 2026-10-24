@@ -1,3 +1,14 @@
+Version 6.8.0 (2026-09-25)
+--------------------------
+Bump dependencies for 6.8.0 release (#69)
+Stop every Databricks optimize being reported as a failure (#68)
+Give the Kinesis transformer the s3-transfer-manager hadoop-aws needs (#67)
+Let the transformer tell the loader which parquet columns it wrote (#66)
+Hold synthetic duplicate ids as primitives rather than a Set[UUID] (#65)
+Keep natural deduplication correct without the fingerprint enrichment (#63)
+Reduce natural duplicate groups instead of collecting them (#62)
+Point the rollout job summary at #pipeline-rollouts (#61)
+
 Version 6.7.2 (2026-08-20)
 --------------------------
 Bump dependencies ready for 6.7.2 release (#58)

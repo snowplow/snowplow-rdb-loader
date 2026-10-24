@@ -129,18 +129,20 @@ object DataDiscovery {
           .error(loaderError)("A problem occurred in the loading of the queue message. Acknowledging and skipping it.")
           .as(ClassifiedMessage.NothingToLoad)
       // Checked ahead of discovery, which an empty folder has nothing to look up for anyway
-      case Right(parsed: LoaderMessage.ShreddingComplete) if isEmpty(parsed) =>
+      case Right(parsed) if isEmpty(parsed.message) =>
         Logging[F]
-          .info(s"Empty discovery at ${parsed.base}. Acknowledging the message without loading attempt")
+          .info(s"Empty discovery at ${parsed.message.base}. Acknowledging the message without loading attempt")
           .as(ClassifiedMessage.NothingToLoad)
-      case Right(parsed: LoaderMessage.ShreddingComplete) =>
+      case Right(parsed) =>
         fromLoaderMessage[F](assets, parsed).value.flatMap {
           case Right(discovery) =>
-            Logging[F].info(s"New data discovery at ${discovery.show}").as(ClassifiedMessage.Discovered(WithOrigin(discovery, parsed)))
+            Logging[F]
+              .info(s"New data discovery at ${discovery.show}")
+              .as(ClassifiedMessage.Discovered(WithOrigin(discovery, parsed.message)))
           case Left(error) =>
             Logging[F]
               .error(error)("A problem occurred in the loading of the queue message")
-              .as(ClassifiedMessage.Failed(parsed.base, error))
+              .as(ClassifiedMessage.Failed(parsed.message.base, error))
         }
     }
 
@@ -153,10 +155,11 @@ object DataDiscovery {
    * @tparam F
    *   effect type to perform AWS interactions
    */
-  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery: Iglu](
+  def fromLoaderMessage[F[_]: Monad: Cache: BlobStorage: JsonPathDiscovery: Iglu: Logging](
     assets: Option[BlobStorage.Folder],
-    message: LoaderMessage.ShreddingComplete
+    parsed: LoaderMessage.Parsed
   ): LoaderAction[F, DataDiscovery] = {
+    val message = parsed.message
     val types = ShreddedType
       .fromCommon[F](message.base, assets, message.typesInfo)
       .map { steps =>
@@ -172,9 +175,7 @@ object DataDiscovery {
                          fileFormat match {
                            case WideRowFormat.JSON => EitherT.pure[F, LoaderError](List.empty[String])
                            case WideRowFormat.PARQUET =>
-                             Iglu[F]
-                               .fieldNamesFromTypes(types)
-                               .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
+                             parquetColumns[F](message.base, types, parsed.columnNamesAreComplete)
                          }
                      }
       models <- message.typesInfo match {
@@ -183,6 +184,39 @@ object DataDiscovery {
                 }
     } yield DataDiscovery(message.base, types.distinct, message.compression, message.typesInfo, wideColumns, models)
   }
+
+  /**
+   * The parquet columns to copy.
+   *
+   * When the message's version promises the column names are complete (see
+   * [[LoaderMessage.Parsed]]) they are used exactly as given, and a type with no name is skipped:
+   * its column holds no data for this batch, so there is nothing to copy. Deriving the names here
+   * is a fallback for older messages only -- a recovery column's name embeds a hash that differs
+   * between Scala versions, so a 2.13 transformer and this 2.12 loader would not agree on it.
+   */
+  /** Column names from the message are interpolated into `COPY INTO ... SELECT` without quoting. */
+  private val ValidColumnName = "^[A-Za-z_][A-Za-z0-9_]*$".r
+
+  private def parquetColumns[F[_]: Monad: Iglu: Logging](
+    base: BlobStorage.Folder,
+    types: List[TypesInfo.WideRow.Type],
+    columnNamesAreComplete: Boolean
+  ): EitherT[F, LoaderError, List[String]] =
+    if (columnNamesAreComplete) {
+      val names = types.flatMap(_.columnName).distinct
+      names.find(name => ValidColumnName.findFirstIn(name).isEmpty) match {
+        case Some(invalid) =>
+          EitherT.leftT[F, List[String]](
+            LoaderError.DiscoveryError(IgluError(show"Message for $base names an invalid parquet column [$invalid]")): LoaderError
+          )
+        case None => EitherT.pure[F, LoaderError](names)
+      }
+    } else
+      EitherT.liftF[F, LoaderError, Unit] {
+        Logging[F].info(show"Message for $base predates parquet column names; deriving them locally")
+      } *> Iglu[F]
+        .fieldNamesFromTypes(types)
+        .leftMap(er => LoaderError.DiscoveryError(IgluError(s"Error inferring columns names $er")))
 
   def getShredModels[F[_]: Monad: Iglu](
     nonAtomicTypes: List[ShreddedType]

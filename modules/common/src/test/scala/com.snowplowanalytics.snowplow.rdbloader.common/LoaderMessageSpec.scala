@@ -26,12 +26,46 @@ class LoaderMessageSpec extends Specification {
   "fromMessage" should {
     "decode message for shredded from valid JSON string" >> {
       val shreddedMessage = LoaderMessageSpec.ShreddedMessageJson.noSpaces
-      LoaderMessage.fromString(shreddedMessage) must beRight(LoaderMessageSpec.ShreddedMessage)
+      LoaderMessage.fromString(shreddedMessage) must beRight(
+        LoaderMessage.Parsed(LoaderMessageSpec.ShreddedMessage, columnNamesAreComplete = true)
+      )
     }
 
     "decode message for wide row from valid JSON string" >> {
       val wideRowMessage = LoaderMessageSpec.WideRowMessageJson.noSpaces
-      LoaderMessage.fromString(wideRowMessage) must beRight(LoaderMessageSpec.WideRowMessage)
+      LoaderMessage.fromString(wideRowMessage) must beRight(
+        LoaderMessage.Parsed(LoaderMessageSpec.WideRowMessage, columnNamesAreComplete = true)
+      )
+    }
+
+    "decode a 2-0-2 wide row message carrying columnName" >> {
+      val json = LoaderMessageSpec.WideRowParquetMessageJson.noSpaces
+      LoaderMessage.fromString(json) must beRight(
+        LoaderMessage.Parsed(LoaderMessageSpec.WideRowParquetMessage, columnNamesAreComplete = true)
+      )
+    }
+
+    "decode a 2-0-1 message that carries column names, without trusting them" >> {
+      val legacy = LoaderMessageSpec.WideRowParquetMessageJson.noSpaces
+        .replace("shredding_complete/jsonschema/2-0-2", "shredding_complete/jsonschema/2-0-1")
+      LoaderMessage.fromString(legacy) must beRight(
+        LoaderMessage.Parsed(LoaderMessageSpec.WideRowParquetMessage, columnNamesAreComplete = false)
+      )
+    }
+
+    "promise complete column names only from 2-0-2 onwards" >> {
+      def flagFor(version: String) =
+        LoaderMessage
+          .fromString(
+            LoaderMessageSpec.WideRowMessageJson.noSpaces
+              .replace("shredding_complete/jsonschema/2-0-2", s"shredding_complete/jsonschema/$version")
+          )
+          .map(_.columnNamesAreComplete)
+
+      flagFor("2-0-2") must beRight(true)
+      flagFor("2-1-0") must beRight(true)
+      flagFor("2-0-1") must beRight(false)
+      flagFor("2-0-0") must beRight(false)
     }
   }
 
@@ -72,7 +106,7 @@ class LoaderMessageSpec extends Specification {
 
 object LoaderMessageSpec {
   val ShreddedMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-2",
     "data": {
       "base" : "s3://bucket/folder/",
       "typesInfo": {
@@ -101,7 +135,7 @@ object LoaderMessageSpec {
   }"""
 
   val WideRowMessageJson = json"""{
-    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-2",
     "data": {
       "base" : "s3://bucket/folder/",
       "typesInfo": {
@@ -142,7 +176,7 @@ object LoaderMessageSpec {
   )
   val processor = LoaderMessage.Processor("test-shredder", Semver(1, 1, 2))
 
-  val ShreddedMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
+  val ShreddedMessage: LoaderMessage.ShreddingComplete = LoaderMessage.ShreddingComplete(
     base,
     TypesInfo.Shredded(
       List(
@@ -159,7 +193,7 @@ object LoaderMessageSpec {
     None
   )
 
-  val WideRowMessage: LoaderMessage = LoaderMessage.ShreddingComplete(
+  val WideRowMessage: LoaderMessage.ShreddingComplete = LoaderMessage.ShreddingComplete(
     base,
     TypesInfo.WideRow(
       TypesInfo.WideRow.WideRowFormat.JSON,
@@ -168,6 +202,64 @@ object LoaderMessageSpec {
           .Type(SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)), LoaderMessage.SnowplowEntity.SelfDescribingEvent),
         TypesInfo.WideRow
           .Type(SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(2, 0, 0)), LoaderMessage.SnowplowEntity.Context)
+      )
+    ),
+    timestamps,
+    Compression.Gzip,
+    processor,
+    None
+  )
+
+  val WideRowParquetMessageJson = json"""{
+    "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-2",
+    "data": {
+      "base" : "s3://bucket/folder/",
+      "typesInfo": {
+        "transformation": "WIDEROW",
+        "fileFormat": "PARQUET",
+        "types": [
+          {
+            "schemaKey" : "iglu:com.acme/event-a/jsonschema/1-0-0",
+            "snowplowEntity": "SELF_DESCRIBING_EVENT",
+            "columnName": "unstruct_event_com_acme_event_a_1"
+          },
+          {
+            "schemaKey" : "iglu:com.acme/event-b/jsonschema/2-0-0",
+            "snowplowEntity": "CONTEXT",
+            "columnName": "contexts_com_acme_event_b_2_recovered_2_0_0_1234567"
+          }
+        ]
+      },
+      "timestamps" : {
+        "jobStarted" : "2020-09-17T11:32:21.145Z",
+        "jobCompleted" : "2020-09-17T11:32:21.145Z",
+        "min" : null,
+        "max" : null
+      },
+      "compression": "GZIP",
+      "processor": {
+        "artifact" : "test-shredder",
+        "version" : "1.1.2"
+      },
+      "count": null
+    }
+  }"""
+
+  val WideRowParquetMessage: LoaderMessage.ShreddingComplete = LoaderMessage.ShreddingComplete(
+    base,
+    TypesInfo.WideRow(
+      TypesInfo.WideRow.WideRowFormat.PARQUET,
+      List(
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-a", "jsonschema", SchemaVer.Full(1, 0, 0)),
+          LoaderMessage.SnowplowEntity.SelfDescribingEvent,
+          Some("unstruct_event_com_acme_event_a_1")
+        ),
+        TypesInfo.WideRow.Type(
+          SchemaKey("com.acme", "event-b", "jsonschema", SchemaVer.Full(2, 0, 0)),
+          LoaderMessage.SnowplowEntity.Context,
+          Some("contexts_com_acme_event_b_2_recovered_2_0_0_1234567")
+        )
       )
     ),
     timestamps,

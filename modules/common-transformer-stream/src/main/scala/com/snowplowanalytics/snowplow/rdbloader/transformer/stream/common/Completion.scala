@@ -26,6 +26,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Data
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.{Timestamps, TypesInfo}
 import com.snowplowanalytics.snowplow.rdbloader.common.config.TransformerConfig.Compression
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.NonAtomicFieldsProvider
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sinks.Window
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.sources.Checkpointer
 import com.snowplowanalytics.snowplow.rdbloader.common.cloud.{BlobStorage, Queue}
@@ -68,7 +69,8 @@ object Completion {
     legacyMessageFormat: Boolean,
     processor: LoaderMessage.Processor,
     window: Window,
-    state: State[C]
+    state: State[C],
+    writtenColumns: NonAtomicFieldsProvider.ColumnNamesByType
   ): F[Unit] =
     for {
       timestamps <- Sync[F].realTimeInstant.map { now =>
@@ -77,9 +79,10 @@ object Completion {
       base                  = BlobStorage.Folder.coerce(root.toString).append(window.getDir)
       shreddingCompletePath = base.withKey(sealFile)
       count                 = LoaderMessage.Count(state.total - state.bad, Some(state.bad))
+      typesInfo             = withColumnNames(getTypes(state.types), writtenColumns)
       message = LoaderMessage.ShreddingComplete(
                   BlobStorage.Folder.coerce(base),
-                  getTypes(state.types),
+                  typesInfo,
                   timestamps,
                   compression,
                   processor,
@@ -90,6 +93,18 @@ object Completion {
       _ <- Checkpointer[F, C].checkpoint(state.checkpointer)
       _ <- producer.send(body)
     } yield ()
+
+  /**
+   * Name each type with the column its data was actually written to. A type with no column wrote
+   * nothing in this window, and the loader skips it -- see `LoaderMessage.Parsed`.
+   */
+  private def withColumnNames(typesInfo: TypesInfo, writtenColumns: NonAtomicFieldsProvider.ColumnNamesByType): TypesInfo =
+    typesInfo match {
+      case TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, types) =>
+        val named = types.map(t => t.copy(columnName = writtenColumns.get((t.schemaKey, t.snowplowEntity))))
+        TypesInfo.WideRow(TypesInfo.WideRow.WideRowFormat.PARQUET, named)
+      case other => other
+    }
 
   def writeFile[F[_]: Sync](
     blobStorage: BlobStorage[F],

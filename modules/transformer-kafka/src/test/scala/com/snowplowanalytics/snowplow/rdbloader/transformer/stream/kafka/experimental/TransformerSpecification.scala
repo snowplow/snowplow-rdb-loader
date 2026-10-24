@@ -240,8 +240,8 @@ abstract class TransformerSpecification extends Specification with AppDependenci
 
   private def parseShreddingCompleteMessage(message: String): LoaderMessage.ShreddingComplete =
     LoaderMessage.fromString(message) match {
-      case Right(parsedMessage: LoaderMessage.ShreddingComplete) => parsedMessage
-      case other => throw new IllegalStateException(s"Provided message is not a valid shredding complete message - $other")
+      case Right(parsed) => parsed.message
+      case other         => throw new IllegalStateException(s"Provided message is not a valid shredding complete message - $other")
     }
 
 }

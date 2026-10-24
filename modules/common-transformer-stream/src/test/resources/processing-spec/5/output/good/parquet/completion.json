@@ -1,5 +1,5 @@
 {
-  "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-1",
+  "schema": "iglu:com.snowplowanalytics.snowplow.storage.rdbloader/shredding_complete/jsonschema/2-0-2",
   "data": {
     "base": "output_path_placeholder",
     "typesInfo": {
@@ -7,100 +7,124 @@
       "fileFormat": "PARQUET",
       "types": [
         {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/2-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:org.ietf/http_header/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.segment/screen/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.optimizely/state/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-1-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-2-0",
-          "snowplowEntity": "CONTEXT"
+          "schemaKey": "iglu:com.google.analytics/cookies/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_google_analytics_cookies_1"
         },
         {
           "schemaKey": "iglu:com.google.analytics/private/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/client_session/jsonschema/1-0-1",
-          "snowplowEntity": "CONTEXT"
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_google_analytics_private_1"
         },
         {
           "schemaKey": "iglu:com.mparticle.snowplow/pushregistration_event/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/change_form/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/desktop_context/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-1",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.optimizely.optimizelyx/summary/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-2",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/ua_parser_context/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.optimizely/variation/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/consent_document/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
-        },
-        {
-          "schemaKey": "iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-1",
-          "snowplowEntity": "SELF_DESCRIBING_EVENT"
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_mparticle_snowplow_pushregistration_event_1"
         },
         {
           "schemaKey": "iglu:com.mparticle.snowplow/session_context/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_mparticle_snowplow_session_context_1"
+        },
+        {
+          "schemaKey": "iglu:com.optimizely/state/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_optimizely_state_1"
+        },
+        {
+          "schemaKey": "iglu:com.optimizely/variation/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_optimizely_variation_1"
         },
         {
           "schemaKey": "iglu:com.optimizely/visitor/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_optimizely_visitor_1"
         },
         {
-          "schemaKey": "iglu:org.ietf/http_cookie/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
+          "schemaKey": "iglu:com.optimizely.optimizelyx/summary/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_optimizely_optimizelyx_summary_1"
+        },
+        {
+          "schemaKey": "iglu:com.segment/screen/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_segment_screen_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/change_form/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_change_form_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/client_session/jsonschema/1-0-1",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_client_session_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/consent_document/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_consent_document_1"
         },
         {
           "schemaKey": "iglu:com.snowplowanalytics.snowplow/consent_withdrawn/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_consent_withdrawn_1"
         },
         {
-          "schemaKey": "iglu:com.google.analytics/cookies/jsonschema/1-0-0",
-          "snowplowEntity": "CONTEXT"
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/desktop_context/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_desktop_context_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-1",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-0-2",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-1-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/1-2-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/parquet_test_a/jsonschema/2-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_parquet_test_a_2"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/ua_parser_context/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_com_snowplowanalytics_snowplow_ua_parser_context_1"
+        },
+        {
+          "schemaKey": "iglu:org.ietf/http_cookie/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_org_ietf_http_cookie_1"
+        },
+        {
+          "schemaKey": "iglu:org.ietf/http_header/jsonschema/1-0-0",
+          "snowplowEntity": "CONTEXT",
+          "columnName": "contexts_org_ietf_http_header_1"
+        },
+        {
+          "schemaKey": "iglu:com.snowplowanalytics.snowplow/link_click/jsonschema/1-0-1",
+          "snowplowEntity": "SELF_DESCRIBING_EVENT",
+          "columnName": "unstruct_event_com_snowplowanalytics_snowplow_link_click_1"
         }
       ]
     },
@@ -117,7 +141,7 @@
     },
     "count": {
       "good": 100,
-      "bad":0
+      "bad": 0
     }
   }
 }

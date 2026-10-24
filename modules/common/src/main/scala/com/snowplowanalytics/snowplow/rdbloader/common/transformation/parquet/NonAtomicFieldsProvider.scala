@@ -16,12 +16,14 @@ import cats.effect.Clock
 import cats.syntax.all._
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
+import com.snowplowanalytics.iglu.core.SchemaKey
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Migrations.mergeSchemas
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent
 import com.snowplowanalytics.snowplow.badrows.FailureDetails
 import com.snowplowanalytics.snowplow.badrows.FailureDetails.LoaderIgluError
+import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.fields.{NonAtomicFields, TypedField}
 import com.snowplowanalytics.snowplow.rdbloader.common.SchemaProvider._
@@ -31,6 +33,9 @@ import scala.math.Ordered.orderingToOrdered
 import scala.math.abs
 
 object NonAtomicFieldsProvider {
+
+  /** Which parquet column each schema key's data was written to. See [[columnNamesByType]]. */
+  type ColumnNamesByType = Map[(SchemaKey, SnowplowEntity), String]
 
   /**
    * Builds a `NonAtomicFields`.
@@ -138,6 +143,20 @@ object NonAtomicFieldsProvider {
               .map(extractEndSchemas(typeSet))
           )
       )
+
+  /**
+   * The parquet column each schema key's data was written to. Keyed on the entity as well, because
+   * one schema can appear as both a context and a self-describing event.
+   *
+   * A key absent from this map contributed no data to any column, so from `shredding_complete`
+   * `2-0-2` the loader takes a type with no name to mean "nothing to copy" and skips it. Any change
+   * here that stops naming a column which does hold data would therefore drop that column from the
+   * load, silently -- see [[com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.Parsed]].
+   */
+  def columnNamesByType(fields: List[TypedField]): ColumnNamesByType =
+    fields.flatMap { typedField =>
+      typedField.matchingKeys.map(key => (key, typedField.`type`.snowplowEntity) -> typedField.field.name)
+    }.toMap
 
   private def fieldFromSchema(`type`: WideRow.Type)(schema: Schema): Option[Field] = {
     val fieldName = SnowplowEvent.transformSchema(`type`.snowplowEntity.toSdkProperty, `type`.schemaKey)
