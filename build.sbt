@@ -178,7 +178,6 @@ lazy val transformerBatchDocker = project
   .settings(Compile / sourceDirectory := (transformerBatch / Compile / sourceDirectory).value)
   .settings(libraryDependencies ++= Dependencies.batchTransformerDockerDependencies)
   .settings(libraryDependencies ++= Dependencies.dockerOnlyDependencies)
-  .settings(libraryDependencies ++= Dependencies.sparkDistributionOverrides)
   .settings(
     // Tests are run by the transformerBatch project; no need to repeat them here.
     Test / test := {}

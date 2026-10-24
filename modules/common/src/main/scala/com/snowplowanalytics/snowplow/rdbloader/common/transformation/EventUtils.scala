@@ -14,7 +14,7 @@ import java.util.UUID
 import java.time.Instant
 import java.time.format.DateTimeParseException
 
-import io.circe.Json
+import io.circe.{Json, JsonObject}
 import cats.Monad
 import cats.data.NonEmptyList
 import cats.implicits._
@@ -29,7 +29,8 @@ import com.snowplowanalytics.iglu.client.resolver.registries.RegistryLookup
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
-import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, ParsingError}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.{Data, Event, ParsingError, SnowplowEvent}
+import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Failure, FailureDetails, Payload, Processor}
 import com.snowplowanalytics.snowplow.analytics.scalasdk.decode.TSVParser
 import com.snowplowanalytics.snowplow.rdbloader.common.Common
@@ -89,7 +90,10 @@ object EventUtils {
     def tranformDate(s: String): String =
       Either.catchOnly[DateTimeParseException](Instant.parse(s)).map(_.formatted).getOrElse(s)
 
-    val tabular = originalLine.ordered.flatMap {
+    // On a copy, because `ordered` caches a map of the whole event on the Event it is called on. The
+    // batch transformer runs this on events still held by a Spark aggregation, so that cache would
+    // grow them after Spark has sized them, and can exhaust the heap
+    val tabular = originalLine.copy().ordered.flatMap {
       case ("contexts" | "derived_contexts" | "unstruct_event", _) => None
       case (key, Some(value)) if key.endsWith("_tstamp") =>
         Some(value.fold("", transformBool, _ => value.show, tranformDate, _ => value.noSpaces, _ => value.noSpaces))
@@ -130,6 +134,30 @@ object EventUtils {
       s"""["events","${schema.name}"]""",
       "events"
     )
+
+  /**
+   * Equivalent to the analytics SDK's `event.toJson(lossy = true)` as it behaved before SDK 3.2.0.
+   *
+   * From 3.2.0 the SDK merges a `_schema_version` field into every context entity. We don't want
+   * that in the wide row output, so we rebuild the lossy JSON from the SDK's building blocks.
+   */
+  def toWideRowJson(event: Event): Json = {
+    def shredContexts(contexts: Contexts): Map[String, Json] =
+      contexts.data.groupBy(sdd => (sdd.schema.vendor, sdd.schema.name, sdd.schema.format, sdd.schema.version.model)).map {
+        case ((vendor, name, _, model), sdds) =>
+          SnowplowEvent.transformSchema(Data.Contexts(Data.CustomContexts), vendor, name, model) -> Json.fromValues(sdds.map(_.data))
+      }
+
+    // `atomic` on a copy, because it caches a map of the whole event on the Event it is called on. The
+    // batch transformer runs this on events still held by a Spark aggregation, so that cache would
+    // grow them after Spark has sized them, and can exhaust the heap
+    Json.fromJsonObject(
+      JsonObject.fromMap(
+        event.copy().atomic ++ shredContexts(event.contexts) ++ shredContexts(event.derived_contexts) ++
+          event.unstruct_event.toShreddedJson.toMap ++ event.geoLocation
+      )
+    )
+  }
 
   def getEntities(event: Event): List[SelfDescribingData[Json]] =
     event.unstruct_event.data.toList ++

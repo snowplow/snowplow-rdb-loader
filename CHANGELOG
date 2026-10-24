@@ -1,3 +1,15 @@
+Version 6.9.0 (2026-10-20)
+--------------------------
+Bump dependencies for 6.9.0 release (#82)
+Hash recovered parquet column names from a canonical JSON Schema serialization (#81)
+Keep events the size Spark measured them to be (#79)
+Bump snowplow-scala-analytics-sdk to 3.2.3 (#77)
+Cut batch transformer log volume sent to CloudWatch (#75)
+ITS-2185: chore(ci): remove Snyk steps (#71)
+Tune default s3a committer config for batch transformer in docker (#74)
+Fix Databricks optimize still failing after #68 (#73)
+Use the thin Snowflake JDBC driver to fix GCS writes on GCP (#72)
+
 Version 6.8.0 (2026-09-25)
 --------------------------
 Bump dependencies for 6.8.0 release (#69)

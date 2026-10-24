@@ -14,6 +14,7 @@ import cats.effect.IO
 import cats.effect.unsafe.implicits.global
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.analytics.scalasdk.SnowplowEvent.Contexts
+import com.snowplowanalytics.snowplow.rdbloader.common.transformation.EventUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.ParquetUtils.{readParquetColumns, readParquetRowsAsJsonFrom}
 import com.snowplowanalytics.snowplow.rdbloader.transformer.stream.common.processing.BaseProcessingSpec.TransformerConfig
@@ -172,9 +173,8 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
             actualParquetRows.size must beEqualTo(3)
             output.completionMessages.toList must haveSize(1)
 
-            // The trailing digits are a Scala 2.12 `Field.hashCode`; 2.13 produces a different value.
             output.completionMessages.toList.head must contain(
-              """"columnName":"contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102""""
+              """"columnName":"contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_ecd8e4b9""""
             )
 
             output.completionMessages.toList must haveSize(1)
@@ -190,7 +190,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
                   List(
                     """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*1\s*\}\s*\].*""".r,
                     """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*2\s*\}\s*\].*""".r,
-                    """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
+                    """(?s).*contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_ecd8e4b9\"\s*:\s*\[\s*\{\s*\"b_field\"\s*:\s*\"s\"\s*\}\s*\].*""".r
                   )
                 )
             ) { case (actual, expected) =>
@@ -269,7 +269,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
 
   // copied from WideRowParquetSpec in batch transformer
   private def transformEventForParquetTest(entityColumnName: String)(e: Event): Json = {
-    val json = e
+    val event = e
       .copy(
         // Due to a bug in the Scala Analytics SDK's toJson method, derived_contexts overrides contexts with same schemas.
         // In order to circumvent this problem, contexts and derived_contexts are combined under context
@@ -287,8 +287,7 @@ class WiderowParquetProcessingSpec extends BaseProcessingSpec {
         refr_dvce_tstamp    = e.refr_dvce_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS)),
         true_tstamp         = e.true_tstamp.map(_.truncatedTo(ChronoUnit.MILLIS))
       )
-      .toJson(true)
-      .deepDropNullValues
+    val json = EventUtils.toWideRowJson(event).deepDropNullValues
 
     def normalizeKeys(j: Json): Json =
       j.arrayOrObject(

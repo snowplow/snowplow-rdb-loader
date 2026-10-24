@@ -92,7 +92,9 @@ object Iglu {
             .value
 
         def fieldNamesFromTypes(types: List[WideRow.Type]): EitherT[F, LoaderIgluError, List[String]] =
-          NonAtomicFieldsProvider.fieldsFromTypes(resolver, types).map(_.map(_.field.name))
+          NonAtomicFieldsProvider
+            .fieldsFromTypes(resolver, types, NonAtomicFieldsProvider.RecoveryHash.LegacyFieldHashCode)
+            .map(_.map(_.field.name))
       }
     }
   }

@@ -303,6 +303,9 @@ object BuildSettings {
   private val magicCommitterSparkConfig = Map(
     "spark.hadoop.fs.s3a.committer.name" -> "magic",
     "spark.hadoop.fs.s3a.committer.magic.enabled" -> "true",
+    "spark.hadoop.fs.s3a.committer.magic.track.commits.in.memory.enabled" -> "true",
+    "spark.hadoop.fs.s3a.committer.threads" -> "32", // Increased from default 8. Improves total time of driver's job commit.
+    "spark.hadoop.fs.s3a.committer.abort.pending.uploads" -> "true",
     "spark.sql.sources.commitProtocolClass" -> "org.apache.spark.internal.io.cloud.PathOutputCommitProtocol",
     "spark.sql.parquet.output.committer.class" -> "org.apache.spark.internal.io.cloud.BindingParquetOutputCommitter",
     "spark.hadoop.mapreduce.outputcommitter.factory.scheme.s3" -> "org.apache.hadoop.fs.s3a.commit.S3ACommitterFactory",
@@ -336,6 +339,8 @@ object BuildSettings {
       // version we compile against) rather than inheriting the plugin's default.
       sparkVersion := Dependencies.V.sparkDocker,
       sparkConfig := batchTransformerSparkConfig,
+      // Layered over Spark's default log4j2 config in the driver and executors.
+      sparkLog4jConfigFile := Some(baseDirectory.value / "src" / "spark" / "log4j2-overrides.properties"),
       // The app compiles against Spark but does not bundle it: the distribution
       // supplies Spark at runtime from /opt/spark/jars. spark-sql pulls spark-core
       // transitively, which is all the app's sources need to compile.

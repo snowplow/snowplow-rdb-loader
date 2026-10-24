@@ -9,7 +9,6 @@
  * OF THE SOFTWARE, YOU AGREE TO THE TERMS OF SUCH LICENSE AGREEMENT.
  */
 import sbt._
-import com.snowplowanalytics.snowplow.sbt.SnowplowSparkPlugin.autoImport.SparkDistribution
 
 object Dependencies {
 
@@ -32,7 +31,7 @@ object Dependencies {
     // Snowplow libraries
     val igluClient     = "4.2.1"
     val badrows        = "2.3.0"
-    val analyticsSdk   = "3.1.0"
+    val analyticsSdk   = "3.2.3"
     val schemaDdl      = "0.28.0"
     val scalaTracker   = "2.0.0"
     val eventsManifest = "0.5.0-M1"
@@ -54,7 +53,7 @@ object Dependencies {
 
     // Warehouse drivers, and the SSH tunnel the Redshift loader opens
     val redshiftJdbc   = "2.2.9"
-    val snowflakeJdbc  = "4.3.4"
+    val snowflakeJdbc  = "4.4.0"
     val databricksJdbc = "3.4.3"
     val enumeratum     = "1.7.0"
     val jSch           = "2.28.7"
@@ -76,22 +75,13 @@ object Dependencies {
     val jacksonModule = "2.21.7"
     val parquetHadoop = "1.18.1"
     val nettyCodec    = "4.1.138.Final"
-    val zookeeper     = "3.9.5"
+    val zookeeper     = "3.9.6"
     val kafkaClients  = "3.9.2"
-    val bouncyCastle  = "1.85"
+    val bouncyCastle  = "1.86"
     val commonsConfig = "2.15.1"
     val kerbyCore     = "2.1.2"
-    val lz4Java       = "1.11.1"
+    val lz4Java       = "1.11.4"
     val zstdJni       = "1.5.7-19"
-
-    // The same, scoped to the Spark distribution in /opt/spark/jars. These out-bid either
-    // SnowplowSparkPlugin's own CVE pins or what Spark itself ships. Netty here is the 4.2.x
-    // series, a different line from nettyCodec above.
-    val nettySparkDistribution          = "4.2.18.Final"
-    val jacksonSparkDistribution        = "2.21.7"
-    val parquetJacksonSparkDistribution = "1.18.1" // pure shaded Jackson, so it can sit ahead of the other parquet jars
-    val vertxSparkDistribution          = "4.5.30"
-    val ivySparkDistribution            = "2.6.0"
 
     // Held above upstream for binary compatibility rather than security
     // Held above what fs2-aws-kinesis asks for: its version wants a scala-xml too old for our Scala 2.12
@@ -181,11 +171,11 @@ object Dependencies {
   val pubsub    = "com.google.cloud" % "google-cloud-pubsub"    % V.pubsub
 
   // Warehouse drivers, and the SSH tunnel the Redshift loader opens
-  val redshift       = "com.amazon.redshift" % "redshift-jdbc42" % V.redshiftJdbc
-  val snowflakeJdbc  = "net.snowflake"       % "snowflake-jdbc"  % V.snowflakeJdbc
-  val databricksJdbc = "com.databricks"      % "databricks-jdbc" % V.databricksJdbc
-  val enumeratum     = "com.beachape"       %% "enumeratum"      % V.enumeratum
-  val jSch           = "com.github.mwiede"   % "jsch"            % V.jSch
+  val redshift       = "com.amazon.redshift" % "redshift-jdbc42"     % V.redshiftJdbc
+  val snowflakeJdbc  = "net.snowflake"       % "snowflake-jdbc-thin" % V.snowflakeJdbc
+  val databricksJdbc = "com.databricks"      % "databricks-jdbc"     % V.databricksJdbc
+  val enumeratum     = "com.beachape"       %% "enumeratum"          % V.enumeratum
+  val jSch           = "com.github.mwiede"   % "jsch"                % V.jSch
 
   // Spark, Hadoop and Parquet
   val sparkCore = "org.apache.spark" %% "spark-core" % V.spark % Provided
@@ -214,9 +204,6 @@ object Dependencies {
   val sentry      = "io.sentry" % "sentry"       % V.sentry
 
   // Artifacts named only to force a version up; grouped into Seqs by SecurityOverrides below
-  val nettyCodec            = "io.netty"                         % "netty-codec"             % V.nettyCodec
-  val nettyCodecHttp        = "io.netty"                         % "netty-codec-http"        % V.nettyCodec
-  val nettyCodecHttp2       = "io.netty"                         % "netty-codec-http2"       % V.nettyCodec
   val nettyCodecDns         = "io.netty"                         % "netty-codec-dns"         % V.nettyCodec
   val nettyAll              = "io.netty"                         % "netty-all"               % V.nettyCodec
   val lz4Java               = "at.yawk.lz4"                      % "lz4-java"                % V.lz4Java
@@ -251,23 +238,24 @@ object Dependencies {
   // place only while it still evicts something: once the upstream catches up, delete it. To check,
   // drop the line and compare the resolved runtime classpath before and after — reading the
   // dependency tree for eviction markers is unreliable, because sbt truncates long lines.
-  val commonSecurityOverrides = Seq(zookeeper, jacksonDatabind, kerbyAsn1)
+  val commonSecurityOverrides = Seq(jacksonDatabind)
 
   // Kafka's client pulls compression codecs that lag their own fixes, and ships the at.yawk lz4
   // fork, which the org.lz4 exclusions elsewhere do not cover.
   val azureSecurityOverrides = Seq(lz4Java, zstdJni)
 
-  // The loaders reach Netty through the Azure SDK's HTTP client, which trails Netty's releases.
-  // BouncyCastle and commons-configuration2 come in via Hadoop.
+  // The loaders reach netty-codec-dns through the Azure SDK's HTTP client, which trails Netty's
+  // releases. BouncyCastle, commons-configuration2 and kerby come in via Hadoop.
   val loaderSecurityOverrides =
-    Seq(bcprovJdk18on, commonsConfiguration2, nettyCodec, nettyCodecHttp, nettyCodecHttp2, nettyCodecDns)
+    Seq(bcprovJdk18on, commonsConfiguration2, kerbyAsn1, nettyCodecDns)
 
-  // The stream transformers reach the same libraries through Hadoop instead. netty-all covers the
-  // codecs the loaders have to name one by one, and parquet-hadoop arrives via parquet4s.
+  // The stream transformers reach the same libraries through Hadoop instead, which also brings in
+  // ZooKeeper and netty-all. parquet-hadoop arrives via parquet4s.
   val streamTransformerSecurityOverrides =
-    Seq(nettyCodecHttp, nettyCodecHttp2, nettyAll, bcprovJdk18on, commonsConfiguration2, parquetHadoop, zstdJni)
+    Seq(nettyAll, bcprovJdk18on, commonsConfiguration2, kerbyAsn1, zookeeper, parquetHadoop, zstdJni)
 
-  // Spark and the AWS SDK are what reach for Jackson at runtime.
+  // Spark and the AWS SDK are what reach for Jackson at runtime on EMR. The Docker distribution
+  // gets its Jackson from the Spark distribution instead.
   val batchTransformerSecurityOverrides = Seq(jacksonModule, jacksonCbor)
 
   val awsDependencies = Seq(
@@ -361,7 +349,8 @@ object Dependencies {
 
   val snowflakeDependencies = Seq(
     enumeratum,
-    snowflakeJdbc
+    snowflakeJdbc,
+    awsS3Transfer
   )
 
   val databricksDependencies = Seq(
@@ -397,54 +386,6 @@ object Dependencies {
     awsApacheClient
   )
 
-  // The same idea as SecurityOverrides above, but for the Spark distribution bundled into
-  // /opt/spark/jars/ (the SparkDistribution config). Most out-bid SnowplowSparkPlugin's own CVE
-  // pins, listed in its private `V` object; vertx, ivy and zstd-jni out-bid what Spark itself
-  // ships. Scoping to SparkDistribution keeps them off this app's own Compile classpath.
-  //
-  // The Netty and Jackson blocks have to be listed artifact by artifact: naming only the
-  // vulnerable one pulls part of the set up and leaves the rest behind, which would put two
-  // Netty versions on one classpath. They shrink only when the plugin raises its own pins.
-  val sparkDistributionOverrides = Seq(
-    "io.netty" % "netty-buffer"                       % V.nettySparkDistribution,
-    "io.netty" % "netty-codec"                        % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-base"                   % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-classes-quic"           % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-compression"            % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-dns"                    % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-http"                   % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-http2"                  % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-http3"                  % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-marshalling"            % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-protobuf"               % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-socks"                  % V.nettySparkDistribution,
-    "io.netty" % "netty-common"                       % V.nettySparkDistribution,
-    "io.netty" % "netty-handler"                      % V.nettySparkDistribution,
-    "io.netty" % "netty-handler-proxy"                % V.nettySparkDistribution,
-    "io.netty" % "netty-resolver"                     % V.nettySparkDistribution,
-    "io.netty" % "netty-resolver-dns"                 % V.nettySparkDistribution,
-    "io.netty" % "netty-transport"                    % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-classes-epoll"      % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-classes-io_uring"   % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-classes-kqueue"     % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-native-unix-common" % V.nettySparkDistribution,
-    "io.netty" % "netty-codec-native-quic"            % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-native-epoll"       % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-native-io_uring"    % V.nettySparkDistribution,
-    "io.netty" % "netty-transport-native-kqueue"      % V.nettySparkDistribution,
-    // the plugin only pins the org.lz4 fork; this at.yawk one is what Spark actually ships
-    "at.yawk.lz4"                      % "lz4-java"                % V.lz4Java,
-    "org.apache.parquet"               % "parquet-jackson"         % V.parquetJacksonSparkDistribution, // shades Jackson
-    "com.fasterxml.jackson.core"       % "jackson-databind"        % V.jacksonSparkDistribution,
-    "com.fasterxml.jackson.core"       % "jackson-core"            % V.jacksonSparkDistribution,
-    "com.fasterxml.jackson.datatype"   % "jackson-datatype-jsr310" % V.jacksonSparkDistribution,
-    "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % V.jacksonSparkDistribution,
-    "com.fasterxml.jackson.module"    %% "jackson-module-scala"    % V.jacksonSparkDistribution,
-    "io.vertx"                         % "vertx-core"              % V.vertxSparkDistribution,
-    "org.apache.ivy"                   % "ivy"                     % V.ivySparkDistribution,
-    "com.github.luben"                 % "zstd-jni"                % V.zstdJni
-  ).map(_ % SparkDistribution)
-
   // Like batchTransformerDependencies but compiled against Spark 4.x / Scala 2.13.
   // Spark itself is declared Provided in BuildSettings (see sparkVersion), not here,
   // so it is not bundled into the app fat jar — SnowplowSparkPlugin's distribution
@@ -457,13 +398,12 @@ object Dependencies {
     aws2dynamo,
     aws2cw,
     aws2regions,
-    slf4jSimple,
     eventsManifest,
     circeOptics,
     specs2,
     specs2ScalaCheck,
     scalaCheck
-  ) ++ batchTransformerSecurityOverrides
+  )
 
   val commonStreamTransformerDependencies = Seq(
     igluClientHttp4s,

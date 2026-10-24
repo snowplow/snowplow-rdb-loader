@@ -15,12 +15,15 @@ import cats.data.NonEmptyVector
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.client.resolver.registries.JavaNetRegistryLookup._
 import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer}
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
+import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type.Nullability.{Nullable, Required}
 import com.snowplowanalytics.iglu.schemaddl.parquet.{Field, Type}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.SnowplowEntity.{Context, SelfDescribingEvent}
 import com.snowplowanalytics.snowplow.rdbloader.common.LoaderMessage.TypesInfo.WideRow
 import com.snowplowanalytics.snowplow.rdbloader.common.transformation.parquet.NonAtomicFieldsProvider
+import io.circe.Json
 import io.circe.literal.JsonStringContext
 import org.specs2.mutable.{Specification, Tables}
 
@@ -156,12 +159,9 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
         val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
 
         result.value.size mustEqual 3
-        val recoveredNames = result.value.map(_.field.name).filter(_.contains("_recovered_"))
-        recoveredNames must haveSize(2)
-        recoveredNames must contain(beMatching(""".*_recovered_\d+_\d+_\d+_\d+""")).forall
         forall(
           result.value
-            .map(s => (withoutHashSuffix(s.field), s.matchingKeys))
+            .map(s => (s.field, s.matchingKeys))
             .zip(List(expectedContext100_110, expectedContext101, expectedContext111))
         ) { case (actual, expected) => actual mustEqual expected }
       }
@@ -188,6 +188,54 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
             .zip(List(expectedContext100_110))
         ) { case (actual, expected) => actual mustEqual expected }
       }
+
+      "named with the canonical schema hash" in {
+        val inputTypes = List(context100, context101, context110, context111)
+        val result     = NonAtomicFieldsProvider.build(resolver, inputTypes).value.right.get
+
+        result.value.map(_.field.name) mustEqual List(
+          "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1",
+          "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_ecd8e4b9",
+          "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_e3e5eb1a"
+        )
+      }
+
+      "named with the legacy field hash when asked" in {
+        val inputTypes = List(context100, context101)
+        val result = NonAtomicFieldsProvider
+          .fieldsFromTypes(resolver, inputTypes, NonAtomicFieldsProvider.RecoveryHash.LegacyFieldHashCode)
+          .value
+          .right
+          .get
+
+        val recovered = result.map(_.field.name).filter(_.contains("_recovered_"))
+        // The digits are a Scala 2.12 `Field.hashCode`, so only pinned on 2.12.
+        if (scala.util.Properties.versionNumberString.startsWith("2.12."))
+          recovered mustEqual List("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_1837344102")
+        else
+          recovered must contain(
+            exactly(beMatching("""contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_\d+"""))
+          )
+      }
+    }
+  }
+
+  // Plain `asJson.noSpaces` hashes these differently on Scala 2.12 and 2.13, because schema-ddl
+  // backs `properties` and `type` unions with `Map`s and `Set`s. The expected values are the same on both.
+  "the canonical recovery hash" >> {
+    def hash(json: Json): String =
+      NonAtomicFieldsProvider.RecoveryHash.CanonicalSchemaJson(Field("unused", Type.String, Nullable), Schema.parse(json).get)
+
+    "is independent of the order of 5+ properties" in {
+      hash(
+        json"""{"type":"object","properties":{"product_id":{"type":"string"},"quantity":{"type":"integer"},"in_stock":{"type":"boolean"},"price":{"type":"number"},"currency":{"type":"string"},"category":{"type":"string"}}}"""
+      ) mustEqual "b8807c60"
+    }
+
+    "is independent of the order of a 5-type union" in {
+      hash(
+        json"""{"type":"object","properties":{"u":{"type":["string","number","integer","boolean","null"]}}}"""
+      ) mustEqual "74b1611c"
     }
   }
 
@@ -200,7 +248,7 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
     ).map(v => getBrokenType(v, SnowplowEntity.Context))
 
     def namesFor(types: List[WideRow.Type]): Map[(SchemaKey, SnowplowEntity), String] =
-      NonAtomicFieldsProvider.columnNamesByType(NonAtomicFieldsProvider.fieldsFromTypes(resolver, types).value.right.get)
+      NonAtomicFieldsProvider.columnNamesByType(NonAtomicFieldsProvider.build(resolver, types).value.right.get.value)
 
     val finalNames = namesFor(allTypes)
 
@@ -236,11 +284,6 @@ class ParquetFieldsProviderSpec extends Specification with Tables {
 object ParquetFieldsProviderSpec {
   private def getType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema", format = "jsonschema", version), entity)
-
-  // A recovered column's name ends in a JVM case-class hashCode, which differs between Scala 2.12
-  // and 2.13. Everything else about the column is stable, so compare without those digits.
-  private def withoutHashSuffix(field: Field): Field =
-    field.copy(name = field.name.replaceAll("""(_recovered_\d+_\d+_\d+)_\d+$""", "$1"))
 
   private def getBrokenType(version: SchemaVer.Full, entity: SnowplowEntity) =
     WideRow.Type(SchemaKey(vendor = "com.snowplowanalytics.snowplow", name = "test_schema_broken", format = "jsonschema", version), entity)
@@ -454,7 +497,7 @@ object ParquetFieldsProviderSpec {
     )
     val expectedContext111 = (
       nullableArrayWithRequiredElement(
-        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_1_1_e3e5eb1a",
         elementType = DdlTypes.brokenSchema111,
         accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),
@@ -462,7 +505,7 @@ object ParquetFieldsProviderSpec {
     )
     val expectedContext101 = (
       nullableArrayWithRequiredElement(
-        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1",
+        name        = "contexts_com_snowplowanalytics_snowplow_test_schema_broken_1_recovered_1_0_1_ecd8e4b9",
         elementType = DdlTypes.brokenSchema101,
         accessors   = Set("contexts_com_snowplowanalytics_snowplow_test_schema_broken_1")
       ),

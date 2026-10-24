@@ -10,7 +10,7 @@
  */
 package com.snowplowanalytics.snowplow.rdbloader.dsl
 
-import doobie.{ConnectionIO, HPS, HRS, Read}
+import doobie.{ConnectionIO, FPS, HPS, HRS, Read}
 
 import com.snowplowanalytics.snowplow.rdbloader.config.Config
 import com.snowplowanalytics.snowplow.rdbloader.db.{Statement, Target}
@@ -27,6 +27,12 @@ trait DAO[C[_]] {
 
   /** Execute single SQL statement */
   def executeUpdate(sql: Statement, purpose: DAO.Purpose): C[Int]
+
+  /**
+   * Execute single SQL statement, making no demands on what it returns. For statements like
+   * Databricks' `OPTIMIZE`, which the driver will neither read as a query nor as an update
+   */
+  def executeStatement(sql: Statement, purpose: DAO.Purpose): C[Unit]
 
   /** Execute query and parse results into `A` */
   def executeQuery[A](query: Statement)(implicit A: Read[A]): C[A]
@@ -48,15 +54,15 @@ object DAO {
   def connectionIO[I](dbTarget: Target[I], timeouts: Config.Timeouts): DAO[ConnectionIO] = new DAO[ConnectionIO] {
 
     /** Execute single SQL statement (against target in interpreter) */
-    def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] = {
-      val timeout = purpose match {
-        case Purpose.Loading    => timeouts.loading
-        case Purpose.NonLoading => timeouts.nonLoading
-      }
+    def executeUpdate(sql: Statement, purpose: Purpose): ConnectionIO[Int] =
       dbTarget.toFragment(sql).execWith {
-        HPS.setQueryTimeout(timeout.toSeconds.toInt).flatMap(_ => HPS.executeUpdate)
+        HPS.setQueryTimeout(timeoutFor(purpose)).flatMap(_ => HPS.executeUpdate)
       }
-    }
+
+    def executeStatement(sql: Statement, purpose: Purpose): ConnectionIO[Unit] =
+      dbTarget.toFragment(sql).execWith {
+        HPS.setQueryTimeout(timeoutFor(purpose)).flatMap(_ => FPS.execute.map(_ => ()))
+      }
 
     /** Execute query and parse results into `A` */
     def executeQuery[A](query: Statement)(implicit A: Read[A]): ConnectionIO[A] =
@@ -67,6 +73,12 @@ object DAO {
     def executeQueryList[A](query: Statement)(implicit A: Read[A]): ConnectionIO[List[A]] =
       dbTarget.toFragment(query).execWith {
         HPS.setQueryTimeout(timeouts.nonLoading.toSeconds.toInt).flatMap(_ => HPS.executeQuery(HRS.build))
+      }
+
+    private def timeoutFor(purpose: Purpose): Int =
+      purpose match {
+        case Purpose.Loading    => timeouts.loading.toSeconds.toInt
+        case Purpose.NonLoading => timeouts.nonLoading.toSeconds.toInt
       }
   }
 }

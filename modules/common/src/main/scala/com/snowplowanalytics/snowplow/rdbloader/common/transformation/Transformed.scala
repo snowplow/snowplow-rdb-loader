@@ -148,7 +148,7 @@ object Transformed {
       }
 
   def wideRowEvent(event: Event): Transformed =
-    WideRow(good = true, Transformed.Data.DString(event.toJson(true).noSpaces))
+    WideRow(good = true, Transformed.Data.DString(EventUtils.toWideRowJson(event).noSpaces))
 
   def getShredModel[F[_]: Monad: Clock: RegistryLookup](
     schemaKey: SchemaKey,

@@ -35,7 +35,7 @@ object VacuumScheduling {
                 Transaction[F, C]
                   .transact(
                     Logging[C].info("initiating events vacuum") *>
-                      DAO[C].executeUpdate(Statement.VacuumEvents, DAO.Purpose.NonLoading) *>
+                      DAO[C].executeStatement(Statement.VacuumEvents, DAO.Purpose.NonLoading) *>
                       Logging[C].info("vacuum events complete")
                   )
                   .recoverWith { case t: Throwable =>
@@ -58,7 +58,7 @@ object VacuumScheduling {
                 Transaction[F, C]
                   .transact(
                     Logging[C].info("initiating manifest vacuum") *>
-                      DAO[C].executeUpdate(Statement.VacuumManifest, DAO.Purpose.NonLoading) *>
+                      DAO[C].executeStatement(Statement.VacuumManifest, DAO.Purpose.NonLoading) *>
                       Logging[C].info("vacuum manifest complete")
                   )
                   .recoverWith { case t: Throwable =>

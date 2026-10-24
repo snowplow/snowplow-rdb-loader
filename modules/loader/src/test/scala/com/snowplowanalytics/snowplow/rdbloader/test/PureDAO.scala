@@ -68,6 +68,9 @@ object PureDAO {
     def executeUpdate(sql: Statement, purpose: DAO.Purpose): Pure[Int] =
       results.executeUpdate(sql)
 
+    def executeStatement(sql: Statement, purpose: DAO.Purpose): Pure[Unit] =
+      results.executeUpdate(sql).void
+
     def executeQuery[A](query: Statement)(implicit A: Read[A]): Pure[A] =
       results.executeQuery.asInstanceOf[Statement => Pure[A]](query)
 

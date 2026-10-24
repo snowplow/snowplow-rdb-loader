@@ -42,7 +42,10 @@ object ParquetTransformer {
     processor: Processor
   ): Either[BadRow, List[FieldWithValue]] = {
 
-    val atomicJsonValues = event.atomic
+    // On a copy, because `atomic` caches a map of the whole event on the Event it is called on. The
+    // batch transformer runs this on events still held by a Spark aggregation, so that cache would
+    // grow them after Spark has sized them, and can exhaust the heap
+    val atomicJsonValues = event.copy().atomic
 
     atomicFields.value
       .traverse { atomicField =>
